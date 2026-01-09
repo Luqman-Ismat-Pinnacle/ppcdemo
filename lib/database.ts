@@ -79,7 +79,7 @@ async function fetchFromPostgreSQL() {
       client.query('SELECT * FROM projects ORDER BY name'),
       client.query('SELECT * FROM subprojects ORDER BY name'),
       client.query('SELECT * FROM phases ORDER BY name'),
-      client.query('SELECT * FROM chargecodes ORDER BY code'),
+      client.query('SELECT * FROM charge_codes ORDER BY code'),
       client.query('SELECT * FROM tasks ORDER BY name'),
       client.query('SELECT * FROM subtasks ORDER BY name'),
       client.query('SELECT * FROM qctasks ORDER BY name'),
