@@ -18,7 +18,6 @@
 
 import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode } from 'react';
 import type { SampleData, HierarchyFilter, DateFilter } from '@/types/data';
-import { isSupabaseConfigured, fetchAllData } from '@/lib/supabase';
 import { transformData } from '@/lib/data-transforms';
 
 // ============================================================================
@@ -143,24 +142,27 @@ export function DataProvider({ children }: DataProviderProps) {
   const [dateFilter, setDateFilter] = useState<DateFilter | null>(null);
 
   /**
-   * Fetch data from Supabase on app initialization
+   * Fetch data from database on app initialization
    */
   useEffect(() => {
     const loadData = async () => {
-      if (!isSupabaseConfigured()) {
-        console.log('Supabase not configured - running in local mode');
-        setIsLoading(false);
-        return;
-      }
-
       try {
-        console.log('Fetching data from Supabase...');
-        const supabaseData = await fetchAllData();
+        console.log('Fetching data from database...');
+        const response = await fetch('/api/data');
+        const result = await response.json();
         
-        if (Object.keys(supabaseData).length > 0) {
+        if (result.error) {
+          console.log('Database not configured or error:', result.error);
+          setIsLoading(false);
+          return;
+        }
+        
+        const dbData = result.data;
+        
+        if (dbData && Object.keys(dbData).length > 0) {
           // Merge fetched data with empty structure
           const mergedData: Partial<SampleData> = {};
-          for (const [key, value] of Object.entries(supabaseData)) {
+          for (const [key, value] of Object.entries(dbData)) {
             if (Array.isArray(value) && value.length > 0) {
               (mergedData as any)[key] = value;
             }
@@ -170,11 +172,11 @@ export function DataProvider({ children }: DataProviderProps) {
             // Apply transformations to build computed views (wbsData, laborBreakdown, etc.)
             const transformedData = transformData(mergedData);
             setData(prev => ({ ...prev, ...mergedData, ...transformedData }));
-            console.log('Loaded and transformed data from Supabase:', Object.keys(mergedData).map(k => `${(mergedData as any)[k]?.length || 0} ${k}`).join(', '));
+            console.log('Loaded and transformed data from database:', Object.keys(mergedData).map(k => `${(mergedData as any)[k]?.length || 0} ${k}`).join(', '));
           }
         }
       } catch (err) {
-        console.error('Error fetching data from Supabase:', err);
+        console.error('Error fetching data from database:', err);
       } finally {
         setIsLoading(false);
       }
@@ -204,16 +206,22 @@ export function DataProvider({ children }: DataProviderProps) {
   };
 
   /**
-   * Refresh data from Supabase
+   * Refresh data from database
    */
   const refreshData = async () => {
-    if (!isSupabaseConfigured()) return;
-    
     setIsLoading(true);
     try {
-      const supabaseData = await fetchAllData();
+      const response = await fetch('/api/data');
+      const result = await response.json();
+      
+      if (result.error || !result.data) {
+        console.log('No data available to refresh');
+        return;
+      }
+      
+      const dbData = result.data;
       const mergedData: Partial<SampleData> = {};
-      for (const [key, value] of Object.entries(supabaseData)) {
+      for (const [key, value] of Object.entries(dbData)) {
         if (Array.isArray(value) && value.length > 0) {
           (mergedData as any)[key] = value;
         }
@@ -224,7 +232,7 @@ export function DataProvider({ children }: DataProviderProps) {
         setData(prev => ({ ...prev, ...mergedData, ...transformedData }));
       }
     } catch (err) {
-      console.error('Error refreshing data from Supabase:', err);
+      console.error('Error refreshing data from database:', err);
     } finally {
       setIsLoading(false);
     }
