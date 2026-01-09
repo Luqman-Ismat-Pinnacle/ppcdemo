@@ -4,14 +4,13 @@
  * @fileoverview User Context for PPC V3
  * 
  * Provides user authentication state management across the application.
- * Integrates with Supabase Auth for session management.
- * Uses localStorage as fallback for demo mode.
+ * Integrates with Auth0 for authentication.
  * 
  * @module lib/user-context
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import React, { createContext, useContext, ReactNode } from 'react';
+import { useUser as useAuth0User } from '@auth0/nextjs-auth0/client';
 
 /**
  * User information structure
@@ -28,7 +27,7 @@ export interface UserInfo {
  */
 interface UserContextValue {
   user: UserInfo | null;
-  login: (user: UserInfo) => void;
+  login: () => void;
   logout: () => void;
   isLoggedIn: boolean;
   isLoading: boolean;
@@ -37,158 +36,51 @@ interface UserContextValue {
 const UserContext = createContext<UserContextValue | null>(null);
 
 /**
- * Default user for demo purposes - matches login page demo user
+ * Helper function to get initials from name
  */
-const DEFAULT_USER: UserInfo = {
-  name: 'Demo User',
-  email: 'demo@pinnaclereliability.com',
-  role: 'Project Controls',
-  initials: 'DU'
-};
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map(part => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 /**
  * UserProvider component that wraps the application
  * Provides user state and authentication functions
- * Integrates with Supabase Auth when configured
+ * Integrates with Auth0 for authentication
  */
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user: auth0User, isLoading } = useAuth0User();
 
-  // Initialize user from Supabase session or localStorage
-  useEffect(() => {
-    const initializeAuth = async () => {
-      setIsLoading(true);
-      
-      try {
-        if (isSupabaseConfigured()) {
-          // Check for existing Supabase session
-          const { data: { session } } = await supabase.auth.getSession();
-          
-          if (session?.user) {
-            const userName = session.user.user_metadata?.full_name || 
-                            session.user.email?.split('@')[0] || 
-                            'User';
-            setUser({
-              name: userName,
-              email: session.user.email || '',
-              role: session.user.user_metadata?.role || 'User',
-              initials: getInitials(userName)
-            });
-          } else {
-            // No Supabase session, check localStorage
-            loadFromLocalStorage();
-          }
-          
-          // Listen for auth state changes
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-              if (event === 'SIGNED_IN' && session?.user) {
-                const userName = session.user.user_metadata?.full_name || 
-                                session.user.email?.split('@')[0] || 
-                                'User';
-                const userInfo = {
-                  name: userName,
-                  email: session.user.email || '',
-                  role: session.user.user_metadata?.role || 'User',
-                  initials: getInitials(userName)
-                };
-                setUser(userInfo);
-                saveToLocalStorage(userInfo);
-              } else if (event === 'SIGNED_OUT') {
-                setUser(null);
-                clearLocalStorage();
-              }
-            }
-          );
-          
-          // Cleanup subscription on unmount
-          return () => subscription.unsubscribe();
-        } else {
-          // No Supabase - use localStorage only
-          loadFromLocalStorage();
-        }
-      } catch (e) {
-        console.error('Failed to initialize auth:', e);
-        loadFromLocalStorage();
-      } finally {
-        setIsHydrated(true);
-        setIsLoading(false);
-      }
-    };
-    
-    initializeAuth();
-  }, []);
+  // Transform Auth0 user to UserInfo format
+  const user: UserInfo | null = auth0User ? {
+    name: auth0User.name || auth0User.email?.split('@')[0] || 'User',
+    email: auth0User.email || '',
+    role: ((auth0User as any)['https://app.com/roles'] as string[] | undefined)?.[0] || 'User',
+    initials: getInitials(auth0User.name || auth0User.email?.split('@')[0] || 'User')
+  } : null;
 
-  /**
-   * Load user from localStorage
-   */
-  const loadFromLocalStorage = () => {
-    try {
-      const stored = localStorage.getItem('ppc-user');
-      if (stored) {
-        setUser(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.error('Failed to load user from storage:', e);
-    }
+  const login = () => {
+    window.location.href = '/api/auth/login';
   };
 
-  /**
-   * Save user to localStorage
-   */
-  const saveToLocalStorage = (userInfo: UserInfo) => {
-    try {
-      localStorage.setItem('ppc-user', JSON.stringify(userInfo));
-    } catch (e) {
-      console.error('Failed to save user to storage:', e);
-    }
+  const logout = () => {
+    window.location.href = '/api/auth/logout';
   };
 
-  /**
-   * Clear user from localStorage
-   */
-  const clearLocalStorage = () => {
-    try {
-      localStorage.removeItem('ppc-user');
-    } catch (e) {
-      console.error('Failed to remove user from storage:', e);
-    }
-  };
-
-  /**
-   * Log in a user and persist to localStorage
-   */
-  const login = (userInfo: UserInfo) => {
-    setUser(userInfo);
-    saveToLocalStorage(userInfo);
-  };
-
-  /**
-   * Log out the current user
-   */
-  const logout = async () => {
-    try {
-      if (isSupabaseConfigured()) {
-        await supabase.auth.signOut();
-      }
-    } catch (e) {
-      console.error('Failed to sign out from Supabase:', e);
-    }
-    
-    setUser(null);
-    clearLocalStorage();
+  const value: UserContextValue = {
+    user,
+    login,
+    logout,
+    isLoggedIn: !!user,
+    isLoading
   };
 
   return (
-    <UserContext.Provider value={{ 
-      user: isHydrated ? user : null, 
-      login, 
-      logout, 
-      isLoggedIn: isHydrated && !!user,
-      isLoading
-    }}>
+    <UserContext.Provider value={value}>
       {children}
     </UserContext.Provider>
   );
@@ -196,30 +88,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
 /**
  * Hook to access user context
- * @returns User context value with user info and auth functions
  */
-export function useUser(): UserContextValue {
+export function useUser() {
   const context = useContext(UserContext);
   if (!context) {
-    // Return a default value if context is not available
-    return {
-      user: DEFAULT_USER,
-      login: () => {},
-      logout: () => {},
-      isLoggedIn: false,
-      isLoading: false
-    };
+    throw new Error('useUser must be used within UserProvider');
   }
   return context;
-}
-
-/**
- * Get user initials from name
- */
-export function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-  return name.substring(0, 2).toUpperCase();
 }

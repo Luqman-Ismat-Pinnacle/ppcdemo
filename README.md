@@ -34,16 +34,63 @@ PPC V3 is an enterprise-grade project controls application designed for reliabil
 | Charts | Apache ECharts |
 | Gantt | dhtmlx-gantt |
 | Database | Supabase (PostgreSQL) |
-| Auth | Supabase Auth |
+| Auth | Auth0 |
 
-### Environment Variables
+## Authentication Setup (Auth0)
 
-`.env.local` file with:
+**The app automatically redirects to Auth0 login when you visit any URL.**
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+### Setup Steps:
+
+**1. Create Auth0 Application**
+- Go to [Auth0 Dashboard](https://manage.auth0.com)
+- Applications > Create Application
+- Name: "PPC NextJS"
+- Type: **Regular Web Application**
+
+**2. Configure Application Settings**
+
+Add these URLs (replace with your actual URLs):
+
+**Allowed Callback URLs:**
 ```
+http://localhost:3000/api/auth/callback
+https://ppc1.politemushroom-6b9c4fe7.eastus2.azurecontainerapps.io/api/auth/callback
+```
+
+**Allowed Logout URLs:**
+```
+http://localhost:3000
+https://ppc1.politemushroom-6b9c4fe7.eastus2.azurecontainerapps.io
+```
+
+**Allowed Web Origins:**
+```
+http://localhost:3000
+https://ppc1.politemushroom-6b9c4fe7.eastus2.azurecontainerapps.io
+```
+
+**3. Get Credentials & Update .env**
+
+From Auth0 Settings, copy and add to `.env`:
+```env
+AUTH0_BASE_URL=https://ppc1.politemushroom-6b9c4fe7.eastus2.azurecontainerapps.io
+AUTH0_ISSUER_BASE_URL=https://your-tenant.auth0.com
+AUTH0_CLIENT_ID=your_client_id
+AUTH0_CLIENT_SECRET=your_client_secret
+```
+
+**4. Deploy**
+```bash
+npm install --legacy-peer-deps
+npm run build
+docker-compose up --build
+```
+
+### How It Works:
+- **Automatic Login**: App redirects to Auth0 when you visit any page
+- **No Login Button**: Authentication is automatic via middleware
+- **Logout**: Available in user profile dropdown in header
 
 ## Project Structure
 

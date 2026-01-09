@@ -20,6 +20,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/layout/ThemeProvider';
 import { DataProvider } from '@/lib/data-context';
 import { UserProvider } from '@/lib/user-context';
+import Auth0Provider from '@/components/providers/Auth0Provider';
 import Header from '@/components/layout/Header';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
@@ -79,19 +80,21 @@ export default function RootLayout({
           }} />
         </div>
         <ErrorBoundary>
-          <ThemeProvider>
-            <UserProvider>
-              <DataProvider>
-                <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
-                  <Header />
-                  <main className="main-content">
-                    {children}
-                  </main>
-                  <HelpButton />
-                </div>
-              </DataProvider>
-            </UserProvider>
-          </ThemeProvider>
+          <Auth0Provider>
+            <ThemeProvider>
+              <UserProvider>
+                <DataProvider>
+                  <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
+                    <Header />
+                    <main className="main-content">
+                      {children}
+                    </main>
+                    <HelpButton />
+                  </div>
+                </DataProvider>
+              </UserProvider>
+            </ThemeProvider>
+          </Auth0Provider>
         </ErrorBoundary>
       </body>
     </html>

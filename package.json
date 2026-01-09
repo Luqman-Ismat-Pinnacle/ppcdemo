@@ -10,6 +10,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@auth0/nextjs-auth0": "^3.5.0",
     "@supabase/supabase-js": "^2.90.1",
     "dhtmlx-gantt": "^9.1.1",
     "echarts": "^6.0.0",
