@@ -2,6 +2,19 @@
 
 A comprehensive project controls and analytics platform built with Next.js, featuring real-time data visualization, resource management, and quality control tracking.
 
+## ✨ Enhanced with Modern UI/UX
+
+**Version 2.0** now includes professional UI/UX enhancements:
+- 🎨 Glassmorphic design with gradient effects
+- ✨ Smooth animations and transitions (60fps)
+- 📦 Reusable modern component library
+- 💫 Professional loading states with skeletons
+- 🎯 Enhanced interactive elements with glow effects
+- 📱 Fully responsive design
+- 🐳 Docker-ready deployment
+
+> See [UI_UX_ENHANCEMENTS.md](UI_UX_ENHANCEMENTS.md) for complete documentation of improvements.
+
 ## Overview
 
 PPC V3 is an enterprise-grade project controls application designed for reliability engineering and project management teams. It provides:
@@ -123,6 +136,33 @@ Cascading filter system: Portfolio → Customer → Site → Project → Phase
 - Transaction logging
 - Efficiency metrics
 
+## 🚀 Quick Start
+
+### Local Development
+
+```bash
+# Install dependencies
+npm install --legacy-peer-deps
+
+# Start development server
+npm run dev
+
+# Open http://localhost:3000
+```
+
+### Docker Deployment
+
+```bash
+# Using Docker Compose (recommended)
+docker-compose up --build
+
+# Or using Docker directly
+docker build -t ppc-nextjs-app .
+docker run -p 3000:3000 --env-file .env ppc-nextjs-app
+
+# Access at http://localhost:3000
+```
+
 ## Available Scripts
 
 ```bash
@@ -130,7 +170,41 @@ npm run dev      # Start development server
 npm run build    # Create production build
 npm run start    # Start production server
 npm run lint     # Run ESLint
+npm run clean    # Clean install
 ```
+
+## 🎨 New UI Components
+
+```tsx
+import { Card, Button, Badge, MetricCard, Skeleton } from '@/components/ui';
+
+// Modern Card
+<Card hover gradient>
+  <CardHeader title="Analytics" subtitle="Real-time data" />
+  <CardBody>
+    <Button variant="primary" size="md">Action</Button>
+  </CardBody>
+</Card>
+
+// Metric with Trend
+<MetricCard
+  label="Total Revenue"
+  value="$124,500"
+  change={{ value: 12.5, trend: 'up' }}
+/>
+
+// Loading State
+{loading ? <SkeletonCard /> : <Content />}
+```
+
+See [components/examples/ModernDashboardExample.tsx](components/examples/ModernDashboardExample.tsx) for complete examples.
+
+## 📚 Documentation
+
+- **UI/UX Enhancements**: [UI_UX_ENHANCEMENTS.md](UI_UX_ENHANCEMENTS.md)
+- **Improvements Summary**: [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md)
+- **Component Examples**: [components/examples/](components/examples/)
+- **Database Setup**: See SQL files in root directory
 
 ## License
 
