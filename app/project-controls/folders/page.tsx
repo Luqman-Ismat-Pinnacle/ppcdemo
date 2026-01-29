@@ -451,58 +451,19 @@ export default function DocumentsPage() {
       
       addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
-      // Create project mapping if Workday project is selected
-      if (file.workdayProjectId) {
-        addLog('info', '[Mapping] Creating MPP to Workday project mapping...');
-        try {
-          const mappingResponse = await fetch('/api/data/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              dataKey: 'projectMappings',
-              records: [{
-                id: `MAP_${Date.now()}`,
-                mppProjectId: existingProjectId,
-                workdayProjectId: file.workdayProjectId,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                deleted: false,
-                createdBy: 'MPP Upload',
-                notes: `Created during MPP upload: ${file.fileName}`
-              }]
-            }),
-          });
-          
-          const mappingResult = await mappingResponse.json();
-          if (!mappingResponse.ok || !mappingResult.success) {
-            addLog('warning', `[Mapping] Failed to create mapping: ${mappingResult.error || 'Unknown error'}`);
-          } else {
-            addLog('success', `[Mapping] MPP project mapped to Workday: ${file.workdayProjectId}`);
-          }
-        } catch (mappingError: any) {
-          addLog('warning', `[Mapping] Error creating mapping: ${mappingError.message}`);
-        }
-      }
-
-      // Update the existing project to set has_schedule = true
+      // Update the existing project to set has_schedule = true (direct Supabase update)
       addLog('info', '[Supabase] Updating project has_schedule = true...');
-      const updateProjectResponse = await fetch('/api/data/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dataKey: 'projects',
-          records: [{
-            id: existingProjectId,
-            has_schedule: true,
-            updatedAt: new Date().toISOString(),
-          }]
-        }),
-      });
-      const updateProjectResult = await updateProjectResponse.json();
-      if (!updateProjectResponse.ok || !updateProjectResult.success) {
-        addLog('warning', `[Supabase] Project update: ${updateProjectResult.error || 'Failed'}`);
-      } else {
-        addLog('success', `[Supabase] Project has_schedule set to true`);
+      if (supabase) {
+        const { error: updateError } = await supabase
+          .from('projects')
+          .update({ has_schedule: true, updated_at: new Date().toISOString() })
+          .eq('id', existingProjectId);
+        
+        if (updateError) {
+          addLog('warning', `[Supabase] Project update: ${updateError.message}`);
+        } else {
+          addLog('success', `[Supabase] Project has_schedule set to true`);
+        }
       }
 
       // Update all phases, units, and tasks with the existing project ID
