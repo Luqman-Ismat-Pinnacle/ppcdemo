@@ -725,7 +725,11 @@ export default function DocumentsPage() {
                 </label>
                 <select
                   value={selectedPortfolio}
-                  onChange={(e) => setSelectedPortfolio(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedPortfolio(e.target.value);
+                    setSelectedCustomer(''); // Reset customer when portfolio changes
+                    setSelectedSite(''); // Reset site when portfolio changes
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.5rem',
@@ -750,7 +754,10 @@ export default function DocumentsPage() {
                 </label>
                 <select
                   value={selectedCustomer}
-                  onChange={(e) => setSelectedCustomer(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedCustomer(e.target.value);
+                    setSelectedSite(''); // Reset site when customer changes
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.5rem',
@@ -759,13 +766,16 @@ export default function DocumentsPage() {
                     borderRadius: '4px',
                     color: 'var(--text-primary)',
                   }}
+                  disabled={!selectedPortfolio}
                 >
                   <option value="">Select Customer</option>
-                  {filteredData.customers?.map((customer: any) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
+                  {filteredData.customers
+                    ?.filter((customer: any) => !selectedPortfolio || customer.portfolioId === selectedPortfolio)
+                    ?.map((customer: any) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -784,13 +794,16 @@ export default function DocumentsPage() {
                     borderRadius: '4px',
                     color: 'var(--text-primary)',
                   }}
+                  disabled={!selectedCustomer}
                 >
                   <option value="">Select Site</option>
-                  {filteredData.sites?.map((site: any) => (
-                    <option key={site.id} value={site.id}>
-                      {site.name}
-                    </option>
-                  ))}
+                  {filteredData.sites
+                    ?.filter((site: any) => !selectedCustomer || site.customerId === selectedCustomer)
+                    ?.map((site: any) => (
+                      <option key={site.id} value={site.id}>
+                        {site.name}
+                      </option>
+                    ))}
                 </select>
               </div>
             </div>

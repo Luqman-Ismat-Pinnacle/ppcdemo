@@ -382,7 +382,6 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       actualHours: task.actualHours || 0,
       projectedHours: task.projectedHours || 0,
       remainingHours: task.remainingHours || 0,
-      assignedResource: task.assignedResource || '',
       isCritical: task.isCritical || false,
       totalSlack: task.totalSlack || 0,
       comments: task.comments || '',
@@ -410,7 +409,6 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           description: '',
           phaseId: task.parent_id || '', // Link to parent phase
           employeeId: null,
-          active: true,
         });
         break;
       
