@@ -1147,8 +1147,16 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const unitId = unit.id || unit.unitId;
           const unitWbs = `${phaseWbs}.${uIdx + 1}`;
 
-          // Find tasks that have this unit as parent - use parent_id directly like the converter does
-          const unitTasks = (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId);
+          // Find tasks that have this unit as parent - handle both old and new ID formats
+          const unitTasks = (data.tasks || []).filter((t: any) => {
+            const taskParentId = (t as any).parent_id;
+            // Handle both old TASK-xxxx unit IDs and new UNT-xxxx unit IDs
+            return taskParentId === unitId || 
+                   (taskParentId && taskParentId.startsWith('UNT-') && unitId.startsWith('TASK-') && 
+                    taskParentId.replace('UNT-', 'TASK-') === unitId) ||
+                   (taskParentId && taskParentId.startsWith('TASK-') && unitId.startsWith('UNT-') && 
+                    taskParentId.replace('TASK-', 'UNT-') === unitId);
+          });
           
           // Minimal debug - just show counts
           console.log(`[WBS] Unit ${unitId}: ${unitTasks.length} tasks found`);
