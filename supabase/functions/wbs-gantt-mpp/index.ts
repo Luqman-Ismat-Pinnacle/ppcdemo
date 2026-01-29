@@ -58,7 +58,7 @@ serve(async (req) => {
             console.log('[wbs-gantt-mpp] Project mappings table not found, proceeding without mappings');
         }
 
-        // 3. Get MPP project structure (phases and tasks)
+        // 3. Get MPP project structure (phases, units, tasks)
         const mppProjectIds = mppProjects.map(p => p.id);
         
         const { data: phases, error: phasesError } = await supabase
@@ -69,6 +69,14 @@ serve(async (req) => {
 
         if (phasesError) throw phasesError;
 
+        const { data: units, error: unitsError } = await supabase
+            .from('units')
+            .select('*')
+            .in('project_id', mppProjectIds)
+            .order('name', { ascending: true });
+
+        if (unitsError) throw unitsError;
+
         const { data: tasks, error: tasksError } = await supabase
             .from('tasks')
             .select('*')
@@ -77,7 +85,7 @@ serve(async (req) => {
 
         if (tasksError) throw tasksError;
 
-        console.log(`[wbs-gantt-mpp] Found ${phases.length} phases and ${tasks.length} tasks`);
+        console.log(`[wbs-gantt-mpp] Found ${phases.length} phases, ${units.length} units and ${tasks.length} tasks`);
 
         // 4. Get Workday data for projects that have mappings
         const workdayProjectIds = projectMappings
@@ -98,76 +106,130 @@ serve(async (req) => {
         }
 
         // 5. Build the WBS structure (MPP-driven)
+        console.log('[wbs-gantt-mpp] Building WBS hierarchy from MPP data...');
+        
         const projectsWithWBS = mppProjects.map(project => {
             // Find mapping for this project
             const mapping = projectMappings.find(m => m.mpp_project_id === project.id);
             const workdayProjectId = mapping?.workday_project_id;
 
-            // Get MPP structure
+            // Get MPP structure for this project
             const projectPhases = phases.filter(p => p.project_id === project.id);
+            const projectUnits = units.filter(u => u.project_id === project.id);
             const projectTasks = tasks.filter(t => t.project_id === project.id);
 
-            // Get Workday actuals (if mapped)
-            const projectHours = workdayProjectId 
-                ? hourEntries.filter(h => h.project_id === workdayProjectId)
-                : [];
-
-            // Calculate actuals from Workday data
-            const totalActualHours = projectHours.reduce((sum, h) => sum + (h.hours || 0), 0);
-            const totalActualCost = projectHours.reduce((sum, h) => sum + (h.actual_cost || 0), 0);
-
-            // Build WBS tree
-            const wbsPhases = projectPhases.map(phase => {
-                const phaseTasks = projectTasks.filter(t => t.phase_id === phase.id);
-                const phaseActualHours = phaseTasks.reduce((sum, task) => {
-                    const taskHours = projectHours.filter(h => h.task_id === task.id);
-                    return sum + taskHours.reduce((s, h) => s + (h.hours || 0), 0);
-                }, 0);
-
-                return {
-                    id: phase.id,
+            // Build WBS hierarchy like MPP parser does
+            const wbsItems = [];
+            
+            // Add phases (level 1)
+            projectPhases.forEach(phase => {
+                wbsItems.push({
+                    id: `wbs-${phase.id}`,
                     name: phase.name,
+                    wbsCode: phase.phaseId || phase.id,
+                    level: 1,
                     type: 'phase',
-                    planned_hours: phase.planned_hours || 0,
-                    planned_cost: phase.planned_cost || 0,
-                    actual_hours: phaseActualHours,
-                    actual_cost: phaseActualHours * 65, // Approximate hourly rate
-                    progress: phase.planned_hours > 0 ? (phaseActualHours / phase.planned_hours) * 100 : 0,
-                    tasks: phaseTasks.map(task => {
-                        const taskHours = projectHours.filter(h => h.task_id === task.id);
-                        const taskActualHours = taskHours.reduce((s, h) => s + (h.hours || 0), 0);
-                        
-                        return {
-                            id: task.id,
-                            name: task.name,
-                            type: 'task',
-                            planned_hours: task.planned_hours || 0,
-                            planned_cost: task.planned_cost || 0,
-                            actual_hours: taskActualHours,
-                            actual_cost: taskActualHours * 65,
-                            progress: task.planned_hours > 0 ? (taskActualHours / task.planned_hours) * 100 : 0,
-                            start_date: task.start_date,
-                            end_date: task.end_date,
-                            assigned_resource: task.assigned_resource
-                        };
-                    })
-                };
+                    startDate: phase.startDate,
+                    endDate: phase.endDate,
+                    percentComplete: phase.percentComplete || 0,
+                    plannedHours: phase.baselineHours || 0,
+                    actualHours: phase.actualHours || 0,
+                    remainingHours: phase.remainingHours || 0,
+                    isCritical: phase.isCritical || false,
+                    parent: null,
+                    children: [],
+                    projectId: project.id,
+                    employeeId: phase.employeeId || null
+                });
             });
+
+            // Add units (level 2) 
+            projectUnits.forEach(unit => {
+                const parentPhase = projectPhases.find(p => p.id === unit.phaseId);
+                wbsItems.push({
+                    id: `wbs-${unit.id}`,
+                    name: unit.name,
+                    wbsCode: unit.unitId || unit.id,
+                    level: 2,
+                    type: 'unit',
+                    startDate: unit.startDate,
+                    endDate: unit.endDate,
+                    percentComplete: unit.percentComplete || 0,
+                    plannedHours: unit.baselineHours || 0,
+                    actualHours: unit.actualHours || 0,
+                    remainingHours: unit.remainingHours || 0,
+                    isCritical: unit.isCritical || false,
+                    parent: parentPhase ? `wbs-${parentPhase.id}` : null,
+                    children: [],
+                    projectId: project.id,
+                    employeeId: unit.employeeId || null
+                });
+            });
+
+            // Add tasks (level 3+)
+            projectTasks.forEach(task => {
+                const parentUnit = projectUnits.find(u => u.id === task.unitId);
+                const parentPhase = projectPhases.find(p => p.id === task.phaseId);
+                const parent = parentUnit ? `wbs-${parentUnit.id}` : (parentPhase ? `wbs-${parentPhase.id}` : null);
+                
+                wbsItems.push({
+                    id: `wbs-${task.id}`,
+                    name: task.taskName || task.name,
+                    wbsCode: task.taskId || task.id,
+                    level: parentUnit ? 3 : 2,
+                    type: 'task',
+                    startDate: task.startDate,
+                    endDate: task.endDate,
+                    percentComplete: task.percentComplete || 0,
+                    plannedHours: task.baselineHours || 0,
+                    actualHours: task.actualHours || 0,
+                    remainingHours: task.remainingHours || 0,
+                    isCritical: task.isCritical || false,
+                    parent: parent,
+                    children: [],
+                    projectId: project.id,
+                    employeeId: task.assignedResource ? null : null,
+                    assignedResource: task.assignedResource || ''
+                });
+            });
+
+            // Build parent-child relationships
+            const itemMap = new Map(wbsItems.map(item => [item.id, item]));
+            wbsItems.forEach(item => {
+                if (item.parent && itemMap.has(item.parent)) {
+                    const parent = itemMap.get(item.parent);
+                    parent.children.push(item);
+                }
+            });
+
+            // Get root items (no parent)
+            const rootItems = wbsItems.filter(item => !item.parent);
+
+            // Add Workday cost data if mapped
+            let totalActualCost = 0;
+            let totalActualHours = 0;
+            
+            if (workdayProjectId && hourEntries.length > 0) {
+                const projectHours = hourEntries.filter(h => h.project_id === workdayProjectId);
+                totalActualHours = projectHours.reduce((sum, h) => sum + (h.hours || 0), 0);
+                totalActualCost = projectHours.reduce((sum, h) => sum + (h.cost || 0), 0);
+            }
 
             return {
                 id: project.id,
                 name: project.name,
-                type: 'project',
-                workday_project_id: workdayProjectId,
-                has_workday_mapping: !!workdayProjectId,
-                planned_hours: project.planned_hours || 0,
-                planned_cost: project.planned_cost || 0,
-                actual_hours: totalActualHours,
-                actual_cost: totalActualCost,
-                progress: project.planned_hours > 0 ? (totalActualHours / project.planned_hours) * 100 : 0,
-                phases: wbsPhases,
-                total_phases: wbsPhases.length,
-                total_tasks: wbsPhases.reduce((sum, p) => sum + p.tasks.length, 0)
+                projectId: project.id,
+                workdayProjectId: workdayProjectId,
+                hierarchy: rootItems,
+                allItems: wbsItems,
+                stats: {
+                    totalPhases: projectPhases.length,
+                    totalUnits: projectUnits.length,
+                    totalTasks: projectTasks.length,
+                    totalPlannedHours: projectPhases.reduce((sum, p) => sum + (p.baselineHours || 0), 0),
+                    totalActualHours: totalActualHours,
+                    totalActualCost: totalActualCost
+                }
             };
         });
 
