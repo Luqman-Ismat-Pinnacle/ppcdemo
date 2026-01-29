@@ -399,6 +399,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           phaseId: baseTask.id,
           methodology: '',
           sequence: phases.length + 1,
+          employeeId: task.assignedResource ? null : null, // phases has employee_id, not assigned_resource
         });
         break;
       
@@ -409,6 +410,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           description: '',
           phaseId: task.parent_id || '', // Link to parent phase
           employeeId: null,
+          active: true,
         });
         break;
       
@@ -423,11 +425,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           // We'll resolve these after all items are processed
           phaseId: '',
           unitId: '',
-          customerId: '',
-          siteId: '',
-          subProjectId: '',
-          resourceId: '',
-          employeeId: '',
+          assignedResource: task.assignedResource || '',
           assignedResourceType: 'specific' as const,
           status: outlineLevel > 1 && task.is_summary ? 'In Progress' : 'Not Started',
           priority: 'medium' as const,

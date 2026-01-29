@@ -328,8 +328,7 @@ export default function DocumentsPage() {
       if (convertedData.tasks) {
         convertedData.tasks.forEach((task: any) => {
           task.portfolioId = file.portfolioId;
-          task.customerId = file.customerId;
-          task.siteId = file.siteId;
+          // Tasks don't have customerId/siteId columns - hierarchy is through project/phase/unit
         });
       }
       
