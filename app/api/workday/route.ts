@@ -11,9 +11,7 @@ const EDGE_FUNCTIONS = {
   'employees': 'workday-employees',
   'projects': 'workday-projects',
   'hours': 'workday-hours',
-  'ledger': 'workday-ledger',
-  'ledger-stream': 'workday-ledger-stream',
-  'ledger-chunked': 'workday-ledger-chunked',
+  'ledger': 'workday-ledger-chunked',
   'sync': 'workday-sync'
 } as const;
 
