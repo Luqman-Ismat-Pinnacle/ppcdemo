@@ -372,8 +372,29 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   data.tasks.forEach((task: any, index: number) => {
     const outlineLevel = task.outline_level || 0;
     const levelType = getLevelType(outlineLevel);
+    
+    // Generate appropriate ID based on type
+    let id: string;
+    if (task.id) {
+      id = task.id;
+    } else {
+      switch (levelType) {
+        case 'phase':
+          id = `PHS-${(phases.length + 1).toString().padStart(4, '0')}`;
+          break;
+        case 'unit':
+          id = `UNT-${(units.length + 1).toString().padStart(4, '0')}`;
+          break;
+        case 'task':
+          id = `TSK-${(tasks.length + 1).toString().padStart(4, '0')}`;
+          break;
+        default:
+          id = `TSK-${(index + 1).toString().padStart(4, '0')}`;
+      }
+    }
+    
     const baseTask = {
-      id: task.id || `TASK-${(index + 1).toString().padStart(4, '0')}`,
+      id: id,
       name: task.name || '',
       startDate: task.startDate || null,
       endDate: task.endDate || null,
