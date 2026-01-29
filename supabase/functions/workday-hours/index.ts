@@ -1,6 +1,6 @@
 
-// Workday Hours Sync Edge Function
-// Rewritten to match new schema and logic patterns
+// Workday Hours & Cost Sync Edge Function
+// Enhanced to extract both hours and cost actuals from Project Labor Transactions
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
@@ -64,7 +64,7 @@ serve(async (req) => {
         const formatDate = (date: Date) => date.toISOString().split('T')[0] + '-08:00'; // Workday often expects timezone or specific format, keeping it safe
 
         const params = new URLSearchParams({
-            'Projects_and_Project_Hierarchies!WID': '6c3abbb4fb20100174cf1f0f36850000',
+            'Projects_and_Project_Hierarchies!WID': '94cffcd386281001f21ecbc0ba820001!3cc34283d5c31000b9685df9ccce0001!74988a42b1d71000bb0ee8b8b70c0000!74988a42b1d71000bad6bfeceb310001!74988a42b1d71000babc7d9ad9b50001!8114d1e7d6281001755179b2ecba0000!74988a42b1d71000b9565eb994d30000!74988a42b1d71000b928197b465e0001!8114d1e7d62810017551774c04d00000!74988a42b1d71000b90309e92b680001!6e4362224aa81000ca8f84a39b6a0001!74988a42b1d71000b8ee4094ed830001!82a1fc685dda1000c6c99bc7562b0000!6c3abbb4fb20100174cf1f0f36850000!e0c093bd0ece100165ff337f9cdd0000!5821192f86da1000c64cf77badb50001!2a5ee02cc70210015501fde7aa720001!2a5ee02cc702100154f3887562a20001!60cb012a3c2a100169b86b0bb3d20001!761afa109c8910017615a972157b0000!761afa109c8910017615a83d85680000!761afa109c8910017615a7094cce0000!761afa109c8910017615a53aeb070000!761afa109c8910017615a4050c3c0000!761afa109c8910017615a235a48a0000!3cc34283d5c31000ba1e365ffde80001',
             'Include_Subordinate_Project_Hierarchies': '1',
             'Currency_Rate_Type!WID': '44e3d909d76b0127e940e8b41011293b',
             'Reporting_Currency!WID': '9e996ffdd3e14da0ba7275d5400bafd4',
@@ -170,24 +170,39 @@ serve(async (req) => {
                 });
             }
 
-            // 4. Task
-            if (!tasksToUpsert.has(taskId)) {
-                tasksToUpsert.set(taskId, {
+            // 4. Task - Use a simpler approach: create a task for each project/phase combination
+            // Use a composite key to avoid duplicate tasks
+            const taskKey = `${projectId}_${phaseId}`;
+            let finalTaskId = taskId;
+            
+            if (!tasksToUpsert.has(taskKey)) {
+                tasksToUpsert.set(taskKey, {
                     id: taskId,
                     task_id: taskId,
                     project_id: projectId,
                     phase_id: phaseId,
-                    name: rawTaskName,
-                    is_active: true,
-                    updated_at: new Date().toISOString()
+                    name: rawTaskName
                 });
+            } else {
+                // Use existing task ID
+                finalTaskId = tasksToUpsert.get(taskKey).id;
             }
 
-            // D. Prepare Hour Entry
+            // D. Prepare Hour Entry with Cost Data
             const hoursVal = parseFloat(r.Hours || '0');
             const dateVal = r.Transaction_Date;
             const description = safeString(r.Time_Type) || safeString(r.Billable_Transaction);
-            // e.g., "TPW The Pinnacle Way > Honeywell - Geismar > Solve - Honeywell - Geismar (01/06/2025 - 12/31/2050)"
+            
+            // Cost fields from Project Labor Transactions
+            const billableRate = parseFloat(r.Billable_Rate || '0');
+            const billableAmount = parseFloat(r.Billable_Amount || '0');
+            const standardCostRate = parseFloat(r.Standard_Cost_Rate || '0');
+            const standardCostAmt = parseFloat(r.Reported_Standard_Cost_Amt || '0');
+            const reportedStandard22 = parseFloat(r.Reported_Standard_22 || '0'); // Alternative cost field
+            
+            // Use the most reliable cost amount (prefer standard cost amount, fallback to calculated)
+            const actualCost = standardCostAmt || (hoursVal * standardCostRate) || (hoursVal * reportedStandard22) || 0;
+            const actualRevenue = billableAmount || (hoursVal * billableRate) || 0;
 
             if (!hoursToUpsert.has(workdayId)) {
                 hoursToUpsert.set(workdayId, {
@@ -196,10 +211,21 @@ serve(async (req) => {
                     employee_id: employeeId,
                     project_id: projectId,
                     phase_id: phaseId,
-                    task_id: taskId,
+                    task_id: finalTaskId,
                     date: dateVal,
                     hours: hoursVal,
-                    description: description.substring(0, 500) // Truncate if too long
+                    description: description.substring(0, 500), // Truncate if too long
+                    // Enhanced cost fields
+                    billable_rate: billableRate,
+                    billable_amount: billableAmount,
+                    standard_cost_rate: standardCostRate,
+                    actual_cost: actualCost,
+                    actual_revenue: actualRevenue,
+                    // Additional billing status fields
+                    customer_billing_status: safeString(r.Customer_Billing_Status),
+                    invoice_number: safeString(r.Invoice_Number),
+                    invoice_status: safeString(r.Invoice_Status),
+                    charge_type: safeString(r.Charge_Type)
                 });
             }
         }
@@ -221,6 +247,17 @@ serve(async (req) => {
         };
 
         // 6. Execute Upserts (Order matters for FKs)
+        // First, ensure the cost columns exist (run migration if needed)
+        try {
+            console.log('[workday-hours] Ensuring cost columns exist...');
+            await supabase.rpc('exec_sql', { 
+                sql: 'ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_rate NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_amount NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS standard_cost_rate NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_revenue NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS customer_billing_status VARCHAR(50); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_status VARCHAR(50); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_type VARCHAR(10);'
+            });
+        } catch (migrationError: any) {
+            console.log('[workday-hours] Migration note:', migrationError.message);
+            // Continue even if migration fails - columns might already exist
+        }
+
         await upsertBatch('projects', Array.from(projectsToUpsert.values()));
         await upsertBatch('employees', Array.from(employeesToUpsert.values()));
         await upsertBatch('phases', Array.from(phasesToUpsert.values()));
