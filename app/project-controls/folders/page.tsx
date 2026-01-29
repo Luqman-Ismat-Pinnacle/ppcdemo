@@ -443,41 +443,13 @@ export default function DocumentsPage() {
       // Sync converted data to Supabase using our proper hierarchy
       addLog('info', '[Supabase] Syncing converted hierarchy data...');
 
-      // Create project record first
-      const mppProjectId = `PROJ_${Date.now()}`;
-      const projectRecord = {
-        id: mppProjectId,
-        name: (convertedData as any).projectInfo?.projectName || file.fileName.replace('.mpp', ''),
-        portfolio_id: file.portfolioId,
-        customer_id: file.customerId,
-        site_id: file.siteId,
-        planned_hours: (convertedData as any).projectInfo?.totalHours || 0,
-        planned_cost: (convertedData as any).projectInfo?.totalCost || 0,
-        start_date: (convertedData as any).projectInfo?.startDate || null,
-        end_date: (convertedData as any).projectInfo?.endDate || null,
-        status: 'active',
-        has_schedule: true, // Mark as having schedule since we're uploading phases/tasks
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        deleted: false,
-      };
-
-      const projectResponse = await fetch('/api/data/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dataKey: 'projects',
-          records: [projectRecord],
-        }),
-      });
-      
-      const projectResult = await projectResponse.json();
-      if (!projectResponse.ok || !projectResult.success) {
-        addLog('warning', `[Supabase] Project creation failed: ${projectResult.error || 'Failed'}`);
-        throw new Error('Failed to create project record');
-      } else {
-        addLog('success', `[Supabase] Project created: ${projectRecord.name}`);
+      // Use existing Workday project ID - no need to create new project
+      const existingProjectId = file.workdayProjectId;
+      if (!existingProjectId) {
+        throw new Error('No Workday project selected - cannot create hierarchy without project');
       }
+      
+      addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
       // Create project mapping if Workday project is selected
       if (file.workdayProjectId) {
@@ -490,7 +462,7 @@ export default function DocumentsPage() {
               dataKey: 'projectMappings',
               records: [{
                 id: `MAP_${Date.now()}`,
-                mppProjectId: mppProjectId,
+                mppProjectId: existingProjectId,
                 workdayProjectId: file.workdayProjectId,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -512,15 +484,15 @@ export default function DocumentsPage() {
         }
       }
 
-      // Update all phases and tasks with the new project ID
+      // Update all phases and tasks with the existing project ID
       if (convertedData.phases) {
         convertedData.phases.forEach((phase: any) => {
-          phase.project_id = mppProjectId;
+          phase.project_id = existingProjectId;
         });
       }
       if (convertedData.tasks) {
         convertedData.tasks.forEach((task: any) => {
-          task.project_id = mppProjectId;
+          task.project_id = existingProjectId;
         });
       }
 
