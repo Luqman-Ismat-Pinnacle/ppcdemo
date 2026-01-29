@@ -80,11 +80,11 @@ serve(async (req) => {
                 if (!portfoliosToUpsert.has(portfolioId)) {
                     portfoliosToUpsert.set(portfolioId, {
                         id: portfolioId,
-                        portfolioId: portfolioId,
+                        portfolio_id: portfolioId,
                         name: `${portfolioMgr}'s Portfolio`,
                         manager: portfolioMgr,
                         is_active: true,
-                        createdAt: new Date().toISOString(),
+                        created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     });
                 }

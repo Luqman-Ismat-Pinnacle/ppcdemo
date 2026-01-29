@@ -2,7 +2,7 @@
  * @fileoverview Workday Sync API Route
  * 
  * Calls Supabase Edge Functions to sync data.
- * Supports: employees, projects, phases, tasks
+ * Supports: employees, projects (hierarchy only: portfolios, customers, sites)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,9 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const EDGE_FUNCTIONS = {
   'employees': 'workday-employees',
   'projects': 'workday-projects',
-  'phases': 'workday-phases',
-  'tasks': 'workday-tasks',
-  'hours': 'workday-hours',
+  // Removed: phases, tasks, hours - only sync portfolios, customers, and sites
 } as const;
 
 type SyncType = keyof typeof EDGE_FUNCTIONS;
@@ -33,7 +31,7 @@ export async function POST(req: NextRequest) {
     const syncType = body.syncType as SyncType | 'unified';
     const records = body.records || [];
 
-    // Unified Sync Logic: Call 3 Edge Functions sequentially
+    // Unified Sync Logic: Call 2 Edge Functions sequentially (employees + projects only)
     if (syncType === 'unified') {
       console.log('[Workday Sync] Starting Unified Sync sequence...');
       const results: any[] = [];
@@ -53,7 +51,7 @@ export async function POST(req: NextRequest) {
       }
 
       // 2. Projects (creates Customers, Sites, updates Portfolios)
-      // NOTE: Projects/hierarchy only. No Tasks/Phases.
+      // NOTE: Only hierarchy sync. No Tasks/Phases/Hours.
       logs.push('--- Step 2: Syncing Hierarchy (Portfolios, Customers, Sites) ---');
       const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
       results.push({ step: 'hierarchy', result: projRes });
@@ -65,27 +63,10 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced Hierarchy: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites.`);
       }
 
-      // 3. Hours (creates Tasks too)
-      logs.push('--- Step 3: Syncing Hours & Tasks (Last 30 Days) ---');
-      logs.push('Refreshing memory/cooldown for 5 seconds...');
-
-      // Cooldown to prevent memory spikes on Edge
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      const hrsRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', {});
-      results.push({ step: 'hours', result: hrsRes });
-      logs.push(...(hrsRes.errors || []));
-      if (!hrsRes.success) {
-        success = false;
-        logs.push(`Error in hours sync: ${hrsRes.error}`);
-      } else {
-        logs.push(`Synced ${hrsRes.stats?.hours || 0} hours, ${hrsRes.stats?.tasks || 0} tasks created.`);
-      }
-
       return NextResponse.json({
         success,
         syncType: 'unified',
-        summary: { totalSteps: 3, results },
+        summary: { totalSteps: 2, results },
         logs
       });
     }
