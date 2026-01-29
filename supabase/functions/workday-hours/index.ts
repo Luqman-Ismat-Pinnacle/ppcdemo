@@ -258,10 +258,7 @@ serve(async (req) => {
             // Continue even if migration fails - columns might already exist
         }
 
-        await upsertBatch('projects', Array.from(projectsToUpsert.values()));
         await upsertBatch('employees', Array.from(employeesToUpsert.values()));
-        await upsertBatch('phases', Array.from(phasesToUpsert.values()));
-        await upsertBatch('tasks', Array.from(tasksToUpsert.values()));
         await upsertBatch('hour_entries', Array.from(hoursToUpsert.values()));
 
         // 7. Finish
