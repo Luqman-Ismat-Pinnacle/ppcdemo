@@ -11,6 +11,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import { createClient } from '@supabase/supabase-js';
 import { convertMppParserOutput } from '@/lib/data-converter';
+import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 
 interface ProcessingLog {
   id: string;
@@ -48,7 +49,7 @@ export default function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [workdayProjectId, setWorkdayProjectId] = useState('');
-  const [availableWorkdayProjects, setAvailableWorkdayProjects] = useState<any[]>([]);
+  const [availableWorkdayProjects, setAvailableWorkdayProjects] = useState<DropdownOption[]>([]);
   const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   
@@ -84,12 +85,18 @@ export default function DocumentsPage() {
       
       if (response.ok) {
         const data = await response.json();
-        if (data.success) {
-          setAvailableWorkdayProjects(data.workday_projects || []);
+        if (data.success && data.workday_projects) {
+          const options: DropdownOption[] = data.workday_projects.map((project: any) => ({
+            id: project.id,
+            name: project.name,
+            secondary: project.secondary || project.type || 'Project'
+          }));
+          setAvailableWorkdayProjects(options);
         }
       }
     } catch (error) {
       console.error('Error loading Workday projects:', error);
+      addLog('error', 'Failed to load available projects');
     } finally {
       setLoadingWorkdayProjects(false);
     }
@@ -520,91 +527,88 @@ export default function DocumentsPage() {
 
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
 
-        {/* File Upload */}
-        <div className="chart-card grid-half">
+        {/* File Upload & Project Selection */}
+        <div className="chart-card grid-full">
           <div className="chart-card-header">
-            <h3 className="chart-card-title">Select MPP File</h3>
+            <h3 className="chart-card-title">Upload MPP File & Link Project</h3>
           </div>
           <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".mpp"
-              onChange={handleFileSelect}
-              style={{
-                width: '100%',
-                padding: '1rem',
-                border: '2px dashed var(--border-color)',
-                borderRadius: '8px',
-                backgroundColor: 'var(--bg-secondary)',
-                cursor: 'pointer',
-              }}
-            />
-            {selectedFile && (
-              <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '8px' }}>
-                <strong>{selectedFile.name}</strong>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              
+              {/* File Selection */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
+                  Select MPP File
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".mpp"
+                  onChange={handleFileSelect}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '2px dashed var(--border-color)',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--bg-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                />
+                {selectedFile && (
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                    <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{selectedFile.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Workday Project ID & Upload */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header">
-            <h3 className="chart-card-title">Workday Project</h3>
-          </div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
-                Workday Project (for Cost Actuals)
-              </label>
-              <select
-                value={workdayProjectId}
-                onChange={(e) => setWorkdayProjectId(e.target.value)}
-                disabled={loadingWorkdayProjects}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  backgroundColor: 'var(--bg-secondary)',
-                  color: 'var(--text-primary)',
-                  cursor: loadingWorkdayProjects ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <option value="">Select a Workday project...</option>
-                {availableWorkdayProjects.map((project: any) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} ({project.id})
-                  </option>
-                ))}
-              </select>
-              {workdayProjectId && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  This will link the MPP file's cost data to the selected Workday project
-                </div>
-              )}
+              {/* Project Selection */}
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
+                  Workday Project (for Cost Actuals)
+                </label>
+                <SearchableDropdown
+                  value={workdayProjectId || null}
+                  options={availableWorkdayProjects}
+                  onChange={(id) => setWorkdayProjectId(id || '')}
+                  placeholder="Select a Workday project..."
+                  disabled={loadingWorkdayProjects}
+                  searchable={true}
+                  width="100%"
+                />
+                {workdayProjectId && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                    This will link the MPP file's cost data to the selected Workday project
+                  </div>
+                )}
+              </div>
+
             </div>
 
-            <button
-              onClick={handleUpload}
-              disabled={!selectedFile || isUploading}
-              style={{
-                width: '100%',
-                padding: '1rem',
-                backgroundColor: selectedFile && !isUploading ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                color: selectedFile && !isUploading ? '#000' : 'var(--text-muted)',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: 600,
-                cursor: selectedFile && !isUploading ? 'pointer' : 'not-allowed',
-              }}
-            >
-              {isUploading ? 'Uploading to Supabase...' : 'Upload to Storage'}
-            </button>
+            {/* Upload Button */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <button
+                onClick={handleUpload}
+                disabled={!selectedFile || isUploading}
+                style={{
+                  width: '100%',
+                  padding: '0.875rem',
+                  backgroundColor: selectedFile && !isUploading ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  color: selectedFile && !isUploading ? '#000' : 'var(--text-muted)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  cursor: selectedFile && !isUploading ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {isUploading ? 'Uploading to Supabase...' : 'Upload to Storage'}
+              </button>
+            </div>
           </div>
         </div>
 

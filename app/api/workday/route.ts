@@ -37,20 +37,27 @@ export async function POST(req: NextRequest) {
     // Handle get-available-projects action
     if (action === 'get-available-projects') {
       try {
-        const result = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
+        const result = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'get-projects', {});
         
-        // Transform portfolios to workday_projects format
-        const workdayProjects = result.portfolios?.map((portfolio: any) => ({
-          id: portfolio.id,
-          name: portfolio.name,
-          type: 'portfolio',
-          customer: portfolio.customer_name,
-          site: portfolio.site_name
-        })) || [];
+        // Combine projects and portfolios for dropdown
+        const allOptions = [
+          ...(result.projects || []).map((project: any) => ({
+            id: project.id,
+            name: project.name,
+            secondary: project.secondary || 'Project',
+            type: 'project'
+          })),
+          ...(result.portfolios || []).map((portfolio: any) => ({
+            id: portfolio.id,
+            name: portfolio.name,
+            secondary: portfolio.secondary || 'Portfolio',
+            type: 'portfolio'
+          }))
+        ];
         
         return NextResponse.json({
           success: result.success,
-          workday_projects: workdayProjects,
+          workday_projects: allOptions,
           summary: result.summary,
           error: result.error
         });
