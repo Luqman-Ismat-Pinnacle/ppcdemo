@@ -209,13 +209,11 @@ serve(async (req) => {
                     entry_id: workdayId,
                     employee_id: employeeId,
                     project_id: projectId,
-                    // Note: phase_id and task_id omitted - they come from MPP upload, not Workday
+                    phase_id: phaseId,
+                    task_id: finalTaskId,
                     date: dateVal,
                     hours: hoursVal,
                     description: description.substring(0, 500), // Truncate if too long
-                    // Store Workday phase/task names for reference
-                    workday_phase: rawPhaseName,
-                    workday_task: rawTaskName,
                     // Enhanced cost fields
                     billable_rate: billableRate,
                     billable_amount: billableAmount,
@@ -269,7 +267,10 @@ serve(async (req) => {
             // Continue even if migration fails - columns might already exist
         }
 
+        await upsertBatch('projects', Array.from(projectsToUpsert.values()));
         await upsertBatch('employees', Array.from(employeesToUpsert.values()));
+        await upsertBatch('phases', Array.from(phasesToUpsert.values()));
+        await upsertBatch('tasks', Array.from(tasksToUpsert.values()));
         await upsertBatch('hour_entries', Array.from(hoursToUpsert.values()));
 
         // 7. Finish
