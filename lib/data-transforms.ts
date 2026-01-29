@@ -356,7 +356,7 @@ function buildHierarchyMaps(data: {
   });
 
   // Build project maps - only include projects with MPP uploaded (has_schedule = true)
-  (data.projects || []).filter((p: any) => p.has_schedule === true).forEach((project: any) => {
+  (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true).forEach((project: any) => {
     const unitId = project.unitId || project.unit_id;
     const siteId = project.siteId || project.site_id;
     const customerId = project.customerId || project.customer_id;
@@ -1053,7 +1053,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     const sites = data.sites || [];
     const units = data.units || [];
     // Only include projects with MPP uploaded (has_schedule = true)
-    const projects = (data.projects || []).filter((p: any) => p.has_schedule === true);
+    const projects = (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
     const phases = data.phases || [];
     const tasks = data.tasks || [];
     const employees = data.employees || [];

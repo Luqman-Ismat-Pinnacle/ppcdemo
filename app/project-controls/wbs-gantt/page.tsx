@@ -78,7 +78,7 @@ export default function WBSGanttPage() {
 
   const projectOptions = useMemo(() => {
     return (fullData.projects || [])
-      .filter((p: any) => p.has_schedule === true) // Only show projects with schedules
+      .filter((p: any) => p.has_schedule === true || p.hasSchedule === true) // Only show projects with schedules
       .map((p: any) => ({
         id: p.id || p.projectId,
         name: p.name,
