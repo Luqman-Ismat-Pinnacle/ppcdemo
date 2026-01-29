@@ -7,7 +7,7 @@
  * process with MPXJ, and sync extracted data to Supabase.
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
 import { createClient } from '@supabase/supabase-js';
 import { convertMppParserOutput } from '@/lib/data-converter';
@@ -58,6 +58,35 @@ export default function DocumentsPage() {
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [selectedSite, setSelectedSite] = useState('');
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
+
+  // Convert data to DropdownOption format
+  const portfolioOptions = useMemo(() => 
+    filteredData.portfolios?.map((portfolio: any) => ({
+      id: portfolio.id,
+      name: portfolio.name,
+      secondary: 'Portfolio',
+      type: 'portfolio'
+    })) || [], [filteredData.portfolios]);
+
+  const customerOptions = useMemo(() => 
+    filteredData.customers
+      ?.filter((customer: any) => !selectedPortfolio || customer.portfolioId === selectedPortfolio)
+      ?.map((customer: any) => ({
+        id: customer.id,
+        name: customer.name,
+        secondary: 'Customer',
+        type: 'customer'
+      })) || [], [filteredData.customers, selectedPortfolio]);
+
+  const siteOptions = useMemo(() => 
+    filteredData.sites
+      ?.filter((site: any) => !selectedCustomer || site.customerId === selectedCustomer)
+      ?.map((site: any) => ({
+        id: site.id,
+        name: site.name,
+        secondary: 'Site',
+        type: 'site'
+      })) || [], [filteredData.sites, selectedCustomer]);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {
     setLogs(prev => [...prev, {
@@ -813,88 +842,51 @@ export default function DocumentsPage() {
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                   Portfolio *
                 </label>
-                <select
-                  value={selectedPortfolio}
-                  onChange={(e) => {
-                    setSelectedPortfolio(e.target.value);
+                <SearchableDropdown
+                  value={selectedPortfolio || null}
+                  options={portfolioOptions}
+                  onChange={(id) => {
+                    setSelectedPortfolio(id || '');
                     setSelectedCustomer(''); // Reset customer when portfolio changes
                     setSelectedSite(''); // Reset site when portfolio changes
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    backgroundColor: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  <option value="">Select Portfolio</option>
-                  {filteredData.portfolios?.map((portfolio: any) => (
-                    <option key={portfolio.id} value={portfolio.id}>
-                      {portfolio.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select Portfolio..."
+                  searchable={true}
+                  width="100%"
+                />
               </div>
 
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                   Customer *
                 </label>
-                <select
-                  value={selectedCustomer}
-                  onChange={(e) => {
-                    setSelectedCustomer(e.target.value);
+                <SearchableDropdown
+                  value={selectedCustomer || null}
+                  options={customerOptions}
+                  onChange={(id) => {
+                    setSelectedCustomer(id || '');
                     setSelectedSite(''); // Reset site when customer changes
                   }}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    backgroundColor: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text-primary)',
-                  }}
+                  placeholder="Select Customer..."
+                  searchable={true}
+                  width="100%"
                   disabled={!selectedPortfolio}
-                >
-                  <option value="">Select Customer</option>
-                  {filteredData.customers
-                    ?.filter((customer: any) => !selectedPortfolio || customer.portfolioId === selectedPortfolio)
-                    ?.map((customer: any) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                </select>
+                />
               </div>
 
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                   Site *
                 </label>
-                <select
-                  value={selectedSite}
-                  onChange={(e) => setSelectedSite(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem',
-                    backgroundColor: 'var(--bg-secondary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text-primary)',
-                  }}
+                <SearchableDropdown
+                  value={selectedSite || null}
+                  options={siteOptions}
+                  onChange={(id) => setSelectedSite(id || '')}
+                  placeholder="Select Site..."
+                  searchable={true}
+                  width="100%"
                   disabled={!selectedCustomer}
-                >
-                  <option value="">Select Site</option>
-                  {filteredData.sites
-                    ?.filter((site: any) => !selectedCustomer || site.customerId === selectedCustomer)
-                    ?.map((site: any) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name}
-                      </option>
-                    ))}
-                </select>
+                />
               </div>
             </div>
 
