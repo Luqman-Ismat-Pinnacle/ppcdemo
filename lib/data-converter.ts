@@ -386,6 +386,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       totalSlack: task.totalSlack || 0,
       comments: task.comments || '',
       parent_id: task.parent_id || null,
+      is_summary: task.is_summary || false,
       projectId: projectIdOverride || '',
       createdAt: now,
       updatedAt: now,
@@ -399,7 +400,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           methodology: '',
           sequence: phases.length + 1,
           employeeId: task.assignedResource ? null : null, // phases has employee_id, not assigned_resource
-          description: task.comments || '', // phases has description, not comments
+          comments: task.comments || '', // phases will have comments after migration
         });
         break;
       
@@ -427,7 +428,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           unitId: '',
           assignedResource: task.assignedResource || '',
           assignedResourceType: 'specific' as const,
-          status: outlineLevel > 1 ? 'In Progress' : 'Not Started',
+          status: outlineLevel > 1 && task.is_summary ? 'In Progress' : 'Not Started',
           priority: 'medium' as const,
           predecessorId: null,
           predecessorRelationship: null,
