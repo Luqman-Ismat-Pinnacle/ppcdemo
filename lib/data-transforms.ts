@@ -1149,8 +1149,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
           // Find tasks that have this unit as parent - use parent_id directly like the converter does
           const unitTasks = (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId);
-          console.log(`[DEBUG WBS] Unit ${unitId} has ${unitTasks.length} tasks (filtered by parent_id: ${unitId})`);
-          console.log(`[DEBUG WBS] Available tasks with parent_id ${unitId}:`, (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId).map((t: any) => ({ id: t.id, parent_id: (t as any).parent_id })));
           
           // Initialize rollup variables for this unit
           let unitRollupBaselineHrs = 0;
@@ -1232,7 +1230,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         });
 
         // 2. Add orphan Tasks under Phase (no Unit)
-        const directPhaseTasks = (maps.tasksByPhase.get(phaseId) || []).filter((t: any) => !t.unitId);
+        const directPhaseTasks = (maps.tasksByPhase.get(phaseId) || []).filter((t: any) => 
+          !(t as any).parent_id || !units.some((u: any) => u.id === (t as any).parent_id)
+        );
 
         directPhaseTasks.forEach((task: any, tIdx: number) => {
           const taskId = task.id || task.taskId;
