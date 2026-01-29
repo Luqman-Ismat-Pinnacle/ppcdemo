@@ -402,6 +402,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           employeeId: task.assignedResource ? null : null, // phases has employee_id, not assigned_resource
           comments: task.comments || '', // phases will have comments after migration
           isCritical: task.isCritical || false, // phases will have is_critical after migration
+          is_summary: undefined, // phases don't have is_summary column
         });
         break;
       
@@ -414,6 +415,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           employeeId: null,
           active: true,
           endDate: task.endDate || null, // units will have end_date after migration
+          isCritical: undefined, // units don't have is_critical column
         });
         break;
       
@@ -422,7 +424,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           ...baseTask,
           taskId: baseTask.id,
           taskName: baseTask.name,
-          taskDescription: baseTask.comments || '',
+          description: baseTask.comments || '', // tasks have description, not taskDescription
           isSubTask: outlineLevel > 3,
           parentTaskId: task.parent_id || null,
           // We'll resolve these after all items are processed
