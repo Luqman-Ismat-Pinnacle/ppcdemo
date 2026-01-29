@@ -411,6 +411,39 @@ export default function DocumentsPage() {
         }
       }
 
+      // Create project mapping if Workday project is selected
+      if (file.workdayProjectId) {
+        addLog('info', '[Mapping] Creating MPP to Workday project mapping...');
+        try {
+          const mappingResponse = await fetch('/api/data/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataKey: 'projectMappings',
+              records: [{
+                id: `MAP_${Date.now()}`,
+                mppProjectId: projectId,
+                workdayProjectId: file.workdayProjectId,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                deleted: false,
+                createdBy: 'MPP Upload',
+                notes: `Created during MPP upload: ${file.fileName}`
+              }]
+            }),
+          });
+          
+          const mappingResult = await mappingResponse.json();
+          if (!mappingResponse.ok || !mappingResult.success) {
+            addLog('warning', `[Mapping] Failed to create mapping: ${mappingResult.error || 'Unknown error'}`);
+          } else {
+            addLog('success', `[Mapping] MPP project mapped to Workday: ${file.workdayProjectId}`);
+          }
+        } catch (mappingError: any) {
+          addLog('warning', `[Mapping] Error creating mapping: ${mappingError.message}`);
+        }
+      }
+
       // Sync converted data to Supabase using our proper hierarchy
       addLog('info', '[Supabase] Syncing converted hierarchy data...');
 
