@@ -467,18 +467,22 @@ export default function DocumentsPage() {
       }
 
       // Update all phases, units, and tasks with the existing project ID
+      // Remove empty projectId to prevent conflict with project_id during sync
       if (convertedData.phases) {
         convertedData.phases.forEach((phase: any) => {
+          delete phase.projectId; // Remove camelCase version to avoid conflict
           phase.project_id = existingProjectId;
         });
       }
       if (convertedData.units) {
         convertedData.units.forEach((unit: any) => {
+          delete unit.projectId; // Remove camelCase version to avoid conflict
           unit.project_id = existingProjectId;
         });
       }
       if (convertedData.tasks) {
         convertedData.tasks.forEach((task: any) => {
+          delete task.projectId; // Remove camelCase version to avoid conflict
           task.project_id = existingProjectId;
         });
       }
