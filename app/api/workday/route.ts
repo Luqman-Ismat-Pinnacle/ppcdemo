@@ -34,36 +34,44 @@ export async function POST(req: NextRequest) {
     const action = body.action;
     const records = body.records || [];
 
-    // Handle get-available-projects action
+    // Handle get-available-projects action - fetch directly from database
     if (action === 'get-available-projects') {
       try {
-        const result = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'get-projects', {});
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
         
-        // Combine projects and portfolios for dropdown
-        const allOptions = [
-          ...(result.projects || []).map((project: any) => ({
-            id: project.id,
-            name: project.name,
-            secondary: project.secondary || 'Project',
-            type: 'project'
-          })),
-          ...(result.portfolios || []).map((portfolio: any) => ({
-            id: portfolio.id,
-            name: portfolio.name,
-            secondary: portfolio.secondary || 'Portfolio',
-            type: 'portfolio'
-          }))
-        ];
+        // Fetch all projects from the projects table (Workday projects)
+        const { data: projects, error: projectsError } = await supabase
+          .from('projects')
+          .select('id, name, project_id, customer_id, site_id, has_schedule')
+          .order('name');
+        
+        if (projectsError) {
+          console.error('Error fetching projects:', projectsError);
+          return NextResponse.json({
+            success: false,
+            error: projectsError.message,
+            workday_projects: []
+          });
+        }
+        
+        // Map projects to dropdown options
+        const projectOptions = (projects || []).map((project: any) => ({
+          id: project.id,
+          name: project.name || project.id,
+          secondary: project.project_id || 'Workday Project',
+          type: 'project'
+        }));
         
         return NextResponse.json({
-          success: result.success,
-          workday_projects: allOptions,
-          summary: result.summary,
-          error: result.error
+          success: true,
+          workday_projects: projectOptions,
+          summary: { projects: projectOptions.length }
         });
       } catch (error: any) {
+        console.error('Error in get-available-projects:', error);
         return NextResponse.json(
-          { success: false, error: error.message },
+          { success: false, error: error.message, workday_projects: [] },
           { status: 500 }
         );
       }
