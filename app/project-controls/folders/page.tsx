@@ -10,6 +10,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import { createClient } from '@supabase/supabase-js';
+import { convertMppParserOutput } from '@/lib/data-converter';
 
 interface ProcessingLog {
   id: string;
@@ -26,6 +27,9 @@ interface UploadedFile {
   workdayProjectId?: string;
   status: 'uploading' | 'uploaded' | 'processing' | 'syncing' | 'complete' | 'error';
   storagePath?: string;
+  portfolioId?: string;
+  customerId?: string;
+  siteId?: string;
 }
 
 // Supabase client for storage
@@ -122,11 +126,30 @@ export default function DocumentsPage() {
       return;
     }
 
+    // Prompt for hierarchy selection
+    const portfolioId = prompt('Select Portfolio ID:');
+    if (!portfolioId) {
+      addLog('error', 'Portfolio ID required');
+      return;
+    }
+    
+    const customerId = prompt('Select Customer ID:');
+    if (!customerId) {
+      addLog('error', 'Customer ID required');
+      return;
+    }
+    
+    const siteId = prompt('Select Site ID:');
+    if (!siteId) {
+      addLog('error', 'Site ID required');
+      return;
+    }
+
     setIsUploading(true);
     const fileId = `mpp-${Date.now()}`;
     const storagePath = `mpp/${Date.now()}_${selectedFile.name}`;
 
-    // Add file to list with uploading status
+    // Add file to list with uploading status and hierarchy info
     const fileRecord: UploadedFile = {
       id: fileId,
       fileName: selectedFile.name,
@@ -135,10 +158,14 @@ export default function DocumentsPage() {
       workdayProjectId: workdayProjectId.trim() || undefined,
       status: 'uploading',
       storagePath,
+      portfolioId,
+      customerId,
+      siteId,
     };
     setUploadedFiles(prev => [...prev, fileRecord]);
 
     addLog('info', `[Storage] Uploading ${selectedFile.name} to Supabase...`);
+    addLog('info', `[Hierarchy] Portfolio: ${portfolioId}, Customer: ${customerId}, Site: ${siteId}`);
 
     try {
       // Upload to Supabase Storage
@@ -265,15 +292,49 @@ export default function DocumentsPage() {
         throw new Error(parseResult.error || 'Parse failed');
       }
 
-      addLog('success', `[MPXJ] Parsed: ${parseResult.summary.total_phases} phases, ${parseResult.summary.total_tasks} tasks, ${parseResult.summary.total_resources} resources`);
+      addLog('success', `[MPXJ] Parsed: ${parseResult.summary?.total_rows || parseResult.summary?.total_tasks || 0} tasks`);
+
+      // Convert flat MPP data to proper hierarchy using our converter
+      const timestamp = Date.now();
+      const projectId = file.workdayProjectId || `PRJ_MPP_${timestamp}`;
+      
+      addLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
+      
+      // Use our converter to properly categorize by outline_level
+      const convertedData = convertMppParserOutput(parseResult, projectId);
+      
+      // Apply hierarchy context from upload selection
+      if (convertedData.phases) {
+        convertedData.phases.forEach((phase: any) => {
+          phase.portfolioId = file.portfolioId;
+          phase.customerId = file.customerId;
+          phase.siteId = file.siteId;
+        });
+      }
+      
+      if (convertedData.units) {
+        convertedData.units.forEach((unit: any) => {
+          unit.portfolioId = file.portfolioId;
+          unit.customerId = file.customerId;
+          unit.siteId = file.siteId;
+        });
+      }
+      
+      if (convertedData.tasks) {
+        convertedData.tasks.forEach((task: any) => {
+          task.portfolioId = file.portfolioId;
+          task.customerId = file.customerId;
+          task.siteId = file.siteId;
+        });
+      }
+      
+      addLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
 
       // Step 3: Sync to Supabase
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'syncing' as const } : f
       ));
 
-      const timestamp = Date.now();
-      const projectId = file.workdayProjectId || `PRJ_MPP_${timestamp}`;
       const projectName = parseResult.project?.name || file.fileName.replace('.mpp', '');
 
       addLog('info', `[Hierarchy] Project ID: ${projectId} - ALL phases and tasks will be linked to this project`);
@@ -303,155 +364,72 @@ export default function DocumentsPage() {
         }
       }
 
-      // Build phase map for hierarchy - phases are summary tasks at outline level 1
-      // All tasks in this file belong to this project
-      const phases = parseResult.phases || [];
-      const tasks = parseResult.tasks || [];
-      const phaseIdMap: Record<string, string> = {};
-      const phaseByWbsPrefix: Record<string, string> = {};
+      // Sync converted data to Supabase using our proper hierarchy
+      addLog('info', '[Supabase] Syncing converted hierarchy data...');
 
-      // Create a default phase if no phases in the file
-      let defaultPhaseId = `PHS_${timestamp}_default`;
-
-      if (phases.length === 0) {
-        // No explicit phases - create one default phase for all tasks
-        addLog('info', '[Hierarchy] No phases found - creating default phase');
-        await fetch('/api/data/sync', {
+      // Sync phases
+      if (convertedData.phases && convertedData.phases.length > 0) {
+        const phaseResponse = await fetch('/api/data/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             dataKey: 'phases',
-            records: [{
-              id: defaultPhaseId,
-              phaseId: defaultPhaseId,
-              projectId: projectId,
-              name: projectName + ' - Tasks',
-              sequence: 1,
-              isActive: true,
-            }]
+            records: convertedData.phases,
           }),
         });
-        addLog('success', `[Supabase] Default phase created: ${defaultPhaseId}`);
-      } else {
-        // Create phases and build WBS prefix map for task assignment
-        const phaseRecords = phases.map((p: any, idx: number) => {
-          const phaseId = `PHS_${timestamp}_${p.id || idx}`;
-          phaseIdMap[p.id] = phaseId;
-
-          // Map WBS prefix to phase (e.g., "1" -> phaseId for tasks like "1.1", "1.2")
-          if (p.wbs) {
-            const wbsPrefix = p.wbs.split('.')[0];
-            phaseByWbsPrefix[wbsPrefix] = phaseId;
-          }
-
-          return {
-            id: phaseId,
-            phaseId: phaseId,
-            projectId: projectId,
-            name: p.name,
-            sequence: idx + 1,
-            percentComplete: p.percent_complete || 0,
-            baselineStartDate: p.baseline_start || null,
-            baselineEndDate: p.baseline_finish || null,
-            startDate: p.start_date || null,
-            endDate: p.finish_date || null,
-            isActive: true,
-          };
-        });
-
-        addLog('info', `[Hierarchy] Creating ${phaseRecords.length} phases under project ${projectId}`);
-
-        const phasesResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataKey: 'phases', records: phaseRecords }),
-        });
-        const phasesResult = await phasesResponse.json();
-        addLog(phasesResponse.ok && phasesResult.success ? 'success' : 'warning',
-          `[Supabase] Phases synced: ${phasesResult.count || phaseRecords.length} (project_id: ${projectId})`);
-
-        // Set default phase to first one
-        defaultPhaseId = Object.values(phaseIdMap)[0] || defaultPhaseId;
+        const phaseResult = await phaseResponse.json();
+        if (!phaseResponse.ok || !phaseResult.success) {
+          addLog('warning', `[Supabase] Phases: ${phaseResult.error || 'Failed'}`);
+        } else {
+          addLog('success', `[Supabase] Phases synced: ${convertedData.phases.length}`);
+        }
       }
 
-      addLog('info', `[Hierarchy] WBS prefix map: ${JSON.stringify(phaseByWbsPrefix)}`);
-
-      // Sync tasks - assign to correct phase based on hierarchy
-      // Priority: 1) phase_ancestor_id from parser, 2) WBS prefix match, 3) default phase
-      if (tasks.length > 0) {
-        const taskRecords = tasks.map((t: any, idx: number) => {
-          let taskPhaseId = defaultPhaseId;
-
-          // First try: use phase_ancestor_id from parser (walks parent chain to find phase)
-          if (t.phase_ancestor_id && phaseIdMap[t.phase_ancestor_id]) {
-            taskPhaseId = phaseIdMap[t.phase_ancestor_id];
-          }
-          // Second try: WBS prefix matching
-          else if (t.wbs) {
-            const wbsPrefix = t.wbs.split('.')[0];
-            if (phaseByWbsPrefix[wbsPrefix]) {
-              taskPhaseId = phaseByWbsPrefix[wbsPrefix];
-            }
-          }
-          // Third try: outline_number prefix
-          else if (t.outline_number) {
-            const outlinePrefix = t.outline_number.split('.')[0];
-            if (phaseByWbsPrefix[outlinePrefix]) {
-              taskPhaseId = phaseByWbsPrefix[outlinePrefix];
-            }
-          }
-
-          return {
-            id: `TSK_${timestamp}_${t.id || idx}`,
-            taskId: `TSK_${timestamp}_${t.id || idx}`,
-            projectId: projectId,
-            phaseId: taskPhaseId,
-            name: t.name,
-            wbsCode: t.wbs || t.outline_number || `${idx + 1}`,
-            status: t.percent_complete >= 100 ? 'Complete' : t.percent_complete > 0 ? 'In Progress' : 'Not Started',
-            percentComplete: t.percent_complete || 0,
-            baselineStartDate: t.baseline_start || null,
-            baselineEndDate: t.baseline_finish || null,
-            startDate: t.start_date || null,
-            endDate: t.finish_date || null,
-            actualStartDate: t.actual_start || null,
-            actualEndDate: t.actual_finish || null,
-            baselineHours: t.work || 0,
-            actualHours: t.actual_work || 0,
-            remainingHours: t.remaining_work || 0,
-            baselineCost: t.cost || 0,
-            actualCost: t.actual_cost || 0,
-            isMilestone: t.is_milestone || false,
-            notes: t.notes || null,
-          };
-        });
-
-        addLog('info', `[Hierarchy] Creating ${taskRecords.length} tasks under project ${projectId}`);
-
-        const tasksResponse = await fetch('/api/data/sync', {
+      // Sync units
+      if (convertedData.units && convertedData.units.length > 0) {
+        const unitResponse = await fetch('/api/data/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataKey: 'tasks', records: taskRecords }),
+          body: JSON.stringify({
+            dataKey: 'units',
+            records: convertedData.units,
+          }),
         });
-        const tasksResult = await tasksResponse.json();
-        addLog(tasksResponse.ok && tasksResult.success ? 'success' : 'warning',
-          `[Supabase] Tasks synced: ${tasksResult.count || taskRecords.length} (project_id: ${projectId})`);
+        const unitResult = await unitResponse.json();
+        if (!unitResponse.ok || !unitResult.success) {
+          addLog('warning', `[Supabase] Units: ${unitResult.error || 'Failed'}`);
+        } else {
+          addLog('success', `[Supabase] Units synced: ${convertedData.units.length}`);
+        }
       }
 
-      // Refresh app data
-      addLog('info', '[App] Refreshing data...');
-      await refreshData();
-      addLog('success', '[App] Data refreshed');
+      // Sync tasks
+      if (convertedData.tasks && convertedData.tasks.length > 0) {
+        const taskResponse = await fetch('/api/data/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataKey: 'tasks',
+            records: convertedData.tasks,
+          }),
+        });
+        const taskResult = await taskResponse.json();
+        if (!taskResponse.ok || !taskResult.success) {
+          addLog('warning', `[Supabase] Tasks: ${taskResult.error || 'Failed'}`);
+        } else {
+          addLog('success', `[Supabase] Tasks synced: ${convertedData.tasks.length}`);
+        }
+      }
 
-      // Done
+      // Complete the process
+      addLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'complete' as const } : f
       ));
+      await refreshData();
 
-      addLog('success', `Complete: ${file.fileName} - ${phases.length} phases, ${tasks.length} tasks`);
-
-    } catch (error: any) {
-      addLog('error', `Processing failed: ${error.message}`);
+    } catch (err: any) {
+      addLog('error', `[Process] Error: ${err.message}`);
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'error' as const } : f
       ));
