@@ -309,26 +309,22 @@ export default function DocumentsPage() {
       const convertedData = convertMppParserOutput(parseResult, projectId);
       
       // Apply hierarchy context from upload selection
+      // Phases and units get hierarchy through project relationship, not direct columns
       if (convertedData.phases) {
         convertedData.phases.forEach((phase: any) => {
-          phase.portfolioId = file.portfolioId;
-          phase.customerId = file.customerId;
-          phase.siteId = file.siteId;
+          // No hierarchy columns on phases - they get it through project
         });
       }
       
       if (convertedData.units) {
         convertedData.units.forEach((unit: any) => {
-          unit.portfolioId = file.portfolioId;
-          unit.customerId = file.customerId;
-          unit.siteId = file.siteId;
+          // No hierarchy columns on units - they get it through project/site relationship
         });
       }
       
       if (convertedData.tasks) {
         convertedData.tasks.forEach((task: any) => {
-          task.portfolioId = file.portfolioId;
-          // Tasks don't have customerId/siteId columns - hierarchy is through project/phase/unit
+          // Tasks don't have hierarchy columns - they get it through project/phase/unit relationships
         });
       }
       
@@ -357,6 +353,9 @@ export default function DocumentsPage() {
               startDate: parseResult.project?.start_date || null,
               endDate: parseResult.project?.finish_date || null,
               isActive: true,
+              portfolioId: file.portfolioId,
+              customerId: file.customerId,
+              siteId: file.siteId,
             }]
           }),
         });
