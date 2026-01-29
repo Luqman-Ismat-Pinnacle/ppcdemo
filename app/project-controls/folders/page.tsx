@@ -40,7 +40,7 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 const STORAGE_BUCKET = 'project-documents';
 
 export default function DocumentsPage() {
-  const { refreshData } = useData();
+  const { refreshData, filteredData } = useData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -49,6 +49,12 @@ export default function DocumentsPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [workdayProjectId, setWorkdayProjectId] = useState('');
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
+  
+  // Hierarchy selection state
+  const [selectedPortfolio, setSelectedPortfolio] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [selectedSite, setSelectedSite] = useState('');
+  const [showHierarchyModal, setShowHierarchyModal] = useState(false);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {
     setLogs(prev => [...prev, {
@@ -126,25 +132,24 @@ export default function DocumentsPage() {
       return;
     }
 
-    // Prompt for hierarchy selection
-    const portfolioId = prompt('Select Portfolio ID:');
-    if (!portfolioId) {
-      addLog('error', 'Portfolio ID required');
-      return;
-    }
-    
-    const customerId = prompt('Select Customer ID:');
-    if (!customerId) {
-      addLog('error', 'Customer ID required');
-      return;
-    }
-    
-    const siteId = prompt('Select Site ID:');
-    if (!siteId) {
-      addLog('error', 'Site ID required');
+    // Show hierarchy selection modal instead of prompts
+    setShowHierarchyModal(true);
+    return;
+  }, [selectedFile, supabase, addLog, showHierarchyModal]);
+
+  // Actual upload function after hierarchy selection
+  const handleUploadWithHierarchy = useCallback(async () => {
+    if (!selectedFile || !selectedPortfolio || !selectedCustomer || !selectedSite) {
+      addLog('error', 'Please select portfolio, customer, and site');
       return;
     }
 
+    if (!supabase) {
+      addLog('error', 'Supabase not configured');
+      return;
+    }
+
+    setShowHierarchyModal(false);
     setIsUploading(true);
     const fileId = `mpp-${Date.now()}`;
     const storagePath = `mpp/${Date.now()}_${selectedFile.name}`;
@@ -158,14 +163,14 @@ export default function DocumentsPage() {
       workdayProjectId: workdayProjectId.trim() || undefined,
       status: 'uploading',
       storagePath,
-      portfolioId,
-      customerId,
-      siteId,
+      portfolioId: selectedPortfolio,
+      customerId: selectedCustomer,
+      siteId: selectedSite,
     };
     setUploadedFiles(prev => [...prev, fileRecord]);
 
     addLog('info', `[Storage] Uploading ${selectedFile.name} to Supabase...`);
-    addLog('info', `[Hierarchy] Portfolio: ${portfolioId}, Customer: ${customerId}, Site: ${siteId}`);
+    addLog('info', `[Hierarchy] Portfolio: ${selectedPortfolio}, Customer: ${selectedCustomer}, Site: ${selectedSite}`);
 
     try {
       // Upload to Supabase Storage
@@ -228,7 +233,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, addLog]);
+  }, [selectedFile, workdayProjectId, selectedPortfolio, selectedCustomer, selectedSite, addLog]);
 
   // Process file with MPXJ Python service and sync to Supabase
   const handleProcess = useCallback(async (fileId: string) => {
@@ -686,6 +691,147 @@ export default function DocumentsPage() {
         </div>
 
       </div>
+
+      {/* Hierarchy Selection Modal */}
+      {showHierarchyModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-primary)',
+            padding: '2rem',
+            borderRadius: '8px',
+            minWidth: '400px',
+            maxWidth: '500px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+          }}>
+            <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
+              Select Hierarchy for MPP Upload
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Portfolio *
+                </label>
+                <select
+                  value={selectedPortfolio}
+                  onChange={(e) => setSelectedPortfolio(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="">Select Portfolio</option>
+                  {filteredData.portfolios?.map((portfolio: any) => (
+                    <option key={portfolio.id} value={portfolio.id}>
+                      {portfolio.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Customer *
+                </label>
+                <select
+                  value={selectedCustomer}
+                  onChange={(e) => setSelectedCustomer(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="">Select Customer</option>
+                  {filteredData.customers?.map((customer: any) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Site *
+                </label>
+                <select
+                  value={selectedSite}
+                  onChange={(e) => setSelectedSite(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem',
+                    backgroundColor: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <option value="">Select Site</option>
+                  {filteredData.sites?.map((site: any) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowHierarchyModal(false);
+                  setSelectedPortfolio('');
+                  setSelectedCustomer('');
+                  setSelectedSite('');
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadWithHierarchy}
+                disabled={!selectedPortfolio || !selectedCustomer || !selectedSite}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: selectedPortfolio && selectedCustomer && selectedSite ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: selectedPortfolio && selectedCustomer && selectedSite ? '#000' : 'var(--text-muted)',
+                  cursor: selectedPortfolio && selectedCustomer && selectedSite ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Upload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
