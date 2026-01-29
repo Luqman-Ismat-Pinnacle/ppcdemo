@@ -112,15 +112,22 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
       }
 
-      // 4. Ledger Cost Actuals (SKIPPED - Memory Limit Issues)
-      logs.push('--- Step 4: Skipping Ledger Sync (Memory Limit Issues) ---');
-      logs.push('Ledger sync temporarily disabled due to worker memory limits.');
-      logs.push('Hours sync includes cost data for WBS Gantt integration.');
+      // 4. Ledger Cost Actuals (Quarterly Dataset - Now Enabled)
+      logs.push('--- Step 4: Syncing Quarterly Ledger Cost Actuals ---');
+      const ledgerRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-ledger', {});
+      results.push({ step: 'ledger', result: ledgerRes });
+      logs.push(...(ledgerRes.logs || []));
+      if (!ledgerRes.success) {
+        success = false;
+        logs.push(`Error in ledger sync: ${ledgerRes.error}`);
+      } else {
+        logs.push(`Synced ${ledgerRes.summary?.processed || 0} ledger entries.`);
+      }
       
       return NextResponse.json({
         success,
         syncType: 'unified',
-        summary: { totalSteps: 3, results },
+        summary: { totalSteps: 4, results },
         logs
       });
     }

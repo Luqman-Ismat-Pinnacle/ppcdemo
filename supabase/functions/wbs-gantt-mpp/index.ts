@@ -19,41 +19,16 @@ serve(async (req) => {
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 1. Get all MPP projects that have schedules (phases or tasks)
-        // First try with has_schedule filter, fallback to all projects if column doesn't exist
-        let mppProjects = [];
-        let mppError = null;
-        
-        try {
-            console.log('[wbs-gantt-mpp] Fetching MPP projects with schedules...');
-            const result = await supabase
-                .from('projects')
-                .select('*')
-                .eq('has_schedule', true)
-                .order('name', { ascending: true });
-            
-            mppProjects = result.data;
-            mppError = result.error;
-        } catch (error) {
-            console.log('[wbs-gantt-mpp] has_schedule column may not exist, fetching all projects...');
-            mppError = error;
-        }
-        
-        // Fallback: get all projects if has_schedule column doesn't exist
-        if (mppError || !mppProjects) {
-            console.log('[wbs-gantt-mpp] Fetching all projects as fallback...');
-            const result = await supabase
-                .from('projects')
-                .select('*')
-                .order('name', { ascending: true });
-            
-            mppProjects = result.data;
-            mppError = result.error;
-        }
+        // 1. Get all MPP projects and filter out orphaned ones (without phases/tasks)
+        console.log('[wbs-gantt-mpp] Fetching all MPP projects...');
+        const { data: allProjects, error: projectsError } = await supabase
+            .from('projects')
+            .select('*')
+            .order('name', { ascending: true });
 
-        if (mppError) throw mppError;
+        if (projectsError) throw projectsError;
 
-        if (!mppProjects || mppProjects.length === 0) {
+        if (!allProjects || allProjects.length === 0) {
             return new Response(
                 JSON.stringify({
                     success: true,
@@ -65,7 +40,35 @@ serve(async (req) => {
             );
         }
 
-        console.log(`[wbs-gantt-mpp] Found ${mppProjects.length} MPP projects`);
+        console.log(`[wbs-gantt-mpp] Found ${allProjects.length} total projects`);
+
+        // 2. Get phases and tasks to identify which projects have plans
+        const projectIds = allProjects.map((p: any) => p.id);
+        
+        const { data: projectPhases, error: projectPhasesError } = await supabase
+            .from('phases')
+            .select('project_id')
+            .in('project_id', projectIds);
+
+        if (projectPhasesError) throw projectPhasesError;
+
+        const { data: projectTasks, error: projectTasksError } = await supabase
+            .from('tasks')
+            .select('project_id')
+            .in('project_id', projectIds);
+
+        if (projectTasksError) throw projectTasksError;
+
+        // 3. Filter projects that have phases or tasks (non-orphaned projects)
+        const projectsWithPhases = new Set(projectPhases?.map((p: any) => p.project_id) || []);
+        const projectsWithTasks = new Set(projectTasks?.map((t: any) => t.project_id) || []);
+        
+        const mppProjects = allProjects.filter((project: any) => 
+            projectsWithPhases.has(project.id) || projectsWithTasks.has(project.id)
+        );
+
+        console.log(`[wbs-gantt-mpp] Filtered to ${mppProjects.length} projects with plans (phases/tasks)`);
+        console.log(`[wbs-gantt-mpp] Excluded ${allProjects.length - mppProjects.length} orphaned projects`);
 
         // 2. Try to get project mappings (if table exists)
         let projectMappings = [];
