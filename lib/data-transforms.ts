@@ -1159,6 +1159,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             console.log(`[WBS] Sample task parent_ids:`, data.tasks.slice(0, 3).map((t: any) => ({ id: t.id, parent_id: (t as any).parent_id })));
           }
           
+          // Show unit data
+          console.log(`[WBS] Unit data:`, { id: unitId, name: unit.name, type: unit.type });
+          console.log(`[WBS] All units:`, units.slice(0, 3).map((u: any) => ({ id: u.id, name: u.name, type: u.type })));
+          
           // Initialize rollup variables for this unit
           let unitRollupBaselineHrs = 0;
           let unitRollupActualHrs = 0;
