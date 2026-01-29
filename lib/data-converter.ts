@@ -377,19 +377,24 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     let id: string;
     if (task.id) {
       id = task.id;
+      console.log(`[CONVERTER] Using existing ID: ${id} for type: ${levelType}`);
     } else {
       switch (levelType) {
         case 'phase':
           id = `PHS-${(phases.length + 1).toString().padStart(4, '0')}`;
+          console.log(`[CONVERTER] Generated phase ID: ${id} (phases count: ${phases.length})`);
           break;
         case 'unit':
           id = `UNT-${(units.length + 1).toString().padStart(4, '0')}`;
+          console.log(`[CONVERTER] Generated unit ID: ${id} (units count: ${units.length})`);
           break;
         case 'task':
           id = `TSK-${(tasks.length + 1).toString().padStart(4, '0')}`;
+          console.log(`[CONVERTER] Generated task ID: ${id} (tasks count: ${tasks.length})`);
           break;
         default:
           id = `TSK-${(index + 1).toString().padStart(4, '0')}`;
+          console.log(`[CONVERTER] Generated default task ID: ${id}`);
       }
     }
     
