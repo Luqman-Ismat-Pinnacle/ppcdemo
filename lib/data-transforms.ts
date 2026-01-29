@@ -332,6 +332,9 @@ function buildHierarchyMaps(data: {
         unitsByPhase.set(phaseId, []);
       }
       unitsByPhase.get(phaseId)!.push(unit);
+      console.log(`[DEBUG MAPS] Unit ${unit.id} linked to phase ${phaseId}`);
+    } else {
+      console.log(`[DEBUG MAPS] Unit ${unit.id} has no phaseId/phase_id`);
     }
 
     // Legacy support (Site -> Unit) or Direct Project Support
@@ -399,6 +402,9 @@ function buildHierarchyMaps(data: {
         tasksByPhase.set(phaseId, []);
       }
       tasksByPhase.get(phaseId)!.push(task);
+      console.log(`[DEBUG MAPS] Task ${task.id} linked to phase ${phaseId}, unitId: ${task.unitId || task.unit_id}`);
+    } else {
+      console.log(`[DEBUG MAPS] Task ${task.id} has no phaseId/phase_id`);
     }
 
     const projectId = task.projectId || task.project_id;
