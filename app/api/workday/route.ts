@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced Hierarchy: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites.`);
       }
 
-      // 3. Hours and Costs (NEW - includes actual cost data)
+      // 3. Hours and Costs (includes actual cost data)
       logs.push('--- Step 3: Syncing Hours & Cost Actuals ---');
       const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', {});
       results.push({ step: 'hours', result: hoursRes });
@@ -76,22 +76,15 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
       }
 
-      // 4. Ledger Cost Actuals (NEW - General Ledger costs)
-      logs.push('--- Step 4: Syncing General Ledger Cost Actuals ---');
-      const ledgerRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-ledger', {});
-      results.push({ step: 'ledger', result: ledgerRes });
-      logs.push(...(ledgerRes.logs || []));
-      if (!ledgerRes.success) {
-        success = false;
-        logs.push(`Error in ledger sync: ${ledgerRes.error}`);
-      } else {
-        logs.push(`Synced ${ledgerRes.stats?.transactions || 0} ledger transactions.`);
-      }
-
+      // 4. Ledger Cost Actuals (SKIPPED - Memory Limit Issues)
+      logs.push('--- Step 4: Skipping Ledger Sync (Memory Limit Issues) ---');
+      logs.push('Ledger sync temporarily disabled due to worker memory limits.');
+      logs.push('Hours sync includes cost data for WBS Gantt integration.');
+      
       return NextResponse.json({
         success,
         syncType: 'unified',
-        summary: { totalSteps: 4, results },
+        summary: { totalSteps: 3, results },
         logs
       });
     }

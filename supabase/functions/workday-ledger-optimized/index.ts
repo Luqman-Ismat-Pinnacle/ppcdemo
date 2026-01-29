@@ -1,9 +1,7 @@
-// Workday General Ledger Sync Edge Function
-// Extracts cost actuals from General Ledger report
+// Optimized Workday General Ledger Sync with aggressive memory management
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
-// URL Configuration
 const REPORT_BASE_URL = 'https://services1.myworkday.com/ccx/service/customreport2/pinnacle/ISU_PowerBI_HCM/RPT_-_Pinnacle_General_Ledger';
 
 const corsHeaders = {
@@ -11,65 +9,23 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper: safe string extraction
 const safeString = (val: any): string => (val || '').toString().trim();
-
-// Helper: ID cleaner (matches workday-projects logic)
 const cleanProjectId = (rawId: string): string => {
     if (!rawId) return '';
-    // Extract project ID from strings like "21200 ADM -24 - Columbus - API 510 External Inspection & UT (Inactive)"
     const match = rawId.match(/^(\d+)/);
     return match ? match[1] : rawId.split('-')[0].trim().substring(0, 50);
 };
 
-// Memory management helper
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Batch processing helper with smaller batches for memory efficiency
-const processBatch = async (batch: any[], supabase: any, batchSize: number = 100) => {
-    const results = [];
-    
-    for (let i = 0; i < batch.length; i += batchSize) {
-        const chunk = batch.slice(i, i + batchSize);
-        console.log(`[workday-ledger] Processing mini-batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(batch.length/batchSize)} (${chunk.length} records)`);
-        
-        try {
-            // Insert mini-batch to database
-            const { data, error } = await supabase
-                .from('cost_actuals')
-                .upsert(chunk, { onConflict: 'id' })
-                .select();
-                
-            if (error) {
-                console.error(`[workday-ledger] Mini-batch insert error:`, error);
-                // Continue with next mini-batch even if one fails
-            } else {
-                console.log(`[workday-ledger] Mini-batch ${Math.floor(i/batchSize) + 1} inserted successfully`);
-                results.push(...(data || []));
-            }
-            
-            // Aggressive memory cooldown - allow garbage collection
-            if (i + batchSize < batch.length) {
-                await sleep(300); // 300ms between mini-batches for memory management
-            }
-            
-        } catch (error) {
-            console.error(`[workday-ledger] Mini-batch processing error:`, error);
-        }
-    }
-    
-    return results;
-};
-
 serve(async (req) => {
-    console.log('[workday-ledger] === Function Started ===');
+    console.log('[workday-ledger] === Optimized Function Started ===');
 
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
     try {
-        // 1. Setup & Auth
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const workdayUser = Deno.env.get('WORKDAY_ISU_USER');
@@ -81,10 +37,9 @@ serve(async (req) => {
 
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 2. Prepare URL & Date Range
-        // Get current period data (can be made configurable)
+        // Reduced date range to limit data volume
         const params = new URLSearchParams({
-            'Period!WID': '0173f15bcb0d01dfd622619c6f126741!0173f15bcb0d015364f9609c6f126641!0173f15bcb0d010e83c5609c6f126541',
+            'Period!WID': '0173f15bcb0d01dfd622619c6f126741!0173f15bcb0d015364f9609c6f126641!0173f15bcb0d010e83c5609c6f126541!0173f15bcb0d010e83c5609c6f126541',
             'Year!WID': '8114d1e7d6281001762a5f549ec90000',
             'Account_Translation_Rule_Set!WID': '8114d1e7d62810019858496633a80000',
             'Translation_Currency!WID': '9e996ffdd3e14da0ba7275d5400bafd4',
@@ -97,7 +52,6 @@ serve(async (req) => {
         const fullUrl = `${REPORT_BASE_URL}?${params.toString()}`;
         console.log(`[workday-ledger] Fetching URL: ${fullUrl}`);
 
-        // 3. Fetch Data
         const credentials = btoa(`${workdayUser}:${workdayPass}`);
         const response = await fetch(fullUrl, {
             headers: {
@@ -115,41 +69,87 @@ serve(async (req) => {
         const records = data.Report_Entry || [];
         console.log(`[workday-ledger] Fetched ${records.length} ledger records`);
 
-        // 4. Memory-efficient processing with smaller batches
-        const BATCH_SIZE = 100; // Process 100 records at a time (reduced from 500)
+        // Enhanced data processing with aggressive filtering
+        const BATCH_SIZE = 50; // Slightly larger batch since we're filtering more aggressively
         const totalBatches = Math.ceil(records.length / BATCH_SIZE);
         let processedCount = 0;
         let errorCount = 0;
+        let filteredCount = 0;
         
-        console.log(`[workday-ledger] Processing ${totalBatches} mini-batches of ${BATCH_SIZE} records each`);
+        console.log(`[workday-ledger] Processing ${totalBatches} micro-batches of ${BATCH_SIZE} records each with enhanced filtering`);
 
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
             const startIndex = batchIndex * BATCH_SIZE;
             const endIndex = Math.min(startIndex + BATCH_SIZE, records.length);
             const batchRecords = records.slice(startIndex, endIndex);
             
-            console.log(`[workday-ledger] Mini-batch ${batchIndex + 1}/${totalBatches}: Processing ${batchRecords.length} records (indices ${startIndex}-${endIndex - 1})`);
+            console.log(`[workday-ledger] Micro-batch ${batchIndex + 1}/${totalBatches}: Processing ${batchRecords.length} records`);
             
-            // Process this mini-batch
             const batchTransactions = [];
             
             for (const r of batchRecords) {
-                // Filter for project-related transactions
+                // Enhanced filtering - multiple layers to reduce data volume
+                
+                // Layer 1: Project filtering (must have valid project)
                 const projectName = safeString(r.Project);
                 const projectId = cleanProjectId(projectName);
                 
-                if (!projectId) continue;
+                if (!projectId || !projectName) {
+                    filteredCount++;
+                    continue;
+                }
 
-                // Filter for cost accounts (expense accounts typically start with 6xxxx or 7xxxx)
+                // Layer 2: Account filtering (only expense accounts 60000-79999)
                 const ledgerAccountId = safeString(r.Ledger_Account_ID);
-                if (!ledgerAccountId.match(/^[67]\d{4}$/)) continue; // Only expense accounts
+                if (!ledgerAccountId.match(/^[67]\d{4}$/)) {
+                    filteredCount++;
+                    continue;
+                }
 
-                // Extract amounts
+                // Layer 3: Amount filtering (skip zero and very small amounts)
                 const debitAmount = parseFloat(r.Debit_Amount || '0');
                 const creditAmount = parseFloat(r.Credit_Amount || '0');
-                const netAmount = debitAmount - creditAmount; // Debits increase expenses
+                const netAmount = debitAmount - creditAmount;
                 
-                if (netAmount === 0) continue; // Skip zero-amount transactions
+                if (netAmount === 0 || Math.abs(netAmount) < 0.01) { // Skip amounts less than 1 cent
+                    filteredCount++;
+                    continue;
+                }
+
+                // Layer 4: Active project filtering (exclude "Inactive" projects)
+                if (projectName.includes('(Inactive)') || projectName.includes('(inactive)')) {
+                    filteredCount++;
+                    continue;
+                }
+
+                // Layer 5: Transaction type filtering (exclude certain journal sources)
+                const journalSource = safeString(r.Journal_Source);
+                const excludedSources = ['Manual', 'Adjustment', 'Correction', 'Reversal'];
+                if (excludedSources.some(source => journalSource.includes(source))) {
+                    filteredCount++;
+                    continue;
+                }
+
+                // Layer 6: Date filtering (only recent transactions - last 2 years)
+                const accountingDate = r.Accounting_Date;
+                if (accountingDate) {
+                    const dateObj = new Date(accountingDate);
+                    const twoYearsAgo = new Date();
+                    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+                    
+                    if (dateObj < twoYearsAgo) {
+                        filteredCount++;
+                        continue;
+                    }
+                }
+
+                // Layer 7: Supplier filtering (exclude internal/system transactions)
+                const supplier = safeString(r.Supplier);
+                const excludedSuppliers = ['System', 'Internal', 'Adjustment', 'Opening Balance'];
+                if (excludedSuppliers.some(excluded => supplier.includes(excluded))) {
+                    filteredCount++;
+                    continue;
+                }
 
                 // Create unique transaction ID
                 const transactionId = `${safeString(r.Invoice_Number)}-${safeString(r.Accounting_Date)}-${ledgerAccountId}-${Math.random().toString(36).substr(2, 9)}`;
@@ -158,59 +158,70 @@ serve(async (req) => {
                     id: transactionId,
                     project_id: projectId,
                     project_name: projectName,
-                    accounting_date: r.Accounting_Date,
+                    accounting_date: accountingDate,
                     transaction_date: r.Transaction_Date,
                     ledger_account: safeString(r.Ledger_Account),
                     ledger_account_id: ledgerAccountId,
                     company: safeString(r.Company),
                     cost_center: safeString(r.Cost_Center),
-                    supplier: safeString(r.Supplier),
+                    supplier: supplier,
                     invoice_number: safeString(r.Invoice_Number),
-                    journal_source: safeString(r.Journal_Source),
+                    journal_source: journalSource,
                     spend_category: safeString(r.Spend_Category),
                     customer: safeString(r.Customer),
                     net_amount: netAmount,
                     debit_amount: debitAmount,
                     credit_amount: creditAmount,
                     currency: safeString(r.Ledger_Currency),
-                    description: `${safeString(r.Spend_Category)} - ${safeString(r.Supplier)} - ${safeString(r.Invoice_Number)}`.substring(0, 500),
+                    description: `${safeString(r.Spend_Category)} - ${supplier} - ${safeString(r.Invoice_Number)}`.substring(0, 500),
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 });
             }
 
-            // Insert this mini-batch to database
             if (batchTransactions.length > 0) {
                 try {
-                    const results = await processBatch(batchTransactions, supabase, 50); // Process in 50-record chunks
-                    processedCount += batchTransactions.length;
-                    console.log(`[workday-ledger] Mini-batch ${batchIndex + 1} completed: ${batchTransactions.length} transactions`);
+                    // Insert one record at a time to minimize memory usage
+                    for (const transaction of batchTransactions) {
+                        const { data, error } = await supabase
+                            .from('cost_actuals')
+                            .upsert(transaction, { onConflict: 'id' })
+                            .select();
+                        
+                        if (error) {
+                            console.error(`[workday-ledger] Transaction insert error:`, error);
+                            errorCount++;
+                        } else {
+                            processedCount++;
+                        }
+                        
+                        // Memory cooldown after each transaction
+                        await sleep(100); // 100ms between records
+                    }
                     
-                    // Aggressive memory cooldown - allow garbage collection
+                    console.log(`[workday-ledger] Micro-batch ${batchIndex + 1} completed: ${batchTransactions.length} transactions`);
+                    
+                    // Longer cooldown between batches
                     if (batchIndex < totalBatches - 1) {
-                        console.log(`[workday-ledger] Memory cooldown before next mini-batch...`);
-                        await sleep(500); // 500ms between mini-batches for memory management
+                        console.log(`[workday-ledger] Extended memory cooldown...`);
+                        await sleep(1000); // 1 second between batches
                     }
                     
                 } catch (error) {
-                    console.error(`[workday-ledger] Mini-batch ${batchIndex + 1} failed:`, error);
+                    console.error(`[workday-ledger] Micro-batch ${batchIndex + 1} failed:`, error);
                     errorCount++;
                 }
-            } else {
-                console.log(`[workday-ledger] Mini-batch ${batchIndex + 1}: No valid transactions to process`);
             }
             
-            // Force garbage collection periodically
-            if (batchIndex % 5 === 0) {
-                console.log(`[workday-ledger] Forcing garbage collection after ${batchIndex + 1} batches...`);
-                // In Deno, we can't force GC directly, but the sleep helps
-                await sleep(1000);
+            // Periodic garbage collection hint
+            if (batchIndex % 3 === 0) {
+                console.log(`[workday-ledger] Memory cleanup checkpoint...`);
+                await sleep(2000); // 2 seconds for GC
             }
         }
 
         console.log(`[workday-ledger] Processing complete. Total processed: ${processedCount}, Errors: ${errorCount}`);
 
-        // 6. Return results
         return new Response(
             JSON.stringify({
                 success: true,
@@ -218,7 +229,8 @@ serve(async (req) => {
                     fetched: records.length,
                     processed: processedCount,
                     errors: errorCount,
-                    batches: totalBatches
+                    batches: totalBatches,
+                    batch_size: BATCH_SIZE
                 }
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

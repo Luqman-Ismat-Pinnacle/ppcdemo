@@ -1,9 +1,7 @@
-// Workday General Ledger Sync Edge Function
-// Extracts cost actuals from General Ledger report
+// Final Workday Ledger Sync - Chunked Processing with Client-Side Date Filtering
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
-// URL Configuration
 const REPORT_BASE_URL = 'https://services1.myworkday.com/ccx/service/customreport2/pinnacle/ISU_PowerBI_HCM/RPT_-_Pinnacle_General_Ledger';
 
 const corsHeaders = {
@@ -11,65 +9,23 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper: safe string extraction
 const safeString = (val: any): string => (val || '').toString().trim();
-
-// Helper: ID cleaner (matches workday-projects logic)
 const cleanProjectId = (rawId: string): string => {
     if (!rawId) return '';
-    // Extract project ID from strings like "21200 ADM -24 - Columbus - API 510 External Inspection & UT (Inactive)"
     const match = rawId.match(/^(\d+)/);
     return match ? match[1] : rawId.split('-')[0].trim().substring(0, 50);
 };
 
-// Memory management helper
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Batch processing helper with smaller batches for memory efficiency
-const processBatch = async (batch: any[], supabase: any, batchSize: number = 100) => {
-    const results = [];
-    
-    for (let i = 0; i < batch.length; i += batchSize) {
-        const chunk = batch.slice(i, i + batchSize);
-        console.log(`[workday-ledger] Processing mini-batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(batch.length/batchSize)} (${chunk.length} records)`);
-        
-        try {
-            // Insert mini-batch to database
-            const { data, error } = await supabase
-                .from('cost_actuals')
-                .upsert(chunk, { onConflict: 'id' })
-                .select();
-                
-            if (error) {
-                console.error(`[workday-ledger] Mini-batch insert error:`, error);
-                // Continue with next mini-batch even if one fails
-            } else {
-                console.log(`[workday-ledger] Mini-batch ${Math.floor(i/batchSize) + 1} inserted successfully`);
-                results.push(...(data || []));
-            }
-            
-            // Aggressive memory cooldown - allow garbage collection
-            if (i + batchSize < batch.length) {
-                await sleep(300); // 300ms between mini-batches for memory management
-            }
-            
-        } catch (error) {
-            console.error(`[workday-ledger] Mini-batch processing error:`, error);
-        }
-    }
-    
-    return results;
-};
-
 serve(async (req) => {
-    console.log('[workday-ledger] === Function Started ===');
+    console.log('[workday-ledger] === Final Chunked Function Started ===');
 
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
 
     try {
-        // 1. Setup & Auth
         const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const workdayUser = Deno.env.get('WORKDAY_ISU_USER');
@@ -81,10 +37,9 @@ serve(async (req) => {
 
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 2. Prepare URL & Date Range
-        // Get current period data (can be made configurable)
+        // Standard Workday parameters (no date filtering)
         const params = new URLSearchParams({
-            'Period!WID': '0173f15bcb0d01dfd622619c6f126741!0173f15bcb0d015364f9609c6f126641!0173f15bcb0d010e83c5609c6f126541',
+            'Period!WID': '0173f15bcb0d01dfd622619c6f126741!0173f15bcb0d015364f9609c6f126641!0173f15bcb0d010e83c5609c6f126541!0173f15bcb0d010e83c5609c6f126541',
             'Year!WID': '8114d1e7d6281001762a5f549ec90000',
             'Account_Translation_Rule_Set!WID': '8114d1e7d62810019858496633a80000',
             'Translation_Currency!WID': '9e996ffdd3e14da0ba7275d5400bafd4',
@@ -97,7 +52,6 @@ serve(async (req) => {
         const fullUrl = `${REPORT_BASE_URL}?${params.toString()}`;
         console.log(`[workday-ledger] Fetching URL: ${fullUrl}`);
 
-        // 3. Fetch Data
         const credentials = btoa(`${workdayUser}:${workdayPass}`);
         const response = await fetch(fullUrl, {
             headers: {
@@ -112,49 +66,61 @@ serve(async (req) => {
         }
 
         const data = await response.json();
-        const records = data.Report_Entry || [];
-        console.log(`[workday-ledger] Fetched ${records.length} ledger records`);
+        const allRecords = data.Report_Entry || [];
+        console.log(`[workday-ledger] Fetched ${allRecords.length} total ledger records`);
 
-        // 4. Memory-efficient processing with smaller batches
-        const BATCH_SIZE = 100; // Process 100 records at a time (reduced from 500)
-        const totalBatches = Math.ceil(records.length / BATCH_SIZE);
+        // Client-side date filtering - only last 30 days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const records = allRecords.filter(r => {
+            const accountingDate = r.Accounting_Date;
+            if (!accountingDate) return false;
+            
+            const dateObj = new Date(accountingDate);
+            return dateObj >= thirtyDaysAgo;
+        });
+        
+        console.log(`[workday-ledger] Filtered to ${records.length} records (last 30 days)`);
+
+        // Process in very small chunks
+        const CHUNK_SIZE = 20; // Very small chunks
+        const totalChunks = Math.ceil(records.length / CHUNK_SIZE);
         let processedCount = 0;
         let errorCount = 0;
         
-        console.log(`[workday-ledger] Processing ${totalBatches} mini-batches of ${BATCH_SIZE} records each`);
+        console.log(`[workday-ledger] Processing ${totalChunks} chunks of ${CHUNK_SIZE} records each`);
 
-        for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-            const startIndex = batchIndex * BATCH_SIZE;
-            const endIndex = Math.min(startIndex + BATCH_SIZE, records.length);
-            const batchRecords = records.slice(startIndex, endIndex);
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            const startIndex = chunkIndex * CHUNK_SIZE;
+            const endIndex = Math.min(startIndex + CHUNK_SIZE, records.length);
+            const chunkRecords = records.slice(startIndex, endIndex);
             
-            console.log(`[workday-ledger] Mini-batch ${batchIndex + 1}/${totalBatches}: Processing ${batchRecords.length} records (indices ${startIndex}-${endIndex - 1})`);
+            console.log(`[workday-ledger] Chunk ${chunkIndex + 1}/${totalChunks}: Processing ${chunkRecords.length} records`);
             
-            // Process this mini-batch
-            const batchTransactions = [];
+            const chunkTransactions = [];
             
-            for (const r of batchRecords) {
-                // Filter for project-related transactions
+            for (const r of chunkRecords) {
+                // Minimal essential filtering
                 const projectName = safeString(r.Project);
                 const projectId = cleanProjectId(projectName);
                 
                 if (!projectId) continue;
 
-                // Filter for cost accounts (expense accounts typically start with 6xxxx or 7xxxx)
                 const ledgerAccountId = safeString(r.Ledger_Account_ID);
-                if (!ledgerAccountId.match(/^[67]\d{4}$/)) continue; // Only expense accounts
+                if (!ledgerAccountId.match(/^[67]\d{4}$/)) continue;
 
-                // Extract amounts
                 const debitAmount = parseFloat(r.Debit_Amount || '0');
                 const creditAmount = parseFloat(r.Credit_Amount || '0');
-                const netAmount = debitAmount - creditAmount; // Debits increase expenses
+                const netAmount = debitAmount - creditAmount;
                 
-                if (netAmount === 0) continue; // Skip zero-amount transactions
+                if (netAmount === 0) continue;
 
-                // Create unique transaction ID
+                if (projectName.includes('(Inactive)')) continue;
+
                 const transactionId = `${safeString(r.Invoice_Number)}-${safeString(r.Accounting_Date)}-${ledgerAccountId}-${Math.random().toString(36).substr(2, 9)}`;
 
-                batchTransactions.push({
+                chunkTransactions.push({
                     id: transactionId,
                     project_id: projectId,
                     project_name: projectName,
@@ -179,46 +145,54 @@ serve(async (req) => {
                 });
             }
 
-            // Insert this mini-batch to database
-            if (batchTransactions.length > 0) {
+            if (chunkTransactions.length > 0) {
                 try {
-                    const results = await processBatch(batchTransactions, supabase, 50); // Process in 50-record chunks
-                    processedCount += batchTransactions.length;
-                    console.log(`[workday-ledger] Mini-batch ${batchIndex + 1} completed: ${batchTransactions.length} transactions`);
+                    // Process one by one to minimize memory
+                    for (const transaction of chunkTransactions) {
+                        const { data, error } = await supabase
+                            .from('cost_actuals')
+                            .upsert(transaction, { onConflict: 'id' })
+                            .select();
+                        
+                        if (error) {
+                            console.error(`[workday-ledger] Transaction error:`, error);
+                            errorCount++;
+                        } else {
+                            processedCount++;
+                        }
+                        
+                        // Memory cooldown
+                        await sleep(50); // 50ms between records
+                    }
                     
-                    // Aggressive memory cooldown - allow garbage collection
-                    if (batchIndex < totalBatches - 1) {
-                        console.log(`[workday-ledger] Memory cooldown before next mini-batch...`);
-                        await sleep(500); // 500ms between mini-batches for memory management
+                    console.log(`[workday-ledger] Chunk ${chunkIndex + 1} completed: ${chunkTransactions.length} transactions`);
+                    
+                    // Extended cooldown between chunks
+                    if (chunkIndex < totalChunks - 1) {
+                        console.log(`[workday-ledger] Extended cooldown...`);
+                        await sleep(1000); // 1 second between chunks
                     }
                     
                 } catch (error) {
-                    console.error(`[workday-ledger] Mini-batch ${batchIndex + 1} failed:`, error);
+                    console.error(`[workday-ledger] Chunk ${chunkIndex + 1} failed:`, error);
                     errorCount++;
                 }
-            } else {
-                console.log(`[workday-ledger] Mini-batch ${batchIndex + 1}: No valid transactions to process`);
-            }
-            
-            // Force garbage collection periodically
-            if (batchIndex % 5 === 0) {
-                console.log(`[workday-ledger] Forcing garbage collection after ${batchIndex + 1} batches...`);
-                // In Deno, we can't force GC directly, but the sleep helps
-                await sleep(1000);
             }
         }
 
         console.log(`[workday-ledger] Processing complete. Total processed: ${processedCount}, Errors: ${errorCount}`);
 
-        // 6. Return results
         return new Response(
             JSON.stringify({
                 success: true,
                 stats: {
-                    fetched: records.length,
+                    total_fetched: allRecords.length,
+                    date_filtered: records.length,
                     processed: processedCount,
                     errors: errorCount,
-                    batches: totalBatches
+                    chunks: totalChunks,
+                    chunk_size: CHUNK_SIZE,
+                    date_range: `Last 30 days`
                 }
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
