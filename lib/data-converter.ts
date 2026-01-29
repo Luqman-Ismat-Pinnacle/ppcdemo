@@ -442,23 +442,41 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
   });
 
-  // Now resolve parent-child relationships for units and tasks
+  // Now resolve parent-child relationships in multiple passes
+  // Pass 1: Resolve unit phaseId relationships
   units.forEach((unit: any) => {
-    unit.phaseId = findParentPhaseId(unit.parent_id, phases, units);
+    if (unit.parent_id) {
+      // Find parent phase by matching the parent_id with a phase ID
+      const parentPhase = phases.find(p => p.id === unit.parent_id);
+      if (parentPhase) {
+        unit.phaseId = parentPhase.id;
+      }
+    }
   });
 
+  // Pass 2: Resolve task phaseId and unitId relationships  
   tasks.forEach((task: any) => {
-    task.phaseId = findParentPhaseId(task.parent_id, phases, units);
-    task.unitId = findParentUnitId(task.parent_id, units);
+    if (task.parent_id) {
+      // First try to find parent unit
+      const parentUnit = units.find(u => u.id === task.parent_id);
+      if (parentUnit) {
+        task.unitId = parentUnit.id;
+        task.phaseId = parentUnit.phaseId;
+      } else {
+        // If not a unit, try to find parent phase
+        const parentPhase = phases.find(p => p.id === task.parent_id);
+        if (parentPhase) {
+          task.phaseId = parentPhase.id;
+        }
+      }
+    }
     
     // Only set parentTaskId if the parent_id actually references another task
-    if (task.parent_id) {
-      const parentTask = tasks.find(t => t.id === task.parent_id);
-      if (parentTask) {
-        task.parentTaskId = task.parent_id;
-      } else {
-        task.parentTaskId = null; // Parent is not a task, don't set foreign key
-      }
+    const parentTask = tasks.find(t => t.id === task.parent_id);
+    if (parentTask) {
+      task.parentTaskId = task.parent_id;
+    } else {
+      task.parentTaskId = null; // Parent is not a task, don't set foreign key
     }
   });
 

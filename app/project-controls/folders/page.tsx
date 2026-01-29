@@ -446,6 +446,36 @@ export default function DocumentsPage() {
     const file = uploadedFiles.find(f => f.id === fileId);
     if (!file) return;
 
+    // Delete associated project and hierarchy data
+    if (file.workdayProjectId) {
+      addLog('info', `[Database] Deleting project and hierarchy data...');
+      
+      try {
+        // Delete phases, units, and tasks associated with this project
+        const deleteResponse = await fetch('/api/data/sync', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: file.workdayProjectId,
+          }),
+        });
+        
+        if (deleteResponse.ok) {
+          const deleteResult = await deleteResponse.json();
+          if (deleteResult.success) {
+            addLog('success', '[Database] Project hierarchy data deleted');
+          } else {
+            addLog('warning', `[Database] Hierarchy delete: ${deleteResult.error || 'Partial failure'}`);
+          }
+        } else {
+          addLog('warning', `[Database] Hierarchy delete failed: ${deleteResponse.statusText}`);
+        }
+      } catch (err: any) {
+        addLog('warning', `[Database] Hierarchy delete error: ${err.message}`);
+      }
+    }
+
+    // Delete the file from storage
     if (file.storagePath && supabase) {
       addLog('info', `[Storage] Deleting ${file.fileName}...`);
 
@@ -466,8 +496,33 @@ export default function DocumentsPage() {
       }
     }
 
+    // Delete document metadata
+    if (file.documentId) {
+      try {
+        const docDeleteResponse = await fetch('/api/data/sync', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataKey: 'projectDocuments',
+            ids: [file.documentId],
+          }),
+        });
+        
+        if (docDeleteResponse.ok) {
+          addLog('success', '[Database] Document metadata deleted');
+        }
+      } catch (err: any) {
+        addLog('warning', `[Database] Document delete error: ${err.message}`);
+      }
+    }
+
     setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
-  }, [uploadedFiles, addLog]);
+    
+    // Refresh data to update WBS and other views
+    await refreshData();
+    
+    addLog('success', '[Complete] File and all associated data deleted');
+  }, [uploadedFiles, addLog, refreshData]);
 
   return (
     <div className="page-panel">
