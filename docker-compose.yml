@@ -1,0 +1,108 @@
+services:
+  # Production service
+  nextjs-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        AUTH0_BASE_URL: ${AUTH0_BASE_URL}
+        AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
+    container_name: ppc-nextjs-app
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # Auth0 Configuration
+      - AUTH0_SECRET=${AUTH0_SECRET}
+      - AUTH0_BASE_URL=${AUTH0_BASE_URL}
+      - AUTH0_ISSUER_BASE_URL=${AUTH0_ISSUER_BASE_URL}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      # Supabase Configuration
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      # Supabase Service Role Key (for server-side API routes)
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3000/api/auth/me', (r) => {process.exit(r.statusCode === 200 || r.statusCode === 401 ? 0 : 1)})" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ppc-network
+
+  # Development service (use: docker-compose up nextjs-app-dev)
+  # Note: Uses port 3000 now!
+  nextjs-app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: ppc-nextjs-app-dev
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      # Helps file watching inside Docker Desktop (Mac/Windows)
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+      # Auth0 Configuration
+      AUTH0_SECRET: ${AUTH0_SECRET}
+      AUTH0_BASE_URL: ${AUTH0_BASE_URL}
+      AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
+      # Supabase Configuration
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      # Supabase Service Role Key (for server-side API routes)
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    volumes:
+      # Mount source code for live updates
+      - .:/app
+      # Keep container node_modules so your bind mount doesn't wipe it out
+      - next_node_modules:/app/node_modules
+      # Keep next build cache between restarts for faster rebuilds
+      - next_cache:/app/.next
+      # Exclude node_modules from bind mount to use the volume
+      - /app/node_modules
+    networks:
+      - ppc-network
+
+  # Python MPP Parser Service
+  mpp-parser:
+    build:
+      context: ./api-python
+      dockerfile: Dockerfile
+    container_name: ppc-mpp-parser
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ppc-network
+    volumes:
+      - ./api-python:/app
+      - ./api-python/uploads:/app/uploads
+
+volumes:
+  next_node_modules:
+  next_cache:
+
+
+networks:
+  ppc-network:
+    driver: bridge

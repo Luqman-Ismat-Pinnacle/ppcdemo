@@ -1,0 +1,38 @@
+{
+  "name": "ppc-nextjs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "clean": "rm -rf .next node_modules package-lock.json && npm install --legacy-peer-deps",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@auth0/nextjs-auth0": "^3.5.0",
+    "@supabase/supabase-js": "^2.90.1",
+    "@tanstack/match-sorter-utils": "^8.19.4",
+    "@tanstack/react-table": "^8.21.3",
+    "dhtmlx-gantt": "^9.1.1",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.5",
+    "next": "15.2.6",
+    "pg": "^8.11.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8.10.9",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@eslint/eslintrc": "^3",
+    "eslint": "^9",
+    "eslint-config-next": "15.2.6",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

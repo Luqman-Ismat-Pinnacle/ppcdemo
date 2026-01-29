@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pinnacle MPP Parser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .json-key {
+            color: #818cf8;
+        }
+
+        .json-string {
+            color: #34d399;
+        }
+
+        .json-number {
+            color: #f472b6;
+        }
+
+        .json-boolean {
+            color: #60a5fa;
+        }
+
+        .json-null {
+            color: #9ca3af;
+        }
+
+        /* Custom scrollbar for better look in split panes */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center py-8 px-4 sm:px-6 lg:px-8">
+
+    <div class="w-full max-w-7xl space-y-6">
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                MPP Parsing Service
+            </h1>
+            <p class="mt-2 text-base text-slate-400">
+                Upload a Microsoft Project (.mpp) file to inspect hierarchy and JSON output.
+            </p>
+        </div>
+
+        <!-- Dropzone -->
+        <div class="bg-slate-800 rounded-xl shadow-xl p-6 border border-slate-700">
+            <div id="dropzone"
+                class="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center hover:border-indigo-500 transition-colors cursor-pointer group">
+                <div class="space-y-3">
+                    <div class="mx-auto h-10 w-10 text-slate-400 group-hover:text-indigo-400 transition-colors">
+                        <svg class="h-full w-full" fill="none" stroke="currentColor" stroke-width="1.5"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="text-base font-medium text-white">
+                        <span class="text-indigo-400 group-hover:text-indigo-300">Click to upload</span> or drag and
+                        drop
+                    </div>
+                    <p class="text-xs text-slate-400">MPP files only (Max 10MB)</p>
+                </div>
+                <input id="fileInput" type="file" class="hidden" accept=".mpp" />
+            </div>
+
+            <!-- Progress -->
+            <div id="progressContainer" class="hidden mt-4">
+                <div class="flex justify-between mb-1">
+                    <span class="text-xs font-medium text-indigo-400">Parsing file...</span>
+                    <span class="text-xs font-medium text-indigo-400 animate-pulse">Processing</span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-2">
+                    <div class="bg-indigo-600 h-2 rounded-full w-full animate-[loading_2s_ease-in-out_infinite]"></div>
+                </div>
+            </div>
+
+            <!-- Error Message -->
+            <div id="errorMessage"
+                class="hidden mt-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm"></div>
+        </div>
+
+        <!-- Result Area -->
+        <div id="resultContainer" class="hidden space-y-4">
+            <!-- Stats Bar -->
+            <div
+                class="bg-slate-800 rounded-lg p-4 border border-slate-700 grid grid-cols-2 md:grid-cols-5 gap-4 shadow-lg">
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Project</span>
+                    <span id="statProjectName" class="block text-sm font-semibold text-white truncate">-</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Total Tasks</span>
+                    <span id="statTotalItems" class="block text-xl font-bold text-white">0</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Phases</span>
+                    <span id="statPhases" class="block text-xl font-bold text-indigo-400">0</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Units</span>
+                    <span id="statUnits" class="block text-xl font-bold text-teal-400">0</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Leaf Tasks</span>
+                    <span id="statTasks" class="block text-xl font-bold text-pink-400">0</span>
+                </div>
+            </div>
+
+            <!-- Split View: JSON vs WBS -->
+            <div class="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
+                <div class="grid grid-cols-1 lg:grid-cols-2 h-[800px]">
+
+                    <!-- Left: JSON View -->
+                    <div class="flex flex-col border-b lg:border-b-0 lg:border-r border-slate-700 bg-slate-900">
+                        <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
+                            <h3 class="text-sm font-semibold text-white">JSON Output</h3>
+                            <div class="flex space-x-2">
+                                <button id="copyBtn"
+                                    class="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-xs text-white rounded transition-colors">Copy</button>
+                                <button id="downloadBtn"
+                                    class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-xs text-white rounded transition-colors">Download</button>
+                            </div>
+                        </div>
+                        <pre id="jsonOutput"
+                            class="flex-1 p-4 text-xs font-mono overflow-auto text-slate-300 bg-slate-900/50"></pre>
+                    </div>
+
+                    <!-- Right: WBS Cascading Table -->
+                    <div class="flex flex-col bg-slate-900">
+                        <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
+                            <h3 class="text-sm font-semibold text-white">WBS Hierarchy</h3>
+                            <span class="text-xs text-slate-400">Cascading View</span>
+                        </div>
+                        <div class="flex-1 overflow-auto bg-slate-900/50">
+                            <table class="min-w-full text-left text-sm whitespace-nowrap">
+                                <thead class="bg-slate-800/80 sticky top-0 z-10 backdrop-blur-sm">
+                                    <tr>
+                                        <th class="px-3 py-2 text-slate-400 font-medium">ID</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium w-full">Task Name</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium text-right">%</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium text-right">Dur (h)</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium">Start</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium">Finish</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wbsTableBody" class="divide-y divide-slate-800">
+                                    <!-- Rows generated via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const progress = document.getElementById('progressContainer');
+        const errorMsg = document.getElementById('errorMessage');
+        const resultContainer = document.getElementById('resultContainer');
+        const jsonOutput = document.getElementById('jsonOutput');
+        const wbsTableBody = document.getElementById('wbsTableBody');
+
+        // Stat Elements
+        const statProjectName = document.getElementById('statProjectName');
+        const statTotalItems = document.getElementById('statTotalItems');
+        const statPhases = document.getElementById('statPhases');
+        const statUnits = document.getElementById('statUnits');
+        const statTasks = document.getElementById('statTasks');
+
+        const copyBtn = document.getElementById('copyBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let currentData = null;
+
+        const resetUI = () => {
+            progress.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            jsonOutput.innerHTML = '';
+            wbsTableBody.innerHTML = '';
+            currentData = null;
+        };
+
+        const handleFile = async (file) => {
+            if (!file) return;
+            resetUI();
+            if (!file.name.toLowerCase().endsWith('.mpp')) {
+                showError("Please upload a valid .mpp file.");
+                return;
+            }
+            progress.classList.remove('hidden');
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/parse', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (!response.ok || data.success === false) throw new Error(data.error || 'Parsing failed.');
+                showResult(data);
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                progress.classList.add('hidden');
+            }
+        };
+
+        const showResult = (data) => {
+            currentData = data;
+            resultContainer.classList.remove('hidden');
+
+            // 1. Calculate Stats
+            const tasks = data.tasks || [];
+            let phaseCount = 0;
+            let unitCount = 0;
+            let leafCount = 0;
+
+            // Heuristic for stats based on outline level or summary status
+            // Assuming Root is Level 0 or 1.
+            // Phases = Level 1 (if no root) or Level 2 (if root exists)
+            // But simplify: Summaries = Phases/Units. Leaves = Tasks.
+
+            // Refined Logic based on V13:
+            // Just count by type:
+            tasks.forEach(t => {
+                if (t.is_summary) {
+                    // It's a container.
+                    // If high level (1 or 2 depending on structure), maybe phase.
+                    // Let's just blindly count summaries as "Phases/Units" combined if simple count is hard.
+                    // Or, simple level check:
+                    if (t.outline_level <= 2) phaseCount++;
+                    else unitCount++;
+                } else {
+                    leafCount++;
+                }
+            });
+
+            statProjectName.textContent = data.project?.name || 'Project';
+            statProjectName.title = data.project?.name || '';
+            statTotalItems.textContent = tasks.length;
+            statPhases.textContent = phaseCount; // Approximation
+            statUnits.textContent = unitCount;   // Approximation
+            statTasks.textContent = leafCount;
+
+            // 2. Render JSON
+            jsonOutput.innerHTML = syntaxHighlight(data);
+
+            // 3. Render WBS Table
+            renderWbsTable(tasks);
+        };
+
+        const renderWbsTable = (tasks) => {
+            wbsTableBody.innerHTML = tasks.map(t => {
+                // Formatting
+                const level = t.outline_level || 1;
+                const indent = (level - 1) * 20; // 20px per level
+                const isSummary = t.is_summary;
+                const rowClass = isSummary ? 'bg-slate-800/30 font-semibold text-slate-200' : 'text-slate-400 hover:bg-slate-800/50';
+                const nameStyle = `padding-left: ${indent}px;`;
+
+                // Truncate dates to YYYY-MM-DD
+                const start = t.startDate ? t.startDate.split('T')[0] : '';
+                const end = t.endDate ? t.endDate.split('T')[0] : '';
+                const dur = t.projectedHours ? Math.round(t.projectedHours) : '-';
+                const pct = t.percentComplete ? Math.round(t.percentComplete) + '%' : '0%';
+
+                // Icons
+                const icon = isSummary
+                    ? `<svg class="w-4 h-4 text-indigo-400 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>`
+                    : `<svg class="w-4 h-4 text-emerald-500 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+
+                return `
+                    <tr class="${rowClass} border-b border-slate-800 transition-colors">
+                        <td class="px-3 py-2 text-xs font-mono text-slate-500">${t.id}</td>
+                        <td class="px-3 py-2">
+                            <div style="${nameStyle}" class="flex items-center">
+                                ${icon}
+                                <span class="truncate">${t.name}</span>
+                            </div>
+                        </td>
+                        <td class="px-3 py-2 text-right text-xs">${pct}</td>
+                        <td class="px-3 py-2 text-right text-xs font-mono">${dur}</td>
+                        <td class="px-3 py-2 text-xs text-slate-500">${start}</td>
+                        <td class="px-3 py-2 text-xs text-slate-500">${end}</td>
+                    </tr>
+                `;
+            }).join('');
+        };
+
+        const showError = (msg) => { errorMsg.textContent = msg; errorMsg.classList.remove('hidden'); };
+
+        function syntaxHighlight(json) {
+            if (typeof json !== 'string') json = JSON.stringify(json, undefined, 2);
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) cls = 'json-key';
+                    else cls = 'json-string';
+                } else if (/true|false/.test(match)) cls = 'json-boolean';
+                else if (/null/.test(match)) cls = 'json-null';
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        // Event Listeners (Same as before)
+        dropzone.addEventListener('click', () => fileInput.click());
+        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-indigo-500', 'bg-slate-700/50'); });
+        dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('border-indigo-500', 'bg-slate-700/50'); });
+        dropzone.addEventListener('drop', (e) => { e.preventDefault(); dropzone.classList.remove('border-indigo-500', 'bg-slate-700/50'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+        fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+        copyBtn.addEventListener('click', () => {
+            if (!currentData) return;
+            navigator.clipboard.writeText(JSON.stringify(currentData, null, 2));
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            if (!currentData) return;
+            const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `parsed_project.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+
+</html>

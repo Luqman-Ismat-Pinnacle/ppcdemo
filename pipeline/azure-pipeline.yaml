@@ -1,0 +1,63 @@
+---
+name: ppc
+
+# Variables - Change these values to customize for different applications
+variables:
+  appName: 'ppc'  # Base application name
+  imageName: 'ppc'  # Docker image name (no hyphens)
+  resourceGroup: 'rg-syncrud-pdf-inspection'  # Azure resource group
+  acrName: 'vantageacreastus2'  # Azure Container Registry name
+  acrServiceConnection: 'vantageacreastus2-Services'  # ACR service connection
+  azureSubscription: 'PinnacleTech DevTest-Services'  # Azure subscription
+
+trigger:
+  branches:
+    include:
+      - main
+
+stages:
+  - stage: Build
+    jobs:
+    - job: Build
+      displayName: 'Build'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - checkout: self
+
+      - task: Docker@2
+        displayName: 'Docker Login'
+        inputs:
+          containerRegistry: $(acrServiceConnection)
+          command: login
+
+      - task: AzureCLI@2
+        displayName: 'Docker Build and Push to ACR'
+        inputs:
+          azureSubscription: $(azureSubscription)
+          scriptType: pscore
+          scriptLocation: inlineScript
+          inlineScript: 'az acr build -t $(imageName):$(Build.BuildId) -r $(acrName) -f $(build.SourcesDirectory)/Dockerfile $(build.SourcesDirectory)/'
+
+  - stage: Deploy
+    dependsOn: Build
+    jobs:
+    - job: Deploy
+      displayName: 'Deploy to Azure Container App'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - task: AzureCLI@2
+          displayName: 'Deploy Container App'
+          inputs:
+            azureSubscription: $(azureSubscription)
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              echo "Updating Container App $(appName)1 with image $(acrName).azurecr.io/$(imageName):$(Build.BuildId)"
+
+              # Update existing container app to use the new image
+              az containerapp update \
+                -n $(appName)1 \
+                -g $(resourceGroup) \
+                --image $(acrName).azurecr.io/$(imageName):$(Build.BuildId)
