@@ -380,7 +380,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       percentComplete: task.percentComplete || 0,
       baselineHours: task.baselineHours || 0,
       actualHours: task.actualHours || 0,
-      projectedHours: task.projectedHours || 0,
+      projectedHours: task.projectedHours || 0, // Will be added by migration
       remainingHours: task.remainingHours || 0,
       isCritical: task.isCritical || false,
       totalSlack: task.totalSlack || 0,
@@ -401,6 +401,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           sequence: phases.length + 1,
           employeeId: task.assignedResource ? null : null, // phases has employee_id, not assigned_resource
           comments: task.comments || '', // phases will have comments after migration
+          isCritical: task.isCritical || false, // phases will have is_critical after migration
         });
         break;
       
@@ -412,6 +413,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           phaseId: task.parent_id || '', // Link to parent phase
           employeeId: null,
           active: true,
+          endDate: task.endDate || null, // units will have end_date after migration
         });
         break;
       
