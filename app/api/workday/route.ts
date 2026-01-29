@@ -31,7 +31,36 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const syncType = body.syncType as SyncType | 'unified';
+    const action = body.action;
     const records = body.records || [];
+
+    // Handle get-available-projects action
+    if (action === 'get-available-projects') {
+      try {
+        const result = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
+        
+        // Transform portfolios to workday_projects format
+        const workdayProjects = result.portfolios?.map((portfolio: any) => ({
+          id: portfolio.id,
+          name: portfolio.name,
+          type: 'portfolio',
+          customer: portfolio.customer_name,
+          site: portfolio.site_name
+        })) || [];
+        
+        return NextResponse.json({
+          success: result.success,
+          workday_projects: workdayProjects,
+          summary: result.summary,
+          error: result.error
+        });
+      } catch (error: any) {
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: 500 }
+        );
+      }
+    }
 
     // Unified Sync Logic: Call all Workday Edge Functions sequentially
     if (syncType === 'unified') {

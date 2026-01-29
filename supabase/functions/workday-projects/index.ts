@@ -142,6 +142,9 @@ serve(async (req) => {
         return new Response(
             JSON.stringify({
                 success: true,
+                portfolios: Array.from(portfoliosToUpsert.values()),
+                customers: Array.from(customersToUpsert.values()),
+                sites: Array.from(sitesToUpsert.values()),
                 summary: {
                     portfolios: portfoliosToUpsert.size,
                     customers: customersToUpsert.size,
