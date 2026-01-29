@@ -12,6 +12,8 @@ const EDGE_FUNCTIONS = {
   'projects': 'workday-projects',
   'hours': 'workday-hours',
   'ledger': 'workday-ledger',
+  'ledger-stream': 'workday-ledger-stream',
+  'ledger-chunked': 'workday-ledger-chunked',
   'sync': 'workday-sync'
 } as const;
 
@@ -112,16 +114,16 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
       }
 
-      // 4. Ledger Cost Actuals (Quarterly Dataset - Now Enabled)
-      logs.push('--- Step 4: Syncing Quarterly Ledger Cost Actuals ---');
-      const ledgerRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-ledger', {});
+      // 4. Ledger Cost Actuals (Stream Processing - Memory Safe)
+      logs.push('--- Step 4: Syncing Quarterly Ledger with Stream Processing ---');
+      const ledgerRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-ledger-stream', {});
       results.push({ step: 'ledger', result: ledgerRes });
       logs.push(...(ledgerRes.logs || []));
       if (!ledgerRes.success) {
         success = false;
         logs.push(`Error in ledger sync: ${ledgerRes.error}`);
       } else {
-        logs.push(`Synced ${ledgerRes.summary?.processed || 0} ledger entries.`);
+        logs.push(`Synced ${ledgerRes.stats?.processed || 0} ledger entries using stream processing.`);
       }
       
       return NextResponse.json({
