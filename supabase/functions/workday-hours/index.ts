@@ -209,11 +209,13 @@ serve(async (req) => {
                     entry_id: workdayId,
                     employee_id: employeeId,
                     project_id: projectId,
-                    phase_id: phaseId,
-                    task_id: finalTaskId,
+                    // Note: phase_id and task_id omitted - they come from MPP upload, not Workday
                     date: dateVal,
                     hours: hoursVal,
                     description: description.substring(0, 500), // Truncate if too long
+                    // Store Workday phase/task names for reference
+                    workday_phase: rawPhaseName,
+                    workday_task: rawTaskName,
                     // Enhanced cost fields
                     billable_rate: billableRate,
                     billable_amount: billableAmount,
@@ -248,9 +250,19 @@ serve(async (req) => {
         // 6. Execute Upserts (Order matters for FKs)
         // First, ensure the cost columns exist (run migration if needed)
         try {
-            console.log('[workday-hours] Ensuring cost columns exist...');
+            console.log('[workday-hours] Ensuring columns exist...');
             await supabase.rpc('exec_sql', { 
-                sql: 'ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_rate NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_amount NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS standard_cost_rate NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_revenue NUMERIC(10, 2); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS customer_billing_status VARCHAR(50); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_status VARCHAR(50); ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_type VARCHAR(10);'
+                sql: `ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_rate NUMERIC(10, 2); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_amount NUMERIC(10, 2); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS standard_cost_rate NUMERIC(10, 2); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(10, 2); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_revenue NUMERIC(10, 2); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS customer_billing_status VARCHAR(50); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_status VARCHAR(50); 
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_type VARCHAR(10);
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS workday_phase VARCHAR(255);
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS workday_task VARCHAR(255);`
             });
         } catch (migrationError: any) {
             console.log('[workday-hours] Migration note:', migrationError.message);

@@ -410,22 +410,29 @@ export default function DocumentsPage() {
       
       addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
-      // Update the existing project: has_schedule = true (customer/site already set from Workday sync)
+      // Update the existing project: has_schedule = true (uses service role key via API)
       addLog('info', '[Supabase] Enabling schedule visibility for project...');
-      if (supabase) {
-        const { error: updateError } = await supabase
-          .from('projects')
-          .update({
-            has_schedule: true,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingProjectId);
-        
-        if (updateError) {
-          addLog('warning', `[Supabase] Project update: ${updateError.message}`);
+      try {
+        const projectUpdateResponse = await fetch('/api/data/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataKey: 'projects',
+            records: [{
+              id: existingProjectId,
+              has_schedule: true,
+              updated_at: new Date().toISOString()
+            }]
+          }),
+        });
+        const projectUpdateResult = await projectUpdateResponse.json();
+        if (!projectUpdateResponse.ok || !projectUpdateResult.success) {
+          addLog('warning', `[Supabase] Project update: ${projectUpdateResult.error || 'Failed'}`);
         } else {
           addLog('success', `[Supabase] Project updated: has_schedule=true`);
         }
+      } catch (updateErr: any) {
+        addLog('warning', `[Supabase] Project update error: ${updateErr.message}`);
       }
 
       // Update all phases, units, and tasks with the existing project ID
