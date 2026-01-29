@@ -209,8 +209,6 @@ serve(async (req) => {
                     entry_id: workdayId,
                     employee_id: employeeId,
                     project_id: projectId,
-                    phase_id: phaseId,
-                    task_id: finalTaskId,
                     date: dateVal,
                     hours: hoursVal,
                     description: description.substring(0, 500), // Truncate if too long
@@ -267,10 +265,7 @@ serve(async (req) => {
             // Continue even if migration fails - columns might already exist
         }
 
-        await upsertBatch('projects', Array.from(projectsToUpsert.values()));
         await upsertBatch('employees', Array.from(employeesToUpsert.values()));
-        await upsertBatch('phases', Array.from(phasesToUpsert.values()));
-        await upsertBatch('tasks', Array.from(tasksToUpsert.values()));
         await upsertBatch('hour_entries', Array.from(hoursToUpsert.values()));
 
         // 7. Finish
