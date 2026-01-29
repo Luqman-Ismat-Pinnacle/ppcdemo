@@ -368,38 +368,29 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
   };
 
-  // Create mapping from old IDs to new IDs for parent_id resolution
-  const idMapping: Record<string, string> = {};
-
   // Process each task and categorize by outline_level
   data.tasks.forEach((task: any, index: number) => {
     const outlineLevel = task.outline_level || 0;
     const levelType = getLevelType(outlineLevel);
     
-    // Generate appropriate ID based on type - always generate new IDs to fix MPP parser issue
+    // Generate appropriate ID based on type
     let id: string;
-    switch (levelType) {
-      case 'phase':
-        id = `PHS-${(phases.length + 1).toString().padStart(4, '0')}`;
-        console.log(`[CONVERTER] Generated phase ID: ${id} (phases count: ${phases.length})`);
-        break;
-      case 'unit':
-        id = `UNT-${(units.length + 1).toString().padStart(4, '0')}`;
-        console.log(`[CONVERTER] Generated unit ID: ${id} (units count: ${units.length})`);
-        break;
-      case 'task':
-        id = `TSK-${(tasks.length + 1).toString().padStart(4, '0')}`;
-        console.log(`[CONVERTER] Generated task ID: ${id} (tasks count: ${tasks.length})`);
-        break;
-      default:
-        id = `TSK-${(index + 1).toString().padStart(4, '0')}`;
-        console.log(`[CONVERTER] Generated default task ID: ${id}`);
-    }
-    
-    // Create mapping from old ID to new ID for parent_id resolution
     if (task.id) {
-      idMapping[task.id] = id;
-      console.log(`[CONVERTER] ID mapping: ${task.id} -> ${id}`);
+      id = task.id;
+    } else {
+      switch (levelType) {
+        case 'phase':
+          id = `PHS-${(phases.length + 1).toString().padStart(4, '0')}`;
+          break;
+        case 'unit':
+          id = `UNT-${(units.length + 1).toString().padStart(4, '0')}`;
+          break;
+        case 'task':
+          id = `TSK-${(tasks.length + 1).toString().padStart(4, '0')}`;
+          break;
+        default:
+          id = `TSK-${(index + 1).toString().padStart(4, '0')}`;
+      }
     }
     
     const baseTask = {
@@ -415,7 +406,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       isCritical: task.isCritical || false,
       totalSlack: Math.round(task.totalSlack || 0), // Convert float to integer for database
       comments: task.comments || '',
-      parent_id: task.parent_id ? (idMapping[task.parent_id] || task.parent_id) : null,
+      parent_id: task.parent_id || null,
       is_summary: task.is_summary || false,
       projectId: projectIdOverride || '',
       createdAt: now,
