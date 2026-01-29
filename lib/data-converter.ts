@@ -383,7 +383,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       projectedHours: task.projectedHours || 0, // Will be added by migration
       remainingHours: task.remainingHours || 0,
       isCritical: task.isCritical || false,
-      totalSlack: task.totalSlack || 0,
+      totalSlack: Math.round(task.totalSlack || 0), // Convert float to integer for database
       comments: task.comments || '',
       parent_id: task.parent_id || null,
       is_summary: task.is_summary || false,
