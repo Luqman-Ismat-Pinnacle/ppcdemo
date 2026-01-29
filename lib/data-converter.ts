@@ -426,7 +426,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           taskName: baseTask.name,
           taskDescription: baseTask.comments || '', // tasks will have task_description after migration
           isSubTask: outlineLevel > 3,
-          parentTaskId: task.parent_id || null,
+          parentTaskId: null, // Don't set parentTaskId yet - will be resolved properly later to avoid foreign key violations
           // We'll resolve these after all items are processed
           phaseId: '',
           unitId: '',
@@ -445,6 +445,16 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   tasks.forEach((task: any) => {
     task.phaseId = findParentPhaseId(task.parent_id, phases, units);
     task.unitId = findParentUnitId(task.parent_id, units);
+    
+    // Only set parentTaskId if the parent_id actually references another task
+    if (task.parent_id) {
+      const parentTask = tasks.find(t => t.id === task.parent_id);
+      if (parentTask) {
+        task.parentTaskId = task.parent_id;
+      } else {
+        task.parentTaskId = null; // Parent is not a task, don't set foreign key
+      }
+    }
   });
 
   result.phases = phases;
