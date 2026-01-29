@@ -1166,11 +1166,24 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           };
 
           // Add Tasks under Unit
-          const unitTasks = (maps.tasksByPhase.get(phaseId) || []).filter((t: any) => 
-            (t.unitId === unitId || t.unit_id === unitId)
-          );
-          console.log(`[DEBUG WBS] Unit ${unitId} has ${unitTasks.length} tasks (filtered by unitId: ${unitId})`);
-          console.log(`[DEBUG WBS] Available tasks for phase ${phaseId}:`, (maps.tasksByPhase.get(phaseId) || []).map(t => ({ id: t.id, unitId: t.unitId, unit_id: t.unit_id })));
+          const allPhaseTasks = maps.tasksByPhase.get(phaseId) || [];
+          console.log(`[DEBUG WBS] Unit ${unitId} (type: ${typeof unitId}) looking for tasks...`);
+          console.log(`[DEBUG WBS] Available tasks for phase ${phaseId}:`, allPhaseTasks.map(t => ({ 
+            id: t.id, 
+            unitId: t.unitId, 
+            unit_id: t.unit_id,
+            unitIdType: typeof t.unitId,
+            unit_idType: typeof t.unit_id,
+            matches: (t.unitId === unitId) || (t.unit_id === unitId)
+          })));
+          
+          const unitTasks = allPhaseTasks.filter((t: any) => {
+            const matches = (t.unitId === unitId) || (t.unit_id === unitId);
+            console.log(`[DEBUG WBS] Task ${t.id}: unitId=${t.unitId} (=== ${unitId}? ${t.unitId === unitId}), unit_id=${t.unit_id} (=== ${unitId}? ${t.unit_id === unitId})`);
+            return matches;
+          });
+          
+          console.log(`[DEBUG WBS] Unit ${unitId} has ${unitTasks.length} tasks after filtering`);
           
           unitTasks.forEach((task: any, tIdx: number) => {
             const taskId = task.id || task.taskId;
