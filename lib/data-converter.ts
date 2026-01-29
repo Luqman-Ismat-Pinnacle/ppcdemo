@@ -451,7 +451,12 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       if (parentPhase) {
         unit.phaseId = parentPhase.id;
         unit.phase_id = parentPhase.id; // Also set snake_case for WBS builder compatibility
+        console.log(`[DEBUG] Unit ${unit.id} linked to phase ${parentPhase.id}`);
+      } else {
+        console.log(`[DEBUG] Unit ${unit.id} parent_id ${unit.parent_id} not found in phases`);
       }
+    } else {
+      console.log(`[DEBUG] Unit ${unit.id} has no parent_id`);
     }
   });
 
@@ -487,6 +492,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   result.phases = phases;
   result.units = units;
   result.tasks = tasks;
+
+  // Debug: Log what we created
+  console.log(`[DEBUG] Created ${phases.length} phases:`, phases.map(p => ({ id: p.id, name: p.name })));
+  console.log(`[DEBUG] Created ${units.length} units:`, units.map(u => ({ id: u.id, name: u.name, parent_id: u.parent_id, phaseId: u.phaseId, phase_id: u.phase_id })));
+  console.log(`[DEBUG] Created ${tasks.length} tasks:`, tasks.slice(0, 3).map(t => ({ id: t.id, name: t.name, parent_id: t.parent_id, phaseId: t.phaseId, unitId: t.unitId })));
 
   return result;
 }
