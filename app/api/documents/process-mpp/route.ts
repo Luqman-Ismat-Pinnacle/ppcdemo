@@ -26,9 +26,16 @@ export async function POST(req: NextRequest) {
     
     const documentId = formData.get('documentId') as string;
     const projectId = formData.get('projectId') as string;
+    const portfolioId = formData.get('portfolioId') as string;
+    const customerId = formData.get('customerId') as string;
+    const siteId = formData.get('siteId') as string;
     
     if (!documentId || !projectId) {
       return NextResponse.json({ success: false, error: 'Missing documentId or projectId' }, { status: 400 });
+    }
+
+    if (!portfolioId || !customerId || !siteId) {
+      return NextResponse.json({ success: false, error: 'Missing portfolioId, customerId, or siteId' }, { status: 400 });
     }
 
     // 1. Get the document metadata from Supabase to find the path
@@ -81,10 +88,37 @@ export async function POST(req: NextRequest) {
     
     console.log('MPP Parsed successfully, converting...');
     
-    // 4. Convert Data to Schema Format
-    // We pass projectId to link everything correctly
-    // The converter handles linking based on the structure we updated
+    // 4. Convert Data to Schema Format with hierarchy context
+    // We pass projectId and hierarchy IDs to link everything correctly
     const convertedData = convertProjectPlanJSON(mppData, projectId);
+    
+    // Apply hierarchy context to all imported items
+    if (convertedData.phases) {
+      convertedData.phases.forEach((phase: any) => {
+        phase.projectId = projectId;
+        phase.portfolioId = portfolioId;
+        phase.customerId = customerId;
+        phase.siteId = siteId;
+      });
+    }
+    
+    if (convertedData.units) {
+      convertedData.units.forEach((unit: any) => {
+        unit.projectId = projectId;
+        unit.portfolioId = portfolioId;
+        unit.customerId = customerId;
+        unit.siteId = siteId;
+      });
+    }
+    
+    if (convertedData.tasks) {
+      convertedData.tasks.forEach((task: any) => {
+        task.projectId = projectId;
+        task.portfolioId = portfolioId;
+        task.customerId = customerId;
+        task.siteId = siteId;
+      });
+    }
     
     // 5. Save using Data Sync API (reusing logic)
     // We can call the sync logic directly or via internal API

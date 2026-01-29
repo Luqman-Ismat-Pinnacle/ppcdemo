@@ -2888,12 +2888,26 @@ export default function DataManagementPage() {
                         alert('Project ID required. Please set the project for this document first.');
                         return;
                       }
+                      
+                      // Show hierarchy selection modal
+                      const portfolioId = prompt('Select Portfolio ID:');
+                      if (!portfolioId) return;
+                      
+                      const customerId = prompt('Select Customer ID:');
+                      if (!customerId) return;
+                      
+                      const siteId = prompt('Select Site ID:');
+                      if (!siteId) return;
+                      
                       setProcessingMPP(doc.id);
                       addToImportLog({ type: 'info', entity: 'MPP', action: 'process', message: `Processing MPP file: ${doc.fileName || doc.file_name || doc.name}...` });
                       try {
                         const formData = new FormData();
                         formData.append('documentId', doc.id);
                         formData.append('projectId', doc.projectId);
+                        formData.append('portfolioId', portfolioId);
+                        formData.append('customerId', customerId);
+                        formData.append('siteId', siteId);
 
                         const response = await fetch('/api/documents/process-mpp', {
                           method: 'POST',

@@ -342,6 +342,143 @@ export function convertWorkdayTasks(csvData: string[][]): Partial<SampleData> {
 }
 
 /**
+ * Convert MPP Parser output (flat tasks with outline_level) to structured hierarchy
+ * @param data Raw JSON data from MPP parser with flat tasks array
+ * @param projectIdOverride Optional ID of the existing project to import into
+ */
+export function convertMppParserOutput(data: Record<string, unknown>, projectIdOverride?: string): Partial<SampleData> {
+  const result: Partial<SampleData> = {};
+  const now = new Date().toISOString();
+
+  if (!Array.isArray(data.tasks)) {
+    return result;
+  }
+
+  // Group tasks by outline_level to create proper hierarchy
+  const phases: any[] = [];
+  const units: any[] = [];
+  const tasks: any[] = [];
+
+  // Helper to get WBS level type based on outline_level
+  const getLevelType = (outlineLevel: number): 'phase' | 'unit' | 'task' => {
+    switch (outlineLevel) {
+      case 1: return 'phase';
+      case 2: return 'unit';
+      default: return 'task'; // levels 3+ are tasks
+    }
+  };
+
+  // Process each task and categorize by outline_level
+  data.tasks.forEach((task: any, index: number) => {
+    const outlineLevel = task.outline_level || 0;
+    const levelType = getLevelType(outlineLevel);
+    const baseTask = {
+      id: task.id || `TASK-${(index + 1).toString().padStart(4, '0')}`,
+      name: task.name || '',
+      startDate: task.startDate || null,
+      endDate: task.endDate || null,
+      percentComplete: task.percentComplete || 0,
+      baselineHours: task.baselineHours || 0,
+      actualHours: task.actualHours || 0,
+      projectedHours: task.projectedHours || 0,
+      remainingHours: task.remainingHours || 0,
+      assignedResource: task.assignedResource || '',
+      isCritical: task.isCritical || false,
+      totalSlack: task.totalSlack || 0,
+      comments: task.comments || '',
+      parent_id: task.parent_id || null,
+      is_summary: task.is_summary || false,
+      projectId: projectIdOverride || '',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    switch (levelType) {
+      case 'phase':
+        phases.push({
+          ...baseTask,
+          phaseId: baseTask.id,
+          methodology: '',
+          sequence: phases.length + 1,
+        });
+        break;
+      
+      case 'unit':
+        units.push({
+          ...baseTask,
+          unitId: baseTask.id,
+          description: '',
+          phaseId: task.parent_id || '', // Link to parent phase
+          employeeId: null,
+          active: true,
+        });
+        break;
+      
+      case 'task':
+        tasks.push({
+          ...baseTask,
+          taskId: baseTask.id,
+          taskName: baseTask.name,
+          taskDescription: baseTask.comments || '',
+          isSubTask: outlineLevel > 3,
+          parentTaskId: task.parent_id || null,
+          // We'll resolve these after all items are processed
+          phaseId: '',
+          unitId: '',
+          customerId: '',
+          siteId: '',
+          subProjectId: '',
+          resourceId: '',
+          employeeId: '',
+          assignedResourceType: 'specific' as const,
+          status: outlineLevel > 1 && task.is_summary ? 'In Progress' : 'Not Started',
+          priority: 'medium' as const,
+          predecessorId: null,
+          predecessorRelationship: null,
+        });
+        break;
+    }
+  });
+
+  // Now resolve parent-child relationships for tasks
+  tasks.forEach((task: any) => {
+    task.phaseId = findParentPhaseId(task.parent_id, phases, units);
+    task.unitId = findParentUnitId(task.parent_id, units);
+  });
+
+  result.phases = phases;
+  result.units = units;
+  result.tasks = tasks;
+
+  return result;
+}
+
+/**
+ * Helper to find parent phase ID from parent_id
+ */
+function findParentPhaseId(parentId: string | null, phases: any[], units: any[]): string {
+  if (!parentId) return '';
+  
+  // Check if parent is a phase
+  const phase = phases.find(p => p.id === parentId);
+  if (phase) return phase.id;
+  
+  // Check if parent is a unit, then find its phase
+  const unit = units.find(u => u.id === parentId);
+  return unit?.phaseId || '';
+}
+
+/**
+ * Helper to find parent unit ID from parent_id
+ */
+function findParentUnitId(parentId: string | null, units: any[]): string {
+  if (!parentId) return '';
+  
+  const unit = units.find(u => u.id === parentId);
+  return unit?.id || '';
+}
+
+/**
  * Convert project plan JSON to SampleData format
  * @param data Raw JSON data from MPP parser
  * @param projectIdOverride Optional ID of the existing project to import into. If provided, all phases/tasks will be linked to this project.
@@ -354,6 +491,11 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
   // Detect Workday "Find Projects" Report format
   if (Array.isArray(data.Report_Entry)) {
     return convertWorkdayProjectReport(data.Report_Entry);
+  }
+
+  // Handle MPP Parser format (flat tasks array with outline_level)
+  if (Array.isArray(data.tasks) && data.tasks.length > 0 && data.tasks[0]?.outline_level !== undefined) {
+    return convertMppParserOutput(data, projectIdOverride);
   }
 
   // Handle portfolios
