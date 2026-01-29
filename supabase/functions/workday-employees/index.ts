@@ -197,8 +197,8 @@ serve(async (req) => {
     let totalSynced = 0;
     const dbErrors: string[] = [];
 
-    // Track Senior Managers for Portfolio creation
-    const portfoliosToUpsert: any[] = [];
+    // NOTE: Portfolio creation removed to avoid duplicates
+    // Portfolios are now created only by workday-projects function
 
     for (let i = 0; i < cleanedRecords.length; i += BATCH_SIZE) {
       const batch = cleanedRecords.slice(i, i + BATCH_SIZE);
@@ -214,52 +214,7 @@ serve(async (req) => {
         dbErrors.push(error.message);
       } else {
         totalSynced += data?.length || 0;
-
-        // Identify Senior Managers in this batch and prepare Portfolios
-        (data || []).forEach((emp: any) => {
-          const title = (emp.job_title || '').toLowerCase();
-          const level = (emp.management_level || '').toLowerCase();
-
-          // Check for "Senior Manager" in title or level
-          // Adjust criteria as needed based on actual data
-          // Added 'sr. manager' and 'director' for broader coverage if needed
-          if (
-            title.includes('senior manager') ||
-            title.includes('sr. manager') ||
-            level.includes('senior manager') ||
-            level.includes('sr. manager')
-          ) {
-            const portfolioId = `PRF_${emp.id}`;
-            console.log(`[workday-employees] Creating/Syncing Portfolio for Senior Manager: ${emp.name} (${portfolioId})`);
-
-            portfoliosToUpsert.push({
-              // Use a deterministic ID for the portfolio so we don't duplicate on re-runs
-              id: portfolioId, // Use standard PRF_ prefix
-              portfolio_id: portfolioId, // Sync portfolio_id too
-              name: `${emp.name}'s Portfolio`, // Default name "Name's Portfolio"
-              employee_id: emp.id,
-              manager: emp.name, // Map to manager
-              description: `Portfolio for ${emp.name} (${emp.job_title})`,
-              is_active: true,
-              updated_at: new Date().toISOString()
-            });
-          }
-        });
-      }
-    }
-
-    // Upsert Portfolios
-    if (portfoliosToUpsert.length > 0) {
-      console.log(`[workday-employees] Creating/Updating ${portfoliosToUpsert.length} Portfolios for Senior Managers...`);
-      const { error: portfolioError } = await supabase
-        .from('portfolios')
-        .upsert(portfoliosToUpsert, { onConflict: 'id' });
-
-      if (portfolioError) {
-        console.error('[workday-employees] Portfolio creation error:', portfolioError.message);
-        dbErrors.push(`Portfolio Error: ${portfolioError.message}`);
-      } else {
-        console.log('[workday-employees] Portfolios synced successfully.');
+        // Portfolio creation logic removed - portfolios handled by workday-projects function
       }
     }
 
@@ -278,7 +233,7 @@ serve(async (req) => {
         logs: [
           `Fetched ${records.length} records.`,
           `Mapped ${cleanedRecords.length} valid employees.`,
-          `Identified ${portfoliosToUpsert.length} Senior Managers for Portfolio creation.`,
+          `Portfolio creation disabled - handled by workday-projects function.`,
           ...dbErrors
         ],
         dbErrors: dbErrors.length > 0 ? dbErrors : undefined,
