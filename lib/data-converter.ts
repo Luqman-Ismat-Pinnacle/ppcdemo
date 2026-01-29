@@ -411,11 +411,12 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           ...baseTask,
           unitId: baseTask.id,
           description: '',
-          phaseId: task.parent_id || '', // Link to parent phase
+          phaseId: '', // Will be resolved properly later
           employeeId: null,
           active: true,
           endDate: task.endDate || null, // units will have end_date after migration
           isCritical: task.isCritical || false, // units will have is_critical after migration
+          parent_id: task.parent_id || null, // Store parent_id for resolution
         });
         break;
       
@@ -441,7 +442,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
   });
 
-  // Now resolve parent-child relationships for tasks
+  // Now resolve parent-child relationships for units and tasks
+  units.forEach((unit: any) => {
+    unit.phaseId = findParentPhaseId(unit.parent_id, phases, units);
+  });
+
   tasks.forEach((task: any) => {
     task.phaseId = findParentPhaseId(task.parent_id, phases, units);
     task.unitId = findParentUnitId(task.parent_id, units);
