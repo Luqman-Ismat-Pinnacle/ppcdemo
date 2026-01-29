@@ -484,10 +484,36 @@ export default function DocumentsPage() {
         }
       }
 
-      // Update all phases and tasks with the existing project ID
+      // Update the existing project to set has_schedule = true
+      addLog('info', '[Supabase] Updating project has_schedule = true...');
+      const updateProjectResponse = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataKey: 'projects',
+          records: [{
+            id: existingProjectId,
+            has_schedule: true,
+            updatedAt: new Date().toISOString(),
+          }]
+        }),
+      });
+      const updateProjectResult = await updateProjectResponse.json();
+      if (!updateProjectResponse.ok || !updateProjectResult.success) {
+        addLog('warning', `[Supabase] Project update: ${updateProjectResult.error || 'Failed'}`);
+      } else {
+        addLog('success', `[Supabase] Project has_schedule set to true`);
+      }
+
+      // Update all phases, units, and tasks with the existing project ID
       if (convertedData.phases) {
         convertedData.phases.forEach((phase: any) => {
           phase.project_id = existingProjectId;
+        });
+      }
+      if (convertedData.units) {
+        convertedData.units.forEach((unit: any) => {
+          unit.project_id = existingProjectId;
         });
       }
       if (convertedData.tasks) {

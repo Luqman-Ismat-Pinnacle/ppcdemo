@@ -124,31 +124,93 @@ serve(async (req) => {
             }
         }
 
-        // --- STEP 2: PROCESSING INTEGRATION METADATA (Skipped - Only Portfolios, Customers, Sites) ---
-        // Integration metadata processing removed as requested
-        // Only syncing top-level entities from Master Data.
+        // --- STEP 2: PROCESS PROJECTS FROM MASTER DATA ---
+        const projectsToUpsert = new Map();
+        const workdayTasksToUpsert = new Map();
 
-        // --- STEP 3: HIERARCHY (Skipped - Sync Only Portfolios, Customers, Sites) ---
-        // const hierarchyRecords = dataHier.Report_Entry || [];
-        // Loop removed as requested. Only syncing top-level entities from Master Data.
+        for (const r of masterRecords) {
+            const projectId = r.projectReferenceID || r.Project_ID || r.Project;
+            const projectName = r.Project || r.projectName;
+            const custName = r.CF_Customer_Site_Ref_ID || r.Customer;
+            const siteName = r.CF_Project_Site_Ref_ID || r.Site;
+            
+            if (projectId && projectName) {
+                const custId = custName ? generateId('CST', custName) : null;
+                const siteId = siteName ? generateId('STE', siteName) : null;
+                
+                if (!projectsToUpsert.has(projectId)) {
+                    projectsToUpsert.set(projectId, {
+                        id: projectId,
+                        project_id: projectId,
+                        name: projectName,
+                        customer_id: custId,
+                        site_id: siteId,
+                        has_schedule: false, // Will be set to true when MPP is uploaded
+                        is_active: true,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    });
+                }
+            }
+        }
+
+        // --- STEP 3: FETCH INTEGRATION DATA FOR TASKS ---
+        console.log('[workday-projects] Fetching Integration Report for tasks...');
+        try {
+            const resIntegration = await fetch(URL_INTEGRATION, fetchConfig);
+            if (resIntegration.ok) {
+                const dataIntegration = await resIntegration.json();
+                const integrationRecords = dataIntegration.Report_Entry || [];
+                
+                for (const r of integrationRecords) {
+                    const taskId = r.Task_ID || r.taskReferenceID;
+                    const projectId = r.projectReferenceID || r.Project_ID;
+                    
+                    if (taskId && projectId) {
+                        if (!workdayTasksToUpsert.has(taskId)) {
+                            workdayTasksToUpsert.set(taskId, {
+                                id: taskId,
+                                project_id: projectId,
+                                task_name: r.Task || r.taskName || '',
+                                task_number: r.Task_Number || '',
+                                start_date: r.Start_Date || null,
+                                end_date: r.End_Date || null,
+                                budgeted_hours: parseFloat(r.Budgeted_Hours) || 0,
+                                actual_hours: parseFloat(r.Actual_Hours) || 0,
+                                actual_cost: parseFloat(r.Actual_Cost) || 0,
+                                status: r.Status || 'Active',
+                                assigned_resource: r.Assigned_Resource || '',
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString(),
+                                deleted: false
+                            });
+                        }
+                    }
+                }
+                console.log(`[workday-projects] Found ${workdayTasksToUpsert.size} Workday tasks`);
+            }
+        } catch (taskError: any) {
+            console.log('[workday-projects] Could not fetch tasks (non-critical):', taskError.message);
+        }
 
         // --- STEP 4: BATCH UPSERTS ---
-        // Order: Portfolios -> Customers -> Sites
-        console.log('[workday-projects] Upserting Hierarchies (Portfolios, Customers, Sites)...');
+        // Order: Portfolios -> Customers -> Sites -> Projects -> Workday Tasks
+        console.log('[workday-projects] Upserting Hierarchies...');
         if (portfoliosToUpsert.size > 0) await upsertBatch('portfolios', Array.from(portfoliosToUpsert.values()));
         if (customersToUpsert.size > 0) await upsertBatch('customers', Array.from(customersToUpsert.values()));
         if (sitesToUpsert.size > 0) await upsertBatch('sites', Array.from(sitesToUpsert.values()));
+        if (projectsToUpsert.size > 0) await upsertBatch('projects', Array.from(projectsToUpsert.values()));
+        if (workdayTasksToUpsert.size > 0) await upsertBatch('workday_tasks', Array.from(workdayTasksToUpsert.values()));
 
         return new Response(
             JSON.stringify({
                 success: true,
-                portfolios: Array.from(portfoliosToUpsert.values()),
-                customers: Array.from(customersToUpsert.values()),
-                sites: Array.from(sitesToUpsert.values()),
                 summary: {
                     portfolios: portfoliosToUpsert.size,
                     customers: customersToUpsert.size,
-                    sites: sitesToUpsert.size
+                    sites: sitesToUpsert.size,
+                    projects: projectsToUpsert.size,
+                    workdayTasks: workdayTasksToUpsert.size
                 }
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
