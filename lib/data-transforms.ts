@@ -1150,6 +1150,15 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           // Find tasks that have this unit as parent - use parent_id directly like the converter does
           const unitTasks = (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId);
           
+          // Minimal debug - just show counts
+          console.log(`[WBS] Unit ${unitId}: ${unitTasks.length} tasks found`);
+          console.log(`[WBS] Total tasks available: ${(data.tasks || []).length}`);
+          
+          // Show sample task data
+          if (data.tasks && data.tasks.length > 0) {
+            console.log(`[WBS] Sample task parent_ids:`, data.tasks.slice(0, 3).map((t: any) => ({ id: t.id, parent_id: (t as any).parent_id })));
+          }
+          
           // Initialize rollup variables for this unit
           let unitRollupBaselineHrs = 0;
           let unitRollupActualHrs = 0;
