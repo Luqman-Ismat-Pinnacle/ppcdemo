@@ -114,22 +114,16 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
       }
 
-      // 4. Ledger Cost Actuals (Stream Processing - Memory Safe)
-      logs.push('--- Step 4: Syncing Quarterly Ledger with Stream Processing ---');
-      const ledgerRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-ledger-stream', {});
-      results.push({ step: 'ledger', result: ledgerRes });
-      logs.push(...(ledgerRes.logs || []));
-      if (!ledgerRes.success) {
-        success = false;
-        logs.push(`Error in ledger sync: ${ledgerRes.error}`);
-      } else {
-        logs.push(`Synced ${ledgerRes.stats?.processed || 0} ledger entries using stream processing.`);
-      }
+      // 4. Ledger Cost Actuals (DISABLED - Memory Limit Issues)
+      logs.push('--- Step 4: Skipping Ledger Sync (Memory Limit Issues) ---');
+      logs.push('Ledger sync disabled due to worker memory limits.');
+      logs.push('Hours sync includes cost data for WBS Gantt integration.');
+      logs.push('Use individual ledger functions if needed: workday-ledger-stream or workday-ledger-chunked');
       
       return NextResponse.json({
         success,
         syncType: 'unified',
-        summary: { totalSteps: 4, results },
+        summary: { totalSteps: 3, results },
         logs
       });
     }
