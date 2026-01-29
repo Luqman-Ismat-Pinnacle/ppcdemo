@@ -19,12 +19,37 @@ serve(async (req) => {
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 1. Get all MPP projects (these are projects uploaded from MPP files)
-        console.log('[wbs-gantt-mpp] Fetching MPP projects...');
-        const { data: mppProjects, error: mppError } = await supabase
-            .from('projects')
-            .select('*')
-            .order('name', { ascending: true });
+        // 1. Get all MPP projects that have schedules (phases or tasks)
+        // First try with has_schedule filter, fallback to all projects if column doesn't exist
+        let mppProjects = [];
+        let mppError = null;
+        
+        try {
+            console.log('[wbs-gantt-mpp] Fetching MPP projects with schedules...');
+            const result = await supabase
+                .from('projects')
+                .select('*')
+                .eq('has_schedule', true)
+                .order('name', { ascending: true });
+            
+            mppProjects = result.data;
+            mppError = result.error;
+        } catch (error) {
+            console.log('[wbs-gantt-mpp] has_schedule column may not exist, fetching all projects...');
+            mppError = error;
+        }
+        
+        // Fallback: get all projects if has_schedule column doesn't exist
+        if (mppError || !mppProjects) {
+            console.log('[wbs-gantt-mpp] Fetching all projects as fallback...');
+            const result = await supabase
+                .from('projects')
+                .select('*')
+                .order('name', { ascending: true });
+            
+            mppProjects = result.data;
+            mppError = result.error;
+        }
 
         if (mppError) throw mppError;
 
