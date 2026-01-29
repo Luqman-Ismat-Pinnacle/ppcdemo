@@ -48,6 +48,8 @@ export default function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [workdayProjectId, setWorkdayProjectId] = useState('');
+  const [availableWorkdayProjects, setAvailableWorkdayProjects] = useState<any[]>([]);
+  const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   
   // Hierarchy selection state
@@ -68,7 +70,30 @@ export default function DocumentsPage() {
   // Load existing files from Supabase Storage on mount
   useEffect(() => {
     loadStoredFiles();
+    loadWorkdayProjects();
   }, []);
+
+  const loadWorkdayProjects = async () => {
+    setLoadingWorkdayProjects(true);
+    try {
+      const response = await fetch('/api/workday', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-available-projects' })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setAvailableWorkdayProjects(data.workday_projects || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading Workday projects:', error);
+    } finally {
+      setLoadingWorkdayProjects(false);
+    }
+  };
 
   const loadStoredFiles = async () => {
     if (!supabase) return;
@@ -534,13 +559,12 @@ export default function DocumentsPage() {
           <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
-                Workday Project ID
+                Workday Project (for Cost Actuals)
               </label>
-              <input
-                type="text"
+              <select
                 value={workdayProjectId}
                 onChange={(e) => setWorkdayProjectId(e.target.value)}
-                placeholder="e.g., PRJ-123456"
+                disabled={loadingWorkdayProjects}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
@@ -548,8 +572,21 @@ export default function DocumentsPage() {
                   borderRadius: '6px',
                   backgroundColor: 'var(--bg-secondary)',
                   color: 'var(--text-primary)',
+                  cursor: loadingWorkdayProjects ? 'not-allowed' : 'pointer',
                 }}
-              />
+              >
+                <option value="">Select a Workday project...</option>
+                {availableWorkdayProjects.map((project: any) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} ({project.id})
+                  </option>
+                ))}
+              </select>
+              {workdayProjectId && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  This will link the MPP file's cost data to the selected Workday project
+                </div>
+              )}
             </div>
 
             <button

@@ -10,7 +10,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const EDGE_FUNCTIONS = {
   'employees': 'workday-employees',
   'projects': 'workday-projects',
-  // Removed: phases, tasks, hours - only sync portfolios, customers, and sites
+  'hours': 'workday-hours',
+  'ledger': 'workday-ledger',
+  'sync': 'workday-sync'
 } as const;
 
 type SyncType = keyof typeof EDGE_FUNCTIONS;
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
     const syncType = body.syncType as SyncType | 'unified';
     const records = body.records || [];
 
-    // Unified Sync Logic: Call 2 Edge Functions sequentially (employees + projects only)
+    // Unified Sync Logic: Call all Workday Edge Functions sequentially
     if (syncType === 'unified') {
       console.log('[Workday Sync] Starting Unified Sync sequence...');
       const results: any[] = [];
@@ -51,7 +53,6 @@ export async function POST(req: NextRequest) {
       }
 
       // 2. Projects (creates Customers, Sites, updates Portfolios)
-      // NOTE: Only hierarchy sync. No Tasks/Phases/Hours.
       logs.push('--- Step 2: Syncing Hierarchy (Portfolios, Customers, Sites) ---');
       const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
       results.push({ step: 'hierarchy', result: projRes });
@@ -63,10 +64,34 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced Hierarchy: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites.`);
       }
 
+      // 3. Hours and Costs (NEW - includes actual cost data)
+      logs.push('--- Step 3: Syncing Hours & Cost Actuals ---');
+      const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', {});
+      results.push({ step: 'hours', result: hoursRes });
+      logs.push(...(hoursRes.logs || []));
+      if (!hoursRes.success) {
+        success = false;
+        logs.push(`Error in hours sync: ${hoursRes.error}`);
+      } else {
+        logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
+      }
+
+      // 4. Ledger Cost Actuals (NEW - General Ledger costs)
+      logs.push('--- Step 4: Syncing General Ledger Cost Actuals ---');
+      const ledgerRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-ledger', {});
+      results.push({ step: 'ledger', result: ledgerRes });
+      logs.push(...(ledgerRes.logs || []));
+      if (!ledgerRes.success) {
+        success = false;
+        logs.push(`Error in ledger sync: ${ledgerRes.error}`);
+      } else {
+        logs.push(`Synced ${ledgerRes.stats?.transactions || 0} ledger transactions.`);
+      }
+
       return NextResponse.json({
         success,
         syncType: 'unified',
-        summary: { totalSteps: 2, results },
+        summary: { totalSteps: 4, results },
         logs
       });
     }
