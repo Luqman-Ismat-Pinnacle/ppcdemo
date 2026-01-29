@@ -1147,14 +1147,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const unitId = unit.id || unit.unitId;
           const unitWbs = `${phaseWbs}.${uIdx + 1}`;
 
-          // Track unit rollup totals
-          let unitRollupBaselineHrs = 0;
-          let unitRollupActualHrs = 0;
-          let unitRollupBaselineCst = 0;
-          let unitRollupActualCst = 0;
-          let unitRollupPercentComplete = 0;
-          let unitTaskCount = 0;
-
+          // Find tasks that have this unit as parent - use parent_id directly like the converter does
+          const unitTasks = (data.tasks || []).filter((t: any) => t.parent_id === unitId);
+          console.log(`[DEBUG WBS] Unit ${unitId} has ${unitTasks.length} tasks (filtered by parent_id: ${unitId})`);
+          console.log(`[DEBUG WBS] Available tasks with parent_id ${unitId}:`, (data.tasks || []).filter(t => t.parent_id === unitId).map(t => ({ id: t.id, parent_id: t.parent_id })));
+          
           const unitItem: TransformWBSItem = {
             id: `wbs-unit-${unitId}`,
             wbsCode: unitWbs,
@@ -1165,26 +1162,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             children: []
           };
 
-          // Add Tasks under Unit
-          const allPhaseTasks = maps.tasksByPhase.get(phaseId) || [];
-          console.log(`[DEBUG WBS] Unit ${unitId} (type: ${typeof unitId}) looking for tasks...`);
-          console.log(`[DEBUG WBS] Available tasks for phase ${phaseId}:`, allPhaseTasks.map(t => ({ 
-            id: t.id, 
-            unitId: t.unitId, 
-            unit_id: t.unit_id,
-            unitIdType: typeof t.unitId,
-            unit_idType: typeof t.unit_id,
-            matches: (t.unitId === unitId) || (t.unit_id === unitId)
-          })));
-          
-          const unitTasks = allPhaseTasks.filter((t: any) => {
-            const matches = (t.unitId === unitId) || (t.unit_id === unitId);
-            console.log(`[DEBUG WBS] Task ${t.id}: unitId=${t.unitId} (=== ${unitId}? ${t.unitId === unitId}), unit_id=${t.unit_id} (=== ${unitId}? ${t.unit_id === unitId})`);
-            return matches;
-          });
-          
-          console.log(`[DEBUG WBS] Unit ${unitId} has ${unitTasks.length} tasks after filtering`);
-          
           unitTasks.forEach((task: any, tIdx: number) => {
             const taskId = task.id || task.taskId;
             const taskWbs = `${unitWbs}.${tIdx + 1}`;
