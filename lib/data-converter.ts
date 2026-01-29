@@ -450,6 +450,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       const parentPhase = phases.find(p => p.id === unit.parent_id);
       if (parentPhase) {
         unit.phaseId = parentPhase.id;
+        unit.phase_id = parentPhase.id; // Also set snake_case for WBS builder compatibility
       }
     }
   });
@@ -461,12 +462,15 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       const parentUnit = units.find(u => u.id === task.parent_id);
       if (parentUnit) {
         task.unitId = parentUnit.id;
+        task.unit_id = parentUnit.id; // Also set snake_case for WBS builder compatibility
         task.phaseId = parentUnit.phaseId;
+        task.phase_id = parentUnit.phaseId; // Also set snake_case for WBS builder compatibility
       } else {
         // If not a unit, try to find parent phase
         const parentPhase = phases.find(p => p.id === task.parent_id);
         if (parentPhase) {
           task.phaseId = parentPhase.id;
+          task.phase_id = parentPhase.id; // Also set snake_case for WBS builder compatibility
         }
       }
     }
