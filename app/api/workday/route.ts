@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${empRes.summary?.synced || 0} employees.`);
       }
 
-      // 2. Projects (creates Customers, Sites, updates Portfolios)
-      logs.push('--- Step 2: Syncing Hierarchy (Portfolios, Customers, Sites) ---');
+      // 2. Projects (creates Portfolios, Customers, Sites, Projects)
+      logs.push('--- Step 2: Syncing Hierarchy & Projects ---');
       const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
       results.push({ step: 'hierarchy', result: projRes });
       logs.push(...(projRes.errors || []));
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
         success = false;
         logs.push(`Error in hierarchy sync: ${projRes.error}`);
       } else {
-        logs.push(`Synced Hierarchy: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites.`);
+        logs.push(`Synced: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites, ${projRes.summary?.projects || 0} Projects.`);
       }
 
       // 3. Hours and Costs (includes actual cost data)
