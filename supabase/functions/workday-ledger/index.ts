@@ -48,9 +48,9 @@ const processBatch = async (batch: any[], supabase: any, batchSize: number = 100
                 results.push(...(data || []));
             }
             
-            // Reduced cooldown for quarterly data
+            // Extended cooldown for quarterly data
             if (i + batchSize < batch.length) {
-                await sleep(100); // 100ms between mini-batches (reduced from 300ms)
+                await sleep(200); // Increased from 100ms to 200ms for memory management
             }
             
         } catch (error) {
@@ -115,13 +115,13 @@ serve(async (req) => {
         const records = data.Report_Entry || [];
         console.log(`[workday-ledger] Fetched ${records.length} ledger records`);
 
-        // 4. Memory-efficient processing with quarterly data - can use larger batches now
-        const BATCH_SIZE = 250; // Increased batch size for quarterly data (was 100)
+        // 4. Aggressive memory-efficient processing for quarterly data
+        const BATCH_SIZE = 50; // Reduced from 250 to handle memory limits
         const totalBatches = Math.ceil(records.length / BATCH_SIZE);
         let processedCount = 0;
         let errorCount = 0;
         
-        console.log(`[workday-ledger] Processing ${totalBatches} mini-batches of ${BATCH_SIZE} records each`);
+        console.log(`[workday-ledger] Processing ${totalBatches} mini-batches of ${BATCH_SIZE} records each (aggressive memory management)`);
 
         for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
             const startIndex = batchIndex * BATCH_SIZE;
@@ -182,14 +182,14 @@ serve(async (req) => {
             // Insert this mini-batch to database
             if (batchTransactions.length > 0) {
                 try {
-                    const results = await processBatch(batchTransactions, supabase, 50); // Process in 50-record chunks
+                    const results = await processBatch(batchTransactions, supabase, 25); // Reduced from 50 to 25 for memory
                     processedCount += batchTransactions.length;
                     console.log(`[workday-ledger] Mini-batch ${batchIndex + 1} completed: ${batchTransactions.length} transactions`);
                     
                     // Aggressive memory cooldown - allow garbage collection
                     if (batchIndex < totalBatches - 1) {
-                        console.log(`[workday-ledger] Memory cooldown before next mini-batch...`);
-                        await sleep(500); // 500ms between mini-batches for memory management
+                        console.log(`[workday-ledger] Extended memory cooldown before next mini-batch...`);
+                        await sleep(1500); // Increased from 500ms to 1500ms
                     }
                     
                 } catch (error) {
@@ -200,11 +200,10 @@ serve(async (req) => {
                 console.log(`[workday-ledger] Mini-batch ${batchIndex + 1}: No valid transactions to process`);
             }
             
-            // Force garbage collection periodically
-            if (batchIndex % 5 === 0) {
-                console.log(`[workday-ledger] Forcing garbage collection after ${batchIndex + 1} batches...`);
-                // In Deno, we can't force GC directly, but the sleep helps
-                await sleep(1000);
+            // Force garbage collection more frequently
+            if (batchIndex % 2 === 0) { // Changed from every 5 to every 2 batches
+                console.log(`[workday-ledger] Extended garbage collection after ${batchIndex + 1} batches...`);
+                await sleep(2000); // Increased from 1000ms to 2000ms
             }
         }
 
