@@ -440,6 +440,45 @@ export default function DocumentsPage() {
         }
       }
 
+      // Sync converted data to Supabase using our proper hierarchy
+      addLog('info', '[Supabase] Syncing converted hierarchy data...');
+
+      // Create project record first
+      const mppProjectId = `PROJ_${Date.now()}`;
+      const projectRecord = {
+        id: mppProjectId,
+        name: (convertedData as any).projectInfo?.projectName || file.fileName.replace('.mpp', ''),
+        portfolio_id: file.portfolioId,
+        customer_id: file.customerId,
+        site_id: file.siteId,
+        planned_hours: (convertedData as any).projectInfo?.totalHours || 0,
+        planned_cost: (convertedData as any).projectInfo?.totalCost || 0,
+        start_date: (convertedData as any).projectInfo?.startDate || null,
+        end_date: (convertedData as any).projectInfo?.endDate || null,
+        status: 'active',
+        has_schedule: true, // Mark as having schedule since we're uploading phases/tasks
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        deleted: false,
+      };
+
+      const projectResponse = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataKey: 'projects',
+          records: [projectRecord],
+        }),
+      });
+      
+      const projectResult = await projectResponse.json();
+      if (!projectResponse.ok || !projectResult.success) {
+        addLog('warning', `[Supabase] Project creation failed: ${projectResult.error || 'Failed'}`);
+        throw new Error('Failed to create project record');
+      } else {
+        addLog('success', `[Supabase] Project created: ${projectRecord.name}`);
+      }
+
       // Create project mapping if Workday project is selected
       if (file.workdayProjectId) {
         addLog('info', '[Mapping] Creating MPP to Workday project mapping...');
@@ -451,7 +490,7 @@ export default function DocumentsPage() {
               dataKey: 'projectMappings',
               records: [{
                 id: `MAP_${Date.now()}`,
-                mppProjectId: projectId,
+                mppProjectId: mppProjectId,
                 workdayProjectId: file.workdayProjectId,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
@@ -473,8 +512,17 @@ export default function DocumentsPage() {
         }
       }
 
-      // Sync converted data to Supabase using our proper hierarchy
-      addLog('info', '[Supabase] Syncing converted hierarchy data...');
+      // Update all phases and tasks with the new project ID
+      if (convertedData.phases) {
+        convertedData.phases.forEach((phase: any) => {
+          phase.project_id = mppProjectId;
+        });
+      }
+      if (convertedData.tasks) {
+        convertedData.tasks.forEach((task: any) => {
+          task.project_id = mppProjectId;
+        });
+      }
 
       // Sync phases
       if (convertedData.phases && convertedData.phases.length > 0) {
@@ -589,13 +637,13 @@ export default function DocumentsPage() {
 
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
 
-        {/* File Upload & Project Selection */}
+        {/* File Upload */}
         <div className="chart-card grid-full">
           <div className="chart-card-header">
-            <h3 className="chart-card-title">Upload MPP File & Link Project</h3>
+            <h3 className="chart-card-title">Upload MPP File</h3>
           </div>
           <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
               
               {/* File Selection */}
               <div>
@@ -627,27 +675,6 @@ export default function DocumentsPage() {
                 )}
               </div>
 
-              {/* Project Selection */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
-                  Workday Project (for Cost Actuals)
-                </label>
-                <SearchableDropdown
-                  value={workdayProjectId || null}
-                  options={availableWorkdayProjects}
-                  onChange={(id) => setWorkdayProjectId(id || '')}
-                  placeholder="Select a Workday project..."
-                  disabled={loadingWorkdayProjects}
-                  searchable={true}
-                  width="100%"
-                />
-                {workdayProjectId && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                    This will link the MPP file's cost data to the selected Workday project
-                  </div>
-                )}
-              </div>
-
             </div>
 
             {/* Upload Button */}
@@ -657,18 +684,17 @@ export default function DocumentsPage() {
                 disabled={!selectedFile || isUploading}
                 style={{
                   width: '100%',
-                  padding: '0.875rem',
+                  padding: '0.75rem 1.5rem',
                   backgroundColor: selectedFile && !isUploading ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                  color: selectedFile && !isUploading ? '#000' : 'var(--text-muted)',
                   border: 'none',
                   borderRadius: '6px',
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
+                  color: selectedFile && !isUploading ? '#000' : 'var(--text-muted)',
                   cursor: selectedFile && !isUploading ? 'pointer' : 'not-allowed',
-                  transition: 'all 0.2s ease',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
                 }}
               >
-                {isUploading ? 'Uploading to Supabase...' : 'Upload to Storage'}
+                {isUploading ? 'Uploading...' : 'Upload MPP File'}
               </button>
             </div>
           </div>
@@ -888,6 +914,26 @@ export default function DocumentsPage() {
                   disabled={!selectedCustomer}
                 />
               </div>
+
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Workday Project (for Cost Actuals)
+                </label>
+                <SearchableDropdown
+                  value={workdayProjectId || null}
+                  options={availableWorkdayProjects}
+                  onChange={(id) => setWorkdayProjectId(id || '')}
+                  placeholder="Select a Workday project..."
+                  disabled={loadingWorkdayProjects}
+                  searchable={true}
+                  width="100%"
+                />
+                {workdayProjectId && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                    This will link the MPP file's cost data to the selected Workday project
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
@@ -897,6 +943,7 @@ export default function DocumentsPage() {
                   setSelectedPortfolio('');
                   setSelectedCustomer('');
                   setSelectedSite('');
+                  setWorkdayProjectId('');
                 }}
                 style={{
                   padding: '0.5rem 1rem',

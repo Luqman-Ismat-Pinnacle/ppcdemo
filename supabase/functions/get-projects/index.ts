@@ -19,37 +19,12 @@ serve(async (req) => {
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // Get projects that have schedules (phases or tasks)
-        // First try with has_schedule filter, fallback to all projects if column doesn't exist
-        let projects = [];
-        let projectsError = null;
-        
-        try {
-            console.log('[get-projects] Fetching projects with schedules...');
-            const result = await supabase
-                .from('projects')
-                .select('*')
-                .eq('has_schedule', true)
-                .order('name', { ascending: true });
-            
-            projects = result.data;
-            projectsError = result.error;
-        } catch (error) {
-            console.log('[get-projects] has_schedule column may not exist, fetching all projects...');
-            projectsError = error;
-        }
-        
-        // Fallback: get all projects if has_schedule column doesn't exist
-        if (projectsError || !projects) {
-            console.log('[get-projects] Fetching all projects as fallback...');
-            const result = await supabase
-                .from('projects')
-                .select('*')
-                .order('name', { ascending: true });
-            
-            projects = result.data;
-            projectsError = result.error;
-        }
+        // Get ALL projects (not filtered by has_schedule)
+        console.log('[get-projects] Fetching all projects...');
+        const { data: projects, error: projectsError } = await supabase
+            .from('projects')
+            .select('*')
+            .order('name', { ascending: true });
 
         if (projectsError) throw projectsError;
 
