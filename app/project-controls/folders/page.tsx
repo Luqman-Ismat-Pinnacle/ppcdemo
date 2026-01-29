@@ -451,18 +451,33 @@ export default function DocumentsPage() {
       
       addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
-      // Update the existing project to set has_schedule = true (direct Supabase update)
-      addLog('info', '[Supabase] Updating project has_schedule = true...');
+      // Update the existing project: has_schedule = true, link to customer/site
+      addLog('info', '[Supabase] Updating project with schedule and hierarchy linkage...');
       if (supabase) {
+        const projectUpdate: any = {
+          has_schedule: true,
+          updated_at: new Date().toISOString()
+        };
+        
+        // Link project to customer and site from MPP upload selection
+        if (file.customerId) {
+          projectUpdate.customer_id = file.customerId;
+          addLog('info', `[Supabase] Linking project to customer: ${file.customerId}`);
+        }
+        if (file.siteId) {
+          projectUpdate.site_id = file.siteId;
+          addLog('info', `[Supabase] Linking project to site: ${file.siteId}`);
+        }
+        
         const { error: updateError } = await supabase
           .from('projects')
-          .update({ has_schedule: true, updated_at: new Date().toISOString() })
+          .update(projectUpdate)
           .eq('id', existingProjectId);
         
         if (updateError) {
           addLog('warning', `[Supabase] Project update: ${updateError.message}`);
         } else {
-          addLog('success', `[Supabase] Project has_schedule set to true`);
+          addLog('success', `[Supabase] Project updated: has_schedule=true, customer/site linked`);
         }
       }
 
