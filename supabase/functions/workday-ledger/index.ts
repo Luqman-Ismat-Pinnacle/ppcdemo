@@ -48,9 +48,9 @@ const processBatch = async (batch: any[], supabase: any, batchSize: number = 100
                 results.push(...(data || []));
             }
             
-            // Aggressive memory cooldown - allow garbage collection
+            // Reduced cooldown for quarterly data
             if (i + batchSize < batch.length) {
-                await sleep(300); // 300ms between mini-batches for memory management
+                await sleep(100); // 100ms between mini-batches (reduced from 300ms)
             }
             
         } catch (error) {
@@ -81,14 +81,14 @@ serve(async (req) => {
 
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 2. Prepare URL & Date Range
-        // Get current period data (can be made configurable)
+        // 2. Prepare URL & Date Range - Using quarterly dataset for smaller data volume
+        // Get quarterly data instead of full year
         const params = new URLSearchParams({
-            'Period!WID': '0173f15bcb0d01dfd622619c6f126741!0173f15bcb0d015364f9609c6f126641!0173f15bcb0d010e83c5609c6f126541',
+            'Period!WID': '0173f15bcb0d01286fbf629c6f127041!0173f15bcb0d01694c95629c6f126f41!0173f15bcb0d018c3756629c6f126e41',
             'Year!WID': '8114d1e7d6281001762a5f549ec90000',
             'Account_Translation_Rule_Set!WID': '8114d1e7d62810019858496633a80000',
             'Translation_Currency!WID': '9e996ffdd3e14da0ba7275d5400bafd4',
-            'Company!WID': '572a282fa6cc01c7b986b251bc0d853f',
+            'Company!WID': '572a282fa6cc01df318cb351bc0d883f',
             'Journal_Entry_Status!WID': '6f8e52d2376e4c899463020db034c87c',
             'Include_Beginning_Balance': '0',
             'format': 'json'
@@ -115,8 +115,8 @@ serve(async (req) => {
         const records = data.Report_Entry || [];
         console.log(`[workday-ledger] Fetched ${records.length} ledger records`);
 
-        // 4. Memory-efficient processing with smaller batches
-        const BATCH_SIZE = 100; // Process 100 records at a time (reduced from 500)
+        // 4. Memory-efficient processing with quarterly data - can use larger batches now
+        const BATCH_SIZE = 250; // Increased batch size for quarterly data (was 100)
         const totalBatches = Math.ceil(records.length / BATCH_SIZE);
         let processedCount = 0;
         let errorCount = 0;
