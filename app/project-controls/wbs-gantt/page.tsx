@@ -77,11 +77,13 @@ export default function WBSGanttPage() {
   const svgRef = useRef<SVGSVGElement>(null);
 
   const projectOptions = useMemo(() => {
-    return (fullData.projects || []).map((p: any) => ({
-      id: p.id || p.projectId,
-      name: p.name,
-      secondary: p.projectId
-    }));
+    return (fullData.projects || [])
+      .filter((p: any) => p.has_schedule !== false) // Filter out projects without schedules
+      .map((p: any) => ({
+        id: p.id || p.projectId,
+        name: p.name,
+        secondary: p.projectId
+      }));
   }, [fullData.projects]);
 
   // Use actual current date
