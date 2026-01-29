@@ -19,12 +19,11 @@ serve(async (req) => {
         const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
         const supabase = createClient(supabaseUrl, supabaseKey);
 
-        // 1. Get only projects that have schedules (has_schedule = true)
-        console.log('[wbs-gantt-mpp] Fetching projects with schedules...');
+        // 1. Get all projects (no filtering - done on website)
+        console.log('[wbs-gantt-mpp] Fetching all projects...');
         const { data: mppProjects, error: projectsError } = await supabase
             .from('projects')
             .select('*')
-            .eq('has_schedule', true)
             .order('name', { ascending: true });
 
         if (projectsError) throw projectsError;
@@ -33,7 +32,7 @@ serve(async (req) => {
             return new Response(
                 JSON.stringify({
                     success: true,
-                    message: 'No projects with schedules found',
+                    message: 'No projects found',
                     projects: [],
                     totalProjects: 0
                 }),
@@ -41,7 +40,7 @@ serve(async (req) => {
             );
         }
 
-        console.log(`[wbs-gantt-mpp] Found ${mppProjects.length} projects with schedules`);
+        console.log(`[wbs-gantt-mpp] Found ${mppProjects.length} projects`);
 
         // 2. Try to get project mappings (if table exists)
         let projectMappings = [];
