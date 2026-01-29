@@ -17,12 +17,11 @@ const safeString = (val: any): string => (val || '').toString().trim();
 
 // Helper: ID cleaner (matches workday-projects logic)
 const cleanProjectId = (rawId: string): string => {
-    // Logic: Split by hyphen and take the first part
-    // e.g. "20102-01" -> "20102"
-    // e.g. "TPW" -> "TPW"
-    // e.g. "  20202  " -> "20202"
+    // Remove (Inactive) suffix and trim - matches workday-projects logic exactly
+    // e.g. "2373_200 (Inactive)" -> "2373_200"
+    // e.g. "2803" -> "2803"
     if (!rawId) return '';
-    return rawId.split('-')[0].trim().substring(0, 50);
+    return rawId.replace(/\s*\(Inactive\)\s*$/i, '').trim().substring(0, 50);
 };
 
 // Helper: Slug generator for IDs

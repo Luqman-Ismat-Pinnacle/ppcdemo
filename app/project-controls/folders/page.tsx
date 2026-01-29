@@ -28,9 +28,6 @@ interface UploadedFile {
   workdayProjectId?: string;
   status: 'uploading' | 'uploaded' | 'processing' | 'syncing' | 'complete' | 'error';
   storagePath?: string;
-  portfolioId?: string;
-  customerId?: string;
-  siteId?: string;
 }
 
 // Supabase client for storage
@@ -53,40 +50,8 @@ export default function DocumentsPage() {
   const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   
-  // Hierarchy selection state
-  const [selectedPortfolio, setSelectedPortfolio] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState('');
-  const [selectedSite, setSelectedSite] = useState('');
+  // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
-
-  // Convert data to DropdownOption format
-  const portfolioOptions = useMemo(() => 
-    filteredData.portfolios?.map((portfolio: any) => ({
-      id: portfolio.id,
-      name: portfolio.name,
-      secondary: 'Portfolio',
-      type: 'portfolio'
-    })) || [], [filteredData.portfolios]);
-
-  const customerOptions = useMemo(() => 
-    filteredData.customers
-      ?.filter((customer: any) => !selectedPortfolio || customer.portfolioId === selectedPortfolio)
-      ?.map((customer: any) => ({
-        id: customer.id,
-        name: customer.name,
-        secondary: 'Customer',
-        type: 'customer'
-      })) || [], [filteredData.customers, selectedPortfolio]);
-
-  const siteOptions = useMemo(() => 
-    filteredData.sites
-      ?.filter((site: any) => !selectedCustomer || site.customerId === selectedCustomer)
-      ?.map((site: any) => ({
-        id: site.id,
-        name: site.name,
-        secondary: 'Site',
-        type: 'site'
-      })) || [], [filteredData.sites, selectedCustomer]);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {
     setLogs(prev => [...prev, {
@@ -198,10 +163,10 @@ export default function DocumentsPage() {
     return;
   }, [selectedFile, supabase, addLog, showHierarchyModal]);
 
-  // Actual upload function after hierarchy selection
+  // Actual upload function after project selection
   const handleUploadWithHierarchy = useCallback(async () => {
-    if (!selectedFile || !selectedPortfolio || !selectedCustomer || !selectedSite) {
-      addLog('error', 'Please select portfolio, customer, and site');
+    if (!selectedFile || !workdayProjectId) {
+      addLog('error', 'Please select a Workday project');
       return;
     }
 
@@ -215,7 +180,7 @@ export default function DocumentsPage() {
     const fileId = `mpp-${Date.now()}`;
     const storagePath = `mpp/${Date.now()}_${selectedFile.name}`;
 
-    // Add file to list with uploading status and hierarchy info
+    // Add file to list with uploading status
     const fileRecord: UploadedFile = {
       id: fileId,
       fileName: selectedFile.name,
@@ -224,14 +189,11 @@ export default function DocumentsPage() {
       workdayProjectId: workdayProjectId.trim() || undefined,
       status: 'uploading',
       storagePath,
-      portfolioId: selectedPortfolio,
-      customerId: selectedCustomer,
-      siteId: selectedSite,
     };
     setUploadedFiles(prev => [...prev, fileRecord]);
 
     addLog('info', `[Storage] Uploading ${selectedFile.name} to Supabase...`);
-    addLog('info', `[Hierarchy] Portfolio: ${selectedPortfolio}, Customer: ${selectedCustomer}, Site: ${selectedSite}`);
+    addLog('info', `[Project] Linking to Workday project: ${workdayProjectId}`);
 
     try {
       // Upload to Supabase Storage
@@ -294,7 +256,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, selectedPortfolio, selectedCustomer, selectedSite, addLog]);
+  }, [selectedFile, workdayProjectId, addLog]);
 
   // Process file with MPXJ Python service and sync to Supabase
   const handleProcess = useCallback(async (fileId: string) => {
@@ -426,9 +388,6 @@ export default function DocumentsPage() {
               startDate: parseResult.project?.start_date || null,
               endDate: parseResult.project?.finish_date || null,
               isActive: true,
-              portfolioId: file.portfolioId,
-              customerId: file.customerId,
-              siteId: file.siteId,
             }]
           }),
         });
@@ -451,33 +410,21 @@ export default function DocumentsPage() {
       
       addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
-      // Update the existing project: has_schedule = true, link to customer/site
-      addLog('info', '[Supabase] Updating project with schedule and hierarchy linkage...');
+      // Update the existing project: has_schedule = true (customer/site already set from Workday sync)
+      addLog('info', '[Supabase] Enabling schedule visibility for project...');
       if (supabase) {
-        const projectUpdate: any = {
-          has_schedule: true,
-          updated_at: new Date().toISOString()
-        };
-        
-        // Link project to customer and site from MPP upload selection
-        if (file.customerId) {
-          projectUpdate.customer_id = file.customerId;
-          addLog('info', `[Supabase] Linking project to customer: ${file.customerId}`);
-        }
-        if (file.siteId) {
-          projectUpdate.site_id = file.siteId;
-          addLog('info', `[Supabase] Linking project to site: ${file.siteId}`);
-        }
-        
         const { error: updateError } = await supabase
           .from('projects')
-          .update(projectUpdate)
+          .update({
+            has_schedule: true,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', existingProjectId);
         
         if (updateError) {
           addLog('warning', `[Supabase] Project update: ${updateError.message}`);
         } else {
-          addLog('success', `[Supabase] Project updated: has_schedule=true, customer/site linked`);
+          addLog('success', `[Supabase] Project updated: has_schedule=true`);
         }
       }
 
@@ -838,64 +785,13 @@ export default function DocumentsPage() {
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
           }}>
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
-              Select Hierarchy for MPP Upload
+              Select Workday Project for MPP Upload
             </h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  Portfolio *
-                </label>
-                <SearchableDropdown
-                  value={selectedPortfolio || null}
-                  options={portfolioOptions}
-                  onChange={(id) => {
-                    setSelectedPortfolio(id || '');
-                    setSelectedCustomer(''); // Reset customer when portfolio changes
-                    setSelectedSite(''); // Reset site when portfolio changes
-                  }}
-                  placeholder="Select Portfolio..."
-                  searchable={true}
-                  width="100%"
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  Customer *
-                </label>
-                <SearchableDropdown
-                  value={selectedCustomer || null}
-                  options={customerOptions}
-                  onChange={(id) => {
-                    setSelectedCustomer(id || '');
-                    setSelectedSite(''); // Reset site when customer changes
-                  }}
-                  placeholder="Select Customer..."
-                  searchable={true}
-                  width="100%"
-                  disabled={!selectedPortfolio}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  Site *
-                </label>
-                <SearchableDropdown
-                  value={selectedSite || null}
-                  options={siteOptions}
-                  onChange={(id) => setSelectedSite(id || '')}
-                  placeholder="Select Site..."
-                  searchable={true}
-                  width="100%"
-                  disabled={!selectedCustomer}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  Workday Project (for Cost Actuals)
+                  Workday Project *
                 </label>
                 <SearchableDropdown
                   value={workdayProjectId || null}
@@ -906,11 +802,9 @@ export default function DocumentsPage() {
                   searchable={true}
                   width="100%"
                 />
-                {workdayProjectId && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                    This will link the MPP file's cost data to the selected Workday project
-                  </div>
-                )}
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                  The MPP schedule will be linked to this project. Customer and site info comes from Workday.
+                </div>
               </div>
             </div>
 
@@ -918,9 +812,6 @@ export default function DocumentsPage() {
               <button
                 onClick={() => {
                   setShowHierarchyModal(false);
-                  setSelectedPortfolio('');
-                  setSelectedCustomer('');
-                  setSelectedSite('');
                   setWorkdayProjectId('');
                 }}
                 style={{
@@ -936,14 +827,14 @@ export default function DocumentsPage() {
               </button>
               <button
                 onClick={handleUploadWithHierarchy}
-                disabled={!selectedPortfolio || !selectedCustomer || !selectedSite}
+                disabled={!workdayProjectId}
                 style={{
                   padding: '0.5rem 1rem',
-                  backgroundColor: selectedPortfolio && selectedCustomer && selectedSite ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  backgroundColor: workdayProjectId ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
                   border: 'none',
                   borderRadius: '4px',
-                  color: selectedPortfolio && selectedCustomer && selectedSite ? '#000' : 'var(--text-muted)',
-                  cursor: selectedPortfolio && selectedCustomer && selectedSite ? 'pointer' : 'not-allowed',
+                  color: workdayProjectId ? '#000' : 'var(--text-muted)',
+                  cursor: workdayProjectId ? 'pointer' : 'not-allowed',
                 }}
               >
                 Upload
