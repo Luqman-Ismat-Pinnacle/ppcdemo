@@ -466,7 +466,7 @@ export default function BoardsView() {
             taskDescription: savedItem.taskDescription || savedItem.description || '',
             isSubTask: false,
             parentTaskId: null,
-            predecessor: null,
+            predecessorId: null,
             projectedHours: savedItem.projectedHours || 0,
             actualHours: savedItem.actualHours || 0,
             percentComplete: savedItem.percentComplete || 0,

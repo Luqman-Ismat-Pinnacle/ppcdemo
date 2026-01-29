@@ -1148,9 +1148,17 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const unitWbs = `${phaseWbs}.${uIdx + 1}`;
 
           // Find tasks that have this unit as parent - use parent_id directly like the converter does
-          const unitTasks = (data.tasks || []).filter((t: any) => t.parent_id === unitId);
+          const unitTasks = (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId);
           console.log(`[DEBUG WBS] Unit ${unitId} has ${unitTasks.length} tasks (filtered by parent_id: ${unitId})`);
-          console.log(`[DEBUG WBS] Available tasks with parent_id ${unitId}:`, (data.tasks || []).filter(t => t.parent_id === unitId).map(t => ({ id: t.id, parent_id: t.parent_id })));
+          console.log(`[DEBUG WBS] Available tasks with parent_id ${unitId}:`, (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId).map((t: any) => ({ id: t.id, parent_id: (t as any).parent_id })));
+          
+          // Initialize rollup variables for this unit
+          let unitRollupBaselineHrs = 0;
+          let unitRollupActualHrs = 0;
+          let unitRollupBaselineCst = 0;
+          let unitRollupActualCst = 0;
+          let unitRollupPercentComplete = 0;
+          let unitTaskCount = 0;
           
           const unitItem: TransformWBSItem = {
             id: `wbs-unit-${unitId}`,

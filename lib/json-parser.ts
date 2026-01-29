@@ -353,7 +353,6 @@ export function parseJSONData(jsonData: JSONData, employees: SampleData['employe
         projects.push({
           projectId,
           name: jsonProject.project_name,
-          unitId: null,  // No unit assignment from JSON import
           customerId,
           siteId,
           employeeId: '',
@@ -414,7 +413,7 @@ export function parseJSONData(jsonData: JSONData, employees: SampleData['employe
               taskDescription: jsonTask.notes || '',
               isSubTask: false,
               parentTaskId: null,
-              predecessor: tIdx > 0 ? tasks[tasks.length - 1].taskId : null,
+              predecessorId: tIdx > 0 ? tasks[tasks.length - 1].taskId : null,
               projectedHours: jsonTask.baseline_hours,
               status: 'Not Started',
               createdAt: new Date().toISOString(),

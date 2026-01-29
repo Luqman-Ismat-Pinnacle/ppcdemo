@@ -1596,7 +1596,7 @@ export interface CatchUpEntry {
  * @property {string} id - Unique identifier (PRF/CST/STE/PRJ/PHS/TSK/SUB-xxxx format)
  * @property {string} wbsCode - WBS code (e.g., "1.2.3")
  * @property {string} name - Item name
- * @property {'portfolio' | 'customer' | 'site' | 'project' | 'phase' | 'task' | 'sub_task'} type - Hierarchy level
+ * @property {'portfolio' | 'customer' | 'site' | 'project' | 'phase' | 'unit' | 'task' | 'sub_task'} type - Hierarchy level
  * @property {string} startDate - Start date (ISO format)
  * @property {string} endDate - End date (ISO format)
  * @property {number} progress - Completion percentage (0-100)
@@ -1619,7 +1619,7 @@ export interface WBSItem {
   id: string;
   wbsCode: string;
   name: string;
-  type: 'portfolio' | 'customer' | 'site' | 'project' | 'phase' | 'task' | 'sub_task';
+  type: 'portfolio' | 'customer' | 'site' | 'project' | 'phase' | 'unit' | 'task' | 'sub_task';
   startDate: string;
   endDate: string;
   progress: number;
