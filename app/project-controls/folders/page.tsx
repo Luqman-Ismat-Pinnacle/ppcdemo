@@ -298,6 +298,12 @@ export default function DocumentsPage() {
       }
 
       addLog('success', `[MPXJ] Parsed: ${parseResult.summary?.total_rows || parseResult.summary?.total_tasks || 0} tasks`);
+      console.log('[DEBUG] MPP Parser result:', {
+        success: parseResult.success,
+        tasks: parseResult.tasks?.length,
+        sampleTask: parseResult.tasks?.[0],
+        outlineLevels: parseResult.tasks?.map((t: any) => t.outline_level)
+      });
 
       // Convert flat MPP data to proper hierarchy using our converter
       const timestamp = Date.now();
@@ -306,7 +312,13 @@ export default function DocumentsPage() {
       addLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
       
       // Use our converter to properly categorize by outline_level
+      console.log('[DEBUG] About to call convertMppParserOutput with', parseResult.tasks?.length, 'tasks');
       const convertedData = convertMppParserOutput(parseResult, projectId);
+      console.log('[DEBUG] Converter returned:', {
+        phases: convertedData.phases?.length,
+        units: convertedData.units?.length,
+        tasks: convertedData.tasks?.length
+      });
       
       // Apply hierarchy context from upload selection
       // Phases and units get hierarchy through project relationship, not direct columns
