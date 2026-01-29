@@ -128,11 +128,18 @@ serve(async (req) => {
         const projectsToUpsert = new Map();
         const workdayTasksToUpsert = new Map();
 
+        console.log(`[workday-projects] Processing ${masterRecords.length} records for projects...`);
+        
         for (const r of masterRecords) {
-            const projectId = r.projectReferenceID || r.Project_ID || r.Project;
+            // Project_by_ID contains the project ID (e.g., "1518_200IFSClosed1 (Inactive)")
+            // Project contains the project name
+            const projectIdRaw = r.Project_by_ID || r.projectReferenceID || r.Project_ID;
             const projectName = r.Project || r.projectName;
             const custName = r.CF_Customer_Site_Ref_ID || r.Customer;
             const siteName = r.CF_Project_Site_Ref_ID || r.Site;
+            
+            // Extract clean project ID (remove "(Inactive)" suffix if present)
+            const projectId = projectIdRaw ? projectIdRaw.replace(/\s*\(Inactive\)\s*$/i, '').trim() : null;
             
             if (projectId && projectName) {
                 const custId = custName ? generateId('CST', custName) : null;
@@ -146,13 +153,15 @@ serve(async (req) => {
                         customer_id: custId,
                         site_id: siteId,
                         has_schedule: false, // Will be set to true when MPP is uploaded
-                        is_active: true,
+                        is_active: r['Inactive_-_Current'] !== '1' && r.Project_Status !== 'Closed',
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     });
                 }
             }
         }
+        
+        console.log(`[workday-projects] Found ${projectsToUpsert.size} unique projects`);
 
         // --- STEP 3: FETCH INTEGRATION DATA FOR TASKS ---
         console.log('[workday-projects] Fetching Integration Report for tasks...');
