@@ -61,17 +61,46 @@ const WBS_COLORS = {
 
 type GanttInterval = 'week' | 'month' | 'quarter' | 'year';
 
+// Filter WBS items by hierarchy path (matches data-context logic); used so WBS table can use fullData.wbsData when date filter is active (cumulative actual hours).
+function filterWbsItemsByPath(items: any[], path: (string | undefined)[]): any[] {
+  return items
+    .filter((item: any) => {
+      if (path[0] && item.type === 'portfolio' && item.name !== path[0]) return false;
+      if (path[1] && item.type === 'customer' && item.name !== path[1]) return false;
+      if (path[2] && item.type === 'site' && item.name !== path[2]) return false;
+      if (path[3] && item.type === 'project' && item.name !== path[3]) return false;
+      if (path[4] && item.type === 'phase' && item.name !== path[4]) return false;
+      if (path[5] && item.type === 'unit' && item.name !== path[5]) return false;
+      return true;
+    })
+    .map((item: any) => ({
+      ...item,
+      children: item.children ? filterWbsItemsByPath(item.children, path) : undefined,
+    }));
+}
+
 export default function WBSGanttPage() {
-  const { filteredData, updateData, data: fullData, setHierarchyFilter } = useData();
+  const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter } = useData();
   const fixedColsWidth = 1240;
   const data = filteredData;
   const employees = fullData.employees;
+
+  // When a date filter is active, use full-data WBS so actual hours stay cumulative (all-time); apply hierarchy filter locally.
+  const wbsDataForTable = useMemo(() => {
+    const dateFilterActive = dateFilter && dateFilter.type !== 'all';
+    const raw = dateFilterActive ? fullData.wbsData : data.wbsData;
+    if (!raw?.items?.length) return { items: [] as any[] };
+    if (!dateFilterActive) return raw;
+    if (!hierarchyFilter?.path?.length) return raw;
+    return { ...raw, items: filterWbsItemsByPath(raw.items, hierarchyFilter.path) };
+  }, [dateFilter, fullData.wbsData, data.wbsData, hierarchyFilter?.path]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cpmResult, setCpmResult] = useState<CPMResult | null>(null);
   const [cpmLogs, setCpmLogs] = useState<string[]>([]);
   const [ganttInterval, setGanttInterval] = useState<GanttInterval>('week');
   const [wbsSort, setWbsSort] = useState<SortState | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [wbsSearchQuery, setWbsSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -108,7 +137,7 @@ export default function WBSGanttPage() {
       });
     };
 
-    if (data.wbsData?.items) findDateRange(data.wbsData.items);
+    if (wbsDataForTable?.items?.length) findDateRange(wbsDataForTable.items);
 
     // Force range to include today
     const currentToday = new Date();
@@ -119,7 +148,7 @@ export default function WBSGanttPage() {
       projectStart: minDate,
       projectEnd: maxDate
     };
-  }, [data.wbsData?.items]);
+  }, [wbsDataForTable?.items]);
 
   // Generate Date Columns based on interval with 5 column buffer
   const dateColumns = useMemo(() => {
@@ -281,7 +310,7 @@ export default function WBSGanttPage() {
       });
     };
 
-    if (data.wbsData?.items) collectIds(data.wbsData.items);
+    if (wbsDataForTable?.items?.length) collectIds(wbsDataForTable.items);
     setExpandedIds(allIds);
   };
 
@@ -291,8 +320,8 @@ export default function WBSGanttPage() {
   };
 
   const sortedWbsItems = useMemo(() => {
-    if (!data.wbsData?.items) return [];
-    if (!wbsSort) return data.wbsData.items;
+    if (!wbsDataForTable?.items?.length) return [];
+    if (!wbsSort) return wbsDataForTable.items;
 
     const getOverlapMs = (start: Date, end: Date, colStart: Date, colEnd: Date) => {
       const rangeStart = start > colStart ? start : colStart;
@@ -375,8 +404,52 @@ export default function WBSGanttPage() {
       ));
     };
 
-    return sortItems(data.wbsData.items);
-  }, [data.wbsData?.items, wbsSort, dateColumns, employees]);
+    return sortItems(wbsDataForTable.items);
+  }, [wbsDataForTable?.items, wbsSort, dateColumns, employees]);
+
+  // Filter WBS tree by global search: keep items whose name or wbsCode matches (case-insensitive) or have a matching descendant.
+  const searchFilteredItems = useMemo(() => {
+    const q = (wbsSearchQuery || '').trim().toLowerCase();
+    if (!q) return sortedWbsItems;
+
+    const itemMatches = (item: any) => {
+      const name = (item.name ?? '').toLowerCase();
+      const wbsCode = (item.wbsCode ?? '').toLowerCase();
+      return name.includes(q) || wbsCode.includes(q);
+    };
+
+    const filterBySearch = (items: any[]): any[] => {
+      return items
+        .map((item: any) => {
+          const filteredChildren = item.children?.length ? filterBySearch(item.children) : undefined;
+          const selfMatches = itemMatches(item);
+          const childMatches = filteredChildren && filteredChildren.length > 0;
+          if (selfMatches || childMatches) {
+            return { ...item, children: filteredChildren };
+          }
+          return null;
+        })
+        .filter(Boolean);
+    };
+
+    return filterBySearch(sortedWbsItems);
+  }, [sortedWbsItems, wbsSearchQuery]);
+
+  // When search is active, expand all so matching rows are visible.
+  useEffect(() => {
+    if (!(wbsSearchQuery || '').trim()) return;
+    const idsWithChildren = new Set<string>();
+    const collect = (list: any[]) => {
+      list.forEach((item: any) => {
+        if (item.children && item.children.length > 0) {
+          idsWithChildren.add(item.id);
+          collect(item.children);
+        }
+      });
+    };
+    collect(searchFilteredItems);
+    setExpandedIds((prev) => new Set([...prev, ...idsWithChildren]));
+  }, [wbsSearchQuery, searchFilteredItems]);
 
   // Build a single flat list of all WBS nodes (each id appears once), then filter by visibility.
   // This avoids duplication and makes expand/collapse consistent: visibility = root or (parent visible && parent expanded).
@@ -410,9 +483,9 @@ export default function WBSGanttPage() {
       (item.children as any[] || []).forEach((child: any) => walk(child, level + 1, id));
     };
 
-    sortedWbsItems.forEach((item: any) => walk(item, 1, null));
+    searchFilteredItems.forEach((item: any) => walk(item, 1, null));
     return list;
-  }, [sortedWbsItems, expandedIds]);
+  }, [searchFilteredItems, expandedIds]);
 
   const flatRows = useMemo(() => {
     const visibleIds = new Set<string>();
@@ -434,7 +507,7 @@ export default function WBSGanttPage() {
   // Auto-expand only when WBS data identity changes (first load or filter change), not every render — so Expand All / Collapse All and scroll are not overwritten
   const lastWbsDataKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    const items = data.wbsData?.items;
+    const items = wbsDataForTable?.items;
     const key = items?.length
       ? `${items.length}-${(items as any[])[0]?.id ?? ''}`
       : null;
@@ -452,7 +525,7 @@ export default function WBSGanttPage() {
     };
     collectExpandable(items);
     setExpandedIds(idsWithChildren);
-  }, [data.wbsData?.items]);
+  }, [wbsDataForTable?.items]);
 
   // Optimize task name lookup
   const taskNameMap = useMemo(() => {
@@ -486,8 +559,8 @@ export default function WBSGanttPage() {
       });
     };
 
-    if (data.wbsData?.items) {
-      let itemsToAnalyze = data.wbsData.items;
+    if (wbsDataForTable?.items?.length) {
+      let itemsToAnalyze = wbsDataForTable.items;
 
       // Filter by selected project if set
       if (selectedProjectId) {
@@ -808,7 +881,72 @@ export default function WBSGanttPage() {
         <div>
           <h1 className="page-title">WBS & Gantt Chart</h1>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Global WBS Search */}
+          <div style={{ position: 'relative', minWidth: '180px' }}>
+            <input
+              type="text"
+              placeholder="Search WBS (name or code)..."
+              value={wbsSearchQuery}
+              onChange={(e) => setWbsSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.4rem 0.6rem 0.4rem 2rem',
+                fontSize: '0.8rem',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                outline: 'none',
+              }}
+              aria-label="Search WBS by name or code"
+            />
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              style={{
+                position: 'absolute',
+                left: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                pointerEvents: 'none',
+                color: 'var(--text-secondary)',
+              }}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            {wbsSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setWbsSearchQuery('')}
+                aria-label="Clear search"
+                style={{
+                  position: 'absolute',
+                  right: '6px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
           {/* Interval Selector */}
           <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
             {(['week', 'month', 'quarter', 'year'] as GanttInterval[]).map(interval => (

@@ -775,7 +775,9 @@ export function DataProvider({ children }: DataProviderProps) {
 
     // =========================================================================
     // APPLY DATE FILTER
+    // WBS actual hours are cumulative (all-time); do not let date filter affect wbsData.
     // =========================================================================
+    const wbsDataBeforeDateFilter = filtered.wbsData;
     if (dateFilter && dateFilter.type !== 'all') {
       const now = new Date();
       let startDate: Date, endDate: Date;
@@ -841,6 +843,9 @@ export function DataProvider({ children }: DataProviderProps) {
         });
       }
     }
+
+    // Ensure WBS Gantt always gets cumulative actual hours (wbsData never date-filtered)
+    filtered.wbsData = wbsDataBeforeDateFilter;
 
     return filtered;
   }, [data, hierarchyFilter, dateFilter]);
