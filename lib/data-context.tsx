@@ -29,15 +29,16 @@ import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
 /**
  * Filter out inactive entities and remove hierarchy nodes with nothing under them.
  * - Employees: only active (isActive !== false, status !== 'Inactive')
- * - Projects: only active (active !== false)
- * - Sites: only active and with at least one active project
- * - Customers: only active and with at least one remaining site
- * - Portfolios: only active and with at least one remaining customer
+ * - Projects: keep if active OR has a plan (has_schedule) so full hierarchy shows for plans
+ * - Sites / Customers / Portfolios: keep if they have at least one kept project/site/customer
  * Mutates mergedData in place.
  */
 function applyActiveOnlyAndPruneEmpty(mergedData: Partial<SampleData>): void {
   const isActiveEmployee = (e: { isActive?: boolean; is_active?: boolean; status?: string }) =>
     e.isActive !== false && (e as { is_active?: boolean }).is_active !== false && e.status !== 'Inactive';
+
+  const hasPlan = (p: { has_schedule?: boolean; hasSchedule?: boolean }) =>
+    p.has_schedule === true || p.hasSchedule === true;
 
   const isActiveEntity = (x: { active?: boolean; isActive?: boolean }) =>
     x.active !== false && (x as { isActive?: boolean }).isActive !== false;
@@ -47,47 +48,50 @@ function applyActiveOnlyAndPruneEmpty(mergedData: Partial<SampleData>): void {
     mergedData.employees = mergedData.employees.filter(isActiveEmployee);
   }
 
-  // 2. Projects: active only
+  // 2. Projects: keep if active OR has a plan (so hierarchy for "has plan" always shows)
   if (mergedData.projects && Array.isArray(mergedData.projects)) {
-    mergedData.projects = mergedData.projects.filter(isActiveEntity);
+    mergedData.projects = mergedData.projects.filter(
+      (p: { active?: boolean; isActive?: boolean; has_schedule?: boolean; hasSchedule?: boolean }) =>
+        isActiveEntity(p) || hasPlan(p)
+    );
   }
 
-  // 3. Sites: active only and have at least one active project
+  // 3. Sites: keep if they have at least one kept project (no active requirement on site)
   const projectSiteIds = new Set(
     (mergedData.projects || []).map(
       (p: { siteId?: string; site_id?: string }) => p.siteId || p.site_id || ''
     )
   );
   if (mergedData.sites && Array.isArray(mergedData.sites)) {
-    mergedData.sites = mergedData.sites.filter((s: { active?: boolean; isActive?: boolean; id?: string; siteId?: string }) => {
+    mergedData.sites = mergedData.sites.filter((s: { id?: string; siteId?: string }) => {
       const sid = s.id || s.siteId;
-      return isActiveEntity(s) && !!sid && projectSiteIds.has(sid);
+      return !!sid && projectSiteIds.has(sid);
     });
   }
 
-  // 4. Customers: active only and have at least one remaining site
+  // 4. Customers: keep if they have at least one kept site
   const siteCustomerIds = new Set(
     (mergedData.sites || []).map(
       (s: { customerId?: string; customer_id?: string }) => s.customerId || s.customer_id || ''
     )
   );
   if (mergedData.customers && Array.isArray(mergedData.customers)) {
-    mergedData.customers = mergedData.customers.filter((c: { active?: boolean; isActive?: boolean; id?: string; customerId?: string }) => {
+    mergedData.customers = mergedData.customers.filter((c: { id?: string; customerId?: string }) => {
       const cid = c.id || c.customerId;
-      return isActiveEntity(c) && !!cid && siteCustomerIds.has(cid);
+      return !!cid && siteCustomerIds.has(cid);
     });
   }
 
-  // 5. Portfolios: active only and have at least one remaining customer
+  // 5. Portfolios: keep if they have at least one kept customer
   const customerPortfolioIds = new Set(
     (mergedData.customers || []).map(
       (c: { portfolioId?: string; portfolio_id?: string }) => c.portfolioId || c.portfolio_id || ''
     )
   );
   if (mergedData.portfolios && Array.isArray(mergedData.portfolios)) {
-    mergedData.portfolios = mergedData.portfolios.filter((p: { active?: boolean; isActive?: boolean; id?: string; portfolioId?: string }) => {
+    mergedData.portfolios = mergedData.portfolios.filter((p: { id?: string; portfolioId?: string }) => {
       const pid = p.id || p.portfolioId;
-      return isActiveEntity(p) && !!pid && customerPortfolioIds.has(pid);
+      return !!pid && customerPortfolioIds.has(pid);
     });
   }
 }

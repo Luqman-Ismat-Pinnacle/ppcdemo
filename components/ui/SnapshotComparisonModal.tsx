@@ -39,25 +39,26 @@ export default function SnapshotComparisonModal({
   currentData,
   onRenderChart,
 }: SnapshotComparisonModalProps) {
-  const { filteredData, updateData } = useData();
+  const { data, updateData } = useData();
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const currentChartRef = useRef<any>(null);
   const snapshotChartRef = useRef<any>(null);
   const currentContainerRef = useRef<HTMLDivElement | null>(null);
   const snapshotContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Only visual snapshots for this visual – no global snapshot mapping
+  // Use full data.visualSnapshots (not filteredData) so list isn't affected by hierarchy filter
   const snapshots = useMemo((): SnapshotItem[] => {
-    const list = (filteredData.visualSnapshots || [])
-      .filter((s: any) => s.visualId === visualId)
+    const raw = (data?.visualSnapshots || []) as any[];
+    const list = raw
+      .filter((s: any) => (s.visualId || s.visual_id) === visualId)
       .map((s: any) => ({
         id: s.id,
-        name: s.snapshotName || s.snapshotDate || 'Snapshot',
-        date: s.createdAt || s.snapshotDate || '',
+        name: s.snapshotName || s.snapshot_name || s.snapshotDate || s.snapshot_date || 'Snapshot',
+        date: s.createdAt || s.created_at || s.snapshotDate || s.snapshot_date || '',
         data: s.data,
       }));
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [visualId, filteredData.visualSnapshots]);
+  }, [visualId, data?.visualSnapshots]);
 
   const selectedSnapshot = useMemo(
     () => (selectedSnapshotId ? snapshots.find((s) => s.id === selectedSnapshotId) : null),
@@ -114,7 +115,7 @@ export default function SnapshotComparisonModal({
       });
       const result = await res.json();
       if (result.success) {
-        const updated = (filteredData.visualSnapshots || []).filter((s: any) => s.id !== snapshotId);
+        const updated = (data?.visualSnapshots || []).filter((s: any) => s.id !== snapshotId);
         updateData({ visualSnapshots: updated });
         if (selectedSnapshotId === snapshotId) setSelectedSnapshotId(null);
       } else {
@@ -128,16 +129,18 @@ export default function SnapshotComparisonModal({
   if (!isOpen) return null;
 
   const cardStyle = {
-    background: 'var(--bg-card)',
-    border: '1px solid var(--border-color)',
+    background: 'rgba(26, 26, 30, 0.6)',
+    border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 'var(--radius-lg)',
     overflow: 'hidden' as const,
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
   };
 
   const headerStyle = {
     padding: '1rem 1.25rem',
-    borderBottom: '1px solid var(--border-color)',
-    background: 'rgba(255,255,255,0.02)',
+    borderBottom: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(255,255,255,0.03)',
     display: 'flex' as const,
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -149,8 +152,9 @@ export default function SnapshotComparisonModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.8)',
-        backdropFilter: 'blur(8px)',
+        background: 'rgba(0,0,0,0.4)',
+        backdropFilter: 'blur(12px) saturate(120%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(120%)',
         zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
@@ -168,15 +172,15 @@ export default function SnapshotComparisonModal({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-color)',
+          background: 'rgba(20, 20, 24, 0.75)',
+          border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-xl)',
+          boxShadow: '0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header – same pattern as chart-card-header */}
-        <div style={headerStyle}>
+        {/* Header */}
+        <div style={{ ...headerStyle, background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <div>
             <h2 className="chart-card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
               {visualTitle}
@@ -210,8 +214,9 @@ export default function SnapshotComparisonModal({
         <div
           style={{
             padding: '0.75rem 1.25rem',
-            borderBottom: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
+            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.04)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             flexWrap: 'wrap',
             gap: 12,
