@@ -883,13 +883,17 @@ const applyTaskProgress = (task: any, context: TaskProgressContext) => {
   const normalizedPercent = clampPercent(percentComplete);
   const earnedHours = baselineHours * (normalizedPercent / 100);
   const taskEfficiency = actualHours > 0 ? clampPercent((earnedHours / actualHours) * 100) : null;
+  // Prefer MPP parser remainingHours; only calculate when not provided
+  const remainingHours =
+    task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ??
+    Math.max(0, baselineHours - actualHours);
 
   return {
     ...task,
     percentComplete: normalizedPercent,
     taskEfficiency,
     actualHours,
-    remainingHours: Math.max(0, baselineHours - actualHours),
+    remainingHours: typeof remainingHours === 'number' ? remainingHours : Math.max(0, baselineHours - actualHours),
   };
 };
 
@@ -922,13 +926,21 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (task.actualCost || 0) + taskCost.actual;
     const nonLaborForecast = taskCost.forecast;
 
+    // Prefer MPP parser remainingHours; only calculate when not provided
+    const taskRemaining =
+      task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
+    const remainingHours =
+      taskRemaining != null && typeof taskRemaining === 'number'
+        ? taskRemaining
+        : Math.max(0, adjustedBaselineHours - actualHours);
+
     return {
       ...task,
       baselineHours: adjustedBaselineHours,
       baselineCost: adjustedBaselineCost,
       baselineStartDate: shiftDateByDays(task.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(task.baselineEndDate, delta.endDays),
-      remainingHours: Math.max(0, adjustedBaselineHours - actualHours),
+      remainingHours,
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,
@@ -948,13 +960,21 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (task.actualCost || 0) + taskCost.actual;
     const nonLaborForecast = taskCost.forecast;
 
+    // Prefer MPP parser remainingHours for subTasks too
+    const subRemaining =
+      task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
+    const subRemainingHours =
+      subRemaining != null && typeof subRemaining === 'number'
+        ? subRemaining
+        : Math.max(0, adjustedBaselineHours - actualHours);
+
     return {
       ...task,
       baselineHours: adjustedBaselineHours,
       baselineCost: adjustedBaselineCost,
       baselineStartDate: shiftDateByDays(task.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(task.baselineEndDate, delta.endDays),
-      remainingHours: Math.max(0, adjustedBaselineHours - actualHours),
+      remainingHours: subRemainingHours,
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,

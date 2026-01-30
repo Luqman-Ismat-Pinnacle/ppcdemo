@@ -602,15 +602,138 @@ body {
   z-index: 10000;
 }
 
+/* Logs dropdown: match profile-dropdown / site theme (glassy, theme vars) */
 .logs-dropdown-content {
+  position: absolute;
+  top: 100%;
   right: 0;
   left: auto;
+  margin-top: 0.25rem;
+  min-width: 360px;
+  max-width: 480px;
+  max-height: 70vh;
   padding: 0;
-  background: rgba(8, 8, 8, 0.95);
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   z-index: 10000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity var(--transition-fast), visibility var(--transition-fast), transform var(--transition-fast);
+}
+
+.logs-dropdown-content.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.logs-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.logs-dropdown-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.logs-dropdown-clear,
+.logs-dropdown-close {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.logs-dropdown-clear:hover,
+.logs-dropdown-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.logs-dropdown-body {
+  padding: 12px;
+  overflow-y: auto;
+  max-height: calc(70vh - 56px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.logs-engine-section {
+  margin-bottom: 1rem;
+}
+
+.logs-engine-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.logs-engine-heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.logs-engine-entry,
+.logs-change-entry {
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.35rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+}
+
+.logs-change-desc {
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+}
+
+.logs-engine-entry-meta,
+.logs-change-meta {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.logs-engine-pre {
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.logs-empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0.75rem;
+  text-align: center;
 }
 
 .catch-up-header {
