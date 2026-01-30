@@ -432,7 +432,18 @@ export default function ResourceHeatmapChart({
         interval: 0
       },
       axisTick: { show: false },
-      splitLine: { show: false }
+      splitLine: { show: false },
+      // Full-column highlight so grid band matches header highlight (no thin offset line)
+      axisPointer: {
+        show: true,
+        type: 'shadow',
+        shadowStyle: {
+          color: 'rgba(144, 238, 144, 0.18)',
+          borderColor: 'rgba(144, 238, 144, 0.25)',
+          borderWidth: 1
+        },
+        triggerTooltip: true
+      }
     },
     yAxis: {
       type: 'category',

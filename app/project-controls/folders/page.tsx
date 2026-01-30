@@ -38,8 +38,16 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 const STORAGE_BUCKET = 'project-documents';
 
 export default function DocumentsPage() {
-  const { refreshData, filteredData } = useData();
+  const { refreshData, data: fullData } = useData();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Split projects by plan status (has_schedule / hasSchedule) for the plan-status container
+  const { projectsWithPlan, projectsWithoutPlan } = useMemo(() => {
+    const projects = fullData?.projects || [];
+    const withPlan = projects.filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
+    const withoutPlan = projects.filter((p: any) => !(p.has_schedule === true || p.hasSchedule === true));
+    return { projectsWithPlan: withPlan, projectsWithoutPlan: withoutPlan };
+  }, [fullData?.projects]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -597,6 +605,50 @@ export default function DocumentsPage() {
       </div>
 
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
+
+        {/* Project plan status: how many have a plan, which do / don't */}
+        <div className="chart-card grid-full">
+          <div className="chart-card-header">
+            <h3 className="chart-card-title">Project plan status</h3>
+          </div>
+          <div className="chart-card-body" style={{ padding: '1.25rem 1.5rem' }}>
+            <p style={{ marginBottom: '1rem', fontSize: '0.9375rem', color: 'var(--text-secondary)' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{projectsWithPlan.length}</strong> project{projectsWithPlan.length !== 1 ? 's' : ''} have a plan
+              {' · '}
+              <strong style={{ color: 'var(--text-primary)' }}>{projectsWithoutPlan.length}</strong> project{projectsWithoutPlan.length !== 1 ? 's' : ''} don&apos;t
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--pinnacle-teal)', marginBottom: '0.5rem' }}>
+                  With plan ({projectsWithPlan.length})
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)', maxHeight: '180px', overflowY: 'auto' }}>
+                  {projectsWithPlan.length === 0 ? (
+                    <li style={{ listStyle: 'none', paddingLeft: 0, color: 'var(--text-muted)' }}>None</li>
+                  ) : (
+                    projectsWithPlan.map((p: any) => (
+                      <li key={p.id || p.projectId}>{p.name || p.projectId || p.id}</li>
+                    ))
+                  )}
+                </ul>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                  Without plan ({projectsWithoutPlan.length})
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)', maxHeight: '180px', overflowY: 'auto' }}>
+                  {projectsWithoutPlan.length === 0 ? (
+                    <li style={{ listStyle: 'none', paddingLeft: 0, color: 'var(--text-muted)' }}>None</li>
+                  ) : (
+                    projectsWithoutPlan.map((p: any) => (
+                      <li key={p.id || p.projectId}>{p.name || p.projectId || p.id}</li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* File Upload */}
         <div className="chart-card grid-full">
