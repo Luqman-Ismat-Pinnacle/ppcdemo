@@ -54,13 +54,19 @@ serve(async (req) => {
         const supabase = createClient(supabaseUrl, supabaseKey);
 
         // 2. Prepare URL & Date Range
-        // We use a rolling 30-day window for sync to avoid timeouts, 
-        // matching the "sync method" request while using the new report parameters.
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(endDate.getDate() - 30);
+        // Accept optional startDate/endDate from body (ISO YYYY-MM-DD) for chunked/streaming sync.
+        // Default: rolling 30-day window. Mapping stays identical.
+        let body: { startDate?: string; endDate?: string } = {};
+        try {
+            if (req.body) body = await req.json();
+        } catch (_) { /* ignore */ }
+        const endDate = body.endDate ? new Date(body.endDate) : new Date();
+        const startDate = body.startDate ? new Date(body.startDate) : (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d; })();
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+            throw new Error('Invalid startDate/endDate; use ISO YYYY-MM-DD');
+        }
 
-        const formatDate = (date: Date) => date.toISOString().split('T')[0] + '-08:00'; // Workday often expects timezone or specific format, keeping it safe
+        const formatDate = (date: Date) => date.toISOString().split('T')[0] + '-08:00';
 
         const params = new URLSearchParams({
             'Projects_and_Project_Hierarchies!WID': '94cffcd386281001f21ecbc0ba820001!3cc34283d5c31000b9685df9ccce0001!74988a42b1d71000bb0ee8b8b70c0000!74988a42b1d71000bad6bfeceb310001!74988a42b1d71000babc7d9ad9b50001!8114d1e7d6281001755179b2ecba0000!74988a42b1d71000b9565eb994d30000!74988a42b1d71000b928197b465e0001!8114d1e7d62810017551774c04d00000!74988a42b1d71000b90309e92b680001!6e4362224aa81000ca8f84a39b6a0001!74988a42b1d71000b8ee4094ed830001!82a1fc685dda1000c6c99bc7562b0000!6c3abbb4fb20100174cf1f0f36850000!e0c093bd0ece100165ff337f9cdd0000!5821192f86da1000c64cf77badb50001!2a5ee02cc70210015501fde7aa720001!2a5ee02cc702100154f3887562a20001!60cb012a3c2a100169b86b0bb3d20001!761afa109c8910017615a972157b0000!761afa109c8910017615a83d85680000!761afa109c8910017615a7094cce0000!761afa109c8910017615a53aeb070000!761afa109c8910017615a4050c3c0000!761afa109c8910017615a235a48a0000!3cc34283d5c31000ba1e365ffde80001',

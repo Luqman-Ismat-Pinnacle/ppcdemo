@@ -1,8 +1,9 @@
 /**
  * @fileoverview Workday Sync API Route
- * 
+ *
  * Calls Supabase Edge Functions to sync data.
- * Supports: employees, projects (hierarchy only: portfolios, customers, sites)
+ * Supports: employees, projects (hierarchy), hours (chunked by date), ledger.
+ * With stream: true and syncType: 'unified', returns a constant stream (NDJSON) for stability.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,6 +17,9 @@ const EDGE_FUNCTIONS = {
 } as const;
 
 type SyncType = keyof typeof EDGE_FUNCTIONS;
+
+const WINDOW_DAYS = 30;
+const DEFAULT_HOURS_DAYS_BACK = 90;
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,6 +37,8 @@ export async function POST(req: NextRequest) {
     const syncType = body.syncType as SyncType | 'unified';
     const action = body.action;
     const records = body.records || [];
+    const stream = body.stream === true;
+    const hoursDaysBack = Math.min(365, Math.max(30, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
 
     // Handle get-available-projects action - fetch directly from database
     if (action === 'get-available-projects') {
@@ -77,14 +83,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Unified Sync Logic: Call all Workday Edge Functions sequentially
+    // Unified Sync Logic: sequential or stream (constant stream = more stable, no big pull)
     if (syncType === 'unified') {
+      if (stream) {
+        return unifiedSyncStream(supabaseUrl, supabaseServiceKey, hoursDaysBack);
+      }
       console.log('[Workday Sync] Starting Unified Sync sequence...');
       const results: any[] = [];
       const logs: string[] = [];
       let success = true;
 
-      // 1. Employees (creates Portfolios)
       logs.push('--- Step 1: Syncing Employees & Portfolios ---');
       const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {});
       results.push({ step: 'employees', result: empRes });
@@ -96,7 +104,6 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${empRes.summary?.synced || 0} employees.`);
       }
 
-      // 2. Projects (creates Portfolios, Customers, Sites, Projects)
       logs.push('--- Step 2: Syncing Hierarchy & Projects ---');
       const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
       results.push({ step: 'hierarchy', result: projRes });
@@ -108,7 +115,6 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites, ${projRes.summary?.projects || 0} Projects.`);
       }
 
-      // 3. Hours and Costs (includes actual cost data)
       logs.push('--- Step 3: Syncing Hours & Cost Actuals ---');
       const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', {});
       results.push({ step: 'hours', result: hoursRes });
@@ -120,12 +126,11 @@ export async function POST(req: NextRequest) {
         logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
       }
 
-      // 4. Ledger Cost Actuals (DISABLED - Memory Limit Issues)
       logs.push('--- Step 4: Skipping Ledger Sync (Memory Limit Issues) ---');
       logs.push('Ledger sync disabled due to worker memory limits.');
       logs.push('Hours sync includes cost data for WBS Gantt integration.');
       logs.push('Use individual ledger functions if needed: workday-ledger-stream or workday-ledger-chunked');
-      
+
       return NextResponse.json({
         success,
         syncType: 'unified',
@@ -142,6 +147,11 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    // Hours-only with stream: chunk by date and stream progress (same mapping, constant stream)
+    if (syncType === 'hours' && stream) {
+      return hoursOnlyStream(supabaseUrl, supabaseServiceKey, hoursDaysBack);
     }
 
     const edgeFunctionName = EDGE_FUNCTIONS[syncType as keyof typeof EDGE_FUNCTIONS];
@@ -188,12 +198,147 @@ async function callEdgeFunction(url: string, key: string, functionName: string, 
   return await edgeResponse.json();
 }
 
+/** Push one NDJSON line to the stream (constant stream = stable, not one big pull). */
+function pushLine(controller: ReadableStreamDefaultController<Uint8Array>, obj: object) {
+  controller.enqueue(new TextEncoder().encode(JSON.stringify(obj) + '\n'));
+}
 
+/**
+ * Unified sync as a constant stream: employees -> projects -> hours (chunked by date).
+ * Returns NDJSON stream: one JSON object per line. Mapping stays the same; only fetching is chunked.
+ */
+function unifiedSyncStream(
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  hoursDaysBack: number
+): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const logs: string[] = [];
+      let success = true;
+
+      try {
+        // 1. Employees
+        pushLine(controller, { type: 'step', step: 'employees', status: 'started' });
+        const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {});
+        pushLine(controller, { type: 'step', step: 'employees', status: 'done', result: empRes });
+        if (!empRes.success) {
+          success = false;
+          logs.push(`Error in employees sync: ${empRes.error}`);
+        } else {
+          logs.push(`Synced ${empRes.summary?.synced ?? 0} employees.`);
+        }
+
+        // 2. Projects (hierarchy)
+        pushLine(controller, { type: 'step', step: 'projects', status: 'started' });
+        const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
+        pushLine(controller, { type: 'step', step: 'projects', status: 'done', result: projRes });
+        if (!projRes.success) {
+          success = false;
+          logs.push(`Error in hierarchy sync: ${projRes.error}`);
+        } else {
+          logs.push(`Synced: ${projRes.summary?.portfolios ?? 0} Portfolios, ${projRes.summary?.customers ?? 0} Customers, ${projRes.summary?.sites ?? 0} Sites, ${projRes.summary?.projects ?? 0} Projects.`);
+        }
+
+        // 3. Hours in date windows (constant stream: one window at a time, no big pull)
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - hoursDaysBack);
+        const totalChunks = Math.ceil(hoursDaysBack / WINDOW_DAYS);
+        let totalHours = 0;
+
+        pushLine(controller, { type: 'step', step: 'hours', status: 'started', totalChunks });
+        for (let i = 0; i < totalChunks; i++) {
+          const chunkStart = new Date(start);
+          chunkStart.setDate(start.getDate() + i * WINDOW_DAYS);
+          const chunkEnd = new Date(chunkStart);
+          chunkEnd.setDate(chunkEnd.getDate() + WINDOW_DAYS - 1);
+          if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+          const startStr = chunkStart.toISOString().split('T')[0];
+          const endStr = chunkEnd.toISOString().split('T')[0];
+
+          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk', chunk: i + 1, totalChunks, startDate: startStr, endDate: endStr });
+          const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', { startDate: startStr, endDate: endStr });
+          totalHours += hoursRes.stats?.hours ?? 0;
+          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
+          if (!hoursRes.success) success = false;
+        }
+        pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
+        logs.push(`Synced ${totalHours} hour entries (${totalChunks} date windows).`);
+
+        logs.push('Ledger sync skipped (use individual workday-ledger-chunked if needed).');
+      } catch (err: any) {
+        success = false;
+        logs.push(err?.message ?? String(err));
+        pushLine(controller, { type: 'error', error: err?.message ?? String(err) });
+      }
+
+      pushLine(controller, { type: 'done', success, logs });
+      controller.close();
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
+/** Hours-only sync as NDJSON stream (chunked by date window; mapping unchanged). */
+function hoursOnlyStream(
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  hoursDaysBack: number
+): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - hoursDaysBack);
+      const totalChunks = Math.ceil(hoursDaysBack / WINDOW_DAYS);
+      let totalHours = 0;
+      let success = true;
+      try {
+        pushLine(controller, { type: 'step', step: 'hours', status: 'started', totalChunks });
+        for (let i = 0; i < totalChunks; i++) {
+          const chunkStart = new Date(start);
+          chunkStart.setDate(start.getDate() + i * WINDOW_DAYS);
+          const chunkEnd = new Date(chunkStart);
+          chunkEnd.setDate(chunkEnd.getDate() + WINDOW_DAYS - 1);
+          if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+          const startStr = chunkStart.toISOString().split('T')[0];
+          const endStr = chunkEnd.toISOString().split('T')[0];
+          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk', chunk: i + 1, totalChunks, startDate: startStr, endDate: endStr });
+          const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', { startDate: startStr, endDate: endStr });
+          totalHours += hoursRes.stats?.hours ?? 0;
+          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
+          if (!hoursRes.success) success = false;
+        }
+        pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
+      } catch (err: any) {
+        success = false;
+        pushLine(controller, { type: 'error', error: err?.message ?? String(err) });
+      }
+      pushLine(controller, { type: 'done', success, totalHours });
+      controller.close();
+    }
+  });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-store',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
 
 export async function GET() {
   return NextResponse.json({
     available: true,
     syncTypes: Object.keys(EDGE_FUNCTIONS),
-    message: 'POST { syncType, records } to sync data',
+    message: 'POST { syncType, records } to sync data. Use { syncType: "unified", stream: true } for constant NDJSON stream (more stable). Optional hoursDaysBack (default 90).',
   });
 }
