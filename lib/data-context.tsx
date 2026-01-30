@@ -105,6 +105,8 @@ function createEmptyData(): SampleData {
     catchUpLog: [],
     projectHealth: [],
     projectLog: [],
+    projectMappings: [],
+    taskMappings: [],
     epics: [],
     features: [],
     userStories: [],

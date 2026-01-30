@@ -304,7 +304,21 @@ async function fetchFromSupabase() {
     projectDocuments: convertArrayToCamelCase(projectDocuments.data || []),
     taskDependencies: convertArrayToCamelCase(taskDependencies.data || []),
     taskQuantityEntries: convertArrayToCamelCase(taskQuantityEntries.data || []),
+    projectMappings: convertArrayToCamelCase(await fetchTableSafe('project_mappings')),
+    taskMappings: convertArrayToCamelCase(await fetchTableSafe('task_mappings')),
   };
+}
+
+/** Fetch a table; return [] if table missing or error (so new tables are optional until migration is run). */
+async function fetchTableSafe(table: string): Promise<Record<string, unknown>[]> {
+  if (!supabaseClient) return [];
+  try {
+    const { data, error } = await supabaseClient.from(table).select('*').order('created_at', { ascending: false });
+    if (error) return [];
+    return (data || []) as Record<string, unknown>[];
+  } catch {
+    return [];
+  }
 }
 
 /**

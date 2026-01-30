@@ -730,6 +730,34 @@ export interface HourEntry {
 }
 
 /**
+ * Project mapping: links an MPP/schedule project to a Workday project for actuals.
+ * Used together with task_mappings to roll up Workday hours to plan tasks.
+ */
+export interface ProjectMapping {
+  id: string;
+  mppProjectId: string;
+  workdayProjectId: string;
+  isActive?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Task mapping: links a Workday task ref (e.g. hour_entries.taskId) to a plan task
+ * within a given project mapping. Used to match Workday hours to MPP/schedule tasks.
+ */
+export interface TaskMapping {
+  id: string;
+  projectMappingId: string;
+  workdayTaskId: string;
+  workdayTaskName?: string | null;
+  planTaskId: string;
+  isActive?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Milestone database table record with tracking data.
  * 
  * @interface MilestoneTable
@@ -1841,6 +1869,8 @@ export interface SampleData {
   snapshots: Snapshot[];
   visualSnapshots: VisualSnapshot[];
   projectDocuments: ProjectDocument[];
+  projectMappings?: ProjectMapping[];
+  taskMappings?: TaskMapping[];
   changeRequests: ChangeRequest[];
   changeImpacts: ChangeImpact[];
   changeControlSummary?: ChangeControlSummary;

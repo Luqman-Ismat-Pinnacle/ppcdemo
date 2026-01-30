@@ -1476,10 +1476,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             children: []
           };
 
-
-
-          // Projects directly under site (dedupe by projectId so same project is never built twice)
-          const siteProjectsRaw = maps.projectsBySite.get(siteId) || [];
+          // Projects under this site: only those that match THIS customer (same site can appear under multiple customers; avoid copying projects from the wrong customer)
+          const siteProjectsRaw = (maps.projectsBySite.get(siteId) || []).filter((p: any) => {
+            const pCustId = p.customerId ?? p.customer_id ?? '';
+            return String(pCustId) === String(customerId);
+          });
           const siteProjects = Array.from(new Map(siteProjectsRaw.map((p: any) => [String(p.id ?? p.projectId), p])).values());
           siteProjects.forEach((project: any, prIdx: number) => {
             siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
