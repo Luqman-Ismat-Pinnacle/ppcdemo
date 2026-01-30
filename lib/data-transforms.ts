@@ -323,15 +323,13 @@ function buildHierarchyMaps(data: {
     }
   });
 
-  // Build unit maps (supports both hierarchy_nodes parent_id and new phase_id, and legacy site_id)
+  // Build unit maps (normalize ids to string for consistent lookup)
   units.forEach((unit: any) => {
-    // New hierarchy: Phase -> Unit
-    const phaseId = unit.phaseId || unit.phase_id;
-    if (phaseId) {
-      if (!unitsByPhase.has(phaseId)) {
-        unitsByPhase.set(phaseId, []);
-      }
-      unitsByPhase.get(phaseId)!.push(unit);
+    const phaseId = unit.phaseId ?? unit.phase_id;
+    if (phaseId != null && phaseId !== '') {
+      const key = String(phaseId);
+      if (!unitsByPhase.has(key)) unitsByPhase.set(key, []);
+      unitsByPhase.get(key)!.push(unit);
       console.log(`[DEBUG MAPS] Unit ${unit.id} linked to phase ${phaseId}`);
     } else {
       console.log(`[DEBUG MAPS] Unit ${unit.id} has no phaseId/phase_id`);
@@ -346,12 +344,11 @@ function buildHierarchyMaps(data: {
       unitsBySite.get(siteId)!.push(unit);
     }
 
-    const projectId = unit.projectId || unit.project_id;
-    if (projectId && !phaseId) {
-      if (!unitsByProject.has(projectId)) {
-        unitsByProject.set(projectId, []);
-      }
-      unitsByProject.get(projectId)!.push(unit);
+    const projectId = unit.projectId ?? unit.project_id;
+    if (projectId != null && projectId !== '' && !phaseId) {
+      const key = String(projectId);
+      if (!unitsByProject.has(key)) unitsByProject.set(key, []);
+      unitsByProject.get(key)!.push(unit);
     }
   });
 
@@ -383,36 +380,33 @@ function buildHierarchyMaps(data: {
     }
   });
 
-  // Build phase maps
+  // Build phase maps (normalize ids to string so project.id number matches phase.project_id string)
   (data.phases || []).forEach((phase: any) => {
-    const projectId = phase.projectId || phase.project_id;
-    if (projectId) {
-      if (!phasesByProject.has(projectId)) {
-        phasesByProject.set(projectId, []);
-      }
-      phasesByProject.get(projectId)!.push(phase);
+    const projectId = phase.projectId ?? phase.project_id;
+    if (projectId != null && projectId !== '') {
+      const key = String(projectId);
+      if (!phasesByProject.has(key)) phasesByProject.set(key, []);
+      phasesByProject.get(key)!.push(phase);
     }
   });
 
-  // Build task maps
+  // Build task maps (normalize ids to string)
   (data.tasks || []).forEach((task: any) => {
-    const phaseId = task.phaseId || task.phase_id;
-    if (phaseId) {
-      if (!tasksByPhase.has(phaseId)) {
-        tasksByPhase.set(phaseId, []);
-      }
-      tasksByPhase.get(phaseId)!.push(task);
+    const phaseId = task.phaseId ?? task.phase_id;
+    if (phaseId != null && phaseId !== '') {
+      const key = String(phaseId);
+      if (!tasksByPhase.has(key)) tasksByPhase.set(key, []);
+      tasksByPhase.get(key)!.push(task);
       console.log(`[DEBUG MAPS] Task ${task.id} linked to phase ${phaseId}, unitId: ${task.unitId || task.unit_id}`);
     } else {
       console.log(`[DEBUG MAPS] Task ${task.id} has no phaseId/phase_id`);
     }
 
-    const projectId = task.projectId || task.project_id;
-    if (projectId && !phaseId) {
-      if (!tasksByProject.has(projectId)) {
-        tasksByProject.set(projectId, []);
-      }
-      tasksByProject.get(projectId)!.push(task);
+    const projectId = task.projectId ?? task.project_id;
+    if (projectId != null && projectId !== '' && !phaseId) {
+      const key = String(projectId);
+      if (!tasksByProject.has(key)) tasksByProject.set(key, []);
+      tasksByProject.get(key)!.push(task);
     }
   });
 
@@ -1082,7 +1076,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
     // Unified helper to build a project node with all its children and rollup logic
     const buildProjectNode = (project: any, projectWbs: string): TransformWBSItem => {
-      const projectId = project.id || project.projectId;
+      const projectId = String(project.id ?? project.projectId ?? '');
       const projBaselineHrs = project.baselineHours || project.budgetHours || 0;
       const projActualHrs = project.actualHours || project.actual_hours || 0;
       const projBaselineCst = project.baselineCost || project.budgetCost || 0;
@@ -1114,7 +1108,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       let projRollupPercentComplete = 0;
       let projChildCount = 0;
 
-      const projectPhases = maps.phasesByProject.get(projectId) || [];
+      const projectPhases = maps.phasesByProject.get(String(projectId)) || [];
 
       projectPhases.forEach((phase: any, phIdx: number) => {
         const phaseId = phase.id || phase.phaseId;
@@ -1143,7 +1137,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         };
 
         // 1. Add Units under Phase
-        const phaseUnits = maps.unitsByPhase.get(phaseId) || [];
+        const phaseUnits = maps.unitsByPhase.get(String(phaseId)) || [];
         phaseUnits.forEach((unit: any, uIdx: number) => {
           const unitId = unit.id || unit.unitId;
           const unitWbs = `${phaseWbs}.${uIdx + 1}`;
@@ -1246,7 +1240,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         });
 
         // 2. Add orphan Tasks under Phase (no Unit)
-        const directPhaseTasks = (maps.tasksByPhase.get(phaseId) || []).filter((t: any) => 
+        const directPhaseTasks = (maps.tasksByPhase.get(String(phaseId)) || []).filter((t: any) => 
           !(t as any).parent_id || !units.some((u: any) => u.id === (t as any).parent_id)
         );
 
@@ -1313,7 +1307,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       });
 
       // 3. Add Units directly under Project (no Phase)
-      const directProjectUnits = maps.unitsByProject.get(projectId) || [];
+      const directProjectUnits = maps.unitsByProject.get(String(projectId)) || [];
       directProjectUnits.forEach((unit: any, uIdx: number) => {
         const unitId = unit.id || unit.unitId;
         const unitWbs = `${projectWbs}.${projectPhases.length + uIdx + 1}`;
@@ -1340,7 +1334,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       });
 
       // 4. Add Tasks directly under Project (no Phase, no Unit)
-      const directProjectTasks = maps.tasksByProject.get(projectId) || [];
+      const directProjectTasks = maps.tasksByProject.get(String(projectId)) || [];
       directProjectTasks.forEach((task: any, tIdx: number) => {
         const taskId = task.id || task.taskId;
         const taskWbs = `${projectWbs}.${projectPhases.length + directProjectUnits.length + tIdx + 1}`;
@@ -2361,7 +2355,7 @@ export function buildHierarchy(data: Partial<SampleData>) {
                         const projectId = pr.id || pr.projectId;
 
                         // Use Map lookup instead of filter - O(1) instead of O(n)
-                        const projectPhases = maps.phasesByProject.get(projectId) || [];
+                        const projectPhases = maps.phasesByProject.get(String(projectId)) || [];
 
                         return {
                           name: pr.name,
@@ -2375,7 +2369,7 @@ export function buildHierarchy(data: Partial<SampleData>) {
                   projects: (maps.projectsBySite.get(siteId) || []).filter((pr: any) => !pr.unitId && !pr.unit_id).map((pr: any) => {
                     const projectId = pr.id || pr.projectId;
                     // Use Map lookup instead of filter - O(1) instead of O(n)
-                    const projectPhases = maps.phasesByProject.get(projectId) || [];
+                    const projectPhases = maps.phasesByProject.get(String(projectId)) || [];
                     return {
                       name: pr.name,
                       id: projectId,

@@ -62,11 +62,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Delete all rows for a project (used before MPP import so only MPP hierarchy exists, no Workday extras)
-    if (operation === 'deleteByProjectId' && projectId) {
+    if (operation === 'deleteByProjectId' && projectId != null && projectId !== '') {
+      const pid = String(projectId);
       const { error } = await supabase
         .from(tableName)
         .delete()
-        .eq('project_id', projectId);
+        .eq('project_id', pid);
 
       if (error) {
         console.error(`Error deleting by project_id from ${tableName}:`, error);
