@@ -483,15 +483,18 @@ export default function ResourceHeatmapChart({
           textShadowBlur: 4
         },
         itemStyle: {
-          borderColor: 'rgba(10, 10, 10, 0.95)',
-          borderWidth: 3,
-          borderRadius: 4
+          borderColor: '#333',
+          borderWidth: 1,
+          borderRadius: 3,
+          shadowBlur: 0,
+          shadowOffsetY: 1,
+          shadowColor: 'rgba(0,0,0,0.3)'
         },
         emphasis: {
           itemStyle: {
             borderWidth: 2,
-            borderColor: '#40E0D0',
-            shadowBlur: 16,
+            borderColor: 'var(--pinnacle-teal)',
+            shadowBlur: 8,
             shadowColor: 'rgba(64, 224, 208, 0.4)'
           }
         }

@@ -2291,8 +2291,22 @@ export const buildCatchUpLog = (data: Partial<SampleData>): CatchUpEntry[] => {
 // RESOURCE HEATMAP TRANSFORMATION
 // ============================================================================
 
+/** Return Monday (week start) YYYY-MM-DD for any date string. */
+function getWeekKey(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  const d = new Date(normalizeDateString(dateStr) || dateStr);
+  if (isNaN(d.getTime())) return null;
+  const day = d.getDay();
+  const mondayDate = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.getFullYear(), d.getMonth(), mondayDate);
+  return monday.toISOString().split('T')[0];
+}
+
+const MIN_HEATMAP_WEEKS = 12;
+
 /**
- * Build resource heatmap data from hours and employees
+ * Build resource heatmap data from hours and employees.
+ * Week view always shows at least MIN_HEATMAP_WEEKS weeks (filled or empty).
  */
 export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap {
   const hours = data.hours || [];
@@ -2315,30 +2329,41 @@ export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap
     }
   });
 
-  // Get unique weeks from hours data, or generate current weeks if no hours
+  // Build week range: always at least MIN_HEATMAP_WEEKS weeks so week view shows multiple
   let rawWeeks: string[] = [];
-  let weekMap: Map<string, string>;
-  let weekIndexMap: Map<string, number>;
+  const weekIndexMap = new Map<string, number>();
 
   if (hours.length > 0) {
-    // Use shared week mapping utility; normalize so all date formats map to same weeks
     const dates = hours.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
     const weekMappings = buildWeekMappings(dates);
-    weekMap = weekMappings.weekMap;
-    weekIndexMap = weekMappings.weekIndexMap;
-    rawWeeks = weekMappings.rawWeeks;
-  } else {
-    // No hours data - generate next 12 weeks from today
+    const dataWeeks = weekMappings.rawWeeks;
+    const numWeeks = Math.max(MIN_HEATMAP_WEEKS, dataWeeks.length);
+    const startWeek = dataWeeks[0];
     const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-
-    weekMap = new Map();
-    weekIndexMap = new Map();
-    for (let i = 0; i < 12; i++) {
-      const weekStart = new Date(startOfWeek);
-      weekStart.setDate(startOfWeek.getDate() + (i * 7));
-      const weekKey = weekStart.toISOString().split('T')[0];
+    const day = today.getDay();
+    const mondayDate = today.getDate() - day + (day === 0 ? -6 : 1);
+    const fallbackStart = new Date(today.getFullYear(), today.getMonth(), mondayDate);
+    const startDate = startWeek ? (() => {
+      const d = new Date(startWeek);
+      return isNaN(d.getTime()) ? fallbackStart : d;
+    })() : fallbackStart;
+    for (let i = 0; i < numWeeks; i++) {
+      const w = new Date(startDate);
+      w.setDate(startDate.getDate() + i * 7);
+      const weekKey = w.toISOString().split('T')[0];
+      rawWeeks.push(weekKey);
+      weekIndexMap.set(weekKey, i);
+    }
+  } else {
+    // No hours - generate 12 weeks from today
+    const today = new Date();
+    const day = today.getDay();
+    const mondayDate = today.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(today.getFullYear(), today.getMonth(), mondayDate);
+    for (let i = 0; i < MIN_HEATMAP_WEEKS; i++) {
+      const w = new Date(startOfWeek);
+      w.setDate(startOfWeek.getDate() + i * 7);
+      const weekKey = w.toISOString().split('T')[0];
       rawWeeks.push(weekKey);
       weekIndexMap.set(weekKey, i);
     }
@@ -2348,7 +2373,6 @@ export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap
   const resources: string[] = [];
   const heatmapData: number[][] = [];
 
-  // Target hours per week (40 hours = 100% utilization)
   const TARGET_HOURS_PER_WEEK = 40;
 
   employees.forEach((emp: any) => {
@@ -2358,24 +2382,20 @@ export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap
 
     const weeklyHours = new Array(rawWeeks.length).fill(0);
 
-    // Use Map lookup instead of filter - O(1) instead of O(n)
     const empHours = hoursByEmployee.get(empId) || [];
     empHours.forEach((h: any) => {
       const hourDateNorm = normalizeDateString(h.date || h.entry_date);
-      const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;
-      const weekIdx = weekIndexMap.get(weekKey || '') ?? -1;
+      const weekKey = getWeekKey(hourDateNorm || (h.date || h.entry_date));
+      const weekIdx = weekKey != null ? weekIndexMap.get(weekKey) ?? -1 : -1;
       if (weekIdx >= 0) {
         weeklyHours[weekIdx] += typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
       }
     });
 
-    // Convert hours to utilization percentage (hours / 40 * 100)
     const utilizationData = weeklyHours.map(hrs => Math.round((hrs / TARGET_HOURS_PER_WEEK) * 100));
-
     heatmapData.push(utilizationData);
   });
 
-  // Format weeks for display using shared utility format
   const formattedWeeks = rawWeeks.map(week => {
     const d = new Date(week);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
