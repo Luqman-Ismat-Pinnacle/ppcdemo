@@ -1070,6 +1070,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
     // Build Map-based lookups for O(1) access instead of O(n) filtering
     const maps = buildHierarchyMaps(data);
+    const taskActualCostMap = buildTaskActualCostMap(data.hours || []);
 
     // Global set: task IDs that belong to ANY unit (by unit_id or parent_id). These must NEVER appear under phase or project directly.
     const unitIds = new Set(units.map((u: any) => String(u.id ?? u.unitId)));
@@ -1202,7 +1203,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
             const taskActualHrs = task.actualHours || task.actual_hours || 0;
             const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
-            const taskActualCst = task.actualCost || task.actual_cost || 0;
+            const taskIdForCost = String(task.id ?? task.taskId);
+            const taskActualCst = taskActualCostMap.get(taskIdForCost) ?? task.actualCost ?? task.actual_cost ?? 0;
             const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
             // Aggregate to Unit
@@ -1274,7 +1276,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
           const taskActualHrs = task.actualHours || task.actual_hours || 0;
           const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
-          const taskActualCst = task.actualCost || task.actual_cost || 0;
+          const taskIdForCost = String(task.id ?? task.taskId);
+          const taskActualCst = taskActualCostMap.get(taskIdForCost) ?? task.actualCost ?? task.actual_cost ?? 0;
           const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
           // Aggregate to Phase
@@ -1375,7 +1378,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
         const taskActualHrs = task.actualHours || task.actual_hours || 0;
         const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
-        const taskActualCst = task.actualCost || task.actual_cost || 0;
+        const taskIdForCost = String(task.id ?? task.taskId);
+        const taskActualCst = taskActualCostMap.get(taskIdForCost) ?? task.actualCost ?? task.actual_cost ?? 0;
         const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
         // Aggregate to Project
@@ -1886,6 +1890,22 @@ const buildTaskActualHoursMap = (hours: any[]): Map<string, number> => {
     if (!taskId) return;
     const hoursValue = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
     map.set(taskId, (map.get(taskId) || 0) + hoursValue);
+  });
+  return map;
+};
+
+/** Actual cost by task from hour_entries (Cost / reported_standard_cost_amt / actual_cost). Used by WBS Gantt. */
+const buildTaskActualCostMap = (hours: any[]): Map<string, number> => {
+  const map = new Map<string, number>();
+  hours.forEach((h: any) => {
+    const taskId = normalizeTaskId(h);
+    if (!taskId) return;
+    const cost =
+      Number(h.reportedStandardCostAmt ?? h.reported_standard_cost_amt ?? null) ??
+      Number(h.actualCost ?? h.actual_cost ?? null) ??
+      Number(h.cost ?? null) ??
+      (typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0) * DEFAULT_COST_RATE;
+    map.set(taskId, (map.get(taskId) || 0) + cost);
   });
   return map;
 };
