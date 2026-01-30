@@ -641,6 +641,16 @@ export default function WBSGanttPage() {
     setScrollTop(e.currentTarget.scrollTop);
   };
 
+  // Reset scroll when project or WBS data identity changes so the view isn't stuck
+  const scrollResetKey = `${selectedProjectId ?? ''}-${data.wbsData?.items?.length ?? 0}-${(data.wbsData?.items as any[])?.[0]?.id ?? ''}`;
+  const lastScrollResetKeyRef = useRef<string>('');
+  useEffect(() => {
+    if (scrollResetKey === lastScrollResetKeyRef.current) return;
+    lastScrollResetKeyRef.current = scrollResetKey;
+    setScrollTop(0);
+    if (containerRef.current) containerRef.current.scrollTop = 0;
+  }, [scrollResetKey]);
+
   const rowHeight = 30;
   const headerHeight = 36;
   const buffer = 10;

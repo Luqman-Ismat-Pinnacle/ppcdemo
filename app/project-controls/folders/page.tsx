@@ -365,6 +365,14 @@ export default function DocumentsPage() {
       
       addLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
 
+      // Parser log: names from MPP so we can verify converter output vs Workday
+      const phasesList = (convertedData.phases || []).map((p: any) => `"${p.id}: ${(p.name || '').slice(0, 50)}"`).join(', ');
+      const unitsList = (convertedData.units || []).map((u: any) => `"${u.id}: ${(u.name || '').slice(0, 40)} (phase: ${u.phaseId || u.phase_id || '-'})"`).join(', ');
+      const taskSample = (convertedData.tasks || []).slice(0, 8).map((t: any) => `"${t.id}: ${(t.name || t.taskName || '').slice(0, 30)}"`).join(', ');
+      addLog('info', `[MPP Parser] Phases from file: ${phasesList || 'none'}`);
+      addLog('info', `[MPP Parser] Units from file: ${unitsList || 'none'}`);
+      addLog('info', `[MPP Parser] Tasks from file: ${(convertedData.tasks?.length || 0)} total; sample: ${taskSample || 'none'}`);
+
       // Step 3: Sync to Supabase
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'syncing' as const } : f

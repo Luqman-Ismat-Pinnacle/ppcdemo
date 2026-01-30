@@ -272,7 +272,7 @@ export function DataProvider({ children }: DataProviderProps) {
   const refreshData = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/data', { cache: 'no-store' });
+      const response = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
       const result = await response.json();
 
       if (result.error || !result.data) {
