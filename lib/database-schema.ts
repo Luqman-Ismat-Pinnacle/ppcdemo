@@ -523,6 +523,8 @@ export interface DBHourEntry {
   role: EmployeeRole;
   isBillable: boolean;
   isApproved: boolean;
+  /** Reported standard cost amount from Workday (Reported_Standard_Cost_Amt) for this entry. */
+  reportedStandardCostAmt?: number | null;
   createdAt: string;
   updatedAt: string;
 }

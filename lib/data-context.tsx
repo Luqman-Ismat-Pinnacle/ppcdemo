@@ -253,6 +253,11 @@ export function DataProvider({ children }: DataProviderProps) {
   const updateData = (updates: Partial<SampleData>) => {
     setData((prev) => {
       const merged = { ...prev, ...updates };
+      // When only wbsData is updated (e.g. CPM results), keep it and skip full transform to avoid overwriting with a fresh build
+      const keys = Object.keys(updates);
+      if (keys.length === 1 && keys[0] === 'wbsData') {
+        return merged;
+      }
       // Re-apply transformations when raw data changes
       const transformedData = transformData(merged);
       return { ...merged, ...transformedData };

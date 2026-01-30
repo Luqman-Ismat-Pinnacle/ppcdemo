@@ -723,6 +723,8 @@ export interface HourEntry {
   billable?: boolean;
   isBillable?: boolean;
   isApproved?: boolean;
+  /** Reported standard cost amount from Workday (Reported_Standard_Cost_Amt) for this entry; used when matching Workday task to project task. */
+  reportedStandardCostAmt?: number;
   createdAt: string;
   updatedAt: string;
 }

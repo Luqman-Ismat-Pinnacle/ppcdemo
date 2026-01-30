@@ -149,8 +149,20 @@ export function clearMemoizationCache(): void {
  * This avoids recalculating week mappings in every function that needs them
  */
 /**
+ * Normalize any date value to canonical "YYYY-MM-DD" so week lookups and grouping work
+ * regardless of format (ISO with time, date-only string, or Date object from API).
+ */
+function normalizeDateString(value: string | Date | number | null | undefined): string | null {
+  if (value == null) return null;
+  const d = typeof value === 'object' && 'getTime' in value ? value : new Date(value as string | number);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().split('T')[0];
+}
+
+/**
  * Shared week mapping utility with memoization
- * Avoids recalculating week mappings for the same date ranges
+ * Avoids recalculating week mappings for the same date ranges.
+ * Uses normalized date strings so all hour entry formats (ISO, date-only, etc.) map correctly.
  */
 const weekMappingCache = new Map<string, {
   weekMap: Map<string, string>;
@@ -159,39 +171,37 @@ const weekMappingCache = new Map<string, {
   formattedWeeks: string[];
 }>();
 
-function buildWeekMappings(dates: string[]): {
+function buildWeekMappings(dates: (string | Date | number)[]): {
   weekMap: Map<string, string>;
   weekIndexMap: Map<string, number>;
   rawWeeks: string[];
   formattedWeeks: string[];
 } {
-  // Create cache key from sorted unique dates
-  const sortedDates = [...new Set(dates)].sort().join(',');
+  // Normalize all dates to YYYY-MM-DD so cache and lookups are consistent
+  const normalized = dates.map(d => normalizeDateString(d)).filter((d): d is string => d != null);
+  const sortedDates = [...new Set(normalized)].sort().join(',');
   const cacheKey = `weekMappings_${sortedDates}`;
 
-  // Return cached result if available
   if (weekMappingCache.has(cacheKey)) {
     return weekMappingCache.get(cacheKey)!;
   }
 
   const weekMap = new Map<string, string>();
-  const uniqueDates = [...new Set(dates)].sort();
+  const uniqueDates = [...new Set(normalized)].sort();
 
-  uniqueDates.forEach((date: string) => {
-    const d = new Date(date);
+  uniqueDates.forEach((dateStr: string) => {
+    const d = new Date(dateStr);
     if (isNaN(d.getTime())) return;
 
-    // Get Monday of the week (consistent with other functions)
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-    const monday = new Date(d.setDate(diff));
+    const mondayDate = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.getFullYear(), d.getMonth(), mondayDate);
     const weekKey = monday.toISOString().split('T')[0];
-    weekMap.set(date, weekKey);
+    weekMap.set(dateStr, weekKey);
   });
 
   const rawWeeks = [...new Set(weekMap.values())].sort();
 
-  // Format weeks for display (e.g., "Dec 2" instead of "2025-12-02")
   const formattedWeeks = rawWeeks.map(week => {
     const d = new Date(week);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -202,12 +212,9 @@ function buildWeekMappings(dates: string[]): {
 
   const result = { weekMap, weekIndexMap, rawWeeks, formattedWeeks };
 
-  // Cache result (limit cache size to prevent memory issues)
   if (weekMappingCache.size > 50) {
     const firstKey = weekMappingCache.keys().next().value;
-    if (firstKey) {
-      weekMappingCache.delete(firstKey);
-    }
+    if (firstKey) weekMappingCache.delete(firstKey);
   }
   weekMappingCache.set(cacheKey, result);
 
@@ -330,9 +337,6 @@ function buildHierarchyMaps(data: {
       const key = String(phaseId);
       if (!unitsByPhase.has(key)) unitsByPhase.set(key, []);
       unitsByPhase.get(key)!.push(unit);
-      console.log(`[DEBUG MAPS] Unit ${unit.id} linked to phase ${phaseId}`);
-    } else {
-      console.log(`[DEBUG MAPS] Unit ${unit.id} has no phaseId/phase_id`);
     }
 
     // Legacy support (Site -> Unit) or Direct Project Support
@@ -397,9 +401,6 @@ function buildHierarchyMaps(data: {
       const key = String(phaseId);
       if (!tasksByPhase.has(key)) tasksByPhase.set(key, []);
       tasksByPhase.get(key)!.push(task);
-      console.log(`[DEBUG MAPS] Task ${task.id} linked to phase ${phaseId}, unitId: ${task.unitId || task.unit_id}`);
-    } else {
-      console.log(`[DEBUG MAPS] Task ${task.id} has no phaseId/phase_id`);
     }
 
     const projectId = task.projectId ?? task.project_id;
@@ -1031,12 +1032,15 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
  * Build WBS hierarchy from flat portfolio/customer/site/project/phase/task tables
  */
 export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
-  // Memoize hierarchy maps and WBS structure for performance
+  // Memoize hierarchy maps and WBS structure for performance (include phase/unit/task so MPP changes rebuild)
   const dataKey = JSON.stringify({
     portfolioCount: data.portfolios?.length || 0,
     customerCount: data.customers?.length || 0,
     siteCount: data.sites?.length || 0,
     projectCount: data.projects?.length || 0,
+    phaseCount: data.phases?.length || 0,
+    unitCount: data.units?.length || 0,
+    taskCount: data.tasks?.length || 0,
   });
 
   return memoize('buildWBSData', () => {
@@ -1066,6 +1070,16 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
     // Build Map-based lookups for O(1) access instead of O(n) filtering
     const maps = buildHierarchyMaps(data);
+
+    // Global set: task IDs that belong to ANY unit (by unit_id or parent_id). These must NEVER appear under phase or project directly.
+    const unitIds = new Set(units.map((u: any) => String(u.id ?? u.unitId)));
+    const taskIdsUnderAnyUnit = new Set<string>();
+    (tasks || []).forEach((t: any) => {
+      const tid = String(t.id ?? t.taskId);
+      const tUnit = String((t as any).unit_id ?? (t as any).unitId ?? '');
+      const tParent = String((t as any).parent_id ?? '');
+      if (unitIds.has(tUnit) || unitIds.has(tParent)) taskIdsUnderAnyUnit.add(tid);
+    });
 
     // Helper to get owner name from employeeId using Map lookup
     const getOwnerName = (employeeId: string | null): string | null => {
@@ -1108,7 +1122,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       let projRollupPercentComplete = 0;
       let projChildCount = 0;
 
-      const projectPhases = maps.phasesByProject.get(String(projectId)) || [];
+      const projectPhasesRaw = maps.phasesByProject.get(String(projectId)) || [];
+      const projectPhases = Array.from(new Map(projectPhasesRaw.map((ph: any) => [String(ph.id ?? ph.phaseId), ph])).values());
 
       projectPhases.forEach((phase: any, phIdx: number) => {
         const phaseId = phase.id || phase.phaseId;
@@ -1136,30 +1151,22 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           children: []
         };
 
-        // 1. Add Units under Phase
-        const phaseUnits = maps.unitsByPhase.get(String(phaseId)) || [];
+        // 1. Add Units under Phase (dedupe by unitId so same unit is never built twice)
+        const phaseUnitsRaw = maps.unitsByPhase.get(String(phaseId)) || [];
+        const phaseUnits = Array.from(new Map(phaseUnitsRaw.map((u: any) => [String(u.id ?? u.unitId), u])).values());
+
         phaseUnits.forEach((unit: any, uIdx: number) => {
-          const unitId = unit.id || unit.unitId;
+          const unitId = String(unit.id || unit.unitId);
           const unitWbs = `${phaseWbs}.${uIdx + 1}`;
 
-          // Find tasks that have this unit as parent (parent_id from MPP outline, or unit_id/unitId from converter)
-          const unitTasks = (data.tasks || []).filter((t: any) =>
-            (t as any).parent_id === unitId || (t as any).unit_id === unitId || (t as any).unitId === unitId
-          );
-          
-          // Minimal debug - just show counts
-          console.log(`[WBS] Unit ${unitId}: ${unitTasks.length} tasks found`);
-          console.log(`[WBS] Total tasks available: ${(data.tasks || []).length}`);
-          
-          // Show sample task data
-          if (data.tasks && data.tasks.length > 0) {
-            console.log(`[WBS] Sample task parent_ids:`, data.tasks.slice(0, 3).map((t: any) => ({ id: t.id, parent_id: (t as any).parent_id })));
-          }
-          
-          // Show unit data
-          console.log(`[WBS] Unit data:`, { id: unitId, name: unit.name, type: unit.type });
-          console.log(`[WBS] All units:`, units.slice(0, 3).map((u: any) => ({ id: u.id, name: u.name, type: u.type })));
-          
+          // Find tasks that belong to this unit only (consistent string IDs); dedupe by task id so raw data duplicates never produce duplicate rows
+          const unitTasksRaw = (data.tasks || []).filter((t: any) => {
+            const tParent = String((t as any).parent_id ?? '');
+            const tUnit = String((t as any).unit_id ?? (t as any).unitId ?? '');
+            return tParent === unitId || tUnit === unitId;
+          });
+          const unitTasks = Array.from(new Map(unitTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
+
           // Initialize rollup variables for this unit
           let unitRollupBaselineHrs = 0;
           let unitRollupActualHrs = 0;
@@ -1167,14 +1174,24 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           let unitRollupActualCst = 0;
           let unitRollupPercentComplete = 0;
           let unitTaskCount = 0;
-          
+
+          // Unit gets schedule/hours/cost from MPP (like tasks); actuals roll up from children
+          const unitStart = unit.startDate ?? unit.baselineStartDate ?? unit.start_date;
+          const unitEnd = unit.endDate ?? unit.baselineEndDate ?? unit.end_date;
+          const unitBaselineHrs = unit.baselineHours ?? unit.baseline_hours ?? 0;
+          const unitBaselineCst = unit.baselineCost ?? unit.baseline_cost ?? 0;
+
           const unitItem: TransformWBSItem = {
             id: `wbs-unit-${unitId}`,
             wbsCode: unitWbs,
             name: unit.name || `Unit ${uIdx + 1}`,
             type: 'unit',
             itemType: 'unit',
+            startDate: unitStart ?? undefined,
+            endDate: unitEnd ?? undefined,
             percentComplete: unit.percentComplete ?? unit.percent_complete ?? 0,
+            baselineHours: unitBaselineHrs || undefined,
+            baselineCost: unitBaselineCst || undefined,
             children: []
           };
 
@@ -1212,7 +1229,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               baselineCost: taskBaselineCst,
               actualCost: taskActualCst,
               remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
-              assignedResourceId: task.assignedResourceId || task.employeeId || task.assigneeId,
+              assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
               is_milestone: task.is_milestone || task.isMilestone || false,
               isCritical: task.is_critical || task.isCritical || false
             };
@@ -1239,9 +1256,15 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           phaseItem.children?.push(unitItem);
         });
 
-        // 2. Add orphan Tasks under Phase (no Unit)
-        const directPhaseTasks = (maps.tasksByPhase.get(String(phaseId)) || []).filter((t: any) => 
-          !(t as any).parent_id || !units.some((u: any) => u.id === (t as any).parent_id)
+        // 2. When phase has units, add NO direct phase tasks (all tasks must be under units). When phase has no units, add phase tasks not under any unit; dedupe by task id.
+        const directPhaseTasksRaw =
+          phaseUnits.length > 0
+            ? []
+            : (maps.tasksByPhase.get(String(phaseId)) || []).filter(
+                (t: any) => !taskIdsUnderAnyUnit.has(String(t.id ?? t.taskId))
+              );
+        const directPhaseTasks = Array.from(
+          new Map(directPhaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values()
         );
 
         directPhaseTasks.forEach((task: any, tIdx: number) => {
@@ -1278,7 +1301,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             baselineCost: taskBaselineCst,
             actualCost: taskActualCst,
             remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
-            assignedResourceId: task.assignedResourceId || task.employeeId || task.assigneeId,
+            assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
             is_milestone: task.is_milestone || task.isMilestone || false,
             isCritical: task.is_critical || task.isCritical || false
           };
@@ -1306,19 +1329,24 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projectItem.children?.push(phaseItem);
       });
 
-      // 3. Add Units directly under Project (no Phase)
+      // 3. Add Units directly under Project (no Phase) — with MPP schedule/hours/cost
       const directProjectUnits = maps.unitsByProject.get(String(projectId)) || [];
       directProjectUnits.forEach((unit: any, uIdx: number) => {
         const unitId = unit.id || unit.unitId;
         const unitWbs = `${projectWbs}.${projectPhases.length + uIdx + 1}`;
-
+        const uStart = unit.startDate ?? unit.baselineStartDate ?? unit.start_date;
+        const uEnd = unit.endDate ?? unit.baselineEndDate ?? unit.end_date;
         const unitItem: TransformWBSItem = {
           id: `wbs-unit-${unitId}`,
           wbsCode: unitWbs,
           name: unit.name || `Unit ${uIdx + 1}`,
           type: 'unit',
           itemType: 'unit',
+          startDate: uStart ?? undefined,
+          endDate: uEnd ?? undefined,
           percentComplete: unit.percentComplete ?? unit.percent_complete ?? 0,
+          baselineHours: unit.baselineHours ?? unit.baseline_hours ?? undefined,
+          baselineCost: unit.baselineCost ?? unit.baseline_cost ?? undefined,
           children: []
         };
 
@@ -1333,8 +1361,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projectItem.children?.push(unitItem);
       });
 
-      // 4. Add Tasks directly under Project (no Phase, no Unit)
-      const directProjectTasks = maps.tasksByProject.get(String(projectId)) || [];
+      // 4. Add only truly orphan tasks under Project (no phase, no unit); exclude tasks under a unit; dedupe by task id
+      const directProjectTasksRaw = (maps.tasksByProject.get(String(projectId)) || []).filter(
+        (t: any) => !taskIdsUnderAnyUnit.has(String(t.id ?? t.taskId))
+      );
+      const directProjectTasks = Array.from(
+        new Map(directProjectTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values()
+      );
       directProjectTasks.forEach((task: any, tIdx: number) => {
         const taskId = task.id || task.taskId;
         const taskWbs = `${projectWbs}.${projectPhases.length + directProjectUnits.length + tIdx + 1}`;
@@ -1368,6 +1401,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           baselineCost: taskBaselineCst,
           actualCost: taskActualCst,
           remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
+          assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
           is_milestone: task.is_milestone || task.isMilestone || false,
           isCritical: task.is_critical || task.isCritical || false
         };
@@ -1444,21 +1478,22 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
 
 
-          // Projects directly under site
-          const siteProjects = maps.projectsBySite.get(siteId) || [];
+          // Projects directly under site (dedupe by projectId so same project is never built twice)
+          const siteProjectsRaw = maps.projectsBySite.get(siteId) || [];
+          const siteProjects = Array.from(new Map(siteProjectsRaw.map((p: any) => [String(p.id ?? p.projectId), p])).values());
           siteProjects.forEach((project: any, prIdx: number) => {
             siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
           });
           customerItem.children?.push(siteItem);
         });
 
-        // Projects directly under customer
-        const customerProjects = (maps.projectsByCustomer.get(customerId) || []).filter((p: any) => {
+        // Projects directly under customer (dedupe by projectId)
+        const customerProjectsFiltered = (maps.projectsByCustomer.get(customerId) || []).filter((p: any) => {
           if (!p.siteId && !p.site_id) return true;
-          // Fallback: Project has siteId, but that site isn't under this customer
           const pSiteId = p.siteId || p.site_id;
           return !customerSites.some((s: any) => (s.id || s.siteId) === pSiteId);
         });
+        const customerProjects = Array.from(new Map(customerProjectsFiltered.map((p: any) => [String(p.id ?? p.projectId), p])).values());
         customerProjects.forEach((project: any, prIdx: number) => {
           customerItem.children?.push(buildProjectNode(project, `${customerWbs}.${customerSites.length + prIdx + 1}`));
         });
@@ -1466,15 +1501,14 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         portfolioItem.children?.push(customerItem);
       });
 
-      // Projects directly under portfolio
-      const portfolioProjects = (projects || []).filter((p: any) => {
+      // Projects directly under portfolio (dedupe by projectId)
+      const portfolioProjectsFiltered = (projects || []).filter((p: any) => {
         if ((p.portfolioId !== portfolioId && p.portfolio_id !== portfolioId)) return false;
         if (!p.customerId && !p.customer_id) return true;
-
-        // Fallback: Project has customerId, but that customer isn't under this portfolio
         const pCustId = p.customerId || p.customer_id;
         return !allPortfolioCustomers.some((c: any) => (c.id || c.customerId) === pCustId);
       });
+      const portfolioProjects = Array.from(new Map(portfolioProjectsFiltered.map((p: any) => [String(p.id ?? p.projectId), p])).values());
       portfolioProjects.forEach((project: any, prIdx: number) => {
         portfolioItem.children?.push(buildProjectNode(project, `${portfolioWbs}.${allPortfolioCustomers.length + prIdx + 1}`));
       });
@@ -1483,13 +1517,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       wbsCounter++;
     });
 
-    // Add orphan projects (no portfolio)
-    const orphanProjects = projects.filter((p: any) => {
+    // Add orphan projects (no portfolio); dedupe by projectId so each project appears once
+    const orphanProjectsFiltered = projects.filter((p: any) => {
       const pPortId = p.portfolioId || p.portfolio_id;
       return !portfolios.some((port: any) => (port.id || port.portfolioId) === pPortId) &&
         !p.customerId && !p.customer_id && !p.siteId && !p.site_id && !p.unitId && !p.unit_id;
     });
-
+    const orphanProjects = Array.from(new Map(orphanProjectsFiltered.map((p: any) => [String(p.id ?? p.projectId), p])).values());
     orphanProjects.forEach((project: any, prIdx: number) => {
       items.push(buildProjectNode(project, `${wbsCounter + prIdx}`));
     });
@@ -1517,15 +1551,69 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       });
     };
 
+    // Roll up dates and hours/cost from children so parent bars (site, customer, portfolio, project, phase, unit) span full range and show roll-up values
+    const rollupDatesAndValues = (itemList: any[]): void => {
+      itemList.forEach((item: any) => {
+        if (item.children && item.children.length > 0) {
+          rollupDatesAndValues(item.children);
+          let minStart: string | undefined;
+          let maxEnd: string | undefined;
+          let sumBaselineHrs = 0;
+          let sumActualHrs = 0;
+          let sumBaselineCst = 0;
+          let sumActualCst = 0;
+          item.children.forEach((c: any) => {
+            const s = c.startDate ?? c.baselineStartDate;
+            const e = c.endDate ?? c.baselineEndDate;
+            if (s) minStart = !minStart || s < minStart ? s : minStart;
+            if (e) maxEnd = !maxEnd || e > maxEnd ? e : maxEnd;
+            sumBaselineHrs += Number(c.baselineHours) || 0;
+            sumActualHrs += Number(c.actualHours) || 0;
+            sumBaselineCst += Number(c.baselineCost) || 0;
+            sumActualCst += Number(c.actualCost) || 0;
+          });
+          if (minStart) item.startDate = minStart;
+          if (maxEnd) item.endDate = maxEnd;
+          item.baselineHours = item.baselineHours ?? sumBaselineHrs || undefined;
+          item.actualHours = item.actualHours ?? sumActualHrs || undefined;
+          item.baselineCost = item.baselineCost ?? sumBaselineCst || undefined;
+          item.actualCost = item.actualCost ?? sumActualCst || undefined;
+        }
+      });
+    };
+    rollupDatesAndValues(items);
+
+    // Compute daysRequired from start/end dates when both exist (so days roll up correctly)
+    const setDaysFromDates = (itemList: any[]): void => {
+      itemList.forEach((item: any) => {
+        if (item.children && item.children.length > 0) {
+          setDaysFromDates(item.children);
+        }
+        const start = item.startDate ?? item.baselineStartDate;
+        const end = item.endDate ?? item.baselineEndDate;
+        if (start && end) {
+          const startMs = new Date(start).getTime();
+          const endMs = new Date(end).getTime();
+          if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs >= startMs) {
+            const days = Math.max(1, Math.ceil((endMs - startMs) / (24 * 60 * 60 * 1000)));
+            item.daysRequired = item.daysRequired ?? days;
+          }
+        }
+      });
+    };
+    setDaysFromDates(items);
+
     reindexWBS(items);
 
-    // Cast to WBSData format - TransformWBSItem needs to match WBSItem structure
+    // Cast to WBSData format; use undefined for missing dates so bar only draws when valid
     const wbsItems = items.map(item => {
       const itemAny = item as any;
+      const startDate = item.startDate || itemAny.baselineStartDate || undefined;
+      const endDate = item.endDate || itemAny.baselineEndDate || undefined;
       return {
         ...item,
-        startDate: item.startDate || itemAny.baselineStartDate || '',
-        endDate: item.endDate || itemAny.baselineEndDate || '',
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
         progress: item.percentComplete || 0,
       };
     }) as any;
@@ -1578,8 +1666,8 @@ export function buildLaborBreakdown(data: Partial<SampleData>): LaborBreakdown {
     if (id) taskMap.set(id, t);
   });
 
-  // Use shared week mapping utility
-  const dates = hours.map((h: any) => h.date || h.entry_date).filter(Boolean) as string[];
+  // Use shared week mapping utility; normalize dates so ISO/date-only/etc. all map to same weeks
+  const dates = hours.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
   const { weekMap, weekIndexMap, rawWeeks, formattedWeeks: weeks } = buildWeekMappings(dates);
 
   // Build all aggregations in a single pass through hours (Phase 2.4: Batch Data Processing)
@@ -1608,8 +1696,8 @@ export function buildLaborBreakdown(data: Partial<SampleData>): LaborBreakdown {
     const task: any = taskId ? taskMap.get(taskId) : null;
 
     // Common values used by all aggregations
-    const hourDate = h.date || h.entry_date;
-    const weekKey = weekMap.get(hourDate);
+    const hourDateNorm = normalizeDateString(h.date || h.entry_date);
+    const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;
     const weekIdx = weekIndexMap.get(weekKey || '') ?? -1;
     const hoursValue = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
 
@@ -1767,7 +1855,10 @@ const buildACTimeline = (hours: any[]) => {
   hours.forEach((entry: any) => {
     const key = toWeekStartKey(entry.date);
     if (!key) return;
-    const amount = Number(entry.actualCost ?? entry.cost ?? (entry.hours || 0) * DEFAULT_COST_RATE);
+    const amount = Number(
+      entry.reportedStandardCostAmt ?? entry.reported_standard_cost_amt
+      ?? entry.actualCost ?? entry.actual_cost ?? entry.cost ?? (entry.hours || 0) * DEFAULT_COST_RATE
+    );
     addToMap(map, key, amount);
   });
   return map;
@@ -2204,8 +2295,8 @@ export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap
   let weekIndexMap: Map<string, number>;
 
   if (hours.length > 0) {
-    // Use shared week mapping utility
-    const dates = hours.map((h: any) => h.date || h.entry_date).filter(Boolean) as string[];
+    // Use shared week mapping utility; normalize so all date formats map to same weeks
+    const dates = hours.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
     const weekMappings = buildWeekMappings(dates);
     weekMap = weekMappings.weekMap;
     weekIndexMap = weekMappings.weekIndexMap;
@@ -2244,8 +2335,8 @@ export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap
     // Use Map lookup instead of filter - O(1) instead of O(n)
     const empHours = hoursByEmployee.get(empId) || [];
     empHours.forEach((h: any) => {
-      const hourDate = h.date || h.entry_date;
-      const weekKey = weekMap.get(hourDate);
+      const hourDateNorm = normalizeDateString(h.date || h.entry_date);
+      const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;
       const weekIdx = weekIndexMap.get(weekKey || '') ?? -1;
       if (weekIdx >= 0) {
         weeklyHours[weekIdx] += typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;

@@ -379,43 +379,31 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   const byId = new Map<string, (typeof raw)[0]>();
   raw.forEach((r: any) => byId.set(String(r.id), r));
 
-  // Classify in outline order so parents are done before children
-  const sortedByLevel = [...raw].sort((a: any, b: any) => (a.outline_level || 0) - (b.outline_level || 0));
+  // Gantt Pro–style hierarchy: Phase = level 1; Unit = any level with children; Task = leaf (no children).
+  // Build set of node IDs that have at least one child.
+  const hasChildren = new Set<string>();
+  raw.forEach((r: any) => {
+    const pid = r.parent_id != null ? String(r.parent_id) : null;
+    if (pid) hasChildren.add(pid);
+  });
 
   type NodeType = 'phase' | 'unit' | 'task';
   const typeById = new Map<string, NodeType>();
 
-  sortedByLevel.forEach((r: any) => {
-    const level = r.outline_level;
-    const parentId = r.parent_id != null ? String(r.parent_id) : null;
-    const parent = parentId ? byId.get(parentId) : null;
-    const parentType = parent ? typeById.get(String(parent.id)) : null;
+  raw.forEach((r: any) => {
+    const level = r.outline_level ?? 1;
+    const id = String(r.id);
 
     if (level === 1) {
-      typeById.set(String(r.id), 'phase');
+      typeById.set(id, 'phase');
       return;
     }
-    if (parentType === 'phase') {
-      const parentLevel = parent!.outline_level;
-      if (parentLevel === 1) {
-        typeById.set(String(r.id), 'phase'); // direct child of level-1 phase (e.g. "Project Execution")
-      } else {
-        typeById.set(String(r.id), 'unit'); // child of level-2 phase = unit (e.g. 3, 13, 15, 19, 43, 46, 47)
-      }
-      return;
+    // Level 2+: unit if this node has children (container), otherwise task (leaf).
+    if (hasChildren.has(id)) {
+      typeById.set(id, 'unit');
+    } else {
+      typeById.set(id, 'task');
     }
-    if (parentType === 'unit') {
-      typeById.set(String(r.id), 'task');
-      return;
-    }
-    if (parentType === 'task') {
-      typeById.set(String(r.id), 'task');
-      return;
-    }
-    // fallback: no parent or parent unknown — by depth
-    if (level === 2) typeById.set(String(r.id), 'phase');
-    else if (level === 3) typeById.set(String(r.id), 'unit');
-    else typeById.set(String(r.id), 'task');
   });
 
   const phases: any[] = [];
@@ -489,20 +477,26 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   });
 
   // Now resolve parent-child relationships in multiple passes
-  // Pass 1: Resolve unit phaseId relationships
-  units.forEach((unit: any) => {
-    if (unit.parent_id) {
-      // Find parent phase by matching the parent_id with a phase ID
-      const parentPhase = phases.find(p => p.id === unit.parent_id);
-      if (parentPhase) {
-        unit.phaseId = parentPhase.id;
-        unit.phase_id = parentPhase.id; // Also set snake_case for WBS builder compatibility
-        console.log(`[DEBUG] Unit ${unit.id} linked to phase ${parentPhase.id}`);
-      } else {
-        console.log(`[DEBUG] Unit ${unit.id} parent_id ${unit.parent_id} not found in phases`);
-      }
+  // Pass 1: Resolve unit phaseId (process in outline order so parent unit's phaseId is set first)
+  const unitById = new Map<string, any>();
+  units.forEach((u: any) => unitById.set(u.id, u));
+  const unitsSortedByLevel = [...units].sort((a, b) => {
+    const aLevel = raw.find((r: any) => String(r.id) === a.id)?.outline_level ?? 0;
+    const bLevel = raw.find((r: any) => String(r.id) === b.id)?.outline_level ?? 0;
+    return aLevel - bLevel;
+  });
+  unitsSortedByLevel.forEach((unit: any) => {
+    if (!unit.parent_id) return;
+    const parentPhase = phases.find((p: any) => p.id === unit.parent_id);
+    if (parentPhase) {
+      unit.phaseId = parentPhase.id;
+      unit.phase_id = parentPhase.id;
     } else {
-      console.log(`[DEBUG] Unit ${unit.id} has no parent_id`);
+      const parentUnit = unitById.get(unit.parent_id);
+      if (parentUnit?.phaseId) {
+        unit.phaseId = parentUnit.phaseId;
+        unit.phase_id = parentUnit.phase_id;
+      }
     }
   });
 

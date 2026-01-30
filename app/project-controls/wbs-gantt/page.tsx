@@ -32,11 +32,11 @@ import { supabase } from '@/lib/supabase';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import SearchableDropdown from '@/components/ui/SearchableDropdown';
 
-// Helper to get employee name from ID
+// Helper to get employee name from ID (supports both employeeId and employee id/PK from assigned_resource_id)
 const getEmployeeName = (resourceId: string | undefined, employees: Employee[]): string => {
   if (!resourceId) return '-';
-  const employee = employees.find(e => e.employeeId === resourceId);
-  return employee?.name?.split(' ')[0] || resourceId; // Show first name only
+  const employee = employees.find(e => (e as any).id === resourceId || e.employeeId === resourceId);
+  return employee?.name?.split(' ')[0] || resourceId;
 };
 
 // Helper to get task name from ID
@@ -378,37 +378,58 @@ export default function WBSGanttPage() {
     return sortItems(data.wbsData.items);
   }, [data.wbsData?.items, wbsSort, dateColumns, employees]);
 
-  // Flatten WBS for table
-  const flatRows = useMemo(() => {
-    const rows: WBSTableRow[] = [];
-    let rowIndex = 0;
+  // Build a single flat list of all WBS nodes (each id appears once), then filter by visibility.
+  // This avoids duplication and makes expand/collapse consistent: visibility = root or (parent visible && parent expanded).
+  const allRowsWithParent = useMemo(() => {
+    const list: { row: WBSTableRow; parentId: string | null; level: number }[] = [];
+    const seenIds = new Set<string>();
 
-    const processItem = (item: any, level: number) => {
-      const isExpanded = expandedIds.has(item.id);
-      const hasChildren = item.children && item.children.length > 0;
+    const walk = (item: any, level: number, parentId: string | null) => {
+      const id = item?.id ?? '';
+      if (seenIds.has(id)) return;
+      seenIds.add(id);
+
+      const hasChildren = !!(item.children && item.children.length > 0);
       const itemType = item.itemType || item.type || 'task';
 
-      rows.push({
-        ...item,
-        itemType,
+      list.push({
+        parentId,
         level,
-        indentLevel: level - 1,
-        hasChildren: hasChildren || false,
-        isExpanded: isExpanded || false,
-        rowIndex: rowIndex++,
-        isVisible: true
+        row: {
+          ...item,
+          itemType,
+          level,
+          indentLevel: level - 1,
+          hasChildren,
+          isExpanded: expandedIds.has(id),
+          rowIndex: 0,
+          isVisible: true
+        }
       });
 
-      if (hasChildren && isExpanded) {
-        item.children.forEach((child: any) => processItem(child, level + 1));
-      }
+      (item.children as any[] || []).forEach((child: any) => walk(child, level + 1, id));
     };
 
-    if (sortedWbsItems.length > 0) {
-      sortedWbsItems.forEach(item => processItem(item, 1));
-    }
-    return rows;
+    sortedWbsItems.forEach((item: any) => walk(item, 1, null));
+    return list;
   }, [sortedWbsItems, expandedIds]);
+
+  const flatRows = useMemo(() => {
+    const visibleIds = new Set<string>();
+    const visible: WBSTableRow[] = [];
+    // Process in tree order (parent before children). Row is visible iff root or (parent visible && parent expanded).
+    allRowsWithParent.forEach((entry) => {
+      const id = entry.row.id ?? '';
+      const isRoot = entry.parentId === null;
+      const parentVisible = entry.parentId === null || visibleIds.has(entry.parentId);
+      const parentExpanded = entry.parentId === null || expandedIds.has(entry.parentId);
+      if (isRoot || (parentVisible && parentExpanded)) {
+        visibleIds.add(id);
+        visible.push({ ...entry.row, rowIndex: visible.length, isVisible: true });
+      }
+    });
+    return visible;
+  }, [allRowsWithParent, expandedIds]);
 
   // Auto-expand only when WBS data identity changes (first load or filter change), not every render — so Expand All / Collapse All and scroll are not overwritten
   const lastWbsDataKeyRef = useRef<string | null>(null);
@@ -1167,11 +1188,12 @@ export default function WBSGanttPage() {
                         if (i === 0 && row.startDate && row.endDate) {
                           const itemStart = new Date(row.startDate);
                           const itemEnd = new Date(row.endDate);
+                          if (Number.isNaN(itemStart.getTime()) || Number.isNaN(itemEnd.getTime())) return null;
                           const timelineStart = dateColumns[0].start;
                           const timelineEnd = dateColumns[dateColumns.length - 1].end;
                           const totalDuration = timelineEnd.getTime() - timelineStart.getTime();
 
-                          // Check overlap with timeline
+                          // Check overlap with timeline (draw bar for any row with valid dates: task, unit, phase, project, site, etc.)
                           if (itemEnd >= timelineStart && itemStart <= timelineEnd) {
                             const startOffset = Math.max(0, itemStart.getTime() - timelineStart.getTime());
                             const leftPct = (startOffset / totalDuration) * 100;
