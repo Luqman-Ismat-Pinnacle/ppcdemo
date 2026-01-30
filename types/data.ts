@@ -723,8 +723,10 @@ export interface HourEntry {
   billable?: boolean;
   isBillable?: boolean;
   isApproved?: boolean;
-  /** Reported standard cost amount from Workday (Reported_Standard_Cost_Amt) for this entry; used when matching Workday task to project task. */
+  /** Reported standard cost amount from Workday (Reported_Standard_Cost_Amt) for this entry. */
   reportedStandardCostAmt?: number;
+  /** Actual cost (hour_entries.actual_cost in Supabase); used by Data Management and WBS Gantt. */
+  actualCost?: number | null;
   createdAt: string;
   updatedAt: string;
 }

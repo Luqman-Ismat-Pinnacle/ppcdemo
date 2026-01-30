@@ -1894,15 +1894,15 @@ const buildTaskActualHoursMap = (hours: any[]): Map<string, number> => {
   return map;
 };
 
-/** Actual cost by task from hour_entries (Cost / reported_standard_cost_amt / actual_cost). Used by WBS Gantt. */
+/** Actual cost by task from hour_entries.actual_cost (Supabase). Used by WBS Gantt. */
 const buildTaskActualCostMap = (hours: any[]): Map<string, number> => {
   const map = new Map<string, number>();
   hours.forEach((h: any) => {
     const taskId = normalizeTaskId(h);
     if (!taskId) return;
     const cost =
-      Number(h.reportedStandardCostAmt ?? h.reported_standard_cost_amt ?? null) ??
       Number(h.actualCost ?? h.actual_cost ?? null) ??
+      Number(h.reportedStandardCostAmt ?? h.reported_standard_cost_amt ?? null) ??
       Number(h.cost ?? null) ??
       (typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0) * DEFAULT_COST_RATE;
     map.set(taskId, (map.get(taskId) || 0) + cost);
