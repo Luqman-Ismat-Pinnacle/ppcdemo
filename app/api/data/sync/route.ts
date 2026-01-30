@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     });
 
     const body = await req.json();
-    const { dataKey, records, operation, projectId } = body;
+    const { dataKey, records, operation, projectId, storagePath } = body;
 
     if (!dataKey) {
       return NextResponse.json(
@@ -72,6 +72,32 @@ export async function POST(req: NextRequest) {
       if (error) {
         console.error(`Error deleting by project_id from ${tableName}:`, error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    // Mark one MPP document as the current version for a project (clear others; set project_id if doc had none)
+    if (operation === 'setCurrentMpp' && dataKey === 'projectDocuments' && projectId != null && projectId !== '' && storagePath) {
+      const pid = String(projectId);
+      const path = String(storagePath).trim();
+      const { error: clearError } = await supabase
+        .from('project_documents')
+        .update({ is_current_version: false })
+        .eq('project_id', pid)
+        .eq('document_type', 'MPP');
+      if (clearError) {
+        console.error('Error clearing current MPP:', clearError);
+        return NextResponse.json({ success: false, error: clearError.message }, { status: 500 });
+      }
+      // Match by storage_path so we find the doc even if it was saved with project_id null at upload
+      const { error: setError } = await supabase
+        .from('project_documents')
+        .update({ project_id: pid, is_current_version: true })
+        .eq('storage_path', path)
+        .eq('document_type', 'MPP');
+      if (setError) {
+        console.error('Error setting current MPP:', setError);
+        return NextResponse.json({ success: false, error: setError.message }, { status: 500 });
       }
       return NextResponse.json({ success: true });
     }

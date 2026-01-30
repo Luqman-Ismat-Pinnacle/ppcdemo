@@ -56,7 +56,21 @@ export default function Header() {
   const { engineLogs, changeLogs, clearEngineLogs, clearChangeLogs } = useLogs();
   const [showLogs, setShowLogs] = useState(false);
   const logsRef = useRef<HTMLDivElement>(null);
-  const [logsSection, setLogsSection] = useState<'engine' | 'change'>('engine');
+
+  // Group engine logs by engine name for separate sections
+  const engineLogsByEngine = useMemo(() => {
+    const order = ['CPM', 'Actuals', 'Workday'];
+    const map = new Map<string, typeof engineLogs>();
+    engineLogs.forEach(entry => {
+      const name = entry.engine || 'Other';
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(entry);
+    });
+    const ordered: { engine: string; entries: typeof engineLogs }[] = [];
+    order.forEach(engine => { if (map.has(engine)) ordered.push({ engine, entries: map.get(engine)! }); });
+    map.forEach((entries, engine) => { if (!order.includes(engine)) ordered.push({ engine, entries }); });
+    return ordered;
+  }, [engineLogs]);
 
   // Snapshot dropdown state
   const [showSnapshots, setShowSnapshots] = useState(false);
@@ -566,55 +580,6 @@ export default function Header() {
             )}
           </div>
         </div>
-        {mounted && (
-          <button
-            className="theme-toggle-btn"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            style={{
-              padding: '8px',
-              borderRadius: '50%',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all var(--transition-normal)',
-              boxShadow: 'var(--shadow-sm)',
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'scale(1.1) rotate(12deg)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-              e.currentTarget.style.borderColor = 'var(--pinnacle-teal)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
-              e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-              e.currentTarget.style.borderColor = 'var(--border-color)';
-            }}
-          >
-            {theme === 'dark' ? (
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="5"></circle>
-                <line x1="12" y1="1" x2="12" y2="3"></line>
-                <line x1="12" y1="21" x2="12" y2="23"></line>
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                <line x1="1" y1="12" x2="3" y2="12"></line>
-                <line x1="21" y1="12" x2="23" y2="12"></line>
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-              </svg>
-            )}
-          </button>
-        )}
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <div ref={logsRef} className="nav-dropdown logs-dropdown" style={{ position: 'relative' }}>
           <button
@@ -623,86 +588,47 @@ export default function Header() {
           >
             Logs {(engineLogs.length + changeLogs.length) > 0 && `(${engineLogs.length + changeLogs.length})`}
           </button>
-          <div className={`nav-dropdown-content logs-dropdown-content ${showLogs ? 'open' : ''}`} style={{ minWidth: '360px', maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div className="logs-dropdown-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Logs</div>
-              <button type="button" onClick={() => setShowLogs(false)} aria-label="Close logs" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1rem' }}>✕</button>
+          <div className={`nav-dropdown-content logs-dropdown-content ${showLogs ? 'open' : ''}`}>
+            <div className="logs-dropdown-header">
+              <span className="logs-dropdown-title">Logs</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {engineLogs.length > 0 && (
+                  <button type="button" onClick={clearEngineLogs} className="logs-dropdown-clear">Clear engines</button>
+                )}
+                {changeLogs.length > 0 && (
+                  <button type="button" onClick={clearChangeLogs} className="logs-dropdown-clear">Clear changes</button>
+                )}
+                <button type="button" onClick={() => setShowLogs(false)} aria-label="Close logs" className="logs-dropdown-close">✕</button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '4px', padding: '8px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
-              <button
-                type="button"
-                onClick={() => setLogsSection('engine')}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  background: logsSection === 'engine' ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                  color: logsSection === 'engine' ? '#000' : 'var(--text-secondary)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                Engine Logs ({engineLogs.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setLogsSection('change')}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  background: logsSection === 'change' ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                  color: logsSection === 'change' ? '#000' : 'var(--text-secondary)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                Change Logs ({changeLogs.length})
-              </button>
-            </div>
-            <div style={{ overflow: 'auto', flex: 1, padding: '8px' }}>
-              {logsSection === 'engine' ? (
-                <>
-                  {engineLogs.length > 0 && (
-                    <button type="button" onClick={clearEngineLogs} style={{ fontSize: '0.65rem', marginBottom: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>Clear engine logs</button>
-                  )}
-                  {engineLogs.length === 0 ? (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No engine logs yet. Run CPM or load data to see logs.</div>
-                  ) : (
-                    engineLogs.slice(0, 30).map(entry => (
-                      <div key={entry.id} style={{ marginBottom: '12px', padding: '8px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.7rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ fontWeight: 600 }}>{entry.engine}</span>
-                          <span style={{ color: 'var(--text-muted)' }}>{formatLogTime(entry.createdAt)}</span>
-                        </div>
-                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                          {entry.lines.join('\n')}
-                        </pre>
+            <div className="logs-dropdown-body">
+              {engineLogsByEngine.map(({ engine, entries }) => (
+                <section key={engine} className="logs-engine-section">
+                  <h4 className="logs-engine-heading">{engine} ({entries.length})</h4>
+                  {entries.slice(0, 15).map(entry => (
+                    <div key={entry.id} className="logs-engine-entry">
+                      <div className="logs-engine-entry-meta">
+                        <span className="logs-engine-name">{entry.engine}</span>
+                        <span className="logs-engine-time">{formatLogTime(entry.createdAt)}</span>
                       </div>
-                    ))
-                  )}
-                </>
-              ) : (
-                <>
-                  {changeLogs.length > 0 && (
-                    <button type="button" onClick={clearChangeLogs} style={{ fontSize: '0.65rem', marginBottom: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>Clear change logs</button>
-                  )}
-                  {changeLogs.length === 0 ? (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No change logs yet. Edits and syncs will appear here.</div>
-                  ) : (
-                    changeLogs.slice(0, 30).map(entry => (
-                      <div key={entry.id} style={{ marginBottom: '8px', padding: '6px 8px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.7rem' }}>
-                        <div style={{ fontWeight: 600 }}>{entry.description}</div>
-                        <div style={{ color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </>
-              )}
+                      <pre className="logs-engine-pre">{entry.lines.join('\n')}</pre>
+                    </div>
+                  ))}
+                </section>
+              ))}
+              <section className="logs-engine-section">
+                <h4 className="logs-engine-heading">Change Logs ({changeLogs.length})</h4>
+                {changeLogs.length === 0 ? (
+                  <div className="logs-empty">No change logs yet. Edits and syncs will appear here.</div>
+                ) : (
+                  changeLogs.slice(0, 15).map(entry => (
+                    <div key={entry.id} className="logs-change-entry">
+                      <div className="logs-change-desc">{entry.description}</div>
+                      <div className="logs-change-meta">{entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}</div>
+                    </div>
+                  ))
+                )}
+              </section>
             </div>
           </div>
         </div>
@@ -731,6 +657,48 @@ export default function Header() {
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{user?.email || 'guest@pinnacle.com'}</div>
               </div>
               <div style={{ padding: '4px' }}>
+                {/* Theme Toggle */}
+                <button
+                  type="button"
+                  onClick={() => { toggleTheme(); setProfileOpen(false); }}
+                  aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.8rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(64, 224, 208, 0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  {theme === 'dark' ? (
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
+                      <circle cx="12" cy="12" r="5"></circle>
+                      <line x1="12" y1="1" x2="12" y2="3"></line>
+                      <line x1="12" y1="21" x2="12" y2="23"></line>
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                      <line x1="1" y1="12" x2="3" y2="12"></line>
+                      <line x1="21" y1="12" x2="23" y2="12"></line>
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                  )}
+                  {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                </button>
                 {/* Help Center Link */}
                 <Link
                   href="/help"

@@ -218,6 +218,9 @@ serve(async (req) => {
                     date: dateVal,
                     hours: hoursVal,
                     description: description.substring(0, 500), // Truncate if too long
+                    // Workday phase/task names for matching to MPP tasks
+                    workday_phase: rawPhaseName,
+                    workday_task: rawTaskName,
                     // Enhanced cost fields; reported_standard_cost_amt = Workday Reported_Standard_Cost_Amt for matching
                     billable_rate: billableRate,
                     billable_amount: billableAmount,
@@ -255,7 +258,8 @@ serve(async (req) => {
         try {
             console.log('[workday-hours] Ensuring columns exist...');
             await supabase.rpc('exec_sql', { 
-                sql: `ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_rate NUMERIC(10, 2); 
+                sql: `ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS task_id VARCHAR(50);
+                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_rate NUMERIC(10, 2); 
                       ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_amount NUMERIC(10, 2); 
                       ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS standard_cost_rate NUMERIC(10, 2); 
                       ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS reported_standard_cost_amt NUMERIC(10, 2);

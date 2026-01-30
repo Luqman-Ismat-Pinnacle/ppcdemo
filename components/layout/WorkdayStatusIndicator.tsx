@@ -3,10 +3,12 @@
 /**
  * Workday Sync Indicator
  * Simple dropdown to sync data from Workday to Supabase.
+ * Sync logs are pushed to the global Logs dropdown (Engine Logs > Workday).
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useLogs } from '@/lib/logs-context';
 
 
 
@@ -15,9 +17,9 @@ const WORKDAY_URL = process.env.NEXT_PUBLIC_WORKDAY_API_URL || 'Not configured';
 
 export default function WorkdayStatusIndicator() {
   const { refreshData } = useData();
+  const { addEngineLog } = useLogs();
   const [isOpen, setIsOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  // Removed unused state vars for individual sync options
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
@@ -81,17 +83,23 @@ export default function WorkdayStatusIndicator() {
     try {
       // Run Unified Sync (handles Employees -> Portfolios -> Projects -> Hours sequence on backend)
       addLog('Requesting Unified Sync...');
-      await runSyncStep('unified');
+      const data = await runSyncStep('unified');
 
       setStatus('success');
-      setMessage('Sync Complete');
+      if (data?.summary?.noNewHours === true) {
+        setMessage('Sync complete. No new hour data in date range.');
+      } else {
+        setMessage('Sync Complete');
+      }
       addLog('--- Full Sync Completed Successfully ---');
+      addEngineLog('Workday', [...logs]);
       await refreshData();
 
     } catch (error: any) {
       setStatus('error');
       setMessage('Sync Failed');
       addLog(`Sync Aborted: ${error.message}`);
+      addEngineLog('Workday', [...logs]);
     } finally {
       setIsSyncing(false);
     }
@@ -190,38 +198,8 @@ export default function WorkdayStatusIndicator() {
             </div>
           )}
 
-          {/* Logs */}
-          <div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Log</span>
-              <button
-                onClick={() => setLogs([])}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.65rem' }}
-              >
-                Clear
-              </button>
-            </div>
-            <div
-              style={{
-                maxHeight: '150px',
-                overflowY: 'auto',
-                backgroundColor: 'var(--bg-secondary)',
-                borderRadius: '4px',
-                padding: '8px',
-                fontFamily: 'monospace',
-                fontSize: '0.7rem',
-              }}
-            >
-              {logs.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)' }}>No logs yet</div>
-              ) : (
-                logs.map((log, i) => (
-                  <div key={i} style={{ color: log.includes('Error') || log.includes('Exception') ? '#EF4444' : log.includes('Success') ? '#10B981' : 'var(--text-secondary)', marginBottom: '2px' }}>
-                    {log}
-                  </div>
-                ))
-              )}
-            </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+            Sync logs appear in the header <strong>Logs</strong> dropdown under Workday.
           </div>
         </div>
       )}

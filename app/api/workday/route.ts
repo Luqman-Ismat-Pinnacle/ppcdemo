@@ -123,7 +123,12 @@ export async function POST(req: NextRequest) {
         success = false;
         logs.push(`Error in hours sync: ${hoursRes.error}`);
       } else {
-        logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
+        const fetched = hoursRes.stats?.fetched ?? 0;
+        if (fetched === 0) {
+          logs.push('No labor transactions in the selected date range. No new hour data to sync.');
+        } else {
+          logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
+        }
       }
 
       logs.push('--- Step 4: Skipping Ledger Sync (Memory Limit Issues) ---');
@@ -131,10 +136,11 @@ export async function POST(req: NextRequest) {
       logs.push('Hours sync includes cost data for WBS Gantt integration.');
       logs.push('Use individual ledger functions if needed: workday-ledger-stream or workday-ledger-chunked');
 
+      const hoursFetched = results.find((r: any) => r.step === 'hours')?.result?.stats?.fetched ?? -1;
       return NextResponse.json({
         success,
         syncType: 'unified',
-        summary: { totalSteps: 3, results },
+        summary: { totalSteps: 3, results, noNewHours: hoursFetched === 0 },
         logs
       });
     }

@@ -426,6 +426,9 @@ export default function DocumentsPage() {
       
       addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
+      // Always apply the file: same structure = update numbers; new structure = replace schedule.
+      // (No duplicate skip so updated project plans with revised dates/hours/costs are applied.)
+
       // Update the existing project: has_schedule = true (direct update to avoid name constraint)
       addLog('info', '[Supabase] Enabling schedule visibility for project...');
       try {
@@ -545,6 +548,28 @@ export default function DocumentsPage() {
         } else {
           addLog('success', `[Supabase] Tasks synced: ${convertedData.tasks.length}`);
         }
+      }
+
+      // Mark this file as the current version for the project in the Documents folder
+      try {
+        const setCurrentRes = await fetch('/api/data/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataKey: 'projectDocuments',
+            operation: 'setCurrentMpp',
+            projectId: existingProjectId,
+            storagePath: file.storagePath,
+          }),
+        });
+        const setCurrentResult = await setCurrentRes.json();
+        if (setCurrentRes.ok && setCurrentResult.success) {
+          addLog('success', '[Documents] File marked as current version for this project.');
+        } else {
+          addLog('warning', `[Documents] Could not set current version: ${setCurrentResult.error || 'Unknown'}`);
+        }
+      } catch (e: any) {
+        addLog('warning', `[Documents] Set current version failed: ${e.message}`);
       }
 
       // Complete the process
@@ -741,9 +766,32 @@ export default function DocumentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {uploadedFiles.map((file) => (
+                  {uploadedFiles.map((file) => {
+                    const isCurrentVersion = fullData?.projectDocuments?.some(
+                      (d: any) =>
+                        (d.storagePath === file.storagePath || d.storage_path === file.storagePath) &&
+                        (d.isCurrentVersion === true || d.is_current_version === true)
+                    );
+                    return (
                     <tr key={file.id}>
-                      <td>{file.fileName}</td>
+                      <td>
+                        {file.fileName}
+                        {isCurrentVersion && (
+                          <span
+                            style={{
+                              marginLeft: '0.5rem',
+                              fontSize: '0.7rem',
+                              padding: '0.15rem 0.4rem',
+                              backgroundColor: 'var(--pinnacle-teal)',
+                              color: '#000',
+                              borderRadius: '4px',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Current version
+                          </span>
+                        )}
+                      </td>
                       <td>{(file.fileSize / 1024 / 1024).toFixed(2)} MB</td>
                       <td>{file.workdayProjectId || '-'}</td>
                       <td>
@@ -760,20 +808,20 @@ export default function DocumentsPage() {
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button
                             onClick={() => handleProcess(file.id)}
-                            disabled={isProcessing || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing' || file.status === 'complete'}
+                            disabled={isProcessing || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
                             style={{
                               padding: '0.25rem 0.75rem',
-                              backgroundColor: file.status === 'uploaded' || file.status === 'error' ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                              color: file.status === 'uploaded' || file.status === 'error' ? '#000' : 'var(--text-muted)',
+                              backgroundColor: (file.status === 'uploaded' || file.status === 'error' || file.status === 'complete') ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                              color: (file.status === 'uploaded' || file.status === 'error' || file.status === 'complete') ? '#000' : 'var(--text-muted)',
                               border: 'none',
                               borderRadius: '4px',
                               fontSize: '0.75rem',
-                              cursor: file.status === 'uploaded' || file.status === 'error' ? 'pointer' : 'not-allowed',
+                              cursor: (file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing') ? 'not-allowed' : 'pointer',
                             }}
                           >
                             {file.status === 'processing' ? 'Processing...' :
                               file.status === 'syncing' ? 'Syncing...' :
-                                'Run MPXJ'}
+                                file.status === 'complete' ? 'Re-run MPXJ' : 'Run MPXJ'}
                           </button>
                           <button
                             onClick={() => handleDelete(file.id)}
@@ -793,7 +841,7 @@ export default function DocumentsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             )}

@@ -1776,6 +1776,122 @@ const normalizeTaskId = (record: any): string | null => {
   return record.taskId || record.task_id || record.id || null;
 };
 
+// Normalize phase/task name for matching (trim, lower case, collapse whitespace)
+const normalizeNameForMatch = (s: string): string =>
+  (s ?? '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+
+// More robust: strip punctuation and extra spaces so "Phase 1 - Kickoff" matches "Phase 1 Kickoff"
+const normalizeNameRelaxed = (s: string): string =>
+  (s ?? '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_\-.,;:()]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s+|\s+$/g, '');
+
+// Check if two normalized strings match: exact, or one contains the other (for truncated names)
+function namesMatch(a: string, b: string, relaxed: boolean): boolean {
+  const na = relaxed ? normalizeNameRelaxed(a) : normalizeNameForMatch(a);
+  const nb = relaxed ? normalizeNameRelaxed(b) : normalizeNameForMatch(b);
+  if (!na || !nb) return na === nb;
+  if (na === nb) return true;
+  if (relaxed && (na.includes(nb) || nb.includes(na))) return true;
+  return false;
+}
+
+/**
+ * Resolve hour entries to MPP tasks by matching (project_id, workday_phase, workday_task)
+ * to (task.project_id, phase.name, task.name). Project ID is set by the user when they
+ * select the project during MPP upload, so mismatch should not occur. Matching uses
+ * increasingly relaxed name comparison so phase/task names align even with punctuation
+ * or wording differences.
+ * Returns a new hours array with taskId/task_id set where a match was found.
+ *
+ * Why matching might still not work (reasons 3 and 4 in detail):
+ *
+ * (3) Missing workday_phase / workday_task: These fields are populated only by the
+ *     Workday sync from the Project Labor Transactions report (Phase and Task columns).
+ *     If hour entries were imported from CSV, manual entry, or another system, they
+ *     typically won't have workday_phase/workday_task. Likewise, if an older version
+ *     of the Workday sync did not persist these columns, existing rows will have null.
+ *     Without at least one of these, we cannot match by name—only by task_id if it
+ *     was already set—so those hours will not roll up to any MPP task.
+ *
+ * (4) Multiple tasks with the same phase name and task name in one project: Matching
+ *     uses the pair (phase_name, task_name) per project. If the MPP schedule has two
+ *     different tasks that share the same phase and task name (e.g. duplicate labels
+ *     or two "Design" tasks under "Phase 1"), we can only attach hours to one of them
+ *     (the first we encounter when building the lookup). The other task will show no
+ *     actuals from Workday. Fixing this would require a stronger discriminator (e.g.
+ *     WBS code or task order) in both Workday and the MPP data.
+ */
+function resolveHourEntriesToTasks(
+  hours: any[],
+  tasks: any[],
+  phases: any[]
+): any[] {
+  if (!hours?.length || !tasks?.length) return hours ?? [];
+
+  const phaseIdToName = new Map<string, string>();
+  (phases ?? []).forEach((p: any) => {
+    const id = p.id ?? p.phaseId ?? p.phase_id;
+    const name = (p.name ?? p.phase_name ?? '').toString().trim();
+    if (id != null) phaseIdToName.set(String(id), name);
+  });
+
+  // Build lookup: for each task we store (projectId, phaseName, taskName) -> taskId with multiple key variants (exact + relaxed)
+  const exactKeys = new Map<string, string>();
+  const relaxedKeys = new Map<string, string>();
+  const taskListByProject: { projectId: string; phaseName: string; taskName: string; taskId: string }[] = [];
+
+  tasks.forEach((t: any) => {
+    const projectId = t.projectId ?? t.project_id;
+    const phaseId = t.phaseId ?? t.phase_id;
+    const taskName = (t.name ?? t.taskName ?? t.task_name ?? '').toString().trim();
+    const phaseName = phaseId ? (phaseIdToName.get(String(phaseId)) ?? '') : '';
+    const taskId = String(t.id ?? t.taskId ?? '');
+    if (projectId == null) return;
+
+    const exactKey = `${String(projectId)}|${normalizeNameForMatch(phaseName)}|${normalizeNameForMatch(taskName)}`;
+    const relaxedKey = `${String(projectId)}|${normalizeNameRelaxed(phaseName)}|${normalizeNameRelaxed(taskName)}`;
+    if (!exactKeys.has(exactKey)) exactKeys.set(exactKey, taskId);
+    if (!relaxedKeys.has(relaxedKey)) relaxedKeys.set(relaxedKey, taskId);
+    taskListByProject.push({ projectId: String(projectId), phaseName, taskName, taskId });
+  });
+
+  return hours.map((h: any) => {
+    const existingTaskId = h.taskId ?? h.task_id;
+    if (existingTaskId) return h;
+
+    const projectId = h.projectId ?? h.project_id;
+    const workdayPhase = (h.workdayPhase ?? h.workday_phase ?? '').toString().trim();
+    const workdayTask = (h.workdayTask ?? h.workday_task ?? '').toString().trim();
+    if (!projectId || (!workdayPhase && !workdayTask)) return h;
+
+    // Try exact normalized key first
+    let key = `${String(projectId)}|${normalizeNameForMatch(workdayPhase)}|${normalizeNameForMatch(workdayTask)}`;
+    let matchedTaskId = exactKeys.get(key);
+    if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+
+    // Try relaxed key (strip punctuation, collapse separators)
+    key = `${String(projectId)}|${normalizeNameRelaxed(workdayPhase)}|${normalizeNameRelaxed(workdayTask)}`;
+    matchedTaskId = relaxedKeys.get(key);
+    if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+
+    // Fallback: find first task in same project where phase and task names match (relaxed or contains)
+    const found = taskListByProject.find(
+      (x) =>
+        x.projectId === String(projectId) &&
+        namesMatch(workdayPhase, x.phaseName, true) &&
+        namesMatch(workdayTask, x.taskName, true)
+    );
+    if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+
+    return h;
+  });
+}
+
 const WEEK_DAYS = 7;
 const DEFAULT_COST_RATE = 75;
 
@@ -4465,7 +4581,16 @@ export interface TransformDataOptions {
 export function transformData(rawData: Partial<SampleData>, options?: TransformDataOptions): Partial<SampleData> {
   const startTime = performance.now();
   const transformed: Partial<SampleData> = { ...rawData };
-  const { adjustedData, changeControlSummary } = applyChangeControlAdjustments(rawData);
+
+  // Resolve Workday hours to MPP tasks by (project_id, workday_phase, workday_task) so actuals roll up correctly
+  const enrichedHours = resolveHourEntriesToTasks(
+    rawData.hours ?? [],
+    rawData.tasks ?? [],
+    rawData.phases ?? []
+  );
+  const dataWithEnrichedHours: Partial<SampleData> = { ...rawData, hours: enrichedHours };
+
+  const { adjustedData, changeControlSummary } = applyChangeControlAdjustments(dataWithEnrichedHours);
 
   const hoursCount = rawData.hours?.length ?? 0;
   const tasksCount = adjustedData.tasks?.length ?? 0;
