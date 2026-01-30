@@ -354,118 +354,137 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     return result;
   }
 
-  // Group tasks by outline_level to create proper hierarchy
+  // Build hierarchy by parent_id, not outline_level: root (0) skip; level 1 = phase; child of level-1 phase = phase; child of level-2 phase = unit; child of unit = task.
+  const raw = (data.tasks as any[])
+    .filter((t: any) => (t.outline_level ?? 0) !== 0)
+    .map((t: any) => ({
+      id: t.id,
+      outline_level: t.outline_level ?? 1,
+      parent_id: t.parent_id ?? null,
+      name: t.name || '',
+      startDate: t.startDate || null,
+      endDate: t.endDate || null,
+      percentComplete: t.percentComplete || 0,
+      baselineHours: t.baselineHours || 0,
+      actualHours: t.actualHours || 0,
+      projectedHours: t.projectedHours || 0,
+      remainingHours: t.remainingHours || 0,
+      isCritical: t.isCritical || false,
+      totalSlack: Math.round(t.totalSlack || 0),
+      comments: t.comments || '',
+      is_summary: t.is_summary || false,
+      assignedResource: t.assignedResource || '',
+    }));
+
+  const byId = new Map<string, (typeof raw)[0]>();
+  raw.forEach((r: any) => byId.set(String(r.id), r));
+
+  // Classify in outline order so parents are done before children
+  const sortedByLevel = [...raw].sort((a: any, b: any) => (a.outline_level || 0) - (b.outline_level || 0));
+
+  type NodeType = 'phase' | 'unit' | 'task';
+  const typeById = new Map<string, NodeType>();
+
+  sortedByLevel.forEach((r: any) => {
+    const level = r.outline_level;
+    const parentId = r.parent_id != null ? String(r.parent_id) : null;
+    const parent = parentId ? byId.get(parentId) : null;
+    const parentType = parent ? typeById.get(String(parent.id)) : null;
+
+    if (level === 1) {
+      typeById.set(String(r.id), 'phase');
+      return;
+    }
+    if (parentType === 'phase') {
+      const parentLevel = parent!.outline_level;
+      if (parentLevel === 1) {
+        typeById.set(String(r.id), 'phase'); // direct child of level-1 phase (e.g. "Project Execution")
+      } else {
+        typeById.set(String(r.id), 'unit'); // child of level-2 phase = unit (e.g. 3, 13, 15, 19, 43, 46, 47)
+      }
+      return;
+    }
+    if (parentType === 'unit') {
+      typeById.set(String(r.id), 'task');
+      return;
+    }
+    if (parentType === 'task') {
+      typeById.set(String(r.id), 'task');
+      return;
+    }
+    // fallback: no parent or parent unknown — by depth
+    if (level === 2) typeById.set(String(r.id), 'phase');
+    else if (level === 3) typeById.set(String(r.id), 'unit');
+    else typeById.set(String(r.id), 'task');
+  });
+
   const phases: any[] = [];
   const units: any[] = [];
   const tasks: any[] = [];
 
-  // Helper to get WBS level type based on outline_level
-  // Root (0) is skipped. Level 1–2 = phases (e.g. project/subphase, then phase like "Project Execution").
-  // Level 3 = units under that phase (e.g. "Asset Strategy Development", "Document Data Gathering").
-  // Level 4+ = tasks under units.
-  const getLevelType = (outlineLevel: number): 'skip' | 'phase' | 'unit' | 'task' => {
-    switch (outlineLevel) {
-      case 0: return 'skip'; // root folder — do not import
-      case 1:
-      case 2: return 'phase';
-      case 3: return 'unit';
-      default: return 'task'; // levels 4+ are tasks
-    }
-  };
-
-  // Process each task and categorize by outline_level
-  data.tasks.forEach((task: any, index: number) => {
-    const outlineLevel = task.outline_level ?? 0;
-    const levelType = getLevelType(outlineLevel);
-    if (levelType === 'skip') return; // skip root (ID 0)
-    
-    // Generate appropriate ID based on type
-    let id: string;
-    if (task.id) {
-      id = task.id;
-    } else {
-      switch (levelType) {
-        case 'phase':
-          id = `PHS-${(phases.length + 1).toString().padStart(4, '0')}`;
-          break;
-        case 'unit':
-          id = `UNT-${(units.length + 1).toString().padStart(4, '0')}`;
-          break;
-        case 'task':
-          id = `TSK-${(tasks.length + 1).toString().padStart(4, '0')}`;
-          break;
-        default:
-          id = `TSK-${(index + 1).toString().padStart(4, '0')}`;
-      }
-    }
-    
+  raw.forEach((r: any) => {
+    const id = String(r.id);
+    const nodeType = typeById.get(id) ?? 'task';
     const baseTask = {
-      id: id,
-      name: task.name || '',
-      startDate: task.startDate || null,
-      endDate: task.endDate || null,
-      percentComplete: task.percentComplete || 0,
-      baselineHours: task.baselineHours || 0,
-      actualHours: task.actualHours || 0,
-      projectedHours: task.projectedHours || 0, // Will be added by migration
-      remainingHours: task.remainingHours || 0,
-      isCritical: task.isCritical || false,
-      totalSlack: Math.round(task.totalSlack || 0), // Convert float to integer for database
-      comments: task.comments || '',
-      parent_id: task.parent_id || null,
-      is_summary: task.is_summary || false,
+      id,
+      name: r.name,
+      startDate: r.startDate || null,
+      endDate: r.endDate || null,
+      percentComplete: r.percentComplete || 0,
+      baselineHours: r.baselineHours || 0,
+      actualHours: r.actualHours || 0,
+      projectedHours: r.projectedHours || 0,
+      remainingHours: r.remainingHours || 0,
+      isCritical: r.isCritical || false,
+      totalSlack: r.totalSlack ?? 0,
+      comments: r.comments || '',
+      parent_id: r.parent_id != null ? String(r.parent_id) : null,
+      is_summary: r.is_summary || false,
       projectId: projectIdOverride || '',
       createdAt: now,
       updatedAt: now,
     };
 
-    switch (levelType) {
-      case 'phase':
-        phases.push({
-          ...baseTask,
-          phaseId: baseTask.id,
-          methodology: '',
-          sequence: phases.length + 1,
-          employeeId: task.assignedResource ? null : null, // phases has employee_id, not assigned_resource
-          comments: task.comments || '', // phases will have comments after migration
-          isCritical: task.isCritical || false, // phases will have is_critical after migration
-          is_summary: task.is_summary || false, // phases will have is_summary after migration
-        });
-        break;
-      
-      case 'unit':
-        units.push({
-          ...baseTask,
-          unitId: baseTask.id,
-          description: '',
-          phaseId: '', // Will be resolved properly later
-          employeeId: null,
-          active: true,
-          endDate: task.endDate || null, // units will have end_date after migration
-          isCritical: task.isCritical || false, // units will have is_critical after migration
-          parent_id: task.parent_id || null, // Store parent_id for resolution
-        });
-        break;
-      
-      case 'task':
-        tasks.push({
-          ...baseTask,
-          taskId: baseTask.id,
-          taskName: baseTask.name,
-          taskDescription: baseTask.comments || '', // tasks will have task_description after migration
-          isSubTask: outlineLevel > 4,
-          parentTaskId: null, // Don't set parentTaskId yet - will be resolved properly later to avoid foreign key violations
-          // We'll resolve these after all items are processed
-          phaseId: '',
-          unitId: '',
-          assignedResource: task.assignedResource || '',
-          assignedResourceType: 'specific' as const,
-          status: outlineLevel > 3 && task.is_summary ? 'In Progress' : 'Not Started',
-          priority: 'medium' as const,
-          predecessorId: null,
-          predecessorRelationship: null,
-        });
-        break;
+    if (nodeType === 'phase') {
+      phases.push({
+        ...baseTask,
+        phaseId: id,
+        methodology: '',
+        sequence: phases.length + 1,
+        employeeId: null,
+        comments: r.comments || '',
+        isCritical: r.isCritical || false,
+        is_summary: r.is_summary || false,
+      });
+    } else if (nodeType === 'unit') {
+      units.push({
+        ...baseTask,
+        unitId: id,
+        description: '',
+        phaseId: '', // resolved below
+        employeeId: null,
+        active: true,
+        endDate: r.endDate || null,
+        isCritical: r.isCritical || false,
+        parent_id: baseTask.parent_id,
+      });
+    } else {
+      tasks.push({
+        ...baseTask,
+        taskId: id,
+        taskName: r.name,
+        taskDescription: r.comments || '',
+        isSubTask: (r.outline_level ?? 0) > 4,
+        parentTaskId: null,
+        phaseId: '',
+        unitId: '',
+        assignedResource: r.assignedResource || '',
+        assignedResourceType: 'specific' as const,
+        status: (r.outline_level ?? 0) > 3 && r.is_summary ? 'In Progress' : 'Not Started',
+        priority: 'medium' as const,
+        predecessorId: null,
+        predecessorRelationship: null,
+      });
     }
   });
 
