@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
           } else if (key.endsWith('Id') && trimmed === '') {
             cleaned[key] = null;
           } else {
-            cleaned[key] = trimmed;
+            // Truncate string fields to prevent database errors
+            cleaned[key] = trimmed.length > 255 ? trimmed.substring(0, 255) : trimmed;
           }
         } else if (key.endsWith('Id') && (value === '' || value === null || value === undefined)) {
           cleaned[key] = null;
