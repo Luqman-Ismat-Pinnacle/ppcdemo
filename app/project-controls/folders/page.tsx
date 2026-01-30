@@ -410,7 +410,7 @@ export default function DocumentsPage() {
       
       addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
-      // Update the existing project: has_schedule = true (uses service role key via API)
+      // Update the existing project: has_schedule = true (direct update to avoid name constraint)
       addLog('info', '[Supabase] Enabling schedule visibility for project...');
       try {
         const projectUpdateResponse = await fetch('/api/data/sync', {
@@ -418,6 +418,7 @@ export default function DocumentsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             dataKey: 'projects',
+            operation: 'update',
             records: [{
               id: existingProjectId,
               has_schedule: true,

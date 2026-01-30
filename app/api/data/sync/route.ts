@@ -125,6 +125,36 @@ export async function POST(req: NextRequest) {
       return toSupabaseFormat(cleaned);
     });
 
+    // Handle Update Operation (partial update without upsert)
+    if (operation === 'update') {
+      // For projects table, use direct update to avoid name constraint
+      if (tableName === 'projects') {
+        const { data, error } = await supabase
+          .from(tableName)
+          .update(cleanedRecords[0])
+          .eq('id', cleanedRecords[0].id)
+          .select();
+
+        if (error) {
+          console.error(`Error updating ${dataKey} to ${tableName}:`, error);
+          return NextResponse.json(
+            {
+              success: false,
+              count: 0,
+              error: error.message || 'Unknown error',
+              details: error.details || error.hint || undefined,
+            },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          count: data?.length || 0,
+        });
+      }
+    }
+
     // Upsert records
     const { data, error } = await supabase
       .from(tableName)
