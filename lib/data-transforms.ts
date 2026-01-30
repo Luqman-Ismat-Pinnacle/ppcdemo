@@ -1148,8 +1148,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const unitId = unit.id || unit.unitId;
           const unitWbs = `${phaseWbs}.${uIdx + 1}`;
 
-          // Find tasks that have this unit as parent - simple direct comparison
-          const unitTasks = (data.tasks || []).filter((t: any) => (t as any).parent_id === unitId);
+          // Find tasks that have this unit as parent (parent_id from MPP outline, or unit_id/unitId from converter)
+          const unitTasks = (data.tasks || []).filter((t: any) =>
+            (t as any).parent_id === unitId || (t as any).unit_id === unitId || (t as any).unitId === unitId
+          );
           
           // Minimal debug - just show counts
           console.log(`[WBS] Unit ${unitId}: ${unitTasks.length} tasks found`);

@@ -66,7 +66,7 @@ export default function WBSGanttPage() {
   const fixedColsWidth = 1240;
   const data = filteredData;
   const employees = fullData.employees;
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['wbs-1', 'wbs-2', 'wbs-1.1', 'wbs-2.1', 'wbs-1.1.1', 'wbs-2.1.1', 'wbs-1.1.1.1', 'wbs-2.1.1.1']));
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cpmResult, setCpmResult] = useState<CPMResult | null>(null);
   const [cpmLogs, setCpmLogs] = useState<string[]>([]);
   const [ganttInterval, setGanttInterval] = useState<GanttInterval>('week');
@@ -409,6 +409,23 @@ export default function WBSGanttPage() {
     }
     return rows;
   }, [sortedWbsItems, expandedIds]);
+
+  // Auto-expand all WBS nodes when data loads so phases, units, and tasks are visible (real ids are wbs-project-*, wbs-phase-*, wbs-unit-*, not wbs-1/wbs-2)
+  useEffect(() => {
+    const items = data.wbsData?.items;
+    if (!items?.length) return;
+    const idsWithChildren = new Set<string>();
+    const collectExpandable = (list: any[]) => {
+      list.forEach((item: any) => {
+        if (item.children && item.children.length > 0) {
+          idsWithChildren.add(item.id);
+          collectExpandable(item.children);
+        }
+      });
+    };
+    collectExpandable(items);
+    setExpandedIds(idsWithChildren);
+  }, [data.wbsData?.items]);
 
   // Optimize task name lookup
   const taskNameMap = useMemo(() => {
