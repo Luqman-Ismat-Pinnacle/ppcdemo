@@ -50,6 +50,8 @@ interface TransformWBSItem {
   remainingCost?: number;
   daysRequired?: number;
   assignedResourceId?: string;
+  /** Role/Resource display (from Data Management Role/Resource column) */
+  assignedResource?: string;
   isCritical?: boolean;
   isMilestone?: boolean;
   taskEfficiency?: number | null;
@@ -1232,6 +1234,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               actualCost: taskActualCst,
               remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
               assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+              assignedResource: (task.assignedResource ?? (task as any).assigned_resource ?? '') || null,
               is_milestone: task.is_milestone || task.isMilestone || false,
               isCritical: task.is_critical || task.isCritical || false
             };
@@ -1305,6 +1308,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             actualCost: taskActualCst,
             remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
             assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+            assignedResource: (task.assignedResource ?? (task as any).assigned_resource ?? '') || null,
             is_milestone: task.is_milestone || task.isMilestone || false,
             isCritical: task.is_critical || task.isCritical || false
           };
@@ -1406,6 +1410,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           actualCost: taskActualCst,
           remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
           assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+          assignedResource: (task.assignedResource ?? (task as any).assigned_resource ?? '') || null,
           is_milestone: task.is_milestone || task.isMilestone || false,
           isCritical: task.is_critical || task.isCritical || false
         };
