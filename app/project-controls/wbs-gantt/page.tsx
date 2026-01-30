@@ -18,6 +18,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '@/lib/data-context';
+import { useLogs } from '@/lib/logs-context';
 import { CPMEngine, CPMTask, CPMResult } from '@/lib/cpm-engine';
 import { WBSTableRow } from '@/types/wbs';
 import { formatCurrency } from '@/lib/wbs-utils';
@@ -28,7 +29,6 @@ import {
   getNextSortState,
   sortByState,
 } from '@/lib/sort-utils';
-import { supabase } from '@/lib/supabase';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import SearchableDropdown from '@/components/ui/SearchableDropdown';
 
@@ -81,6 +81,7 @@ function filterWbsItemsByPath(items: any[], path: (string | undefined)[]): any[]
 
 export default function WBSGanttPage() {
   const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter } = useData();
+  const { addEngineLog } = useLogs();
   const fixedColsWidth = 1240;
   const data = filteredData;
   const employees = fullData.employees;
@@ -692,24 +693,11 @@ export default function WBSGanttPage() {
 
       logs.push(`• Average Float: ${result.stats.averageFloat.toFixed(1)} days`);
       setCpmLogs(logs);
-
-      // Save logs to database asynchronously
-      (async () => {
-        try {
-          // Get current user for the log (optional if auth enabled)
-          const { data: { session } } = await supabase.auth.getSession();
-
-          await supabase.from('engine_logs').insert({
-            execution_time_ms: endTime - startTime,
-            project_duration_days: displayDuration,
-            critical_path_count: result.stats.criticalTasksCount,
-            logs: logs,
-            user_id: session?.user?.id
-          });
-        } catch (err) {
-          console.error('Failed to save engine logs:', err);
-        }
-      })();
+      addEngineLog('CPM', logs, {
+        executionTimeMs: endTime - startTime,
+        projectDurationDays: displayDuration,
+        criticalPathCount: result.stats.criticalTasksCount,
+      });
     }
   };
 

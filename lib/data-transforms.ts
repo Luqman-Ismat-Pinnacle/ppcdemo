@@ -1052,7 +1052,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     const units = data.units || [];
     // Only include projects with MPP uploaded (has_schedule = true)
     const projects = (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
-    const phases = data.phases || [];
     const tasks = data.tasks || [];
     const employees = data.employees || [];
 
@@ -4456,13 +4455,27 @@ export function buildDeliverablesTracker(data: Partial<SampleData>) {
 // Apply all transformations to raw data
 // ============================================================================
 
+export interface TransformDataOptions {
+  onLog?: (engine: string, lines: string[]) => void;
+}
+
 /**
  * Transform raw database data into computed view structures
  */
-export function transformData(rawData: Partial<SampleData>): Partial<SampleData> {
+export function transformData(rawData: Partial<SampleData>, options?: TransformDataOptions): Partial<SampleData> {
   const startTime = performance.now();
   const transformed: Partial<SampleData> = { ...rawData };
   const { adjustedData, changeControlSummary } = applyChangeControlAdjustments(rawData);
+
+  const hoursCount = rawData.hours?.length ?? 0;
+  const tasksCount = adjustedData.tasks?.length ?? 0;
+  const actualsLines = [
+    `[${new Date().toISOString()}] Actuals / progress`,
+    `> Hour entries: ${hoursCount}`,
+    `> Tasks with progress applied: ${tasksCount}`,
+    `> buildTaskActualHoursMap from ${hoursCount} entries; applyProgressToList on ${tasksCount} tasks`,
+  ];
+  options?.onLog?.('Actuals', actualsLines);
 
   transformed.changeControlSummary = changeControlSummary;
 

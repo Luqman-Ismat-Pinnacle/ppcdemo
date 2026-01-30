@@ -23,6 +23,7 @@ import Image from 'next/image';
 import { useTheme } from '@/lib/theme-context';
 import { useUser } from '@/lib/user-context';
 import { useData } from '@/lib/data-context';
+import { useLogs } from '@/lib/logs-context';
 import { createSnapshot, type SnapshotCreateInput } from '@/lib/snapshot-utils';
 import { syncTable } from '@/lib/supabase';
 import Navigation from './Navigation';
@@ -52,12 +53,10 @@ export default function Header() {
   // Get user info from context
   const { user, logout: userLogout } = useUser();
   const { data, updateData, hierarchyFilter } = useData();
-  const catchUpLog = data.catchUpLog || [];
-  const [showCatchUp, setShowCatchUp] = useState(false);
-  const catchUpRef = useRef<HTMLDivElement>(null);
-  const [catchUpProject, setCatchUpProject] = useState('');
-  const [catchUpEntity, setCatchUpEntity] = useState('');
-  const [catchUpWindow, setCatchUpWindow] = useState<'all' | '7' | '30'>('7');
+  const { engineLogs, changeLogs, clearEngineLogs, clearChangeLogs } = useLogs();
+  const [showLogs, setShowLogs] = useState(false);
+  const logsRef = useRef<HTMLDivElement>(null);
+  const [logsSection, setLogsSection] = useState<'engine' | 'change'>('engine');
 
   // Snapshot dropdown state
   const [showSnapshots, setShowSnapshots] = useState(false);
@@ -103,50 +102,11 @@ export default function Header() {
   const [snapshotNotes, setSnapshotNotes] = useState<string>('');
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
 
-  const catchUpProjectOptions = useMemo(() => {
-    if (!data.projects) return [];
-    return data.projects
-      .map(project => {
-        const id = project.id || project.projectId;
-        const name = project.name || id;
-        return id ? { id, label: name } : null;
-      })
-      .filter((item): item is { id: string; label: string } => Boolean(item))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [data.projects]);
-
-  const catchUpEntityOptions = useMemo(() => {
-    return [...new Set(catchUpLog.map(entry => entry.entityType).filter(Boolean))].sort();
-  }, [catchUpLog]);
-
-  const filteredCatchUpEntries = useMemo(() => {
-    const cutoff =
-      catchUpWindow === 'all'
-        ? null
-        : new Date(Date.now() - Number(catchUpWindow) * 24 * 60 * 60 * 1000);
-
-    return catchUpLog.filter(entry => {
-      if (catchUpProject && entry.projectId !== catchUpProject) {
-        return false;
-      }
-      if (catchUpEntity && entry.entityType !== catchUpEntity) {
-        return false;
-      }
-      if (cutoff && entry.timestamp) {
-        const entryDate = new Date(entry.timestamp);
-        if (Number.isNaN(entryDate.getTime()) || entryDate < cutoff) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [catchUpLog, catchUpProject, catchUpEntity, catchUpWindow]);
-
-  const formatCatchUpTime = (value: string | undefined) => {
+  const formatLogTime = (value: string | undefined) => {
     if (!value) return '--';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '--';
-    return date.toLocaleTimeString('en-US', { hour12: false, timeZone: 'UTC' });
+    return date.toLocaleString('en-US', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   useEffect(() => {
@@ -165,13 +125,13 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    const handleClickOutsideCatchUp = (event: MouseEvent) => {
-      if (catchUpRef.current && !catchUpRef.current.contains(event.target as Node)) {
-        setShowCatchUp(false);
+    const handleClickOutsideLogs = (event: MouseEvent) => {
+      if (logsRef.current && !logsRef.current.contains(event.target as Node)) {
+        setShowLogs(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutsideCatchUp);
-    return () => document.removeEventListener('mousedown', handleClickOutsideCatchUp);
+    document.addEventListener('mousedown', handleClickOutsideLogs);
+    return () => document.removeEventListener('mousedown', handleClickOutsideLogs);
   }, []);
 
   useEffect(() => {
@@ -656,67 +616,92 @@ export default function Header() {
           </button>
         )}
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        <div ref={catchUpRef} className="nav-dropdown catch-up-dropdown" style={{ position: 'relative' }}>
+        <div ref={logsRef} className="nav-dropdown logs-dropdown" style={{ position: 'relative' }}>
           <button
-            className={`nav-dropdown-trigger ${showCatchUp ? 'active' : ''}`}
-            onClick={() => setShowCatchUp(prev => !prev)}
+            className={`nav-dropdown-trigger ${showLogs ? 'active' : ''}`}
+            onClick={() => setShowLogs(prev => !prev)}
           >
-            Catch Up {catchUpLog.length > 0 && `(${catchUpLog.length})`}
+            Logs {(engineLogs.length + changeLogs.length) > 0 && `(${engineLogs.length + changeLogs.length})`}
           </button>
-          <div className={`nav-dropdown-content catch-up-dropdown-content ${showCatchUp ? 'open' : ''}`}>
-            <div className="catch-up-header">
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Catch Up</div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Recent approvals & change logs</div>
-              </div>
+          <div className={`nav-dropdown-content logs-dropdown-content ${showLogs ? 'open' : ''}`} style={{ minWidth: '360px', maxHeight: '70vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div className="logs-dropdown-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>Logs</div>
+              <button type="button" onClick={() => setShowLogs(false)} aria-label="Close logs" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1rem' }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', padding: '8px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
               <button
-                onClick={() => setShowCatchUp(false)}
-                aria-label="Close catch up"
-                className="catch-up-close"
+                type="button"
+                onClick={() => setLogsSection('engine')}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  background: logsSection === 'engine' ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  color: logsSection === 'engine' ? '#000' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
               >
-                ✕
+                Engine Logs ({engineLogs.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogsSection('change')}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  background: logsSection === 'change' ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  color: logsSection === 'change' ? '#000' : 'var(--text-secondary)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                Change Logs ({changeLogs.length})
               </button>
             </div>
-            <div className="catch-up-filters">
-              <select value={catchUpProject} onChange={e => setCatchUpProject(e.target.value)} className="catch-up-select">
-                <option value="">All Projects</option>
-                {catchUpProjectOptions.map(project => (
-                  <option key={project.id} value={project.id}>{project.label}</option>
-                ))}
-              </select>
-              <select value={catchUpEntity} onChange={e => setCatchUpEntity(e.target.value)} className="catch-up-select">
-                <option value="">All Entities</option>
-                {catchUpEntityOptions.map(entity => (
-                  <option key={entity} value={entity}>{entity}</option>
-                ))}
-              </select>
-              <select value={catchUpWindow} onChange={e => setCatchUpWindow(e.target.value as typeof catchUpWindow)} className="catch-up-select">
-                <option value="7">Last 7 Days</option>
-                <option value="30">Last 30 Days</option>
-                <option value="all">All Time</option>
-              </select>
-            </div>
-            <div className="catch-up-entries">
-              {filteredCatchUpEntries.length === 0 ? (
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No entries match the filters.</div>
-              ) : (
-                filteredCatchUpEntries.slice(0, 12).map(entry => (
-                  <div key={entry.id} className="catch-up-entry">
-                    <div className="catch-up-entry-title">{entry.description}</div>
-                    <div className="catch-up-entry-meta">
-                      <span>{entry.user || 'System'}</span>
-                      <span>{entry.projectId || 'Global'}</span>
-                      <span>{formatCatchUpTime(entry.timestamp)}</span>
-                    </div>
-                    {entry.fromValue || entry.toValue ? (
-                      <div className="catch-up-entry-delta">
-                        <span>{entry.fromValue || '-'}</span>
-                        <span>→</span>
-                        <span>{entry.toValue || '-'}</span>
+            <div style={{ overflow: 'auto', flex: 1, padding: '8px' }}>
+              {logsSection === 'engine' ? (
+                <>
+                  {engineLogs.length > 0 && (
+                    <button type="button" onClick={clearEngineLogs} style={{ fontSize: '0.65rem', marginBottom: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>Clear engine logs</button>
+                  )}
+                  {engineLogs.length === 0 ? (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No engine logs yet. Run CPM or load data to see logs.</div>
+                  ) : (
+                    engineLogs.slice(0, 30).map(entry => (
+                      <div key={entry.id} style={{ marginBottom: '12px', padding: '8px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.7rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 600 }}>{entry.engine}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>{formatLogTime(entry.createdAt)}</span>
+                        </div>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
+                          {entry.lines.join('\n')}
+                        </pre>
                       </div>
-                    ) : null}
-                  </div>
-                ))
+                    ))
+                  )}
+                </>
+              ) : (
+                <>
+                  {changeLogs.length > 0 && (
+                    <button type="button" onClick={clearChangeLogs} style={{ fontSize: '0.65rem', marginBottom: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>Clear change logs</button>
+                  )}
+                  {changeLogs.length === 0 ? (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No change logs yet. Edits and syncs will appear here.</div>
+                  ) : (
+                    changeLogs.slice(0, 30).map(entry => (
+                      <div key={entry.id} style={{ marginBottom: '8px', padding: '6px 8px', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.7rem' }}>
+                        <div style={{ fontWeight: 600 }}>{entry.description}</div>
+                        <div style={{ color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </div>
           </div>

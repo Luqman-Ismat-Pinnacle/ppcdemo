@@ -19,6 +19,7 @@ import { Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/layout/ThemeProvider';
 import { DataProvider } from '@/lib/data-context';
+import { LogsProvider } from '@/lib/logs-context';
 import { UserProvider } from '@/lib/user-context';
 import Auth0Provider from '@/components/providers/Auth0Provider';
 import Header from '@/components/layout/Header';
@@ -85,9 +86,10 @@ export default function RootLayout({
         </div>
         <ErrorBoundary>
           <Auth0Provider>
-            <ThemeProvider>
-              <UserProvider>
-                <DataProvider>
+            <LogsProvider>
+              <ThemeProvider>
+                <UserProvider>
+                  <DataProvider>
                   <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
                     <Header />
                     <main className="main-content">
@@ -95,9 +97,10 @@ export default function RootLayout({
                     </main>
                     <HelpButton />
                   </div>
-                </DataProvider>
-              </UserProvider>
-            </ThemeProvider>
+                  </DataProvider>
+                </UserProvider>
+              </ThemeProvider>
+            </LogsProvider>
           </Auth0Provider>
         </ErrorBoundary>
       </body>

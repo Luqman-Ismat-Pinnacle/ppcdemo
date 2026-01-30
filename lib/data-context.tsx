@@ -21,6 +21,7 @@ import type { SampleData, HierarchyFilter, DateFilter } from '@/types/data';
 import { transformData } from '@/lib/data-transforms';
 import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
+import { LogsContext } from '@/lib/logs-context';
 
 // ============================================================================
 // ACTIVE-ONLY & PRUNE EMPTY HIERARCHY
@@ -246,6 +247,7 @@ interface DataProviderProps {
  * Automatically fetches data from Supabase on initialization.
  */
 export function DataProvider({ children }: DataProviderProps) {
+  const logsContext = useContext(LogsContext);
   // State starts EMPTY - populated from Supabase on mount
   const [data, setData] = useState<SampleData>(createEmptyData);
   const [isLoading, setIsLoading] = useState(true);
@@ -298,7 +300,9 @@ export function DataProvider({ children }: DataProviderProps) {
 
           if (Object.keys(mergedData).length > 0) {
             // Apply transformations to build computed views (wbsData, laborBreakdown, etc.)
-            const transformedData = transformData(mergedData);
+            const transformedData = transformData(mergedData, {
+              onLog: (engine, lines) => logsContext?.addEngineLog(engine, lines),
+            });
             // Replace all data, not merge, to ensure fresh state
             setData({ ...createEmptyData(), ...mergedData, ...transformedData });
             logger.debug('Loaded and transformed data from database:', Object.keys(mergedData).map(k => {
@@ -323,10 +327,19 @@ export function DataProvider({ children }: DataProviderProps) {
    * Automatically applies transformations to build computed views
    */
   const updateData = (updates: Partial<SampleData>) => {
+    const keys = Object.keys(updates);
+    if (keys.length > 0 && !(keys.length === 1 && keys[0] === 'wbsData')) {
+      logsContext?.addChangeLog?.({
+        user: 'System',
+        action: 'update',
+        entityType: 'data',
+        entityId: keys.join(','),
+        description: `Updated: ${keys.join(', ')}`,
+      });
+    }
     setData((prev) => {
       const merged = { ...prev, ...updates };
       // When only wbsData is updated (e.g. CPM results), keep it and skip full transform to avoid overwriting with a fresh build
-      const keys = Object.keys(updates);
       if (keys.length === 1 && keys[0] === 'wbsData') {
         return merged;
       }
@@ -341,7 +354,9 @@ export function DataProvider({ children }: DataProviderProps) {
         applyActiveOnlyAndPruneEmpty(merged);
       }
       // Re-apply transformations when raw data changes
-      const transformedData = transformData(merged);
+      const transformedData = transformData(merged, {
+        onLog: (engine, lines) => logsContext?.addEngineLog(engine, lines),
+      });
       return { ...merged, ...transformedData };
     });
   };
@@ -395,7 +410,9 @@ export function DataProvider({ children }: DataProviderProps) {
 
       if (Object.keys(mergedData).length > 0) {
         // Apply transformations to build computed views
-        const transformedData = transformData(mergedData);
+        const transformedData = transformData(mergedData, {
+          onLog: (engine, lines) => logsContext?.addEngineLog(engine, lines),
+        });
         // Replace all data, not merge, to ensure fresh state
         setData({ ...createEmptyData(), ...mergedData, ...transformedData });
         logger.debug('Refreshed data from database:', Object.keys(mergedData).map(k => {
@@ -775,7 +792,7 @@ export function DataProvider({ children }: DataProviderProps) {
 
     // =========================================================================
     // APPLY DATE FILTER
-    // WBS actual hours are cumulative (all-time); do not let date filter affect wbsData.
+    // WBS actual hours and actual cost are cumulative (all-time); do not let date filter affect wbsData.
     // =========================================================================
     const wbsDataBeforeDateFilter = filtered.wbsData;
     if (dateFilter && dateFilter.type !== 'all') {
@@ -844,7 +861,7 @@ export function DataProvider({ children }: DataProviderProps) {
       }
     }
 
-    // Ensure WBS Gantt always gets cumulative actual hours (wbsData never date-filtered)
+    // Ensure WBS Gantt always gets cumulative actual hours and actual cost (wbsData never date-filtered)
     filtered.wbsData = wbsDataBeforeDateFilter;
 
     return filtered;
