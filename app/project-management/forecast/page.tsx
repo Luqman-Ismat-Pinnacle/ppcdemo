@@ -303,40 +303,9 @@ export default function ForecastPage() {
 
   return (
     <div className="page-panel forecast-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)', overflow: 'auto', minHeight: 0 }}>
-      {/* Header */}
+      {/* Header: title only */}
       <div className="page-header" style={{ flexShrink: 0, marginBottom: '1rem' }}>
-        <div>
-          <h1 className="page-title">Forecasting & Scenario Analysis</h1>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button 
-            className="btn btn-secondary btn-sm"
-            onClick={() => setIsParamsOpen(!isParamsOpen)}
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" style={{ marginRight: '4px' }}>
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path>
-            </svg>
-            Engine Parameters
-          </button>
-          <button 
-            className="btn btn-primary btn-sm" 
-            onClick={runEngine}
-            disabled={isRunning}
-            style={{ minWidth: '100px' }}
-          >
-            {isRunning ? (
-              <>
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" style={{ marginRight: '4px', animation: 'spin 1s linear infinite' }}>
-                  <circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4"></circle>
-                </svg>
-                Running...
-              </>
-            ) : (
-              <>Run Simulation</>
-            )}
-          </button>
-        </div>
+        <h1 className="page-title">Forecasting & Scenario Analysis</h1>
       </div>
 
       {/* Engine Parameters Panel */}
@@ -480,8 +449,9 @@ export default function ForecastPage() {
         </div>
       )}
 
-      {/* Monte Carlo Results - Key Metrics */}
-      <div className="metrics-row-compact forecast-metrics" style={{ flexShrink: 0, marginBottom: '1.5rem', gap: '1rem' }}>
+      {/* Metrics row + action buttons in one row to remove empty gap */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap', flexShrink: 0, marginBottom: '1.5rem' }}>
+        <div className="metrics-row-compact forecast-metrics" style={{ flex: '1 1 auto', minWidth: 0, gap: '1rem' }}>
         {/* P10 Cost */}
         <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
           <div className="metric-label" style={{ color: '#10B981', fontSize: '0.85rem' }}>P10 Cost (Best)</div>
@@ -523,6 +493,36 @@ export default function ForecastPage() {
           <div className="metric-value" style={{ fontSize: '1.25rem' }}>
             {forecastResult ? `${Math.round(forecastResult.monteCarloDuration.p50)} days` : '—'}
           </div>
+        </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, alignItems: 'center' }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setIsParamsOpen(!isParamsOpen)}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" style={{ marginRight: '4px' }}>
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path>
+            </svg>
+            Engine Parameters
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={runEngine}
+            disabled={isRunning}
+            style={{ minWidth: '100px' }}
+          >
+            {isRunning ? (
+              <>
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" style={{ marginRight: '4px', animation: 'spin 1s linear infinite' }}>
+                  <circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4"></circle>
+                </svg>
+                Running...
+              </>
+            ) : (
+              <>Run Simulation</>
+            )}
+          </button>
         </div>
       </div>
 
@@ -603,7 +603,7 @@ export default function ForecastPage() {
           </div>
         </div>
 
-        {/* Trend Charts */}
+        {/* Trend + Scenario: same row to fill empty space */}
         <div className="chart-card grid-half forecast-chart-card" style={{ minHeight: '380px' }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title">CPI Trend</h3>
@@ -616,7 +616,69 @@ export default function ForecastPage() {
           </div>
         </div>
 
-        {/* Forecast Logs (Risks, Actions, Decisions) */}
+        {/* Scenario Comparison - next to CPI Trend to remove empty half */}
+        <div className="chart-card grid-half" style={{ minHeight: '380px' }}>
+          <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <h3 className="chart-card-title">Scenario Comparison</h3>
+          </div>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '320px', overflow: 'auto' }}>
+            <table className="data-table forecast-scenario-table">
+              <thead>
+                <tr>
+                  {[
+                    { key: 'scenario', label: 'Scenario', align: 'left' as const },
+                    { key: 'duration', label: 'Duration', align: 'center' as const },
+                    { key: 'cost', label: 'EAC Cost', align: 'center' as const },
+                    { key: 'confidence', label: 'Confidence', align: 'center' as const },
+                  ].map(({ key, label, align }) => {
+                    const indicator = formatSortIndicator(scenarioSort, key);
+                    return (
+                      <th key={key} style={{ textAlign: align }}>
+                        <button
+                          type="button"
+                          onClick={() => setScenarioSort(prev => getNextSortState(prev, key))}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            color: 'inherit',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            fontSize: '0.95rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          {label}
+                          {indicator && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{indicator}</span>}
+                        </button>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedScenarioRows.map((row) => (
+                  <tr key={row.key} style={row.rowStyle}>
+                    <td><strong style={{ color: row.labelColor, fontSize: '0.95rem' }}>{row.label}</strong></td>
+                    <td style={{ textAlign: 'center', fontSize: '0.95rem' }}>
+                      {row.duration !== null ? `${row.duration} days` : '--'}
+                    </td>
+                    <td style={{ textAlign: 'center', fontSize: '0.95rem' }}>
+                      {row.cost !== null ? formatCurrency(row.cost) : '--'}
+                    </td>
+                    <td style={{ textAlign: 'center', color: row.confidenceColor, fontSize: '0.95rem' }}>
+                      {row.confidenceLabel}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Forecast Logs (Risks, Actions, Decisions) - full width */}
         <div className="chart-card grid-full" style={{ position: 'relative', zIndex: 1, minHeight: '400px' }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -746,8 +808,8 @@ export default function ForecastPage() {
           </div>
         </div>
 
-        {/* Engine Log */}
-        <div className="chart-card grid-half" style={{ minHeight: '360px' }}>
+        {/* Engine Log - full width to use space */}
+        <div className="chart-card grid-full" style={{ minHeight: '320px' }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
@@ -759,7 +821,7 @@ export default function ForecastPage() {
               {engineLog.length} entries
             </span>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '300px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '280px', overflow: 'auto' }}>
             <div className="forecast-log-entries" style={{ padding: '16px 20px' }}>
               {engineLog.map((entry, i) => (
                 <div key={i} className="forecast-log-entry" style={{ 
@@ -792,68 +854,6 @@ export default function ForecastPage() {
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* Scenario Comparison */}
-        <div className="chart-card grid-half" style={{ minHeight: '360px' }}>
-          <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-            <h3 className="chart-card-title">Scenario Comparison</h3>
-          </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '300px', overflow: 'auto' }}>
-            <table className="data-table forecast-scenario-table">
-              <thead>
-                <tr>
-                  {[
-                    { key: 'scenario', label: 'Scenario', align: 'left' as const },
-                    { key: 'duration', label: 'Duration', align: 'center' as const },
-                    { key: 'cost', label: 'EAC Cost', align: 'center' as const },
-                    { key: 'confidence', label: 'Confidence', align: 'center' as const },
-                  ].map(({ key, label, align }) => {
-                    const indicator = formatSortIndicator(scenarioSort, key);
-                    return (
-                      <th key={key} style={{ textAlign: align }}>
-                        <button
-                          type="button"
-                          onClick={() => setScenarioSort(prev => getNextSortState(prev, key))}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            color: 'inherit',
-                            cursor: 'pointer',
-                            fontWeight: 600,
-                            fontSize: '0.95rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          {label}
-                          {indicator && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{indicator}</span>}
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedScenarioRows.map((row) => (
-                  <tr key={row.key} style={row.rowStyle}>
-                    <td><strong style={{ color: row.labelColor, fontSize: '0.95rem' }}>{row.label}</strong></td>
-                    <td style={{ textAlign: 'center', fontSize: '0.95rem' }}>
-                      {row.duration !== null ? `${row.duration} days` : '--'}
-                    </td>
-                    <td style={{ textAlign: 'center', fontSize: '0.95rem' }}>
-                      {row.cost !== null ? formatCurrency(row.cost) : '--'}
-                    </td>
-                    <td style={{ textAlign: 'center', color: row.confidenceColor, fontSize: '0.95rem' }}>
-                      {row.confidenceLabel}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </div>
       </div>
