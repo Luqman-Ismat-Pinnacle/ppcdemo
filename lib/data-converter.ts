@@ -360,18 +360,24 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   const tasks: any[] = [];
 
   // Helper to get WBS level type based on outline_level
-  const getLevelType = (outlineLevel: number): 'phase' | 'unit' | 'task' => {
+  // Root (0) is skipped. Level 1–2 = phases (e.g. project/subphase, then phase like "Project Execution").
+  // Level 3 = units under that phase (e.g. "Asset Strategy Development", "Document Data Gathering").
+  // Level 4+ = tasks under units.
+  const getLevelType = (outlineLevel: number): 'skip' | 'phase' | 'unit' | 'task' => {
     switch (outlineLevel) {
-      case 1: return 'phase';
-      case 2: return 'unit';
-      default: return 'task'; // levels 3+ are tasks
+      case 0: return 'skip'; // root folder — do not import
+      case 1:
+      case 2: return 'phase';
+      case 3: return 'unit';
+      default: return 'task'; // levels 4+ are tasks
     }
   };
 
   // Process each task and categorize by outline_level
   data.tasks.forEach((task: any, index: number) => {
-    const outlineLevel = task.outline_level || 0;
+    const outlineLevel = task.outline_level ?? 0;
     const levelType = getLevelType(outlineLevel);
+    if (levelType === 'skip') return; // skip root (ID 0)
     
     // Generate appropriate ID based on type
     let id: string;
@@ -447,14 +453,14 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           taskId: baseTask.id,
           taskName: baseTask.name,
           taskDescription: baseTask.comments || '', // tasks will have task_description after migration
-          isSubTask: outlineLevel > 3,
+          isSubTask: outlineLevel > 4,
           parentTaskId: null, // Don't set parentTaskId yet - will be resolved properly later to avoid foreign key violations
           // We'll resolve these after all items are processed
           phaseId: '',
           unitId: '',
           assignedResource: task.assignedResource || '',
           assignedResourceType: 'specific' as const,
-          status: outlineLevel > 1 && task.is_summary ? 'In Progress' : 'Not Started',
+          status: outlineLevel > 3 && task.is_summary ? 'In Progress' : 'Not Started',
           priority: 'medium' as const,
           predecessorId: null,
           predecessorRelationship: null,

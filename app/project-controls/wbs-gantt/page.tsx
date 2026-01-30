@@ -767,8 +767,8 @@ export default function WBSGanttPage() {
   };
 
   return (
-    <div className="page-panel full-height-page">
-      <div className="page-header">
+    <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0 }}>
         <div>
           <h1 className="page-title">WBS & Gantt Chart</h1>
         </div>
@@ -823,7 +823,7 @@ export default function WBSGanttPage() {
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '1rem', padding: '0 1.5rem 0.5rem', fontSize: '0.7rem', color: '#888' }}>
+      <div style={{ display: 'flex', gap: '1rem', padding: '0 1.5rem 0.5rem', fontSize: '0.7rem', color: '#888', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 12, background: '#ef4444', borderRadius: 2 }}></div> 0-25%</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 12, background: '#f97316', borderRadius: 2 }}></div> 25-50%</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 12, background: '#eab308', borderRadius: 2 }}></div> 50-75%</div>
@@ -936,6 +936,8 @@ export default function WBSGanttPage() {
             </defs>
           </svg>
 
+          {/* Wrapper with explicit height so the scroll container has a definite scrollHeight and can scroll to the bottom */}
+          <div style={{ height: headerHeight + totalRowsHeight, minHeight: '100%' }}>
           <table
             ref={tableRef}
             className="wbs-table"
@@ -1259,6 +1261,7 @@ export default function WBSGanttPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
