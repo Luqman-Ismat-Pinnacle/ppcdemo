@@ -302,9 +302,9 @@ export default function ForecastPage() {
   const paramKeys = Object.keys(PARAM_LABELS) as (keyof Omit<EngineParams, 'iterations'>)[];
 
   return (
-    <div className="page-panel forecast-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)', overflow: 'auto', padding: '2.5rem' }}>
+    <div className="page-panel forecast-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)', overflow: 'auto', minHeight: 0 }}>
       {/* Header */}
-      <div className="page-header" style={{ flexShrink: 0 }}>
+      <div className="page-header" style={{ flexShrink: 0, marginBottom: '1rem' }}>
         <div>
           <h1 className="page-title">Forecasting & Scenario Analysis</h1>
         </div>
@@ -341,8 +341,8 @@ export default function ForecastPage() {
 
       {/* Engine Parameters Panel */}
       {isParamsOpen && (
-        <div className="chart-card" style={{ background: 'rgba(64, 224, 208, 0.05)', flexShrink: 0, marginBottom: '4rem' }}>
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <div className="chart-card" style={{ background: 'rgba(64, 224, 208, 0.05)', flexShrink: 0, marginBottom: '1rem' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
                 <line x1="4" y1="21" x2="4" y2="14"></line>
@@ -372,8 +372,8 @@ export default function ForecastPage() {
               />
             </div>
           </div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.25rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
               {paramKeys.map(key => {
                 const config = PARAM_LABELS[key];
                 const isEditing = editingParam === key;
@@ -481,7 +481,7 @@ export default function ForecastPage() {
       )}
 
       {/* Monte Carlo Results - Key Metrics */}
-      <div className="metrics-row forecast-metrics" style={{ flexShrink: 0, marginBottom: '4rem' }}>
+      <div className="metrics-row-compact forecast-metrics" style={{ flexShrink: 0, marginBottom: '1rem' }}>
         {/* P10 Cost */}
         <div className="metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
           <div className="metric-label" style={{ color: '#10B981' }}>P10 Cost (Best)</div>
@@ -529,11 +529,11 @@ export default function ForecastPage() {
       {/* Main Content Grid */}
       <div className="dashboard-grid forecast-grid" style={{ flex: 1, minHeight: 0 }}>
         {/* IEAC Comparison */}
-        <div className="chart-card grid-third" style={{ display: 'flex', flexDirection: 'column', maxHeight: '450px' }}>
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+        <div className="chart-card grid-third" style={{ display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', flexShrink: 0, padding: '12px 16px' }}>
             <h3 className="chart-card-title">IEAC Methods Comparison</h3>
           </div>
-          <div className="chart-card-body forecast-card-body-gap" style={{ padding: '1.5rem', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          <div className="chart-card-body forecast-card-body-gap" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <div className="forecast-section-spacing">
               {[
                 { 
@@ -580,7 +580,7 @@ export default function ForecastPage() {
             </div>
             
             {/* BAC Reference */}
-            <div className="forecast-callout" style={{ marginTop: '20px', padding: '1.25rem', background: 'rgba(64, 224, 208, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
+            <div className="forecast-callout" style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(64, 224, 208, 0.1)', borderRadius: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Budget at Completion (BAC)</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 {formatCurrency(projectState.bac)}
@@ -590,35 +590,35 @@ export default function ForecastPage() {
         </div>
 
         {/* Forecast Charts */}
-        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: '280px' }}>
-          <div className="chart-card-header"><h3 className="chart-card-title">Budget Forecast</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '200px', padding: '1.5rem' }}>
+        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: '300px' }}>
+          <div className="chart-card-header" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}><h3 className="chart-card-title">Budget Forecast</h3></div>
+          <div className="chart-card-body" style={{ minHeight: '200px' }}>
             <ForecastChart data={data.forecast} height="180px" isBudget={true} />
           </div>
         </div>
-        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: '280px' }}>
-          <div className="chart-card-header"><h3 className="chart-card-title">Hours Forecast</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '200px', padding: '1.5rem' }}>
+        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: '300px' }}>
+          <div className="chart-card-header" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}><h3 className="chart-card-title">Hours Forecast</h3></div>
+          <div className="chart-card-body" style={{ minHeight: '200px' }}>
             <ForecastChart data={data.forecast} height="180px" isBudget={false} />
           </div>
         </div>
 
         {/* Trend Charts */}
-        <div className="chart-card grid-half forecast-chart-card" style={{ minHeight: '310px' }}>
-          <div className="chart-card-header">
+        <div className="chart-card grid-half forecast-chart-card" style={{ minHeight: '300px' }}>
+          <div className="chart-card-header" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title">CPI Trend</h3>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: projectState.cpi >= 1 ? '#10B981' : '#EF4444' }}>
               Current: {projectState.cpi.toFixed(2)}
             </span>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '180px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ minHeight: '200px' }}>
             <TrendChart data={cpiTrend} dates={trendDates} title="CPI" color="var(--pinnacle-teal)" height="160px" />
           </div>
         </div>
 
         {/* Forecast Logs (Risks, Actions, Decisions) */}
-        <div className="chart-card grid-full" style={{ position: 'relative', zIndex: 1 }}>
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="chart-card grid-full" style={{ position: 'relative', zIndex: 1, minHeight: '320px' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -700,8 +700,8 @@ export default function ForecastPage() {
               </span>
             </div>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '400px', overflow: 'auto' }}>
-            <div className="forecast-log-entries" style={{ padding: '1rem' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '360px', overflow: 'auto' }}>
+            <div className="forecast-log-entries" style={{ padding: '12px 16px' }}>
               {forecastLogs.length === 0 ? (
                 <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                   No log entries. Add risks, actions, or decisions above.
@@ -711,7 +711,6 @@ export default function ForecastPage() {
                   <div key={i} className="forecast-log-entry" style={{ 
                     borderBottom: i < forecastLogs.length - 1 ? '1px solid var(--border-color)' : 'none',
                     fontSize: '0.75rem',
-                    padding: '1rem',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                       <span style={{ 
@@ -749,7 +748,7 @@ export default function ForecastPage() {
 
         {/* Engine Log */}
         <div className="chart-card grid-half" style={{ minHeight: '300px' }}>
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -760,12 +759,12 @@ export default function ForecastPage() {
               {engineLog.length} entries
             </span>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '250px', overflow: 'auto' }}>
-            <div className="forecast-log-entries" style={{ padding: '1rem' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '240px', overflow: 'auto' }}>
+            <div className="forecast-log-entries" style={{ padding: '12px 16px' }}>
               {engineLog.map((entry, i) => (
                 <div key={i} className="forecast-log-entry" style={{ 
                   borderBottom: i < engineLog.length - 1 ? '1px solid var(--border-color)' : 'none',
-                  fontSize: '0.75rem'
+                  fontSize: '0.75rem',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                     <span style={{ 
@@ -798,10 +797,10 @@ export default function ForecastPage() {
 
         {/* Scenario Comparison */}
         <div className="chart-card grid-half" style={{ minHeight: '300px' }}>
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
             <h3 className="chart-card-title">Scenario Comparison</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '250px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '240px', overflow: 'auto' }}>
             <table className="data-table forecast-scenario-table">
               <thead>
                 <tr>
@@ -858,18 +857,18 @@ export default function ForecastPage() {
         </div>
       </div>
 
-      {/* CSS for spinner animation */}
+      {/* CSS for spinner animation and layout (aligned with insights visuals) */}
       <style jsx>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
         .forecast-page {
-          gap: 4rem;
-          padding-bottom: 2rem;
+          gap: 0;
+          padding: 1.5rem;
         }
         .forecast-grid {
-          gap: 3rem;
-          row-gap: 3rem;
+          gap: 1.5rem;
+          row-gap: 1.5rem;
           grid-auto-rows: minmax(280px, auto);
         }
         .forecast-grid > .chart-card {
@@ -879,12 +878,12 @@ export default function ForecastPage() {
         .forecast-card-body-gap {
           display: flex;
           flex-direction: column;
-          gap: 1.5rem;
+          gap: 1rem;
         }
         .forecast-section-spacing {
           display: flex;
           flex-direction: column;
-          gap: 1.5rem;
+          gap: 1rem;
         }
         .forecast-callout {
           margin-top: 0.25rem;
@@ -892,21 +891,23 @@ export default function ForecastPage() {
         .forecast-log-entries {
           display: flex;
           flex-direction: column;
-          gap: 1rem;
+          gap: 0.5rem;
         }
         .forecast-log-entry {
-          padding: 1rem;
-          border-radius: 8px;
+          padding: 0.75rem 0;
+          border-radius: 6px;
           background: rgba(255, 255, 255, 0.02);
         }
         .forecast-scenario-table th,
         .forecast-scenario-table td {
-          padding-top: 0.9rem;
-          padding-bottom: 0.9rem;
+          padding: 0.75rem 1rem;
         }
         .forecast-chart-card {
           display: flex;
           flex-direction: column;
+          gap: 0;
+        }
+        .forecast-metrics.metrics-row-compact {
           gap: 0.5rem;
         }
       `}</style>
