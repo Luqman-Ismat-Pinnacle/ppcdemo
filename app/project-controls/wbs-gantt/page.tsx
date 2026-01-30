@@ -410,9 +410,15 @@ export default function WBSGanttPage() {
     return rows;
   }, [sortedWbsItems, expandedIds]);
 
-  // Auto-expand all WBS nodes when data loads so phases, units, and tasks are visible (real ids are wbs-project-*, wbs-phase-*, wbs-unit-*, not wbs-1/wbs-2)
+  // Auto-expand only when WBS data identity changes (first load or filter change), not every render — so Expand All / Collapse All and scroll are not overwritten
+  const lastWbsDataKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const items = data.wbsData?.items;
+    const key = items?.length
+      ? `${items.length}-${(items as any[])[0]?.id ?? ''}`
+      : null;
+    if (key === lastWbsDataKeyRef.current) return;
+    lastWbsDataKeyRef.current = key;
     if (!items?.length) return;
     const idsWithChildren = new Set<string>();
     const collectExpandable = (list: any[]) => {
@@ -903,10 +909,10 @@ export default function WBSGanttPage() {
         </div>
       )}
 
-      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
         <div
           className="chart-card-body no-padding"
-          style={{ flex: 1, overflow: 'auto', position: 'relative' }}
+          style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}
           ref={containerRef}
           onScroll={handleScroll}
         >
