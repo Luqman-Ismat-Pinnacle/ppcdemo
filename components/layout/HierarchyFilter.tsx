@@ -4,7 +4,7 @@
  * @fileoverview Hierarchy Filter Component for PPC V3.
  * 
  * Provides cascading dropdown filters for drilling down through
- * the organizational hierarchy: Portfolio → Customer → Site → Project → Phase → Unit.
+ * the organizational hierarchy: Portfolio → Customer → Site → Project → Unit → Phase.
  * 
  * IMPORTANT: This component pulls data DIRECTLY from the Data Management tables
  * (portfolios, customers, sites, projects, phases, units) via the DataContext.
@@ -152,19 +152,19 @@ export default function HierarchyFilter() {
       }
     }
 
-    // 4: Phase
+    // 4: Unit
     if (path[4]) {
-      const phase = phasesArr.find((ph) => ph.name === path[4]);
-      if (phase && phase.id !== selectedPhaseId) {
-        setSelectedPhaseId(phase.id || phase.phaseId);
+      const unit = unitsArr.find((u) => u.name === path[4]);
+      if (unit && unit.id !== selectedUnitId) {
+        setSelectedUnitId(unit.id || unit.unitId);
       }
     }
 
-    // 5: Unit
+    // 5: Phase
     if (path[5]) {
-      const unit = unitsArr.find((u) => u.name === path[5]);
-      if (unit && unit.id !== selectedUnitId) {
-        setSelectedUnitId(unit.id || unit.unitId);
+      const phase = phasesArr.find((ph) => ph.name === path[5]);
+      if (phase && phase.id !== selectedPhaseId) {
+        setSelectedPhaseId(phase.id || phase.phaseId);
       }
     }
 
@@ -230,27 +230,31 @@ export default function HierarchyFilter() {
     return list.map(p => ({ id: p.id || p.projectId, name: p.name }));
   }, [selectedSiteId, selectedCustomerId, selectedPortfolioId, data.projects, data.sites, data.customers]);
 
-  const phases = useMemo(() => {
-    if (!data.phases) return [];
-    let list = data.phases as any[];
-    if (selectedProjectId) {
-      list = list.filter(ph => ph.projectId === selectedProjectId);
-    }
-    else if (selectedSiteId) {
-      const validProjIds = new Set((data.projects as any[]).filter(p => p.siteId === selectedSiteId).map(p => p.id || p.projectId));
-      list = list.filter(ph => validProjIds.has(ph.projectId));
-    }
-    return list.map(ph => ({ id: ph.id || ph.phaseId, name: ph.name }));
-  }, [selectedProjectId, selectedSiteId, data.phases, data.projects]);
-
   const units = useMemo(() => {
     if (!data.units) return [];
     let list = data.units as any[];
-    if (selectedPhaseId) {
-      list = list.filter(u => u.phaseId === selectedPhaseId || u.phase_id === selectedPhaseId);
+    if (selectedProjectId) {
+      list = list.filter(u => (u.projectId ?? u.project_id) === selectedProjectId);
+    } else if (selectedSiteId) {
+      const validProjIds = new Set((data.projects as any[]).filter(p => p.siteId === selectedSiteId).map(p => p.id || p.projectId));
+      list = list.filter(u => validProjIds.has(u.projectId ?? u.project_id));
     }
     return list.map(u => ({ id: u.id || u.unitId, name: u.name }));
-  }, [selectedPhaseId, data.units]);
+  }, [selectedProjectId, selectedSiteId, data.units, data.projects]);
+
+  const phases = useMemo(() => {
+    if (!data.phases) return [];
+    let list = data.phases as any[];
+    if (selectedUnitId) {
+      list = list.filter(ph => (ph.unitId ?? ph.unit_id) === selectedUnitId);
+    } else if (selectedProjectId) {
+      list = list.filter(ph => (ph.projectId ?? ph.project_id) === selectedProjectId && !(ph.unitId ?? ph.unit_id));
+    } else if (selectedSiteId) {
+      const validProjIds = new Set((data.projects as any[]).filter(p => p.siteId === selectedSiteId).map(p => p.id || p.projectId));
+      list = list.filter(ph => validProjIds.has(ph.projectId ?? ph.project_id));
+    }
+    return list.map(ph => ({ id: ph.id || ph.phaseId, name: ph.name }));
+  }, [selectedUnitId, selectedProjectId, selectedSiteId, data.phases, data.projects]);
 
 
   // ============================================================================
@@ -262,19 +266,19 @@ export default function HierarchyFilter() {
     cId: string,
     sId: string,
     prId: string,
-    phId: string,
-    uId: string
-  ): { p: string, c: string, s: string, pr: string, ph: string } => {
-    let newP = pId, newC = cId, newS = sId, newPr = prId, newPh = phId;
+    uId: string,
+    phId: string
+  ): { p: string, c: string, s: string, pr: string, u: string, ph: string } => {
+    let newP = pId, newC = cId, newS = sId, newPr = prId, newU = uId, newPh = phId;
 
-    // Resolve backwards
-    if (uId && !newPh) {
-      const u = (data.units as any[]).find(x => (x.id || x.unitId) === uId);
-      if (u) newPh = u.phaseId || u.phase_id;
-    }
-    if (newPh && !newPr) {
+    // Resolve backwards: path order is Portfolio, Customer, Site, Project, Unit, Phase
+    if (newPh && !newU) {
       const ph = (data.phases as any[]).find(x => (x.id || x.phaseId) === newPh);
-      if (ph) newPr = ph.projectId;
+      if (ph) newU = ph.unitId ?? ph.unit_id ?? '';
+    }
+    if (newU && !newPr) {
+      const u = (data.units as any[]).find(x => (x.id || x.unitId) === newU);
+      if (u) newPr = u.projectId ?? u.project_id ?? '';
     }
     if (newPr && !newS) {
       const pr = (data.projects as any[]).find(x => (x.id || x.projectId) === newPr);
@@ -288,7 +292,7 @@ export default function HierarchyFilter() {
       const c = (data.customers as any[]).find(x => (x.id || x.customerId) === newC);
       if (c) newP = c.portfolioId;
     }
-    return { p: newP, c: newC, s: newS, pr: newPr, ph: newPh };
+    return { p: newP, c: newC, s: newS, pr: newPr, u: newU, ph: newPh };
   };
 
   const updateFilter = (
@@ -296,23 +300,20 @@ export default function HierarchyFilter() {
     cId: string,
     sId: string,
     prId: string,
-    phId: string,
-    uId: string
+    uId: string,
+    phId: string
   ) => {
-    // 1. Resolve missing parents automatically
-    const resolved = resolveParents(pId, cId, sId, prId, phId, uId);
+    const resolved = resolveParents(pId, cId, sId, prId, uId, phId);
 
-    // 2. Update local state
     setSelectedPortfolioId(resolved.p || '');
     setSelectedCustomerId(resolved.c || '');
     setSelectedSiteId(resolved.s || '');
     setSelectedProjectId(resolved.pr || '');
+    setSelectedUnitId(resolved.u || '');
     setSelectedPhaseId(resolved.ph || '');
-    setSelectedUnitId(uId || '');
 
-    // 3. Build Path for Context
     const path: string[] = [];
-    // Fill path indices: 0=P, 1=C, 2=S, 3=Pr, 4=Ph, 5=U
+    // path order: 0=P, 1=C, 2=S, 3=Pr, 4=U, 5=Ph
 
     const pObj = portfolios.find(x => x.id === resolved.p);
     if (pObj) path[0] = pObj.name;
@@ -326,14 +327,13 @@ export default function HierarchyFilter() {
     const prObj = (data.projects as any[]).find(x => (x.id || x.projectId) === resolved.pr);
     if (prObj) path[3] = prObj.name;
 
+    const uObj = (data.units as any[]).find(x => (x.id || x.unitId) === resolved.u);
+    if (uObj) path[4] = uObj.name;
+
     const phObj = (data.phases as any[]).find(x => (x.id || x.phaseId) === resolved.ph);
-    if (phObj) path[4] = phObj.name;
+    if (phObj) path[5] = phObj.name;
 
-    const uObj = (data.units as any[]).find(x => (x.id || x.unitId) === uId);
-    if (uObj) path[5] = uObj.name;
-
-    // 4. Apply to Context
-    if (Object.values(resolved).every(v => !v) && !uId) {
+    if (Object.values(resolved).every(v => !v)) {
       setHierarchyFilter(null);
     } else {
       setHierarchyFilter({
@@ -354,8 +354,8 @@ export default function HierarchyFilter() {
   const handleCustomerChange = (val: string) => updateFilter(selectedPortfolioId, val, '', '', '', '');
   const handleSiteChange = (val: string) => updateFilter(selectedPortfolioId, selectedCustomerId, val, '', '', '');
   const handleProjectChange = (val: string) => updateFilter(selectedPortfolioId, selectedCustomerId, selectedSiteId, val, '', '');
-  const handlePhaseChange = (val: string) => updateFilter(selectedPortfolioId, selectedCustomerId, selectedSiteId, selectedProjectId, val, '');
-  const handleUnitChange = (val: string) => updateFilter(selectedPortfolioId, selectedCustomerId, selectedSiteId, selectedProjectId, selectedPhaseId, val);
+  const handleUnitChange = (val: string) => updateFilter(selectedPortfolioId, selectedCustomerId, selectedSiteId, selectedProjectId, val, '');
+  const handlePhaseChange = (val: string) => updateFilter(selectedPortfolioId, selectedCustomerId, selectedSiteId, selectedProjectId, selectedUnitId, val);
 
   const handleReset = () => {
     setSelectedPortfolioId('');
@@ -467,21 +467,21 @@ export default function HierarchyFilter() {
               </select>
             </div>
 
+            {/* Units (before Phase in hierarchy: Project -> Unit -> Phase) */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={labelStyle}>Unit <span style={{ color: 'rgba(64, 224, 208, 0.6)' }}>({units.length})</span></label>
+              <select value={selectedUnitId} onChange={(e) => handleUnitChange(e.target.value)} style={selectStyle}>
+                <option value="">All Units</option>
+                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+
             {/* Phases */}
             <div style={{ marginBottom: '12px' }}>
               <label style={labelStyle}>Phase <span style={{ color: 'rgba(64, 224, 208, 0.6)' }}>({phases.length})</span></label>
               <select value={selectedPhaseId} onChange={(e) => handlePhaseChange(e.target.value)} style={selectStyle}>
                 <option value="">All Phases</option>
                 {phases.map(ph => <option key={ph.id} value={ph.id}>{ph.name}</option>)}
-              </select>
-            </div>
-
-            {/* Units */}
-            <div style={{ marginBottom: '12px' }}>
-              <label style={labelStyle}>Unit <span style={{ color: 'rgba(64, 224, 208, 0.6)' }}>({units.length})</span></label>
-              <select value={selectedUnitId} onChange={(e) => handleUnitChange(e.target.value)} style={selectStyle}>
-                <option value="">All Units</option>
-                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
           </div>

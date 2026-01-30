@@ -69,8 +69,8 @@ function filterWbsItemsByPath(items: any[], path: (string | undefined)[]): any[]
       if (path[1] && item.type === 'customer' && item.name !== path[1]) return false;
       if (path[2] && item.type === 'site' && item.name !== path[2]) return false;
       if (path[3] && item.type === 'project' && item.name !== path[3]) return false;
-      if (path[4] && item.type === 'phase' && item.name !== path[4]) return false;
-      if (path[5] && item.type === 'unit' && item.name !== path[5]) return false;
+      if (path[4] && item.type === 'unit' && item.name !== path[4]) return false;
+      if (path[5] && item.type === 'phase' && item.name !== path[5]) return false;
       return true;
     })
     .map((item: any) => ({

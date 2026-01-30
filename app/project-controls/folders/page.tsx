@@ -375,7 +375,7 @@ export default function DocumentsPage() {
 
       // Parser log: names from MPP so we can verify converter output vs Workday
       const phasesList = (convertedData.phases || []).map((p: any) => `"${p.id}: ${(p.name || '').slice(0, 50)}"`).join(', ');
-      const unitsList = (convertedData.units || []).map((u: any) => `"${u.id}: ${(u.name || '').slice(0, 40)} (phase: ${u.phaseId || u.phase_id || '-'})"`).join(', ');
+      const unitsList = (convertedData.units || []).map((u: any) => `"${u.id}: ${(u.name || '').slice(0, 40)} (project: ${u.projectId || u.project_id || '-'})"`).join(', ');
       const taskSample = (convertedData.tasks || []).slice(0, 8).map((t: any) => `"${t.id}: ${(t.name || t.taskName || '').slice(0, 30)}"`).join(', ');
       addLog('info', `[MPP Parser] Phases from file: ${phasesList || 'none'}`);
       addLog('info', `[MPP Parser] Units from file: ${unitsList || 'none'}`);

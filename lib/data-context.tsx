@@ -665,39 +665,41 @@ export function DataProvider({ children }: DataProviderProps) {
         }
       }
 
-      // Step 5: Filter phases by valid project IDs + name (path[4])
+      // Step 5: Filter units by valid project IDs + name (path[4] = unit)
+      if (filtered.units) {
+        const validProjectIds = new Set(
+          filtered.projects?.map((p: any) => p.id || p.projectId) || []
+        );
+        filtered.units = filtered.units.filter((u: any) => {
+          if ((path[0] || path[1] || path[2] || path[3]) && validProjectIds.size > 0 && !validProjectIds.has(u.projectId ?? u.project_id)) {
+            return false;
+          }
+          if (path[4] && u.name !== path[4]) return false;
+          return true;
+        });
+      }
+
+      // Step 5.5: Filter phases by valid unit/project IDs + name (path[5] = phase)
       if (filtered.phases) {
         const validProjectIds = new Set(
           filtered.projects?.map((p: any) => p.id || p.projectId) || []
         );
-        filtered.phases = filtered.phases.filter((ph: any) => {
-          // If any upstream filter is active, phase must belong to valid project
-          if ((path[0] || path[1] || path[2] || path[3]) && validProjectIds.size > 0 && !validProjectIds.has(ph.projectId)) {
-            return false;
-          }
-          // If phase filter is active (path[4]), must match name
-          if (path[4] && ph.name !== path[4]) return false;
-          return true;
-        });
-      }
-
-      // Step 5.5: Filter units by valid phase IDs + name (path[5])
-      if (filtered.units) {
-        const validPhaseIds = new Set(
-          filtered.phases?.map((ph: any) => ph.id || ph.phaseId) || []
+        const validUnitIds = new Set(
+          filtered.units?.map((u: any) => u.id || u.unitId) || []
         );
-        filtered.units = filtered.units.filter((u: any) => {
-          // If upstream filters are active (Project/Phase), unit must belong to valid phase
-          if ((path[3] || path[4]) && validPhaseIds.size > 0 && !validPhaseIds.has(u.phaseId)) {
+        filtered.phases = filtered.phases.filter((ph: any) => {
+          if ((path[0] || path[1] || path[2] || path[3]) && validProjectIds.size > 0 && !validProjectIds.has(ph.projectId ?? ph.project_id)) {
             return false;
           }
-          // If unit filter is active (path[5]), must match name
-          if (path[5] && u.name !== path[5]) return false;
+          if (path[4] && validUnitIds.size > 0 && (ph.unitId ?? ph.unit_id) && !validUnitIds.has(ph.unitId ?? ph.unit_id)) {
+            return false;
+          }
+          if (path[5] && ph.name !== path[5]) return false;
           return true;
         });
       }
 
-      // Step 6: Filter tasks by valid phase/project/unit IDs
+      // Step 6: Filter tasks by valid phase/project/unit IDs (path[4]=unit, path[5]=phase)
       if (filtered.tasks) {
         const validProjectIds = new Set(
           filtered.projects?.map((p: any) => p.id || p.projectId) || []
@@ -709,16 +711,13 @@ export function DataProvider({ children }: DataProviderProps) {
           filtered.units?.map((u: any) => u.id || u.unitId) || []
         );
         filtered.tasks = filtered.tasks.filter((t: any) => {
-          // If project filter is active
           if (validProjectIds.size > 0 && t.projectId && !validProjectIds.has(t.projectId)) {
             return false;
           }
-          // If phase filter is active
-          if (path[4] && validPhaseIds.size > 0 && t.phaseId && !validPhaseIds.has(t.phaseId)) {
+          if (path[4] && validUnitIds.size > 0 && t.unitId && !validUnitIds.has(t.unitId)) {
             return false;
           }
-          // If unit filter is active
-          if (path[5] && validUnitIds.size > 0 && t.unitId && !validUnitIds.has(t.unitId)) {
+          if (path[5] && validPhaseIds.size > 0 && t.phaseId && !validPhaseIds.has(t.phaseId)) {
             return false;
           }
           return true;
@@ -769,13 +768,13 @@ export function DataProvider({ children }: DataProviderProps) {
         const filterWBSItems = (items: typeof filtered.wbsData.items): typeof filtered.wbsData.items => {
           return items
             .filter((item) => {
-              // Match by hierarchy level - path[0]=portfolio, path[1]=customer, path[2]=site, path[3]=project, path[4]=phase
+              // path[0]=portfolio, path[1]=customer, path[2]=site, path[3]=project, path[4]=unit, path[5]=phase
               if (path[0] && item.type === 'portfolio' && item.name !== path[0]) return false;
               if (path[1] && item.type === 'customer' && item.name !== path[1]) return false;
               if (path[2] && item.type === 'site' && item.name !== path[2]) return false;
               if (path[3] && item.type === 'project' && item.name !== path[3]) return false;
-              if (path[4] && item.type === 'phase' && item.name !== path[4]) return false;
-              if (path[5] && item.type === 'unit' && item.name !== path[5]) return false;
+              if (path[4] && item.type === 'unit' && item.name !== path[4]) return false;
+              if (path[5] && item.type === 'phase' && item.name !== path[5]) return false;
               return true;
             })
             .map((item) => ({

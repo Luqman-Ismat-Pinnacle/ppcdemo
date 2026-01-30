@@ -282,7 +282,7 @@ function buildHierarchyMaps(data: {
   projectsBySite: Map<string, any[]>;
   projectsByCustomer: Map<string, any[]>;
   phasesByProject: Map<string, any[]>;
-  unitsByPhase: Map<string, any[]>;
+  phasesByUnit: Map<string, any[]>;
   unitsByProject: Map<string, any[]>;
   tasksByPhase: Map<string, any[]>;
   tasksByProject: Map<string, any[]>;
@@ -302,7 +302,7 @@ function buildHierarchyMaps(data: {
   const projectsBySite = new Map<string, any[]>();
   const projectsByCustomer = new Map<string, any[]>();
   const phasesByProject = new Map<string, any[]>();
-  const unitsByPhase = new Map<string, any[]>();
+  const phasesByUnit = new Map<string, any[]>();
   const unitsByProject = new Map<string, any[]>();
   const tasksByPhase = new Map<string, any[]>();
   const tasksByProject = new Map<string, any[]>();
@@ -330,29 +330,22 @@ function buildHierarchyMaps(data: {
     }
   });
 
-  // Build unit maps (normalize ids to string for consistent lookup)
+  // Build unit maps: units belong to project (hierarchy is Project -> Unit -> Phase -> Task)
   units.forEach((unit: any) => {
-    const phaseId = unit.phaseId ?? unit.phase_id;
-    if (phaseId != null && phaseId !== '') {
-      const key = String(phaseId);
-      if (!unitsByPhase.has(key)) unitsByPhase.set(key, []);
-      unitsByPhase.get(key)!.push(unit);
+    const projectId = unit.projectId ?? unit.project_id;
+    if (projectId != null && projectId !== '') {
+      const key = String(projectId);
+      if (!unitsByProject.has(key)) unitsByProject.set(key, []);
+      unitsByProject.get(key)!.push(unit);
     }
 
-    // Legacy support (Site -> Unit) or Direct Project Support
+    // Legacy support (Site -> Unit)
     const siteId = unit.parent_id || unit.siteId || unit.site_id;
     if (siteId) {
       if (!unitsBySite.has(siteId)) {
         unitsBySite.set(siteId, []);
       }
       unitsBySite.get(siteId)!.push(unit);
-    }
-
-    const projectId = unit.projectId ?? unit.project_id;
-    if (projectId != null && projectId !== '' && !phaseId) {
-      const key = String(projectId);
-      if (!unitsByProject.has(key)) unitsByProject.set(key, []);
-      unitsByProject.get(key)!.push(unit);
     }
   });
 
@@ -384,8 +377,14 @@ function buildHierarchyMaps(data: {
     }
   });
 
-  // Build phase maps (normalize ids to string so project.id number matches phase.project_id string)
+  // Build phase maps: phases belong to unit (unit_id) or directly to project (legacy)
   (data.phases || []).forEach((phase: any) => {
+    const unitId = phase.unitId ?? phase.unit_id;
+    if (unitId != null && unitId !== '') {
+      const key = String(unitId);
+      if (!phasesByUnit.has(key)) phasesByUnit.set(key, []);
+      phasesByUnit.get(key)!.push(phase);
+    }
     const projectId = phase.projectId ?? phase.project_id;
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
@@ -427,7 +426,7 @@ function buildHierarchyMaps(data: {
     projectsBySite,
     projectsByCustomer,
     phasesByProject,
-    unitsByPhase,
+    phasesByUnit,
     unitsByProject,
     tasksByPhase,
     tasksByProject,
@@ -1141,96 +1140,88 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       let projRollupPercentComplete = 0;
       let projChildCount = 0;
 
-      const projectPhasesRaw = maps.phasesByProject.get(String(projectId)) || [];
-      const projectPhases = Array.from(new Map(projectPhasesRaw.map((ph: any) => [String(ph.id ?? ph.phaseId), ph])).values());
+      // Hierarchy: Project -> Unit -> Phase -> Task
+      const projectUnitsRaw = maps.unitsByProject.get(String(projectId)) || [];
+      const projectUnits = Array.from(new Map(projectUnitsRaw.map((u: any) => [String(u.id ?? u.unitId), u])).values());
+      const addedPhaseIds = new Set<string>();
 
-      projectPhases.forEach((phase: any, phIdx: number) => {
-        const phaseId = phase.id || phase.phaseId;
-        const phaseWbs = `${projectWbs}.${phIdx + 1}`;
+      projectUnits.forEach((unit: any, uIdx: number) => {
+        const unitId = String(unit.id || unit.unitId);
+        const unitWbs = `${projectWbs}.${uIdx + 1}`;
 
-        // Track phase rollup totals
-        let phaseRollupBaselineHrs = 0;
-        let phaseRollupActualHrs = 0;
-        let phaseRollupBaselineCst = 0;
-        let phaseRollupActualCst = 0;
-        let phaseRollupPercentComplete = 0;
-        let phaseChildCount = 0;
+        const unitStart = unit.startDate ?? unit.baselineStartDate ?? unit.start_date;
+        const unitEnd = unit.endDate ?? unit.baselineEndDate ?? unit.end_date;
+        const unitBaselineHrs = unit.baselineHours ?? unit.baseline_hours ?? 0;
+        const unitBaselineCst = unit.baselineCost ?? unit.baseline_cost ?? 0;
 
-        const phaseItem: TransformWBSItem = {
-          id: `wbs-phase-${phaseId}`,
-          wbsCode: phaseWbs,
-          name: phase.name || `Phase ${phIdx + 1}`,
-          type: 'phase',
-          itemType: 'phase',
-          startDate: phase.startDate || phase.baselineStartDate,
-          endDate: phase.endDate || phase.baselineEndDate,
-          percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
-          baselineHours: phase.baselineHours || 0,
-          actualHours: phase.actualHours || 0,
+        const unitItem: TransformWBSItem = {
+          id: `wbs-unit-${unitId}`,
+          wbsCode: unitWbs,
+          name: unit.name || `Unit ${uIdx + 1}`,
+          type: 'unit',
+          itemType: 'unit',
+          startDate: unitStart ?? undefined,
+          endDate: unitEnd ?? undefined,
+          percentComplete: unit.percentComplete ?? unit.percent_complete ?? 0,
+          baselineHours: unitBaselineHrs || undefined,
+          baselineCost: unitBaselineCst || undefined,
           children: []
         };
 
-        // 1. Add Units under Phase (dedupe by unitId so same unit is never built twice)
-        const phaseUnitsRaw = maps.unitsByPhase.get(String(phaseId)) || [];
-        const phaseUnits = Array.from(new Map(phaseUnitsRaw.map((u: any) => [String(u.id ?? u.unitId), u])).values());
+        let unitRollupBaselineHrs = 0;
+        let unitRollupActualHrs = 0;
+        let unitRollupBaselineCst = 0;
+        let unitRollupActualCst = 0;
+        let unitRollupPercentComplete = 0;
+        let unitChildCount = 0;
 
-        phaseUnits.forEach((unit: any, uIdx: number) => {
-          const unitId = String(unit.id || unit.unitId);
-          const unitWbs = `${phaseWbs}.${uIdx + 1}`;
+        const unitPhasesRaw = maps.phasesByUnit.get(unitId) || [];
+        const unitPhases = Array.from(new Map(unitPhasesRaw.map((ph: any) => [String(ph.id ?? ph.phaseId), ph])).values());
 
-          // Find tasks that belong to this unit only (consistent string IDs); dedupe by task id so raw data duplicates never produce duplicate rows
-          const unitTasksRaw = (data.tasks || []).filter((t: any) => {
-            const tParent = String((t as any).parent_id ?? '');
-            const tUnit = String((t as any).unit_id ?? (t as any).unitId ?? '');
-            return tParent === unitId || tUnit === unitId;
-          });
-          const unitTasks = Array.from(new Map(unitTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
+        unitPhases.forEach((phase: any, phIdx: number) => {
+          const phaseId = String(phase.id ?? phase.phaseId);
+          addedPhaseIds.add(phaseId);
+          const phaseWbs = `${unitWbs}.${phIdx + 1}`;
 
-          // Initialize rollup variables for this unit
-          let unitRollupBaselineHrs = 0;
-          let unitRollupActualHrs = 0;
-          let unitRollupBaselineCst = 0;
-          let unitRollupActualCst = 0;
-          let unitRollupPercentComplete = 0;
-          let unitTaskCount = 0;
+          let phaseRollupBaselineHrs = 0;
+          let phaseRollupActualHrs = 0;
+          let phaseRollupBaselineCst = 0;
+          let phaseRollupActualCst = 0;
+          let phaseRollupPercentComplete = 0;
+          let phaseChildCount = 0;
 
-          // Unit gets schedule/hours/cost from MPP (like tasks); actuals roll up from children
-          const unitStart = unit.startDate ?? unit.baselineStartDate ?? unit.start_date;
-          const unitEnd = unit.endDate ?? unit.baselineEndDate ?? unit.end_date;
-          const unitBaselineHrs = unit.baselineHours ?? unit.baseline_hours ?? 0;
-          const unitBaselineCst = unit.baselineCost ?? unit.baseline_cost ?? 0;
-
-          const unitItem: TransformWBSItem = {
-            id: `wbs-unit-${unitId}`,
-            wbsCode: unitWbs,
-            name: unit.name || `Unit ${uIdx + 1}`,
-            type: 'unit',
-            itemType: 'unit',
-            startDate: unitStart ?? undefined,
-            endDate: unitEnd ?? undefined,
-            percentComplete: unit.percentComplete ?? unit.percent_complete ?? 0,
-            baselineHours: unitBaselineHrs || undefined,
-            baselineCost: unitBaselineCst || undefined,
+          const phaseItem: TransformWBSItem = {
+            id: `wbs-phase-${phaseId}`,
+            wbsCode: phaseWbs,
+            name: phase.name || `Phase ${phIdx + 1}`,
+            type: 'phase',
+            itemType: 'phase',
+            startDate: phase.startDate || phase.baselineStartDate,
+            endDate: phase.endDate || phase.baselineEndDate,
+            percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
+            baselineHours: phase.baselineHours || 0,
+            actualHours: phase.actualHours || 0,
             children: []
           };
 
-          unitTasks.forEach((task: any, tIdx: number) => {
-            const taskId = task.id || task.taskId;
-            const taskWbs = `${unitWbs}.${tIdx + 1}`;
+          const phaseTasksRaw = maps.tasksByPhase.get(phaseId) || [];
+          const phaseTasks = Array.from(new Map(phaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
 
+          phaseTasks.forEach((task: any, tIdx: number) => {
+            const taskId = task.id || task.taskId;
+            const taskWbs = `${phaseWbs}.${tIdx + 1}`;
             const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
             const taskActualHrs = task.actualHours || task.actual_hours || 0;
             const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
             const taskActualCst = task.actualCost || task.actual_cost || 0;
             const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
-            // Aggregate to Unit
-            unitRollupBaselineHrs += taskBaselineHrs;
-            unitRollupActualHrs += taskActualHrs;
-            unitRollupBaselineCst += taskBaselineCst;
-            unitRollupActualCst += taskActualCst;
-            unitRollupPercentComplete += taskPercent;
-            unitTaskCount++;
+            phaseRollupBaselineHrs += taskBaselineHrs;
+            phaseRollupActualHrs += taskActualHrs;
+            phaseRollupBaselineCst += taskBaselineCst;
+            phaseRollupActualCst += taskActualCst;
+            phaseRollupPercentComplete += taskPercent;
+            phaseChildCount++;
 
             const taskItem: TransformWBSItem = {
               id: `wbs-task-${taskId}`,
@@ -1252,51 +1243,90 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               is_milestone: task.is_milestone || task.isMilestone || false,
               isCritical: task.is_critical || task.isCritical || false
             };
-            unitItem.children?.push(taskItem);
+            phaseItem.children?.push(taskItem);
           });
 
-          // Unit rollup completion
-          if (unitTaskCount > 0) {
-            unitItem.baselineHours = unitItem.baselineHours || unitRollupBaselineHrs;
-            unitItem.actualHours = unitItem.actualHours || unitRollupActualHrs;
-            unitItem.baselineCost = unitItem.baselineCost || unitRollupBaselineCst;
-            unitItem.actualCost = unitItem.actualCost || unitRollupActualCst;
-            unitItem.percentComplete = unitItem.percentComplete || Math.round(unitRollupPercentComplete / unitTaskCount);
+          if (phaseChildCount > 0) {
+            phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
+            phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
+            phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
+            phaseItem.actualCost = phaseItem.actualCost || phaseRollupActualCst;
+            phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
           }
 
-          // Aggregate Unit to Phase
-          phaseRollupBaselineHrs += unitItem.baselineHours || 0;
-          phaseRollupActualHrs += unitItem.actualHours || 0;
-          phaseRollupBaselineCst += unitItem.baselineCost || 0;
-          phaseRollupActualCst += unitItem.actualCost || 0;
-          phaseRollupPercentComplete += unitItem.percentComplete || 0;
-          phaseChildCount++;
+          unitRollupBaselineHrs += phaseItem.baselineHours || 0;
+          unitRollupActualHrs += phaseItem.actualHours || 0;
+          unitRollupBaselineCst += phaseItem.baselineCost || 0;
+          unitRollupActualCst += phaseItem.actualCost || 0;
+          unitRollupPercentComplete += phaseItem.percentComplete || 0;
+          unitChildCount++;
 
-          phaseItem.children?.push(unitItem);
+          unitItem.children?.push(phaseItem);
         });
 
-        // 2. When phase has units, add NO direct phase tasks (all tasks must be under units). When phase has no units, add phase tasks not under any unit; dedupe by task id.
-        const directPhaseTasksRaw =
-          phaseUnits.length > 0
-            ? []
-            : (maps.tasksByPhase.get(String(phaseId)) || []).filter(
-                (t: any) => !taskIdsUnderAnyUnit.has(String(t.id ?? t.taskId))
-              );
-        const directPhaseTasks = Array.from(
-          new Map(directPhaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values()
+        if (unitChildCount > 0) {
+          unitItem.baselineHours = unitItem.baselineHours || unitRollupBaselineHrs;
+          unitItem.actualHours = unitItem.actualHours || unitRollupActualHrs;
+          unitItem.baselineCost = unitItem.baselineCost || unitRollupBaselineCst;
+          unitItem.actualCost = unitItem.actualCost || unitRollupActualCst;
+          unitItem.percentComplete = unitItem.percentComplete || Math.round(unitRollupPercentComplete / unitChildCount);
+        }
+
+        projRollupBaselineHrs += unitItem.baselineHours || 0;
+        projRollupActualHrs += unitItem.actualHours || 0;
+        projRollupBaselineCst += unitItem.baselineCost || 0;
+        projRollupActualCst += unitItem.actualCost || 0;
+        projRollupPercentComplete += unitItem.percentComplete || 0;
+        projChildCount++;
+
+        projectItem.children?.push(unitItem);
+      });
+
+      // Phases with no unit (direct under project)
+      const directPhasesRaw = (maps.phasesByProject.get(String(projectId)) || []).filter(
+        (ph: any) => !(ph.unitId ?? ph.unit_id)
+      );
+      const directPhases = Array.from(new Map(directPhasesRaw.map((ph: any) => [String(ph.id ?? ph.phaseId), ph])).values());
+
+      directPhases.forEach((phase: any, phIdx: number) => {
+        const phaseId = phase.id || phase.phaseId;
+        const phaseWbs = `${projectWbs}.${projectUnits.length + phIdx + 1}`;
+        addedPhaseIds.add(String(phaseId));
+
+        let phaseRollupBaselineHrs = 0;
+        let phaseRollupActualHrs = 0;
+        let phaseRollupBaselineCst = 0;
+        let phaseRollupActualCst = 0;
+        let phaseChildCount = 0;
+
+        const phaseItem: TransformWBSItem = {
+          id: `wbs-phase-${phaseId}`,
+          wbsCode: phaseWbs,
+          name: phase.name || `Phase ${phIdx + 1}`,
+          type: 'phase',
+          itemType: 'phase',
+          startDate: phase.startDate || phase.baselineStartDate,
+          endDate: phase.endDate || phase.baselineEndDate,
+          percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
+          baselineHours: phase.baselineHours || 0,
+          actualHours: phase.actualHours || 0,
+          children: []
+        };
+
+        const directPhaseTasksRaw = (maps.tasksByPhase.get(String(phaseId)) || []).filter(
+          (t: any) => !taskIdsUnderAnyUnit.has(String(t.id ?? t.taskId))
         );
+        const directPhaseTasks = Array.from(new Map(directPhaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
 
         directPhaseTasks.forEach((task: any, tIdx: number) => {
           const taskId = task.id || task.taskId;
-          const taskWbs = `${phaseWbs}.${phaseUnits.length + tIdx + 1}`;
-
+          const taskWbs = `${phaseWbs}.${tIdx + 1}`;
           const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
           const taskActualHrs = task.actualHours || task.actual_hours || 0;
           const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
           const taskActualCst = task.actualCost || task.actual_cost || 0;
           const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
-          // Aggregate to Phase
           phaseRollupBaselineHrs += taskBaselineHrs;
           phaseRollupActualHrs += taskActualHrs;
           phaseRollupBaselineCst += taskBaselineCst;
@@ -1324,11 +1354,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             is_milestone: task.is_milestone || task.isMilestone || false,
             isCritical: task.is_critical || task.isCritical || false
           };
-
           phaseItem.children?.push(taskItem);
         });
 
-        // Phase rollup completion
         if (phaseChildCount > 0) {
           phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
           phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
@@ -1337,7 +1365,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
         }
 
-        // Aggregate Phase to Project
         projRollupBaselineHrs += phaseItem.baselineHours || 0;
         projRollupActualHrs += phaseItem.actualHours || 0;
         projRollupBaselineCst += phaseItem.baselineCost || 0;
@@ -1348,48 +1375,20 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projectItem.children?.push(phaseItem);
       });
 
-      // 3. Add Units directly under Project (no Phase) — with MPP schedule/hours/cost
-      const directProjectUnits = maps.unitsByProject.get(String(projectId)) || [];
-      directProjectUnits.forEach((unit: any, uIdx: number) => {
-        const unitId = unit.id || unit.unitId;
-        const unitWbs = `${projectWbs}.${projectPhases.length + uIdx + 1}`;
-        const uStart = unit.startDate ?? unit.baselineStartDate ?? unit.start_date;
-        const uEnd = unit.endDate ?? unit.baselineEndDate ?? unit.end_date;
-        const unitItem: TransformWBSItem = {
-          id: `wbs-unit-${unitId}`,
-          wbsCode: unitWbs,
-          name: unit.name || `Unit ${uIdx + 1}`,
-          type: 'unit',
-          itemType: 'unit',
-          startDate: uStart ?? undefined,
-          endDate: uEnd ?? undefined,
-          percentComplete: unit.percentComplete ?? unit.percent_complete ?? 0,
-          baselineHours: unit.baselineHours ?? unit.baseline_hours ?? undefined,
-          baselineCost: unit.baselineCost ?? unit.baseline_cost ?? undefined,
-          children: []
-        };
-
-        // Aggregate to Project
-        projRollupBaselineHrs += unitItem.baselineHours || 0;
-        projRollupActualHrs += unitItem.actualHours || 0;
-        projRollupBaselineCst += unitItem.baselineCost || 0;
-        projRollupActualCst += unitItem.actualCost || 0;
-        projRollupPercentComplete += unitItem.percentComplete || 0;
-        projChildCount++;
-
-        projectItem.children?.push(unitItem);
+      // Orphan tasks under Project (phase not under any unit/direct phase we added); dedupe by task id
+      const directProjectTasksRaw = (maps.tasksByProject.get(String(projectId)) || []).filter((t: any) => {
+        const tid = String(t.id ?? t.taskId);
+        if (taskIdsUnderAnyUnit.has(tid)) return false;
+        const tPhaseId = t.phaseId ?? t.phase_id;
+        if (tPhaseId && addedPhaseIds.has(String(tPhaseId))) return false;
+        return true;
       });
-
-      // 4. Add only truly orphan tasks under Project (no phase, no unit); exclude tasks under a unit; dedupe by task id
-      const directProjectTasksRaw = (maps.tasksByProject.get(String(projectId)) || []).filter(
-        (t: any) => !taskIdsUnderAnyUnit.has(String(t.id ?? t.taskId))
-      );
       const directProjectTasks = Array.from(
         new Map(directProjectTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values()
       );
       directProjectTasks.forEach((task: any, tIdx: number) => {
         const taskId = task.id || task.taskId;
-        const taskWbs = `${projectWbs}.${projectPhases.length + directProjectUnits.length + tIdx + 1}`;
+        const taskWbs = `${projectWbs}.${projectUnits.length + directPhases.length + tIdx + 1}`;
 
         const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
         const taskActualHrs = task.actualHours || task.actual_hours || 0;

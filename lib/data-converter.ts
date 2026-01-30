@@ -354,7 +354,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     return result;
   }
 
-  // Build hierarchy by parent_id, not outline_level: root (0) skip; level 1 = phase; child of level-1 phase = phase; child of level-2 phase = unit; child of unit = task.
+  // Build hierarchy: level 1 = unit; level 2+ with children = phase; leaf = task. (Project -> Unit -> Phase -> Task)
   const raw = (data.tasks as any[])
     .filter((t: any) => (t.outline_level ?? 0) !== 0)
     .map((t: any) => ({
@@ -379,8 +379,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   const byId = new Map<string, (typeof raw)[0]>();
   raw.forEach((r: any) => byId.set(String(r.id), r));
 
-  // Gantt Pro–style hierarchy: Phase = level 1; Unit = any level with children; Task = leaf (no children).
-  // Build set of node IDs that have at least one child.
+  // Hierarchy: Unit = level 1; Phase = level 2+ with children; Task = leaf (no children).
   const hasChildren = new Set<string>();
   raw.forEach((r: any) => {
     const pid = r.parent_id != null ? String(r.parent_id) : null;
@@ -395,12 +394,12 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     const id = String(r.id);
 
     if (level === 1) {
-      typeById.set(id, 'phase');
+      typeById.set(id, 'unit');
       return;
     }
-    // Level 2+: unit if this node has children (container), otherwise task (leaf).
+    // Level 2+: phase if this node has children (container), otherwise task (leaf).
     if (hasChildren.has(id)) {
-      typeById.set(id, 'unit');
+      typeById.set(id, 'phase');
     } else {
       typeById.set(id, 'task');
     }
@@ -433,7 +432,20 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       updatedAt: now,
     };
 
-    if (nodeType === 'phase') {
+    if (nodeType === 'unit') {
+      units.push({
+        ...baseTask,
+        unitId: id,
+        description: '',
+        projectId: projectIdOverride || '',
+        project_id: projectIdOverride || '',
+        employeeId: null,
+        active: true,
+        endDate: r.endDate || null,
+        isCritical: r.isCritical || false,
+        parent_id: baseTask.parent_id,
+      });
+    } else if (nodeType === 'phase') {
       phases.push({
         ...baseTask,
         phaseId: id,
@@ -443,18 +455,8 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
         comments: r.comments || '',
         isCritical: r.isCritical || false,
         is_summary: r.is_summary || false,
-      });
-    } else if (nodeType === 'unit') {
-      units.push({
-        ...baseTask,
-        unitId: id,
-        description: '',
-        phaseId: '', // resolved below
-        employeeId: null,
-        active: true,
-        endDate: r.endDate || null,
-        isCritical: r.isCritical || false,
-        parent_id: baseTask.parent_id,
+        unitId: '', // resolved below
+        unit_id: '',
       });
     } else {
       tasks.push({
@@ -477,55 +479,54 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   });
 
   // Now resolve parent-child relationships in multiple passes
-  // Pass 1: Resolve unit phaseId (process in outline order so parent unit's phaseId is set first)
-  const unitById = new Map<string, any>();
-  units.forEach((u: any) => unitById.set(u.id, u));
-  const unitsSortedByLevel = [...units].sort((a, b) => {
+  // Pass 1: Resolve phase unitId (process in outline order so parent phase's unitId is set first)
+  const phaseById = new Map<string, any>();
+  phases.forEach((p: any) => phaseById.set(p.id, p));
+  const phasesSortedByLevel = [...phases].sort((a, b) => {
     const aLevel = raw.find((r: any) => String(r.id) === a.id)?.outline_level ?? 0;
     const bLevel = raw.find((r: any) => String(r.id) === b.id)?.outline_level ?? 0;
     return aLevel - bLevel;
   });
-  unitsSortedByLevel.forEach((unit: any) => {
-    if (!unit.parent_id) return;
-    const parentPhase = phases.find((p: any) => p.id === unit.parent_id);
-    if (parentPhase) {
-      unit.phaseId = parentPhase.id;
-      unit.phase_id = parentPhase.id;
+  phasesSortedByLevel.forEach((phase: any) => {
+    if (!phase.parent_id) return;
+    const parentUnit = units.find((u: any) => u.id === phase.parent_id);
+    if (parentUnit) {
+      phase.unitId = parentUnit.id;
+      phase.unit_id = parentUnit.id;
     } else {
-      const parentUnit = unitById.get(unit.parent_id);
-      if (parentUnit?.phaseId) {
-        unit.phaseId = parentUnit.phaseId;
-        unit.phase_id = parentUnit.phase_id;
+      const parentPhase = phaseById.get(phase.parent_id);
+      if (parentPhase?.unitId) {
+        phase.unitId = parentPhase.unitId;
+        phase.unit_id = parentPhase.unit_id;
       }
     }
   });
 
-  // Pass 2: Resolve task phaseId and unitId relationships  
+  // Pass 2: Resolve task phaseId and unitId relationships
   tasks.forEach((task: any) => {
     if (task.parent_id) {
-      // First try to find parent unit
-      const parentUnit = units.find(u => u.id === task.parent_id);
-      if (parentUnit) {
-        task.unitId = parentUnit.id;
-        task.unit_id = parentUnit.id; // Also set snake_case for WBS builder compatibility
-        task.phaseId = parentUnit.phaseId;
-        task.phase_id = parentUnit.phaseId; // Also set snake_case for WBS builder compatibility
+      const parentPhase = phases.find((p: any) => p.id === task.parent_id);
+      if (parentPhase) {
+        task.phaseId = parentPhase.id;
+        task.phase_id = parentPhase.id;
+        task.unitId = parentPhase.unitId ?? parentPhase.unit_id ?? '';
+        task.unit_id = task.unitId;
       } else {
-        // If not a unit, try to find parent phase
-        const parentPhase = phases.find(p => p.id === task.parent_id);
-        if (parentPhase) {
-          task.phaseId = parentPhase.id;
-          task.phase_id = parentPhase.id; // Also set snake_case for WBS builder compatibility
+        const parentUnit = units.find((u: any) => u.id === task.parent_id);
+        if (parentUnit) {
+          task.unitId = parentUnit.id;
+          task.unit_id = parentUnit.id;
+          task.phaseId = '';
+          task.phase_id = '';
         }
       }
     }
-    
-    // Only set parentTaskId if the parent_id actually references another task
-    const parentTask = tasks.find(t => t.id === task.parent_id);
+
+    const parentTask = tasks.find((t: any) => t.id === task.parent_id);
     if (parentTask) {
       task.parentTaskId = task.parent_id;
     } else {
-      task.parentTaskId = null; // Parent is not a task, don't set foreign key
+      task.parentTaskId = null;
     }
   });
 
@@ -533,10 +534,9 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   result.units = units;
   result.tasks = tasks;
 
-  // Debug: Log what we created
-  console.log(`[DEBUG] Created ${phases.length} phases:`, phases.map(p => ({ id: p.id, name: p.name })));
-  console.log(`[DEBUG] Created ${units.length} units:`, units.map(u => ({ id: u.id, name: u.name, parent_id: u.parent_id, phaseId: u.phaseId, phase_id: u.phase_id })));
-  console.log(`[DEBUG] Created ${tasks.length} tasks:`, tasks.slice(0, 3).map(t => ({ id: t.id, name: t.name, parent_id: t.parent_id, phaseId: t.phaseId, unitId: t.unitId })));
+  console.log(`[DEBUG] Created ${phases.length} phases:`, phases.map((p: any) => ({ id: p.id, name: p.name, unitId: p.unitId, unit_id: p.unit_id })));
+  console.log(`[DEBUG] Created ${units.length} units:`, units.map((u: any) => ({ id: u.id, name: u.name, parent_id: u.parent_id })));
+  console.log(`[DEBUG] Created ${tasks.length} tasks:`, tasks.slice(0, 3).map((t: any) => ({ id: t.id, name: t.name, parent_id: t.parent_id, phaseId: t.phaseId, unitId: t.unitId })));
 
   return result;
 }
@@ -660,7 +660,7 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
     }];
   }
 
-  // Handle phases
+  // Handle phases (phase belongs to unit in hierarchy)
   if (Array.isArray(data.phases)) {
     result.phases = data.phases.map((p: Record<string, unknown>, i: number) => {
       const id = (p.id as string) || (p.phaseId as string) || (p.phase_id as string) || `PHS-${(i + 1).toString().padStart(4, '0')}`;
@@ -671,6 +671,8 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
         methodology: (p.methodology as string) || '',
         sequence: (p.sequence as number) || i + 1,
         projectId: projectIdOverride || (p.projectId as string) || (p.project_id as string) || '',
+        unitId: (p.unitId as string) || (p.unit_id as string) || '',
+        unit_id: (p.unitId as string) || (p.unit_id as string) || '',
         employeeId: (p.employeeId as string) || (p.employee_id as string) || '',
         startDate: (p.startDate as string) || (p.start_date as string) || '',
         endDate: (p.endDate as string) || (p.end_date as string) || '',
@@ -727,7 +729,8 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
           unitId: id,
           name: (u.name as string) || '',
           description: (u.description as string) || '',
-          phaseId: (u.phaseId as string) || (u.phase_id as string) || '',
+          projectId: projectIdOverride || (u.projectId as string) || (u.project_id as string) || '',
+          project_id: projectIdOverride || (u.projectId as string) || (u.project_id as string) || '',
           employeeId: (u.employeeId as string) || (u.employee_id as string) || null,
           active: u.active !== false,
           baselineStartDate: (u.baselineStartDate as string) || (u.baseline_start as string) || null,
@@ -755,8 +758,8 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
       let unitId = (t.unitId as string) || null;
       if (!unitId && t.unit && result.units) {
         const unitName = String(t.unit);
-        const phaseId = (t.phaseId as string) || (t.phase_ancestor_id as string);
-        let found = result.units.find((u: any) => u.name === unitName && u.phaseId === phaseId);
+        const projectId = projectIdOverride || (t.projectId as string) || (t.project_id as string);
+        let found = result.units.find((u: any) => u.name === unitName && (u.projectId === projectId || u.project_id === projectId));
         if (!found) found = result.units.find((u: any) => u.name === unitName);
         if (found) unitId = found.unitId;
       }
