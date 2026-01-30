@@ -1,0 +1,10 @@
+---
+description: Always commit and push code/migrations unless user says otherwise
+alwaysApply: true
+---
+
+# Git and Supabase: Commit and Push by Default
+
+- **After making code or config changes**: Stage, commit with a clear message, and push to the current branch. Do this in the same turn as the edits unless the user says "don't commit", "don't push", or "no commit".
+- **Supabase**: When adding or changing files under `supabase/` (migrations, functions, config), include them in the same commit and push. Do not run `supabase db push` or deploy Edge Functions unless the user asks; committing and pushing the repo is the default.
+- **Skip when**: User explicitly says not to commit/push, or asks to "only show changes" / "just suggest".
