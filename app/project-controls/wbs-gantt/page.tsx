@@ -336,7 +336,7 @@ export default function WBSGanttPage() {
         case 'itemType':
           return item.itemType || item.type;
         case 'resource':
-          return (item as any).assignedResource || getEmployeeName(item.assignedResourceId, employees);
+          return getEmployeeName(item.assignedResourceId, employees);
         case 'startDate':
           return item.startDate ? new Date(item.startDate) : null;
         case 'endDate':
@@ -1147,7 +1147,7 @@ export default function WBSGanttPage() {
                       </EnhancedTooltip>
                     </td>
                     <td><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
-                    <td style={{ fontSize: '0.65rem' }}>{(row as any).assignedResource || getEmployeeName(row.assignedResourceId, employees)}</td>
+                    <td style={{ fontSize: '0.65rem' }}>{getEmployeeName(row.assignedResourceId, employees)}</td>
                     <td style={{ fontSize: '0.65rem' }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) : '-'}</td>
                     <td style={{ fontSize: '0.65rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.daysRequired !== undefined && row.daysRequired !== null ? Number(row.daysRequired).toFixed(2) : '-'}</td>

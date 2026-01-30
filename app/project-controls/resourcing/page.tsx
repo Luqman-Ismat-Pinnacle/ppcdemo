@@ -1087,7 +1087,7 @@ export default function ResourcingPage() {
         display: 'flex',
         flexDirection: 'column'
       }}>
-        <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)' }}>
+        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -1098,33 +1098,10 @@ export default function ResourcingPage() {
             </svg>
             Resource Utilization Heatmap
           </h3>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                style={{
-                  padding: '0.3rem 0.6rem',
-                  fontSize: '0.68rem',
-                  fontWeight: 600,
-                  background: 'transparent',
-                  color: 'var(--text-secondary)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  maxWidth: '120px'
-                }}
-              >
-                {uniqueRoles.map(role => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            </div>
-          </div>
         </div>
         <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
           <ResourceHeatmapChart
-            data={filteredHeatmapData ?? { resources: [], weeks: [], data: [] }}
+            data={data.resourceHeatmap}
             employees={data.employees}
             height="100%"
             showControls={true}
@@ -1447,27 +1424,14 @@ export default function ResourcingPage() {
                                 position: 'absolute',
                                 left: `${left}%`,
                                 width: `${Math.max(width, 8)}%`,
-                                height: '18px',
-                                top: '6px',
-                                background: '#333',
-                                borderRadius: '3px',
-                                zIndex: 5,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'flex-start',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                                overflow: 'hidden'
-                              }}
-                            >
-                              <div style={{
-                                width: '100%',
-                                height: '100%',
+                                height: '16px',
+                                top: '8px',
                                 background: barColor,
                                 opacity: item.type === 'resource' ? 0.4 : 1,
                                 borderRadius: '3px',
-                                transition: 'width 0.3s'
-                              }} />
-                            </div>
+                                zIndex: 2
+                              }}
+                            />
                           </td>
                         );
                       }

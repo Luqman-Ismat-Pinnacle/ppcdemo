@@ -23,6 +23,76 @@ import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
 
 // ============================================================================
+// ACTIVE-ONLY & PRUNE EMPTY HIERARCHY
+// ============================================================================
+
+/**
+ * Filter out inactive entities and remove hierarchy nodes with nothing under them.
+ * - Employees: only active (isActive !== false, status !== 'Inactive')
+ * - Projects: only active (active !== false)
+ * - Sites: only active and with at least one active project
+ * - Customers: only active and with at least one remaining site
+ * - Portfolios: only active and with at least one remaining customer
+ * Mutates mergedData in place.
+ */
+function applyActiveOnlyAndPruneEmpty(mergedData: Partial<SampleData>): void {
+  const isActiveEmployee = (e: { isActive?: boolean; is_active?: boolean; status?: string }) =>
+    e.isActive !== false && (e as { is_active?: boolean }).is_active !== false && e.status !== 'Inactive';
+
+  const isActiveEntity = (x: { active?: boolean; isActive?: boolean }) =>
+    x.active !== false && (x as { isActive?: boolean }).isActive !== false;
+
+  // 1. Employees: inactive and status 'Inactive' out
+  if (mergedData.employees && Array.isArray(mergedData.employees)) {
+    mergedData.employees = mergedData.employees.filter(isActiveEmployee);
+  }
+
+  // 2. Projects: active only
+  if (mergedData.projects && Array.isArray(mergedData.projects)) {
+    mergedData.projects = mergedData.projects.filter(isActiveEntity);
+  }
+
+  // 3. Sites: active only and have at least one active project
+  const projectSiteIds = new Set(
+    (mergedData.projects || []).map(
+      (p: { siteId?: string; site_id?: string }) => p.siteId || p.site_id || ''
+    )
+  );
+  if (mergedData.sites && Array.isArray(mergedData.sites)) {
+    mergedData.sites = mergedData.sites.filter((s: { active?: boolean; isActive?: boolean; id?: string; siteId?: string }) => {
+      const sid = s.id || s.siteId;
+      return isActiveEntity(s) && !!sid && projectSiteIds.has(sid);
+    });
+  }
+
+  // 4. Customers: active only and have at least one remaining site
+  const siteCustomerIds = new Set(
+    (mergedData.sites || []).map(
+      (s: { customerId?: string; customer_id?: string }) => s.customerId || s.customer_id || ''
+    )
+  );
+  if (mergedData.customers && Array.isArray(mergedData.customers)) {
+    mergedData.customers = mergedData.customers.filter((c: { active?: boolean; isActive?: boolean; id?: string; customerId?: string }) => {
+      const cid = c.id || c.customerId;
+      return isActiveEntity(c) && !!cid && siteCustomerIds.has(cid);
+    });
+  }
+
+  // 5. Portfolios: active only and have at least one remaining customer
+  const customerPortfolioIds = new Set(
+    (mergedData.customers || []).map(
+      (c: { portfolioId?: string; portfolio_id?: string }) => c.portfolioId || c.portfolio_id || ''
+    )
+  );
+  if (mergedData.portfolios && Array.isArray(mergedData.portfolios)) {
+    mergedData.portfolios = mergedData.portfolios.filter((p: { active?: boolean; isActive?: boolean; id?: string; portfolioId?: string }) => {
+      const pid = p.id || p.portfolioId;
+      return isActiveEntity(p) && !!pid && customerPortfolioIds.has(pid);
+    });
+  }
+}
+
+// ============================================================================
 // EMPTY DATA STRUCTURE
 // ============================================================================
 
@@ -105,8 +175,6 @@ function createEmptyData(): SampleData {
     catchUpLog: [],
     projectHealth: [],
     projectLog: [],
-    projectMappings: [],
-    taskMappings: [],
     epics: [],
     features: [],
     userStories: [],
@@ -213,18 +281,16 @@ export function DataProvider({ children }: DataProviderProps) {
             }
           }
 
-          // Filter out inactive employees globally
-          if (mergedData.employees && Array.isArray(mergedData.employees)) {
-            mergedData.employees = mergedData.employees.filter((e: any) => e.isActive !== false && e.status !== 'Inactive');
-          }
-
-          // Ensure Senior Managers have portfolios
+          // Ensure Senior Managers have portfolios (before pruning)
           if (mergedData.employees && mergedData.portfolios) {
             mergedData.portfolios = ensurePortfoliosForSeniorManagers(
               mergedData.employees as any[],
               mergedData.portfolios as any[]
             );
           }
+
+          // Filter inactive (employees, projects) and prune empty hierarchy (sites, customers, portfolios)
+          applyActiveOnlyAndPruneEmpty(mergedData);
 
           if (Object.keys(mergedData).length > 0) {
             // Apply transformations to build computed views (wbsData, laborBreakdown, etc.)
@@ -259,6 +325,16 @@ export function DataProvider({ children }: DataProviderProps) {
       const keys = Object.keys(updates);
       if (keys.length === 1 && keys[0] === 'wbsData') {
         return merged;
+      }
+      // When hierarchy or people/projects are updated, re-apply active-only and prune empty so UI stays consistent
+      const touchesEntities =
+        'employees' in updates ||
+        'projects' in updates ||
+        'portfolios' in updates ||
+        'customers' in updates ||
+        'sites' in updates;
+      if (touchesEntities) {
+        applyActiveOnlyAndPruneEmpty(merged);
       }
       // Re-apply transformations when raw data changes
       const transformedData = transformData(merged);
@@ -303,6 +379,15 @@ export function DataProvider({ children }: DataProviderProps) {
           (mergedData as Record<string, unknown>)[key] = value;
         }
       }
+
+      // Same filters as load: ensure portfolios then filter inactive + prune empty hierarchy
+      if (mergedData.employees && mergedData.portfolios) {
+        mergedData.portfolios = ensurePortfoliosForSeniorManagers(
+          mergedData.employees as any[],
+          mergedData.portfolios as any[]
+        );
+      }
+      applyActiveOnlyAndPruneEmpty(mergedData);
 
       if (Object.keys(mergedData).length > 0) {
         // Apply transformations to build computed views

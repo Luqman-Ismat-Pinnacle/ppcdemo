@@ -11,7 +11,6 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useData } from '@/lib/data-context';
 import { createClient } from '@supabase/supabase-js';
 import { convertMppParserOutput } from '@/lib/data-converter';
-import { matchHoursToMppNames } from '@/lib/match-hours-to-mpp';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 
 interface ProcessingLog {
@@ -39,7 +38,7 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 const STORAGE_BUCKET = 'project-documents';
 
 export default function DocumentsPage() {
-  const { refreshData, filteredData, data, updateData } = useData();
+  const { refreshData, filteredData } = useData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -540,33 +539,6 @@ export default function DocumentsPage() {
         }
       }
 
-      // Match hours (Description column) to MPP task/unit names with ~5% fuzzy match; assign taskId to hours
-      const projectHours = (data.hours || []).filter(
-        (h: any) => String(h.projectId ?? h.project_id ?? '') === String(existingProjectId)
-      );
-      const { hours: updatedProjectHours, matchedCount } = matchHoursToMppNames(projectHours, convertedData);
-      const otherHours = (data.hours || []).filter(
-        (h: any) => String(h.projectId ?? h.project_id ?? '') !== String(existingProjectId)
-      );
-      const updatedHours = [...otherHours, ...updatedProjectHours];
-      if (matchedCount > 0) {
-        addLog('success', `[Match] Assigned ${matchedCount} hour entries to MPP tasks (Description → task/unit names, ~5% tolerance)`);
-        updateData({ hours: updatedHours });
-        const hoursResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataKey: 'hours', records: updatedHours }),
-        });
-        const hoursResult = await hoursResponse.json();
-        if (!hoursResponse.ok || !hoursResult.success) {
-          addLog('warning', `[Supabase] Hours update: ${hoursResult.error || 'Failed'}`);
-        } else {
-          addLog('success', `[Supabase] Hours updated: ${matchedCount} entries linked to plan tasks`);
-        }
-      } else {
-        addLog('info', '[Match] No hour entries matched MPP task/unit names (compare Description to plan names)');
-      }
-
       // Complete the process
       addLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
       setUploadedFiles(prev => prev.map(f =>
@@ -582,7 +554,7 @@ export default function DocumentsPage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [uploadedFiles, addLog, refreshData, data, updateData]);
+  }, [uploadedFiles, addLog, refreshData]);
 
   // Delete file from Supabase Storage
   const handleDelete = useCallback(async (fileId: string) => {
