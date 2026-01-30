@@ -1574,10 +1574,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           });
           if (minStart) item.startDate = minStart;
           if (maxEnd) item.endDate = maxEnd;
-          item.baselineHours = item.baselineHours ?? sumBaselineHrs || undefined;
-          item.actualHours = item.actualHours ?? sumActualHrs || undefined;
-          item.baselineCost = item.baselineCost ?? sumBaselineCst || undefined;
-          item.actualCost = item.actualCost ?? sumActualCst || undefined;
+          item.baselineHours = item.baselineHours ?? (sumBaselineHrs || undefined);
+          item.actualHours = item.actualHours ?? (sumActualHrs || undefined);
+          item.baselineCost = item.baselineCost ?? (sumBaselineCst || undefined);
+          item.actualCost = item.actualCost ?? (sumActualCst || undefined);
         }
       });
     };
