@@ -466,12 +466,10 @@ export default function WBSGanttPage() {
               path: [portfolioName, customer.name, site.name, project.name]
             });
           } else if (project.name) {
-            // Fallback if hierarchy is incomplete (e.g. flat project list)
-            // Try to construct partial path or just hope filtering by project name alone works if logic supports it
-            // Our filter logic relies on path[0] being portfolio.
-            // If we can't find portfolio, we might just set path[3] if we can skip?
-            // The filter logic checks path[n] if it exists.
-            // let's try to just set what we have.
+            // MPP / orphan projects often have no portfolio/customer/site. Filter by project name only (path[3]).
+            setHierarchyFilter({
+              path: ['', '', '', project.name]
+            });
           }
         }
 
