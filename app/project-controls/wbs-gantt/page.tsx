@@ -637,19 +637,24 @@ export default function WBSGanttPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const scrollRafRef = useRef<number | null>(null);
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop);
+    const top = e.currentTarget.scrollTop;
+    if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      setScrollTop(top);
+    });
   };
 
-  // Reset scroll when project or WBS data identity changes so the view isn't stuck
-  const scrollResetKey = `${selectedProjectId ?? ''}-${data.wbsData?.items?.length ?? 0}-${(data.wbsData?.items as any[])?.[0]?.id ?? ''}`;
-  const lastScrollResetKeyRef = useRef<string>('');
+  // Reset scroll only when user selects a different project (not on data change, to avoid loop/re-render with long lists)
+  const prevProjectIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (scrollResetKey === lastScrollResetKeyRef.current) return;
-    lastScrollResetKeyRef.current = scrollResetKey;
+    if (prevProjectIdRef.current === selectedProjectId) return;
+    prevProjectIdRef.current = selectedProjectId;
     setScrollTop(0);
     if (containerRef.current) containerRef.current.scrollTop = 0;
-  }, [scrollResetKey]);
+  }, [selectedProjectId]);
 
   const rowHeight = 30;
   const headerHeight = 36;
@@ -946,8 +951,6 @@ export default function WBSGanttPage() {
             </defs>
           </svg>
 
-          {/* Wrapper with explicit height so the scroll container has a definite scrollHeight and can scroll to the bottom */}
-          <div style={{ height: headerHeight + totalRowsHeight, minHeight: '100%' }}>
           <table
             ref={tableRef}
             className="wbs-table"
@@ -1271,7 +1274,6 @@ export default function WBSGanttPage() {
               )}
             </tbody>
           </table>
-          </div>
         </div>
       </div>
     </div>

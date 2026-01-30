@@ -44,11 +44,11 @@ export async function POST(req: NextRequest) {
     });
 
     const body = await req.json();
-    const { dataKey, records, operation } = body;
+    const { dataKey, records, operation, projectId } = body;
 
-    if (!dataKey || !Array.isArray(records)) {
+    if (!dataKey) {
       return NextResponse.json(
-        { success: false, error: 'Invalid request: dataKey and records required' },
+        { success: false, error: 'Invalid request: dataKey required' },
         { status: 400 }
       );
     }
@@ -57,6 +57,27 @@ export async function POST(req: NextRequest) {
     if (!tableName) {
       return NextResponse.json(
         { success: false, error: `Unknown data key: ${dataKey}` },
+        { status: 400 }
+      );
+    }
+
+    // Delete all rows for a project (used before MPP import so only MPP hierarchy exists, no Workday extras)
+    if (operation === 'deleteByProjectId' && projectId) {
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('project_id', projectId);
+
+      if (error) {
+        console.error(`Error deleting by project_id from ${tableName}:`, error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (!Array.isArray(records)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request: records array required' },
         { status: 400 }
       );
     }

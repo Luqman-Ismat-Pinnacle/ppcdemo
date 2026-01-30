@@ -444,6 +444,26 @@ export default function DocumentsPage() {
         addLog('warning', `[Supabase] Project update error: ${updateErr.message}`);
       }
 
+      // Remove existing phases/units/tasks for this project so only MPP hierarchy remains (no Workday extras)
+      addLog('info', '[Supabase] Removing existing phases/units/tasks for this project...');
+      for (const key of ['tasks', 'units', 'phases']) {
+        try {
+          const delRes = await fetch('/api/data/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataKey: key, operation: 'deleteByProjectId', projectId: existingProjectId, records: [] }),
+          });
+          const delResult = await delRes.json();
+          if (!delRes.ok || !delResult.success) {
+            addLog('warning', `[Supabase] Delete existing ${key}: ${delResult.error || 'Failed'}`);
+          } else {
+            addLog('success', `[Supabase] Cleared existing ${key} for project`);
+          }
+        } catch (e: any) {
+          addLog('warning', `[Supabase] Delete ${key} error: ${e.message}`);
+        }
+      }
+
       // Update all phases, units, and tasks with the existing project ID
       // Remove empty projectId to prevent conflict with project_id during sync
       if (convertedData.phases) {
