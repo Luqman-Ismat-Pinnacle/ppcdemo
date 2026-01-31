@@ -8,7 +8,6 @@
  * - Plan vs Forecast vs Actual progress chart
  * - Milestone scoreboard by customer
  * - Detailed milestone table with variance indicators
- * - Snapshot capture and comparison functionality
  * 
  * @module app/insights/milestones/page
  */
@@ -19,12 +18,6 @@ import InsightsFilterBar, { type FilterChip } from '@/components/insights/Insigh
 import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
 import PlanForecastActualChart from '@/components/charts/PlanForecastActualChart';
 import { formatDate } from '@/lib/utils';
-import CompareButton from '@/components/ui/CompareButton';
-import SnapshotButton from '@/components/ui/SnapshotButton';
-import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
-import { generateId } from '@/lib/database-schema';
-import * as echarts from 'echarts';
-import type { EChartsOption } from 'echarts';
 import {
   type SortState,
   formatSortIndicator,
@@ -32,8 +25,15 @@ import {
   sortByState,
 } from '@/lib/sort-utils';
 
+function formatPercent(value: unknown): string {
+  if (value == null || value === '') return '—';
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return `${Number(n.toFixed(2))}%`;
+}
+
 export default function MilestonesPage() {
-  const { filteredData, hierarchyFilter, dateFilter, saveVisualSnapshot } = useData();
+  const { filteredData } = useData();
   const data = filteredData;
   const [scoreboardSort, setScoreboardSort] = useState<SortState | null>(null);
   const [milestonesSort, setMilestonesSort] = useState<SortState | null>(null);
@@ -54,44 +54,6 @@ export default function MilestonesPage() {
   }, []);
 
   const handleClearFilters = useCallback(() => setPageFilters([]), []);
-
-  const [comparisonModal, setComparisonModal] = useState<{
-    isOpen: boolean;
-    visualId: string;
-    visualTitle: string;
-    visualType: 'chart' | 'table';
-    currentData: any;
-  } | null>(null);
-  const [snapshotMessage, setSnapshotMessage] = useState<string | null>(null);
-
-  // Snapshot capture handlers
-  const handleCaptureSnapshot = useCallback((visualId: string, visualTitle: string, visualType: 'chart' | 'table', snapshotData: any) => {
-    return async (snapshotName: string) => {
-      try {
-        const metadata: Record<string, unknown> = {};
-        if (hierarchyFilter) metadata.hierarchyFilter = JSON.parse(JSON.stringify(hierarchyFilter));
-        if (dateFilter) metadata.dateFilter = JSON.parse(JSON.stringify(dateFilter));
-
-        await saveVisualSnapshot({
-          id: generateId('VSN'),
-          visualId,
-          visualType,
-          visualTitle,
-          snapshotName,
-          snapshotDate: new Date().toISOString().split('T')[0],
-          data: snapshotData,
-          metadata,
-          createdBy: 'User',
-          createdAt: new Date().toISOString(),
-        });
-        setSnapshotMessage(`Snapshot "${snapshotName}" captured!`);
-        setTimeout(() => setSnapshotMessage(null), 3000);
-      } catch (error) {
-        setSnapshotMessage('Failed to capture snapshot');
-        setTimeout(() => setSnapshotMessage(null), 3000);
-      }
-    };
-  }, [hierarchyFilter, dateFilter]);
 
   const filteredScoreboard = useMemo(() => {
     let list = data.milestoneScoreboard || [];
@@ -182,48 +144,10 @@ export default function MilestonesPage() {
 
       {/* Top Row: Charts and Scoreboard */}
       <div className="dashboard-grid">
-        {/* Snapshot Success Message */}
-        {snapshotMessage && (
-          <div style={{
-            position: 'fixed',
-            top: '80px',
-            right: '24px',
-            padding: '12px 20px',
-            background: 'var(--pinnacle-teal)',
-            color: '#000',
-            borderRadius: '8px',
-            fontWeight: 600,
-            fontSize: '0.875rem',
-            zIndex: 1000,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          }}>
-            {snapshotMessage}
-          </div>
-        )}
-
         {/* Milestone Status Pie */}
         <div className="chart-card grid-quarter">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Milestone Status</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <SnapshotButton
-                visualId="milestone-status-pie"
-                visualTitle="Milestone Status"
-                visualType="chart"
-                onCapture={handleCaptureSnapshot('milestone-status-pie', 'Milestone Status', 'chart', data.milestoneStatusPie)}
-              />
-              <CompareButton
-                onClick={() => {
-                  setComparisonModal({
-                    isOpen: true,
-                    visualId: 'milestone-status-pie',
-                    visualTitle: 'Milestone Status',
-                    visualType: 'chart',
-                    currentData: data.milestoneStatusPie,
-                  });
-                }}
-              />
-            </div>
           </div>
           <div className="chart-card-body" style={{ minHeight: '320px', padding: '1.5rem' }}>
             <MilestoneStatusPie
@@ -239,25 +163,6 @@ export default function MilestonesPage() {
         <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Plan vs Forecast vs Actual</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <SnapshotButton
-                visualId="plan-forecast-actual-chart"
-                visualTitle="Plan vs Forecast vs Actual"
-                visualType="chart"
-                onCapture={handleCaptureSnapshot('plan-forecast-actual-chart', 'Plan vs Forecast vs Actual', 'chart', data.planVsForecastVsActual)}
-              />
-              <CompareButton
-                onClick={() => {
-                  setComparisonModal({
-                    isOpen: true,
-                    visualId: 'plan-forecast-actual-chart',
-                    visualTitle: 'Plan vs Forecast vs Actual',
-                    visualType: 'chart',
-                    currentData: data.planVsForecastVsActual,
-                  });
-                }}
-              />
-            </div>
           </div>
           <div className="chart-card-body">
             <PlanForecastActualChart data={data.planVsForecastVsActual} height="320px" />
@@ -268,25 +173,6 @@ export default function MilestonesPage() {
         <div className="chart-card grid-quarter">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Scoreboard</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <SnapshotButton
-                visualId="milestone-scoreboard-table"
-                visualTitle="Scoreboard"
-                visualType="table"
-                onCapture={handleCaptureSnapshot('milestone-scoreboard-table', 'Scoreboard', 'table', sortedScoreboard)}
-              />
-              <CompareButton
-                onClick={() => {
-                  setComparisonModal({
-                    isOpen: true,
-                    visualId: 'milestone-scoreboard-table',
-                    visualTitle: 'Scoreboard',
-                    visualType: 'table',
-                    currentData: sortedScoreboard,
-                  });
-                }}
-              />
-            </div>
           </div>
           <div className="chart-card-body no-padding" style={{ minHeight: '250px', overflow: 'auto' }}>
             <table className="data-table">
@@ -344,25 +230,6 @@ export default function MilestonesPage() {
         <div className="chart-card grid-full">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Detailed Milestones</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <SnapshotButton
-                visualId="detailed-milestones-table"
-                visualTitle="Detailed Milestones"
-                visualType="table"
-                onCapture={handleCaptureSnapshot('detailed-milestones-table', 'Detailed Milestones', 'table', sortedMilestones)}
-              />
-              <CompareButton
-                onClick={() => {
-                  setComparisonModal({
-                    isOpen: true,
-                    visualId: 'detailed-milestones-table',
-                    visualTitle: 'Detailed Milestones',
-                    visualType: 'table',
-                    currentData: sortedMilestones,
-                  });
-                }}
-              />
-            </div>
           </div>
           <div className="chart-card-body no-padding" style={{ minHeight: '400px', overflow: 'auto' }}>
             <table className="data-table">
@@ -428,7 +295,7 @@ export default function MilestonesPage() {
                         {m.status}
                       </span>
                     </td>
-                    <td className="number">{m.percentComplete}%</td>
+                    <td className="number">{formatPercent(m.percentComplete)}</td>
                     <td>{formatDate(m.plannedCompletion)}</td>
                     <td>{formatDate(m.forecastedCompletion)}</td>
                     <td>{formatDate(m.actualCompletion) || '-'}</td>
@@ -469,29 +336,6 @@ export default function MilestonesPage() {
         </div>
       </div>
 
-      {/* Snapshot Comparison Modal */}
-      {comparisonModal && (
-        <SnapshotComparisonModal
-          isOpen={comparisonModal.isOpen}
-          onClose={() => setComparisonModal(null)}
-          visualId={comparisonModal.visualId}
-          visualTitle={comparisonModal.visualTitle}
-          visualType={comparisonModal.visualType}
-          currentData={comparisonModal.currentData}
-          onRenderChart={(container: HTMLDivElement, chartOption: EChartsOption) => {
-            try {
-              const chart = echarts.init(container, 'dark', {
-                renderer: 'canvas',
-              });
-              chart.setOption(chartOption);
-              return chart;
-            } catch (error) {
-              console.error('Error rendering chart:', error);
-              return null;
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

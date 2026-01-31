@@ -19,16 +19,19 @@ import { useData } from '@/lib/data-context';
 import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
-import CompareButton from '@/components/ui/CompareButton';
-import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
-import * as echarts from 'echarts';
-import type { EChartsOption } from 'echarts';
 import {
   type SortState,
   formatSortIndicator,
   getNextSortState,
   sortByState,
 } from '@/lib/sort-utils';
+
+function formatPercent(value: unknown): string {
+  if (value == null || value === '') return '—';
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return `${Number(n.toFixed(2))}%`;
+}
 
 function LoadingSpinner() {
   return (
@@ -40,13 +43,6 @@ function LoadingSpinner() {
 
 export default function OverviewPage() {
   const { filteredData } = useData();
-  const [comparisonModal, setComparisonModal] = useState<{
-    isOpen: boolean;
-    visualId: string;
-    visualTitle: string;
-    visualType: 'chart' | 'table';
-    currentData: any;
-  } | null>(null);
   const data = filteredData;
 
   // Get unique projects for budget variance selector
@@ -496,39 +492,26 @@ export default function OverviewPage() {
             >
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Budget Variance Bridge</h3>
             </EnhancedTooltip>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              {projects.length > 0 && (
-                <select
-                  value={selectedProject || projects[0]}
-                  onChange={(e) => setSelectedProject(e.target.value)}
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: '0.8rem',
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                    minWidth: '200px'
-                  }}
-                >
-                  {projects.map((proj: string) => (
-                    <option key={proj} value={proj}>{proj}</option>
-                  ))}
-                </select>
-              )}
-              <CompareButton
-                onClick={() => {
-                  setComparisonModal({
-                    isOpen: true,
-                    visualId: 'budget-variance-chart',
-                    visualTitle: 'Budget Variance Bridge',
-                    visualType: 'chart',
-                    currentData: null,
-                  });
+            {projects.length > 0 && (
+              <select
+                value={selectedProject || projects[0]}
+                onChange={(e) => setSelectedProject(e.target.value)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '0.8rem',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  minWidth: '200px'
                 }}
-              />
-            </div>
+              >
+                {projects.map((proj: string) => (
+                  <option key={proj} value={proj}>{proj}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="chart-card-body" style={{ minHeight: '520px', padding: '1.5rem' }}>
             <Suspense fallback={<LoadingSpinner />}>
@@ -565,17 +548,6 @@ export default function OverviewPage() {
                 <span className="chart-card-subtitle">Hours defensibility</span>
               </div>
             </EnhancedTooltip>
-            <CompareButton
-              onClick={() => {
-                setComparisonModal({
-                  isOpen: true,
-                  visualId: 'count-metrics-analysis-table',
-                  visualTitle: 'Count/Metrics Analysis',
-                  visualType: 'table',
-                  currentData: sortedCountMetrics,
-                });
-              }}
-            />
           </div>
           <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
@@ -705,17 +677,6 @@ export default function OverviewPage() {
             >
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Projects: Efficiency vs Metrics</h3>
             </EnhancedTooltip>
-            <CompareButton
-              onClick={() => {
-                setComparisonModal({
-                  isOpen: true,
-                  visualId: 'project-efficiency-metrics-table',
-                  visualTitle: 'Projects: Efficiency vs Metrics',
-                  visualType: 'table',
-                  currentData: sortedProjectMetrics,
-                });
-              }}
-            />
           </div>
           <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
@@ -789,8 +750,8 @@ export default function OverviewPage() {
                 {sortedProjectMetrics.slice(0, 15).map((project, idx) => (
                   <tr key={idx}>
                     <td>{project.project}</td>
-                    <td className="number">{project.efficiency}%</td>
-                    <td className="number">{project.metricsRatio}</td>
+                    <td className="number">{formatPercent(project.efficiency)}</td>
+                    <td className="number">{formatPercent(project.metricsRatio)}</td>
                     <td className="number">{project.remainingHours}</td>
                     <td>
                       <span className={`badge badge-${project.flag === 'ok' ? 'success' : project.flag === 'watch' ? 'warning' : 'critical'}`}>
@@ -804,30 +765,6 @@ export default function OverviewPage() {
           </div>
         </div>
       </div>
-
-      {/* Snapshot Comparison Modal */}
-      {comparisonModal && (
-        <SnapshotComparisonModal
-          isOpen={comparisonModal.isOpen}
-          onClose={() => setComparisonModal(null)}
-          visualId={comparisonModal.visualId}
-          visualTitle={comparisonModal.visualTitle}
-          visualType={comparisonModal.visualType}
-          currentData={comparisonModal.currentData}
-          onRenderChart={(container: HTMLDivElement, chartOption: EChartsOption) => {
-            try {
-              const chart = echarts.init(container, 'dark', {
-                renderer: 'canvas',
-              });
-              chart.setOption(chartOption);
-              return chart;
-            } catch (error) {
-              console.error('Error rendering chart:', error);
-              return null;
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

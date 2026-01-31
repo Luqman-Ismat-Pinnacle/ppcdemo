@@ -23,10 +23,6 @@ import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
 import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
 import HoursWaterfallChart from '@/components/charts/HoursWaterfallChart';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
-import CompareButton from '@/components/ui/CompareButton';
-import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
-import * as echarts from 'echarts';
-import type { EChartsOption } from 'echarts';
 import {
   type SortState,
   formatSortIndicator,
@@ -62,13 +58,6 @@ export default function HoursPage() {
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
   const [workerTableSort, setWorkerTableSort] = useState<SortState | null>(null);
   const [roleTableSort, setRoleTableSort] = useState<SortState | null>(null);
-  const [comparisonModal, setComparisonModal] = useState<{
-    isOpen: boolean;
-    visualId: string;
-    visualTitle: string;
-    visualType: 'chart' | 'table';
-    currentData: any;
-  } | null>(null);
 
   // Calculate overall efficiency - no hardcoded fallback
   const overallEfficiency = useMemo(() => {
@@ -534,93 +523,6 @@ export default function HoursPage() {
             Task Hours Efficiency
             {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
           </h3>
-          <CompareButton
-            onClick={() => {
-              // Build the ECharts option from TaskHoursEfficiencyChart data
-              const taskData = data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] };
-              const validTasks = taskData.tasks?.filter((t: string, i: number) => 
-                (taskData.actualWorked?.[i] > 0 || taskData.estimatedAdded?.[i] > 0)
-              ) || [];
-              
-              const chartOption: EChartsOption = {
-                backgroundColor: 'transparent',
-                animation: true,
-                animationDuration: 500,
-                tooltip: {
-                  trigger: 'axis',
-                  axisPointer: { type: 'shadow' },
-                },
-                legend: {
-                  bottom: 10,
-                  textStyle: { color: 'rgba(255,255,255,0.8)', fontSize: 11 },
-                },
-                grid: { 
-                  left: 220,
-                  right: 90,
-                  top: 20, 
-                  bottom: 50,
-                },
-                xAxis: {
-                  type: 'value',
-                  axisLine: { show: false },
-                  axisLabel: { 
-                    color: 'rgba(255,255,255,0.6)', 
-                    fontSize: 10,
-                  },
-                  splitLine: { 
-                    lineStyle: { 
-                      color: 'rgba(255,255,255,0.06)', 
-                      type: 'dashed' 
-                    } 
-                  },
-                },
-                yAxis: {
-                  type: 'category',
-                  data: validTasks,
-                  axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
-                  axisLabel: {
-                    color: 'rgba(255,255,255,0.85)',
-                    fontSize: 11,
-                    fontWeight: 500,
-                    width: 200,
-                    overflow: 'truncate',
-                  },
-                },
-                series: [
-                  {
-                    name: 'Actual Worked',
-                    type: 'bar',
-                    stack: 'total',
-                    data: validTasks.map((t: string, i: number) => {
-                      const idx = taskData.tasks?.indexOf(t) ?? i;
-                      return taskData.actualWorked?.[idx] || 0;
-                    }),
-                    itemStyle: { color: '#40E0D0' },
-                    barWidth: 24,
-                  },
-                  {
-                    name: 'Remaining Budget',
-                    type: 'bar',
-                    stack: 'total',
-                    data: validTasks.map((t: string, i: number) => {
-                      const idx = taskData.tasks?.indexOf(t) ?? i;
-                      return taskData.estimatedAdded?.[idx] || 0;
-                    }),
-                    itemStyle: { color: '#10B981' },
-                    barWidth: 24,
-                  },
-                ],
-              };
-              
-              setComparisonModal({
-                isOpen: true,
-                visualId: 'task-hours-efficiency-chart',
-                visualTitle: 'Task Hours Efficiency',
-                visualType: 'chart',
-                currentData: chartOption,
-              });
-            }}
-          />
         </div>
         <div style={{ padding: '16px', height: '620px' }}>
           <TaskHoursEfficiencyChart
@@ -653,17 +555,6 @@ export default function HoursPage() {
                 Quality Hours by Charge Code {qualityHoursPercent !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{qualityHoursPercent}%</strong>}
               </h3>
             </EnhancedTooltip>
-            <CompareButton
-              onClick={() => {
-                setComparisonModal({
-                  isOpen: true,
-                  visualId: 'quality-hours-chart',
-                  visualTitle: 'Quality Hours by Charge Code',
-                  visualType: 'chart',
-                  currentData: null,
-                });
-              }}
-            />
           </div>
           <div style={{ padding: '16px', height: '300px' }}>
             <QualityHoursChart
@@ -695,17 +586,6 @@ export default function HoursPage() {
                 Non-Execute Hours {nonExecutePercent !== null && <strong style={{ marginLeft: '8px', color: '#F59E0B' }}>{nonExecutePercent}%</strong>}
               </h3>
             </EnhancedTooltip>
-            <CompareButton
-              onClick={() => {
-                setComparisonModal({
-                  isOpen: true,
-                  visualId: 'non-execute-hours-chart',
-                  visualTitle: 'Non-Execute Hours',
-                  visualType: 'chart',
-                  currentData: null,
-                });
-              }}
-            />
           </div>
           <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '300px' }}>
             <div style={{ flex: 1 }}>
@@ -739,17 +619,6 @@ export default function HoursPage() {
             </svg>
             Hours Variance Waterfall
           </h3>
-          <CompareButton
-            onClick={() => {
-              setComparisonModal({
-                isOpen: true,
-                visualId: 'hours-variance-waterfall-chart',
-                visualTitle: 'Hours Variance Waterfall',
-                visualType: 'chart',
-                currentData: null,
-              });
-            }}
-          />
         </div>
         <div style={{ padding: '16px', height: '470px' }}>
           <HoursWaterfallChart
@@ -792,17 +661,6 @@ export default function HoursPage() {
               </button>
             ))}
             </div>
-            <CompareButton
-              onClick={() => {
-                setComparisonModal({
-                  isOpen: true,
-                  visualId: 'labor-hours-distribution-chart',
-                  visualTitle: 'Labor Hours Distribution',
-                  visualType: 'chart',
-                  currentData: null,
-                });
-              }}
-            />
           </div>
         </div>
         <div style={{ padding: '16px', height: '420px' }}>
@@ -839,17 +697,6 @@ export default function HoursPage() {
             )}
           </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <CompareButton
-              onClick={() => {
-                setComparisonModal({
-                  isOpen: true,
-                  visualId: 'labor-breakdown-worker-table',
-                  visualTitle: 'Labor Breakdown by Worker',
-                  visualType: 'table',
-                  currentData: sortedLaborBreakdown,
-                });
-              }}
-            />
             {/* Employee Filter Dropdown in Header */}
             <select
               value=""
@@ -1041,17 +888,6 @@ export default function HoursPage() {
             </svg>
             Labor Breakdown by Role
           </h3>
-          <CompareButton
-            onClick={() => {
-              setComparisonModal({
-                isOpen: true,
-                visualId: 'labor-breakdown-role-table',
-                visualTitle: 'Labor Breakdown by Role',
-                visualType: 'table',
-                currentData: sortedRoleRows,
-              });
-            }}
-          />
         </div>
         <div className="chart-card-body no-padding" style={{ height: 'calc(100% - 60px)', overflow: 'auto' }}>
           <table className="data-table" id="table-labor-role" style={{ fontSize: '0.75rem' }}>
@@ -1176,29 +1012,6 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Snapshot Comparison Modal */}
-      {comparisonModal && (
-        <SnapshotComparisonModal
-          isOpen={comparisonModal.isOpen}
-          onClose={() => setComparisonModal(null)}
-          visualId={comparisonModal.visualId}
-          visualTitle={comparisonModal.visualTitle}
-          visualType={comparisonModal.visualType}
-          currentData={comparisonModal.currentData}
-          onRenderChart={(container: HTMLDivElement, chartOption: EChartsOption) => {
-            try {
-              const chart = echarts.init(container, 'dark', {
-                renderer: 'canvas',
-              });
-              chart.setOption(chartOption);
-              return chart;
-            } catch (error) {
-              console.error('Error rendering chart:', error);
-              return null;
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

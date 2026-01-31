@@ -1264,6 +1264,29 @@ body {
   min-height: 360px;
 }
 
+/* Chart action buttons (export, fullscreen) */
+.chart-action-btn {
+  position: absolute;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.chart-action-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--pinnacle-teal);
+}
+
 /* Metrics Row */
 .metrics-row {
   display: grid;

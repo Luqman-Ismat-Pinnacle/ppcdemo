@@ -6,7 +6,7 @@
  * Styled to match site chart-card containers.
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
 import type { EChartsOption } from 'echarts';
 import { useData } from '@/lib/data-context';
 
@@ -65,8 +65,8 @@ export default function SnapshotComparisonModal({
     [selectedSnapshotId, snapshots]
   );
 
-  // Render current (left) chart – only when we have option data
-  useEffect(() => {
+  // Render current (left) chart – use useLayoutEffect so container ref is set before we init chart
+  useLayoutEffect(() => {
     if (!isOpen || visualType !== 'chart' || !onRenderChart || currentData == null) return;
     const container = currentContainerRef.current;
     if (!container) return;
@@ -371,11 +371,17 @@ function renderTable(data: any[]) {
       <tbody>
         {data.slice(0, 100).map((row, idx) => (
           <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-            {columns.map((col) => (
-              <td key={col} style={{ padding: '8px', color: 'var(--text-secondary)' }}>
-                {String(row[col] ?? '')}
-              </td>
-            ))}
+            {columns.map((col) => {
+              const val = row[col];
+              const str = val == null ? '' : String(val);
+              const isPercent = typeof val === 'number' && (col.toLowerCase().includes('percent') || col.toLowerCase().includes('%') || col === 'efficiency' || col === 'metricsRatio' || col === 'passRate');
+              const display = isPercent ? `${Number(Number(val).toFixed(2))}%` : str;
+              return (
+                <td key={col} style={{ padding: '8px', color: 'var(--text-secondary)' }}>
+                  {display}
+                </td>
+              );
+            })}
           </tr>
         ))}
       </tbody>

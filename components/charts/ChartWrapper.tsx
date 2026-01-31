@@ -288,25 +288,10 @@ const ChartWrapper = React.memo(function ChartWrapper({
       {enableFullscreen && !isLoading && !isEmpty && (
         <button
           type="button"
+          className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
           title="Fullscreen"
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: enableExport ? '42px' : '8px',
-            zIndex: 10,
-            width: '28px',
-            height: '28px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.5)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
+          style={{ top: '8px', right: enableExport ? '44px' : '8px' }}
         >
           ⛶
         </button>
@@ -314,25 +299,10 @@ const ChartWrapper = React.memo(function ChartWrapper({
       {enableExport && !isLoading && !isEmpty && (
         <button
           type="button"
+          className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); handleExport(); }}
           title="Export as PNG"
-          style={{
-            position: 'absolute',
-            top: '8px',
-            right: '8px',
-            zIndex: 10,
-            width: '28px',
-            height: '28px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.5)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
+          style={{ top: '8px', right: '8px' }}
         >
           ⬇
         </button>

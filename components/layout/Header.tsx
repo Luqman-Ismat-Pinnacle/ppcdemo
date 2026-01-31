@@ -55,7 +55,7 @@ export default function Header() {
   // Snapshot dropdown state
   const [showSnapshots, setShowSnapshots] = useState(false);
   const snapshotRef = useRef<HTMLDivElement>(null);
-  const [snapshotType, setSnapshotType] = useState<'baseline' | 'forecast' | 'workday' | 'manual' | 'auto'>('baseline');
+  const [snapshotType, setSnapshotType] = useState<'manual' | 'auto'>('manual');
 
   // UI Selection State
   const [snapshotSection, setSnapshotSection] = useState<string>('');
@@ -93,7 +93,6 @@ export default function Header() {
 
   const [snapshotView, setSnapshotView] = useState<string>('');
   const [snapshotVersionName, setSnapshotVersionName] = useState<string>('');
-  const [snapshotNotes, setSnapshotNotes] = useState<string>('');
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
 
   useEffect(() => {
@@ -139,17 +138,17 @@ export default function Header() {
     setIsCreatingSnapshot(true);
     try {
       const snapshotDate = new Date().toISOString().split('T')[0];
-      const versionName = snapshotVersionName || `${snapshotType} ${snapshotDate}`;
+      const versionName = snapshotVersionName || `Snapshot ${snapshotDate}`;
 
-      // Combine section and page for view (e.g. "project-controls/resourcing")
-      const finalView = snapshotSection ? `${snapshotSection}/${snapshotView}` : snapshotView;
+      // View: section only (entire section) or section/page
+      const finalView = snapshotView ? `${snapshotSection}/${snapshotView}` : snapshotSection;
 
       const input: SnapshotCreateInput = {
         snapshotDate,
         snapshotType,
         versionName,
         createdBy: user?.name || user?.email || 'System',
-        notes: snapshotNotes || null,
+        notes: null,
         scope: derivedScope.scope as any, // Cast to satisfy type, logic handled via derivation
         scopeId: derivedScope.scopeId,
         view: finalView,
@@ -166,7 +165,7 @@ export default function Header() {
       const result = await syncTable('snapshots', [newSnapshot]);
       if (result.success) {
         setSnapshotVersionName('');
-        setSnapshotNotes('');
+        setSnapshotView('');
         setShowSnapshots(false);
         alert(`Snapshot "${versionName}" created successfully!`);
       } else {
@@ -262,39 +261,30 @@ export default function Header() {
               </span>
             )}
           </button>
-          <div className={`nav-dropdown-content dropdown-container snapshot-dropdown-content ${showSnapshots ? 'open' : ''}`} style={{
+          <div className={`nav-dropdown-content dropdown-container ${showSnapshots ? 'open' : ''}`} style={{
             position: 'absolute',
             top: '100%',
             right: 0,
             marginTop: '8px',
-            minWidth: '400px',
-            maxWidth: '500px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            minWidth: '380px',
+            maxWidth: '420px',
             zIndex: 1000,
             maxHeight: '80vh',
             overflow: 'hidden',
             display: showSnapshots ? 'flex' : 'none',
-            flexDirection: 'column'
+            flexDirection: 'column',
           }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
               <div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Snapshots</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Capture and compare project states</div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Snapshots</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Manual &amp; automatic capture</div>
               </div>
               <button
                 onClick={() => setShowSnapshots(false)}
-                aria-label="Close snapshots"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontSize: '1.2rem',
-                  padding: '4px',
-                  lineHeight: 1
-                }}
+                aria-label="Close"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', lineHeight: 1, fontSize: '1.1rem' }}
               >
-                ✕
+                ×
               </button>
             </div>
 
@@ -336,48 +326,46 @@ export default function Header() {
               </div>
 
               {snapshotType !== 'auto' ? (
-                <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <select
-                      value={snapshotSection} // Repurposing scope for Section
-                      onChange={(e) => {
-                        setSnapshotSection(e.target.value);
-                        setSnapshotView(''); // Reset page
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '6px 8px',
-                        fontSize: '0.75rem',
-                        background: 'var(--bg-tertiary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '6px',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="">Select Section...</option>
-                      <option value="project-controls">Project Controls</option>
-                      <option value="insights">Insights</option>
-                      <option value="project-management">Project Management</option>
-                    </select>
+                <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)' }}>What to capture</div>
+                  <select
+                    value={snapshotSection}
+                    onChange={(e) => { setSnapshotSection(e.target.value); setSnapshotView(''); }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      fontSize: '0.75rem',
+                      background: 'var(--bg-tertiary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">Section or page…</option>
+                    <option value="project-controls">Project Controls (section)</option>
+                    <option value="insights">Insights (section)</option>
+                    <option value="project-management">Project Management (section)</option>
+                  </select>
+                  {snapshotSection && (
                     <select
                       value={snapshotView}
                       onChange={(e) => setSnapshotView(e.target.value)}
                       style={{
-                        flex: 1,
-                        padding: '6px 8px',
+                        width: '100%',
+                        padding: '8px 10px',
                         fontSize: '0.75rem',
                         background: 'var(--bg-tertiary)',
                         border: '1px solid var(--border-color)',
                         borderRadius: '6px',
                         color: 'var(--text-primary)',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
                       }}
                     >
-                      <option value="">Select Page...</option>
+                      <option value="">Entire section</option>
                       {snapshotSection === 'project-controls' && (
                         <>
-                          <option value="wbs-gantt">WBS & Gantt Chart</option>
+                          <option value="wbs-gantt">WBS &amp; Gantt</option>
                           <option value="resourcing">Resourcing</option>
                           <option value="folders">Project Plans</option>
                           <option value="data-management">Data Management</option>
@@ -387,7 +375,7 @@ export default function Header() {
                         <>
                           <option value="overview">Overview</option>
                           <option value="milestones">Milestones</option>
-                          <option value="hours">Hours Analysis</option>
+                          <option value="hours">Hours</option>
                           <option value="documents">Documents</option>
                           <option value="qc-dashboard">QC Dashboard</option>
                         </>
@@ -402,41 +390,24 @@ export default function Header() {
                         </>
                       )}
                     </select>
-                  </div>
-
+                  )}
                   <input
                     type="text"
                     value={snapshotVersionName}
                     onChange={(e) => setSnapshotVersionName(e.target.value)}
-                    placeholder="Snapshot name (e.g. Baseline V1)"
+                    placeholder="Name (optional)"
                     style={{
-                      padding: '6px 8px',
-                      fontSize: '0.75rem',
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)'
-                    }}
-                  />
-                  <textarea
-                    value={snapshotNotes}
-                    onChange={(e) => setSnapshotNotes(e.target.value)}
-                    placeholder="Notes (optional)"
-                    rows={2}
-                    style={{
-                      padding: '6px 8px',
+                      padding: '8px 10px',
                       fontSize: '0.75rem',
                       background: 'var(--bg-tertiary)',
                       border: '1px solid var(--border-color)',
                       borderRadius: '6px',
                       color: 'var(--text-primary)',
-                      resize: 'vertical',
-                      fontFamily: 'inherit'
                     }}
                   />
                   <button
                     onClick={handleCreateSnapshot}
-                    disabled={isCreatingSnapshot || !snapshotView}
+                    disabled={isCreatingSnapshot || !snapshotSection}
                     style={{
                       padding: '8px 12px',
                       fontSize: '0.75rem',
