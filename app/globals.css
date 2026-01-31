@@ -1966,7 +1966,8 @@ button {
 
 .table-scroll-area {
   flex: 1;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   position: relative;
   background: var(--bg-primary);
 }
@@ -2002,7 +2003,7 @@ button {
 }
 
 .premium-table tbody td {
-  padding: 6px 12px;
+  padding: 14px 12px;
   border-bottom: 1px solid var(--border-color);
   border-right: 1px solid var(--border-color);
   overflow: hidden;

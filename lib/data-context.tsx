@@ -29,32 +29,37 @@ import { LogsContext } from '@/lib/logs-context';
 
 /**
  * Filter out inactive entities and remove hierarchy nodes with nothing under them.
- * - Employees: only active (isActive !== false, status !== 'Inactive')
- * - Projects: keep if active OR has a plan (has_schedule) so full hierarchy shows for plans
+ * - Employees: exclude if name or status contains 'terminated' or 'inactive'
+ * - Projects: exclude if name contains 'inactive', unless has a plan (has_schedule)
  * - Sites / Customers / Portfolios: keep if they have at least one kept project/site/customer
  * Mutates mergedData in place.
  */
 function applyActiveOnlyAndPruneEmpty(mergedData: Partial<SampleData>): void {
-  const isActiveEmployee = (e: { isActive?: boolean; is_active?: boolean; status?: string }) =>
-    e.isActive !== false && (e as { is_active?: boolean }).is_active !== false && e.status !== 'Inactive';
+  const nameContains = (text: string | null | undefined, terms: string[]) => {
+    const lower = (text || '').toLowerCase();
+    return terms.some((t) => lower.includes(t.toLowerCase()));
+  };
+
+  const isActiveEmployee = (e: { name?: string; status?: string }) => {
+    const n = e.name || '';
+    const s = (e as { status?: string }).status || '';
+    return !nameContains(n, ['terminated', 'inactive']) && !nameContains(s, ['terminated', 'inactive']);
+  };
 
   const hasPlan = (p: { has_schedule?: boolean; hasSchedule?: boolean }) =>
     p.has_schedule === true || p.hasSchedule === true;
 
-  const isActiveEntity = (x: { active?: boolean; isActive?: boolean }) =>
-    x.active !== false && (x as { isActive?: boolean }).isActive !== false;
+  const isActiveProject = (p: { name?: string; has_schedule?: boolean; hasSchedule?: boolean }) =>
+    hasPlan(p) || !nameContains(p.name, ['inactive']);
 
-  // 1. Employees: inactive and status 'Inactive' out
+  // 1. Employees: exclude if name or status contains 'terminated' or 'inactive'
   if (mergedData.employees && Array.isArray(mergedData.employees)) {
     mergedData.employees = mergedData.employees.filter(isActiveEmployee);
   }
 
-  // 2. Projects: keep if active OR has a plan (so hierarchy for "has plan" always shows)
+  // 2. Projects: exclude if name contains 'inactive', unless has a plan
   if (mergedData.projects && Array.isArray(mergedData.projects)) {
-    mergedData.projects = mergedData.projects.filter(
-      (p: { active?: boolean; isActive?: boolean; has_schedule?: boolean; hasSchedule?: boolean }) =>
-        isActiveEntity(p) || hasPlan(p)
-    );
+    mergedData.projects = mergedData.projects.filter(isActiveProject);
   }
 
   // 3. Sites: keep if they have at least one kept project (no active requirement on site)

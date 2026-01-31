@@ -2088,9 +2088,16 @@ export default function DataManagementPage() {
       ? [...mergedData.filter((t: any) => !t.isSubTask), ...newRows]
       : [...mergedData, ...newRows];
 
-    // Apply default filter: hide inactive rows unless showInactive is true
-    if (!showInactive && section.fields.some((f: FieldConfig) => f.key === 'isActive')) {
-      processed = processed.filter((row: any) => row.isActive !== false);
+    // Apply default filter: hide inactive/terminated rows unless showInactive is true (name-based + isActive fallback)
+    if (!showInactive) {
+      processed = processed.filter((row: any) => {
+        const name = (row.name || row.taskName || row.projectNumber || '').toString().toLowerCase();
+        if (name.includes('terminated') || name.includes('inactive')) return false;
+        if (row.isActive === false || row.is_active === false) return false;
+        const status = (row.status || '').toString().toLowerCase();
+        if (status.includes('terminated') || status.includes('inactive')) return false;
+        return true;
+      });
     }
 
     // Apply column filters (Excel-style: selected values). Uses display names for FK types.
@@ -3834,8 +3841,8 @@ export default function DataManagementPage() {
         })}
       </div>
 
-      {/* Table */}
-      <div className="chart-card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Table - overflow auto so table grows with rows, no inner vertical scroll; page scrolls */}
+      <div className="chart-card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
         {renderTable()}
       </div>
 
