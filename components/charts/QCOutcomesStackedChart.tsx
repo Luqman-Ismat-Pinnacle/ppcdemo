@@ -136,6 +136,8 @@ export default function QCOutcomesStackedChart({
     <ChartWrapper
       option={option}
       height={height}
+      enableCompare
+      visualId="qc-outcomes-stacked"
       visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');

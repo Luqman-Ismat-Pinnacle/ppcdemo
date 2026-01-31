@@ -107,6 +107,6 @@ export default function SCurveChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return <ChartWrapper option={option} height={height} enableCompare visualId="s-curve" visualTitle="S-Curve" />;
 }
 

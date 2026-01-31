@@ -78,6 +78,6 @@ export default function GaugeChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return <ChartWrapper option={option} height={height} enableCompare visualId="gauge-chart" visualTitle="Gauge" />;
 }
 

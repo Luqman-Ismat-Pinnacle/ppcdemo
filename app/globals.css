@@ -1120,22 +1120,22 @@ body {
   animation: slideIn 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Insights pages: large containers (override inline styles), consistent spacing */
+/* Insights pages: balanced layouts, tighter spacing */
 .insights-page .page-panel {
-  padding: 1.5rem 1.25rem 2.5rem;
+  padding: 1rem 1.25rem 1.5rem;
 }
 
 .insights-page .page-header {
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
 }
 
 .insights-page .dashboard-grid {
-  gap: 2.5rem;
-  padding: 0 0.25rem 1rem;
+  gap: 1rem;
+  padding: 0 0.125rem 0.5rem;
 }
 
 .insights-page .chart-card {
-  min-height: 680px !important;
+  min-height: 320px !important;
   padding: 0;
   overflow: visible;
   display: flex;
@@ -1143,8 +1143,8 @@ body {
 }
 
 .insights-page .chart-card-body {
-  min-height: 620px !important;
-  padding: 1.5rem 1.75rem;
+  min-height: 260px !important;
+  padding: 0.75rem 1rem;
   flex: 1;
   overflow: auto;
   display: flex;
@@ -1152,38 +1152,38 @@ body {
 }
 
 .insights-page .chart-card-body.no-padding {
-  min-height: 620px !important;
-  padding: 1rem 1.25rem;
+  min-height: 260px !important;
+  padding: 0.5rem 0.75rem;
   overflow: auto;
 }
 
 .insights-page .chart-card-header {
-  padding: 1.25rem 1.5rem;
+  padding: 0.75rem 1rem;
   flex-shrink: 0;
 }
 
 .insights-page .chart-card-title {
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .insights-page .metric-card {
-  padding: 1.25rem 1.5rem;
-  min-height: 120px;
+  padding: 1rem 1.25rem;
+  min-height: 100px;
 }
 
 .insights-page .metric-value {
-  font-size: 2.25rem;
+  font-size: 2rem;
 }
 
 .insights-page .metric-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   letter-spacing: 0.04em;
 }
 
-/* Chart and table areas fill containers */
+/* Chart and table areas fill containers – tighter to show axes */
 .insights-page .chart-container {
-  min-height: 480px !important;
+  min-height: 220px !important;
   width: 100%;
   flex: 1;
 }
@@ -1199,11 +1199,11 @@ body {
 
 /* Spacing between sections on Insights pages */
 .insights-page .metrics-row-compact {
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
 }
 
 .insights-page .dashboard-grid + .dashboard-grid {
-  margin-top: 2.5rem;
+  margin-top: 1rem;
 }
 
 .insights-page .chart-card + .chart-card {

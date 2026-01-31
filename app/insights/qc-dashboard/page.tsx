@@ -104,7 +104,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-body">
             <QCTransactionBarChart
               data={qcByGate}
-              height="250px"
+              height="220px"
               showLabels={true}
               isLoading={dataLoading}
               onBarClick={(params) => handleBarClick(params, 'gate')}
@@ -128,7 +128,7 @@ export default function QCDashboardPage() {
                 count: p.unprocessed + p.pass + p.fail,
                 project: p.projectId,
               }))}
-              height="250px"
+              height="220px"
               showLabels={true}
               onBarClick={(params) => handleBarClick(params, 'project')}
               activeFilters={allFilterValues}
@@ -155,7 +155,7 @@ export default function QCDashboardPage() {
                 fail: g.fail,
                 portfolio: g.portfolio || '',
               }))}
-              height="250px"
+              height="220px"
               onBarClick={(params) => handleBarClick(params, 'gate')}
               activeFilters={allFilterValues}
             />
@@ -172,7 +172,7 @@ export default function QCDashboardPage() {
             <QCScatterChart
               data={data.qcByNameAndRole}
               labelField="name"
-              height="400px"
+              height="280px"
               onPointClick={handleScatterClick}
               activeFilters={allFilterValues}
             />
@@ -197,7 +197,7 @@ export default function QCDashboardPage() {
                 passCount: Math.round((s.passRate / 100) * s.records),
               }))}
               labelField="name"
-              height="400px"
+              height="280px"
               onPointClick={handleScatterClick}
               activeFilters={allFilterValues}
             />
@@ -277,7 +277,7 @@ export default function QCDashboardPage() {
               }))}
               xAxisLabel="Execute Hours Since Last QC Check"
               yAxisLabel="Employee Name Workday"
-              height="400px"
+              height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -296,7 +296,7 @@ export default function QCDashboardPage() {
               }))}
               xAxisLabel="EX Hours to QC Check Ratio"
               yAxisLabel="Employee Name Workday"
-              height="400px"
+              height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -318,7 +318,7 @@ export default function QCDashboardPage() {
               }))}
               xAxisLabel="Execute Hours Since Last QC Check"
               yAxisLabel="Project ID"
-              height="300px"
+              height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -340,7 +340,7 @@ export default function QCDashboardPage() {
               }))}
               xAxisLabel="QC Hours Since Last QC Check"
               yAxisLabel="Employee Name Workday"
-              height="400px"
+              height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -359,7 +359,7 @@ export default function QCDashboardPage() {
               }))}
               xAxisLabel="QC Hours to QC Check Ratio"
               yAxisLabel="Employee Name Workday"
-              height="400px"
+              height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -381,7 +381,7 @@ export default function QCDashboardPage() {
               }))}
               xAxisLabel="QC Hours Since Last QC Check"
               yAxisLabel="Project ID"
-              height="300px"
+              height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -398,7 +398,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-body">
             <QCPassFailStackedChart
               data={data.qcPassFailByTask}
-              height="400px"
+              height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -412,7 +412,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-body">
             <QCFeedbackTimeBarChart
               data={data.qcFeedbackTimeByTask}
-              height="400px"
+              height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -429,7 +429,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-body">
             <QCPassRateLineChart
               data={data.qcPassRatePerMonth}
-              height="300px"
+              height="260px"
               onPointClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -443,7 +443,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-body">
             <QCOutcomesStackedChart
               data={data.qcOutcomesByMonth}
-              height="300px"
+              height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -460,7 +460,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-body">
             <QCFeedbackTimeMonthlyChart
               data={data.qcFeedbackTimeByMonth}
-              height="300px"
+              height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
@@ -475,7 +475,7 @@ export default function QCDashboardPage() {
             <QCFeedbackTimeMonthlyChart
               data={data.kickoffFeedbackTimeByMonth}
               title="Kickoff Feedback Time"
-              height="300px"
+              height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />

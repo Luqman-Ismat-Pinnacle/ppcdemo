@@ -43,8 +43,9 @@ export default function MilestoneStatusPie({
     animationEasing: 'cubicOut',
     title: {
       text: total > 0 ? String(total) : '—',
-      left: 'center',
-      top: '38%',
+      left: '35%',
+      top: 'middle',
+      textAlign: 'center',
       textStyle: { fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' },
       subtext: 'Total',
       subtextStyle: { fontSize: 11, color: 'var(--text-muted)' },
@@ -97,6 +98,8 @@ export default function MilestoneStatusPie({
       height={height}
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
+      enableCompare={true}
+      visualId="milestone-status"
       exportFilename="milestone-status"
       visualTitle="Milestone Status"
       isEmpty={total === 0}

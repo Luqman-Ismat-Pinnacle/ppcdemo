@@ -117,6 +117,8 @@ export default function QCPassRateLineChart({
     <ChartWrapper
       option={option}
       height={height}
+      enableCompare
+      visualId="qc-pass-rate-line"
       visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
         if (onPointClick) {
           chart.off('click');

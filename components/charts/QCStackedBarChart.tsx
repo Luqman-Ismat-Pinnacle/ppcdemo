@@ -67,7 +67,7 @@ export default function QCStackedBarChart({
       itemHeight: 8,
       itemGap: 8,
     },
-    grid: { left: 90, right: 15, top: 30, bottom: 45, containLabel: false },
+    grid: { left: 85, right: 25, top: 25, bottom: 45, containLabel: true },
     xAxis: {
       type: 'value',
       axisLine: { show: false },
@@ -171,6 +171,8 @@ export default function QCStackedBarChart({
       height={height}
       enableExport
       enableFullscreen
+      enableCompare={true}
+      visualId="qc-stacked-bar"
       exportFilename="qc-stacked-by-project"
       visualTitle="QC by Project"
       isEmpty={data.length === 0}

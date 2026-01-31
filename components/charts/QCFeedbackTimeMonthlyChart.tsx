@@ -118,6 +118,8 @@ export default function QCFeedbackTimeMonthlyChart({
     <ChartWrapper
       option={option}
       height={height}
+      enableCompare
+      visualId="qc-feedback-time-monthly"
       visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');

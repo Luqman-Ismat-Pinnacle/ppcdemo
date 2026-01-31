@@ -45,7 +45,8 @@ export default function DeliverableStatusPie({
     } : {
       text: total > 0 ? String(total) : '—',
       left: 'center',
-      top: '38%',
+      top: 'middle',
+      textAlign: 'center',
       textStyle: { fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' },
       subtext: 'Total',
       subtextStyle: { fontSize: 10, color: 'var(--text-muted)' },
@@ -110,6 +111,8 @@ export default function DeliverableStatusPie({
       height={height}
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
+      enableCompare={true}
+      visualId="deliverable-status"
       exportFilename="deliverable-status"
       onClick={
         onSliceClick

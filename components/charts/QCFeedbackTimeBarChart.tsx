@@ -112,6 +112,8 @@ export default function QCFeedbackTimeBarChart({
     <ChartWrapper
       option={option}
       height={height}
+      enableCompare
+      visualId="qc-feedback-time"
       visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');

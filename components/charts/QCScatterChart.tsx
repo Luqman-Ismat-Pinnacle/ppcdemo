@@ -132,7 +132,11 @@ export default function QCScatterChart({
     <ChartWrapper
       option={option}
       height={height}
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      enableCompare
+      visualId="qc-scatter"
+      visualTitle="Chart"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onPointClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

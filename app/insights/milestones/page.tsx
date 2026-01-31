@@ -149,10 +149,10 @@ export default function MilestonesPage() {
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Milestone Status</h3>
           </div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '0.75rem 1rem' }}>
             <MilestoneStatusPie
               data={data.milestoneStatusPie}
-              height="300px"
+              height="240px"
               onSliceClick={(params) => handleFilterClick('status', params.name, params.name)}
               activeFilters={statusFilterValues}
             />
@@ -165,7 +165,7 @@ export default function MilestonesPage() {
             <h3 className="chart-card-title">Plan vs Forecast vs Actual</h3>
           </div>
           <div className="chart-card-body">
-            <PlanForecastActualChart data={data.planVsForecastVsActual} height="320px" />
+            <PlanForecastActualChart data={data.planVsForecastVsActual} height="260px" />
           </div>
         </div>
 

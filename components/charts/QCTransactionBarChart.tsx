@@ -22,6 +22,7 @@ interface QCTransactionBarChartProps {
   onBarClick?: (params: { name: string; dataIndex: number }) => void;
   activeFilters?: string[];
   isLoading?: boolean;
+  enableCompare?: boolean;
 }
 
 export default function QCTransactionBarChart({
@@ -31,6 +32,7 @@ export default function QCTransactionBarChart({
   onBarClick,
   activeFilters = [],
   isLoading = false,
+  enableCompare = true,
 }: QCTransactionBarChartProps) {
   const isFiltered = activeFilters.length > 0;
   const labels = data.map((d) => d.gate || d.project);
@@ -52,7 +54,7 @@ export default function QCTransactionBarChart({
                 </div>`;
       }
     },
-    grid: { left: 110, right: 55, top: 20, bottom: 50, containLabel: false },
+    grid: { left: 100, right: 40, top: 15, bottom: 40, containLabel: true },
     xAxis: {
       type: 'value',
       axisLine: { show: false },
@@ -105,6 +107,8 @@ export default function QCTransactionBarChart({
       height={height}
       enableExport
       enableFullscreen
+      enableCompare
+      visualId="qc-transactions"
       exportFilename="qc-transactions"
       visualTitle="QC Transactions"
       isLoading={isLoading}

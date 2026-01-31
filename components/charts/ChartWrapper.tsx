@@ -24,12 +24,13 @@
  * ```
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
 import { SkeletonChart } from '@/components/ui/Skeleton';
+import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
 
 interface ChartWrapperProps {
   option: EChartsOption;
@@ -43,6 +44,8 @@ interface ChartWrapperProps {
   enableExport?: boolean;
   /** Show fullscreen button; opens chart in a modal overlay */
   enableFullscreen?: boolean;
+  /** Show Compare button; opens snapshot comparison modal */
+  enableCompare?: boolean;
   /** Filename for export (without extension) */
   exportFilename?: string;
   visualId?: string;
@@ -60,6 +63,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
   onClick,
   enableExport = false,
   enableFullscreen = false,
+  enableCompare = false,
   exportFilename = 'chart',
   visualId,
   visualTitle = 'Chart',
@@ -72,8 +76,15 @@ const ChartWrapper = React.memo(function ChartWrapper({
   const fullscreenChartRef = useRef<HTMLDivElement>(null);
   const fullscreenInstanceRef = useRef<echarts.ECharts | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const themeContext = useTheme();
   const theme = themeContext?.theme || 'dark';
+
+  const onRenderChart = useCallback((container: HTMLDivElement, opt: EChartsOption) => {
+    const ch = echarts.init(container, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
+    ch.setOption(opt);
+    return ch;
+  }, [theme]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -198,9 +209,9 @@ const ChartWrapper = React.memo(function ChartWrapper({
       finalOption.tooltip.extraCssText = 'z-index: 99999 !important; backdrop-filter: blur(30px); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);';
     }
 
-    // Ensure grid reserves space for axis labels so x-axis is visible
-    if (finalOption.grid && typeof finalOption.grid === 'object' && finalOption.grid.containLabel === undefined) {
-      finalOption.grid.containLabel = true;
+    // Ensure grid reserves space for axis labels so x-axis is visible (ECharts containLabel)
+    if (finalOption.grid && typeof finalOption.grid === 'object') {
+      if (finalOption.grid.containLabel === undefined) finalOption.grid.containLabel = true;
     }
 
     // Global animation and interaction (ECharts best practices)
@@ -312,6 +323,20 @@ const ChartWrapper = React.memo(function ChartWrapper({
         </div>
       )}
 
+      {enableCompare && visualId && !isLoading && !isEmpty && (
+        <button
+          type="button"
+          className="chart-action-btn"
+          onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
+          title="Compare with snapshots"
+          style={{ top: '8px', right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="4" y="4" width="6" height="16" rx="1" />
+            <rect x="14" y="4" width="6" height="16" rx="1" />
+          </svg>
+        </button>
+      )}
       {enableFullscreen && !isLoading && !isEmpty && (
         <button
           type="button"
@@ -439,6 +464,17 @@ const ChartWrapper = React.memo(function ChartWrapper({
           </div>
         </div>,
         document.body
+      )}
+      {enableCompare && visualId && isCompareOpen && (
+        <SnapshotComparisonModal
+          isOpen={isCompareOpen}
+          onClose={() => setIsCompareOpen(false)}
+          visualId={visualId}
+          visualTitle={visualTitle}
+          visualType="chart"
+          currentData={resolvedOptionRef.current}
+          onRenderChart={onRenderChart}
+        />
       )}
     </div>
   );

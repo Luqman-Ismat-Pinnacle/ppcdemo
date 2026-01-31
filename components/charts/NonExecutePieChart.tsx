@@ -71,6 +71,6 @@ export default function NonExecutePieChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return <ChartWrapper option={option} height={height} enableCompare visualId="non-execute-pie" visualTitle="Non-Execute Hours" />;
 }
 

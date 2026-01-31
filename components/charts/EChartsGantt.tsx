@@ -363,7 +363,7 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
     ]
   }), [chartData, categories, seriesData, linkData, hideLabels, employeeMap]);
 
-  return <ChartWrapper option={option} height={height} />;
+  return <ChartWrapper option={option} height={height} enableCompare visualId="gantt-chart" visualTitle="Gantt" />;
 });
 
 EChartsGantt.displayName = 'EChartsGantt';

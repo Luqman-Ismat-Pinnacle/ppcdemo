@@ -111,6 +111,8 @@ export default function QualityHoursChart({
     <ChartWrapper
       option={option}
       height={height}
+      enableCompare
+      visualId="quality-hours"
       visualTitle="Quality Hours Breakdown"
       isEmpty={data.tasks.length === 0}
       onChartReady={(chart) => {

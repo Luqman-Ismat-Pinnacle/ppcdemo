@@ -124,7 +124,11 @@ export default function QCHoursBarChart({
     <ChartWrapper
       option={option}
       height={height}
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      enableCompare
+      visualId="qc-hours-bar"
+      visualTitle="Chart"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

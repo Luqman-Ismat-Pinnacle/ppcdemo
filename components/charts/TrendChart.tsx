@@ -108,6 +108,6 @@ export default function TrendChart({
     };
   }, [data, dates, title, color]);
 
-  return <ChartWrapper option={option} height={height} />;
+  return <ChartWrapper option={option} height={height} enableCompare visualId="trend-chart" visualTitle="Trend" />;
 }
 

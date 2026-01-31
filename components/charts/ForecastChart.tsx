@@ -100,6 +100,6 @@ export default function ForecastChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return <ChartWrapper option={option} height={height} enableCompare visualId="forecast-chart" visualTitle="Forecast" />;
 }
 

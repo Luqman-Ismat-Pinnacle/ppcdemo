@@ -85,12 +85,7 @@ export default function BudgetVarianceChart({
                 </div>` : ''}`;
       },
     },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true,
-    },
+    grid: { left: 50, right: 30, top: 15, bottom: 55, containLabel: true },
     xAxis: {
       type: 'category',
       data: categories,
@@ -162,6 +157,8 @@ export default function BudgetVarianceChart({
       height={height}
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
+      enableCompare={true}
+      visualId="budget-variance"
       exportFilename="budget-variance"
       onClick={
         onBarClick

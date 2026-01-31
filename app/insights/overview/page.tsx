@@ -491,10 +491,10 @@ export default function OverviewPage() {
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Budget Variance Bridge</h3>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '0.75rem 1rem' }}>
             <BudgetVarianceChart
               data={filteredBudgetVariance}
-              height="480px"
+              height="300px"
               isLoading={dataLoading}
               isEmpty={!filteredBudgetVariance?.length}
               onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
