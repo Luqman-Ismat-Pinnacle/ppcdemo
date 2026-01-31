@@ -38,6 +38,9 @@ export default function MilestoneStatusPie({
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const option: EChartsOption = {
     backgroundColor: 'transparent',
+    animation: true,
+    animationDuration: 600,
+    animationEasing: 'cubicOut',
     title: {
       text: total > 0 ? String(total) : '—',
       left: 'center',
@@ -48,17 +51,11 @@ export default function MilestoneStatusPie({
     },
     tooltip: {
       trigger: 'item',
-      formatter: (params: any) => {
-        return `<div style="font-weight:bold;margin-bottom:4px">${params.name}</div>
-                <div style="display:flex;justify-content:space-between;gap:20px">
-                  <span>Count:</span>
-                  <span style="font-weight:bold">${params.value}</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:20px">
-                  <span>Percent:</span>
-                  <span style="font-weight:bold">${params.percent}%</span>
-                </div>`;
-      }
+      confine: true,
+      formatter: (params: any) =>
+        `<div style="font-weight:bold;margin-bottom:4px">${params.name}</div>
+         <div style="display:flex;justify-content:space-between;gap:20px"><span>Count:</span><span style="font-weight:bold">${params.value}</span></div>
+         <div style="display:flex;justify-content:space-between;gap:20px"><span>Percent:</span><span style="font-weight:bold">${params.percent}%</span></div>`,
     },
     legend: {
       orient: 'vertical',
@@ -76,6 +73,7 @@ export default function MilestoneStatusPie({
         avoidLabelOverlap: false,
         label: { show: false },
         labelLine: { show: false },
+        emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.3)' } },
         data: data.map((d) => {
           const isFiltered = activeFilters.length > 0 && !activeFilters.includes(d.name);
           return {
@@ -91,8 +89,6 @@ export default function MilestoneStatusPie({
         }),
       },
     ],
-    // Center text removed per user request - total shown in tooltip only
-    graphic: [],
   };
 
   return (
@@ -102,6 +98,8 @@ export default function MilestoneStatusPie({
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
       exportFilename="milestone-status"
+      visualTitle="Milestone Status"
+      isEmpty={total === 0}
       onClick={
         onSliceClick
           ? (params) => {

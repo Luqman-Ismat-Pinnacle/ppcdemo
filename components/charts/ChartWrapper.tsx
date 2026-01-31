@@ -29,6 +29,7 @@ import { createPortal } from 'react-dom';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
+import { SkeletonChart } from '@/components/ui/Skeleton';
 
 interface ChartWrapperProps {
   option: EChartsOption;
@@ -202,6 +203,10 @@ const ChartWrapper = React.memo(function ChartWrapper({
       finalOption.grid.containLabel = true;
     }
 
+    // Global animation and interaction (ECharts best practices)
+    if (finalOption.animation === undefined) finalOption.animation = true;
+    if (finalOption.animationDuration === undefined) finalOption.animationDuration = 700;
+    if (finalOption.animationEasing === undefined) finalOption.animationEasing = 'cubicOut';
     chart.setOption(finalOption);
     resolvedOptionRef.current = finalOption;
 
@@ -299,12 +304,11 @@ const ChartWrapper = React.memo(function ChartWrapper({
       }}
     >
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-transparent backdrop-blur-[2px]">
-          <div className="skeleton-shimmer absolute inset-0 opacity-50" />
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-4 border-pinnacle-teal border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium text-muted animate-pulse">Loading {visualTitle}...</span>
-          </div>
+        <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg-primary)]/80">
+          <SkeletonChart
+            height={typeof height === 'number' ? `${height}px` : height}
+            className="flex-1 min-h-0"
+          />
         </div>
       )}
 

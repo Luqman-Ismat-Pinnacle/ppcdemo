@@ -96,3 +96,47 @@ export const SkeletonTable: React.FC<{ rows?: number }> = ({ rows = 5 }) => {
     </div>
   );
 };
+
+/** Skeleton for chart/visual placeholders – mimics chart area with shimmer bars */
+export const SkeletonChart: React.FC<{ height?: string; className?: string }> = ({
+  height = '320px',
+  className = '',
+}) => {
+  return (
+    <div
+      className={`skeleton-chart ${className}`}
+      style={{
+        height,
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        padding: '12px 0',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 6,
+          flex: 1,
+          minHeight: 120,
+        }}
+      >
+        {[42, 68, 48, 82, 58, 72, 52].map((pct, i) => (
+          <div
+            key={i}
+            className="skeleton-shimmer rounded-t-md"
+            style={{
+              flex: 1,
+              height: `${pct}%`,
+              minHeight: 24,
+              maxHeight: '100%',
+            }}
+          />
+        ))}
+      </div>
+      <div className="skeleton-shimmer rounded-md" style={{ height: 16, width: '100%' }} />
+    </div>
+  );
+};

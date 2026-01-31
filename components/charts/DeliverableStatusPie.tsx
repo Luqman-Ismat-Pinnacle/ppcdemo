@@ -78,6 +78,7 @@ export default function DeliverableStatusPie({
         type: 'pie',
         radius: ['45%', '70%'],
         center: ['50%', '50%'],
+        emphasis: { scale: true, scaleSize: 5, itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.25)' } },
         label: {
           show: true,
           position: 'outside',

@@ -49,15 +49,20 @@ function formatWeekLabel(dateStr: string): string {
 export default function HoursPage() {
   const { filteredData } = useData();
   const data = filteredData;
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
-  const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
-  const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
-  const [selectedChargeCodes, setSelectedChargeCodes] = useState<Set<string>>(new Set());
-  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
-  const [chargeType, setChargeType] = useState<'all' | 'billable' | 'non-billable'>('all');
+  const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
   const [workerTableSort, setWorkerTableSort] = useState<SortState | null>(null);
   const [roleTableSort, setRoleTableSort] = useState<SortState | null>(null);
+
+  const selectedEmployees = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'employee').map((f) => f.value)), [pageFilters]);
+  const selectedRoles = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'role').map((f) => f.value)), [pageFilters]);
+  const selectedChargeCodes = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'chargeCode').map((f) => f.value)), [pageFilters]);
+  const selectedProjects = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'project').map((f) => f.value)), [pageFilters]);
+  const chargeType = useMemo((): 'all' | 'billable' | 'non-billable' => {
+    const chip = pageFilters.find((f) => f.dimension === 'chargeType');
+    return (chip?.value === 'billable' || chip?.value === 'non-billable') ? chip.value : 'all';
+  }, [pageFilters]);
+  const activeFilters = useMemo(() => pageFilters.map((f) => f.value), [pageFilters]);
 
   // Calculate overall efficiency - no hardcoded fallback
   const overallEfficiency = useMemo(() => {
@@ -86,31 +91,16 @@ export default function HoursPage() {
     return data.nonExecuteHours.percent;
   }, [data?.nonExecuteHours]);
 
-  // Handle chart bar clicks for filtering - dimension-aware based on current view
-  const handleBarClick = (params: { name: string; dataIndex: number; value?: number }) => {
-    const updateSet = (prev: Set<string>) => {
-      const next = new Set(prev);
-      if (next.has(params.name)) next.delete(params.name);
-      else next.add(params.name);
-      return next;
-    };
-    if (stackedView === 'chargeCode') setSelectedChargeCodes(updateSet);
-    else if (stackedView === 'project') setSelectedProjects(updateSet);
-    else if (stackedView === 'role') setSelectedRoles(updateSet);
-    setActiveFilters((prev) => {
-      if (prev.includes(params.name)) return prev.filter((f) => f !== params.name);
-      return [...prev, params.name];
+  const handleBarClick = useCallback((params: { name: string; dataIndex: number; value?: number }) => {
+    const dimension = stackedView === 'chargeCode' ? 'chargeCode' : stackedView === 'project' ? 'project' : 'role';
+    setPageFilters((prev) => {
+      const exists = prev.some((f) => f.dimension === dimension && f.value === params.name);
+      if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === params.name));
+      return [...prev, { dimension, value: params.name, label: params.name }];
     });
-  };
+  }, [stackedView]);
 
-  const clearFilters = () => {
-    setActiveFilters([]);
-    setSelectedEmployees(new Set());
-    setSelectedRoles(new Set());
-    setSelectedChargeCodes(new Set());
-    setSelectedProjects(new Set());
-    setChargeType('all');
-  };
+  const clearFilters = useCallback(() => setPageFilters([]), []);
 
   // Get unique employees from labor breakdown
   const employees = useMemo(() => {
@@ -154,27 +144,8 @@ export default function HoursPage() {
     });
   }, [data?.laborBreakdown, selectedEmployees, selectedRoles, selectedChargeCodes, chargeType]);
   
-  // Count active filters
-  const activeFilterCount = selectedEmployees.size + selectedRoles.size + selectedChargeCodes.size + selectedProjects.size + (chargeType !== 'all' ? 1 : 0);
-
-  // Build filter chips for FilterBar (Power BI style)
-  const filterChips: FilterChip[] = useMemo(() => {
-    const chips: FilterChip[] = [];
-    selectedChargeCodes.forEach((v) => chips.push({ dimension: 'chargeCode', value: v, label: v }));
-    selectedProjects.forEach((v) => chips.push({ dimension: 'project', value: v, label: v }));
-    selectedRoles.forEach((v) => chips.push({ dimension: 'role', value: v, label: v }));
-    selectedEmployees.forEach((v) => chips.push({ dimension: 'employee', value: v, label: v }));
-    if (chargeType !== 'all') chips.push({ dimension: 'chargeType', value: chargeType, label: chargeType === 'billable' ? 'Billable Only' : 'Non-Billable Only' });
-    return chips;
-  }, [selectedChargeCodes, selectedProjects, selectedRoles, selectedEmployees, chargeType]);
-
   const handleRemoveFilter = useCallback((dimension: string, value: string) => {
-    if (dimension === 'chargeCode') setSelectedChargeCodes((s) => { const n = new Set(s); n.delete(value); return n; });
-    if (dimension === 'project') setSelectedProjects((s) => { const n = new Set(s); n.delete(value); return n; });
-    if (dimension === 'role') setSelectedRoles((s) => { const n = new Set(s); n.delete(value); return n; });
-    if (dimension === 'employee') setSelectedEmployees((s) => { const n = new Set(s); n.delete(value); return n; });
-    if (dimension === 'chargeType') setChargeType('all');
-    setActiveFilters((p) => p.filter((f) => f !== value));
+    setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
   }, []);
 
   // Prepare labor breakdown chart data - use filtered workers so clicks apply page-wide
@@ -400,7 +371,7 @@ export default function HoursPage() {
         {/* Filter Bar - Power BI style */}
         <div style={{ marginBottom: '1.5rem' }}>
           <InsightsFilterBar
-            filters={filterChips}
+            filters={pageFilters}
             onRemove={handleRemoveFilter}
             onClearAll={clearFilters}
             emptyMessage="Click any chart segment to filter the page"
@@ -411,7 +382,14 @@ export default function HoursPage() {
           {/* Charge Type Filter */}
           <select
             value={chargeType}
-            onChange={(e) => setChargeType(e.target.value as 'all' | 'billable' | 'non-billable')}
+            onChange={(e) => {
+              const v = e.target.value as 'all' | 'billable' | 'non-billable';
+              setPageFilters((prev) => {
+                const without = prev.filter((f) => f.dimension !== 'chargeType');
+                if (v === 'all') return without;
+                return [...without, { dimension: 'chargeType' as const, value: v, label: v === 'billable' ? 'Billable Only' : 'Non-Billable Only' }];
+              });
+            }}
             style={{
               padding: '6px 12px',
               fontSize: '0.75rem',
@@ -432,13 +410,12 @@ export default function HoursPage() {
             value=""
             onChange={(e) => {
               if (e.target.value) {
-                const newSet = new Set(selectedRoles);
-                if (newSet.has(e.target.value)) {
-                  newSet.delete(e.target.value);
-                } else {
-                  newSet.add(e.target.value);
-                }
-                setSelectedRoles(newSet);
+                const val = e.target.value;
+                setPageFilters((prev) => {
+                  const exists = prev.some((f) => f.dimension === 'role' && f.value === val);
+                  if (exists) return prev.filter((f) => !(f.dimension === 'role' && f.value === val));
+                  return [...prev, { dimension: 'role', value: val, label: val }];
+                });
                 e.target.value = '';
               }
             }}
@@ -463,13 +440,12 @@ export default function HoursPage() {
             value=""
             onChange={(e) => {
               if (e.target.value) {
-                const newSet = new Set(selectedChargeCodes);
-                if (newSet.has(e.target.value)) {
-                  newSet.delete(e.target.value);
-                } else {
-                  newSet.add(e.target.value);
-                }
-                setSelectedChargeCodes(newSet);
+                const val = e.target.value;
+                setPageFilters((prev) => {
+                  const exists = prev.some((f) => f.dimension === 'chargeCode' && f.value === val);
+                  if (exists) return prev.filter((f) => !(f.dimension === 'chargeCode' && f.value === val));
+                  return [...prev, { dimension: 'chargeCode', value: val, label: val }];
+                });
                 e.target.value = '';
               }
             }}
@@ -490,7 +466,7 @@ export default function HoursPage() {
           </select>
           
           {/* Clear Filters Button */}
-          {activeFilterCount > 0 && (
+          {pageFilters.length > 0 && (
             <button
               onClick={clearFilters}
               style={{
@@ -507,7 +483,7 @@ export default function HoursPage() {
                 cursor: 'pointer',
               }}
             >
-              Clear Filters ({activeFilterCount}) ✕
+              Clear Filters ({pageFilters.length}) ✕
             </button>
           )}
         </div>
@@ -702,15 +678,14 @@ export default function HoursPage() {
               value=""
               onChange={(e) => {
                 if (e.target.value === 'clear') {
-                  setSelectedEmployees(new Set());
+                  setPageFilters((prev) => prev.filter((f) => f.dimension !== 'employee'));
                 } else if (e.target.value) {
-                  const newSet = new Set(selectedEmployees);
-                  if (newSet.has(e.target.value)) {
-                    newSet.delete(e.target.value);
-                  } else {
-                    newSet.add(e.target.value);
-                  }
-                  setSelectedEmployees(newSet);
+                  const val = e.target.value;
+                  setPageFilters((prev) => {
+                    const exists = prev.some((f) => f.dimension === 'employee' && f.value === val);
+                    if (exists) return prev.filter((f) => !(f.dimension === 'employee' && f.value === val));
+                    return [...prev, { dimension: 'employee', value: val, label: val }];
+                  });
                   e.target.value = '';
                 }
               }}
@@ -733,7 +708,7 @@ export default function HoursPage() {
             </select>
             {selectedEmployees.size > 0 && (
               <button
-                onClick={() => setSelectedEmployees(new Set())}
+                onClick={() => setPageFilters((prev) => prev.filter((f) => f.dimension !== 'employee'))}
                 style={{
                   display: 'flex',
                   alignItems: 'center',

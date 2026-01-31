@@ -54,8 +54,13 @@ export default function BudgetVarianceChart({
 
   const option: EChartsOption = {
     backgroundColor: 'transparent',
+    animation: true,
+    animationDuration: 700,
+    animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      confine: true,
       formatter: (params: any) => {
         if (!params || params.length === 0) return '';
         const param = params[0];
@@ -105,6 +110,13 @@ export default function BudgetVarianceChart({
     series: [
       {
         type: 'bar',
+        barMaxWidth: 48,
+        barMinHeight: 4,
+        roundCap: true,
+        emphasis: {
+          focus: 'self',
+          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.25)', borderColor: '#fff', borderWidth: 1 },
+        },
         data: values.map((val, idx) => {
           const name = categories[idx];
           const isFiltered = activeFilters.length > 0 && !activeFilters.includes(name);

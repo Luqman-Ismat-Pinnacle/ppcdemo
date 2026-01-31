@@ -21,6 +21,7 @@ interface QCTransactionBarChartProps {
   showLabels?: boolean;
   onBarClick?: (params: { name: string; dataIndex: number }) => void;
   activeFilters?: string[];
+  isLoading?: boolean;
 }
 
 export default function QCTransactionBarChart({
@@ -29,6 +30,7 @@ export default function QCTransactionBarChart({
   showLabels = true,
   onBarClick,
   activeFilters = [],
+  isLoading = false,
 }: QCTransactionBarChartProps) {
   const isFiltered = activeFilters.length > 0;
   const labels = data.map((d) => d.gate || d.project);
@@ -92,7 +94,7 @@ export default function QCTransactionBarChart({
           color: '#fff',
           fontSize: 10,
         },
-        emphasis: { itemStyle: { opacity: 0.85 } },
+        emphasis: { focus: 'self', itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)', borderColor: '#fff', borderWidth: 1 } },
       },
     ],
   };
@@ -105,6 +107,7 @@ export default function QCTransactionBarChart({
       enableFullscreen
       exportFilename="qc-transactions"
       visualTitle="QC Transactions"
+      isLoading={isLoading}
       isEmpty={data.length === 0}
       onChartReady={(chart) => {
         if (onBarClick) {

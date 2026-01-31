@@ -28,12 +28,12 @@ import QCOutcomesStackedChart from '@/components/charts/QCOutcomesStackedChart';
 import QCFeedbackTimeMonthlyChart from '@/components/charts/QCFeedbackTimeMonthlyChart';
 
 export default function QCDashboardPage() {
-  const { filteredData } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const gateFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'gate').map((f) => f.value), [pageFilters]);
   const projectFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'project').map((f) => f.value), [pageFilters]);
+  const allFilterValues = useMemo(() => [...gateFilterValues, ...projectFilterValues], [gateFilterValues, projectFilterValues]);
 
   const handleFilterClick = useCallback((dimension: string, value: string, label?: string) => {
     setPageFilters((prev) => {
@@ -41,21 +41,13 @@ export default function QCDashboardPage() {
       if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === value));
       return [...prev, { dimension, value, label: label || value }];
     });
-    setActiveFilters((prev) => {
-      if (prev.includes(value)) return prev.filter((f) => f !== value);
-      return [...prev, value];
-    });
   }, []);
 
   const handleRemoveFilter = useCallback((dimension: string, value: string) => {
     setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
-    setActiveFilters((prev) => prev.filter((f) => f !== value));
   }, []);
 
-  const handleClearFilters = useCallback(() => {
-    setPageFilters([]);
-    setActiveFilters([]);
-  }, []);
+  const handleClearFilters = useCallback(() => setPageFilters([]), []);
 
   // Aggregate QC Transaction by Gate - filter by gate when filter active
   const qcByGate = useMemo(() => {
@@ -114,8 +106,9 @@ export default function QCDashboardPage() {
               data={qcByGate}
               height="250px"
               showLabels={true}
+              isLoading={dataLoading}
               onBarClick={(params) => handleBarClick(params, 'gate')}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -138,7 +131,7 @@ export default function QCDashboardPage() {
               height="250px"
               showLabels={true}
               onBarClick={(params) => handleBarClick(params, 'project')}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -164,7 +157,7 @@ export default function QCDashboardPage() {
               }))}
               height="250px"
               onBarClick={(params) => handleBarClick(params, 'gate')}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -181,7 +174,7 @@ export default function QCDashboardPage() {
               labelField="name"
               height="400px"
               onPointClick={handleScatterClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -206,7 +199,7 @@ export default function QCDashboardPage() {
               labelField="name"
               height="400px"
               onPointClick={handleScatterClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -286,7 +279,7 @@ export default function QCDashboardPage() {
               yAxisLabel="Employee Name Workday"
               height="400px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -305,7 +298,7 @@ export default function QCDashboardPage() {
               yAxisLabel="Employee Name Workday"
               height="400px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -327,7 +320,7 @@ export default function QCDashboardPage() {
               yAxisLabel="Project ID"
               height="300px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -349,7 +342,7 @@ export default function QCDashboardPage() {
               yAxisLabel="Employee Name Workday"
               height="400px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -368,7 +361,7 @@ export default function QCDashboardPage() {
               yAxisLabel="Employee Name Workday"
               height="400px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -390,7 +383,7 @@ export default function QCDashboardPage() {
               yAxisLabel="Project ID"
               height="300px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -407,7 +400,7 @@ export default function QCDashboardPage() {
               data={data.qcPassFailByTask}
               height="400px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -421,7 +414,7 @@ export default function QCDashboardPage() {
               data={data.qcFeedbackTimeByTask}
               height="400px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -438,7 +431,7 @@ export default function QCDashboardPage() {
               data={data.qcPassRatePerMonth}
               height="300px"
               onPointClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -452,7 +445,7 @@ export default function QCDashboardPage() {
               data={data.qcOutcomesByMonth}
               height="300px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -469,7 +462,7 @@ export default function QCDashboardPage() {
               data={data.qcFeedbackTimeByMonth}
               height="300px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>
@@ -484,7 +477,7 @@ export default function QCDashboardPage() {
               title="Kickoff Feedback Time"
               height="300px"
               onBarClick={handleBarClick}
-              activeFilters={activeFilters}
+              activeFilters={allFilterValues}
             />
           </div>
         </div>

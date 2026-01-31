@@ -14,11 +14,12 @@
  * @module app/insights/overview/page
  */
 
-import React, { Suspense, useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
+import { SkeletonMetric } from '@/components/ui/Skeleton';
 import {
   type SortState,
   formatSortIndicator,
@@ -33,30 +34,19 @@ function formatPercent(value: unknown): string {
   return `${Number(n.toFixed(2))}%`;
 }
 
-function LoadingSpinner() {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
-      <div style={{ color: 'var(--text-muted)' }}>Loading...</div>
-    </div>
-  );
-}
-
 export default function OverviewPage() {
-  const { filteredData } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
 
-  // Get unique projects for budget variance selector
+  // Unique projects for budget variance (when no filters: show first project's bridge)
   const projects = useMemo(() => {
-    const projectNames = [...new Set(data.budgetVariance.map((item: any) => item.project || item.name).filter(Boolean))];
-    // If no project names in budget variance, try to get from projects table
+    const projectNames = [...new Set(data.budgetVariance?.map((item: any) => item.project || item.name).filter(Boolean) || [])];
     if (projectNames.length === 0 && data.projects?.length) {
       return data.projects.map((p: any) => p.name || p.projectId).filter(Boolean);
     }
     return projectNames;
   }, [data.budgetVariance, data.projects]);
 
-  // Selected project for budget variance (default to first)
-  const [selectedProject, setSelectedProject] = useState<string>('');
   const [countMetricsSort, setCountMetricsSort] = useState<SortState | null>(null);
   const [projectMetricsSort, setProjectMetricsSort] = useState<SortState | null>(null);
 
@@ -291,15 +281,14 @@ export default function OverviewPage() {
 
   const filteredBudgetVariance = useMemo(() => {
     let list = data.budgetVariance || [];
-    const proj = selectedProject || projects[0];
-    if (proj && !projectFilterValues.length) {
-      list = list.filter((item: any) => item.name === proj || item.type === 'end');
-    }
     if (projectFilterValues.length > 0) {
       list = list.filter((item: any) => projectFilterValues.includes(item.name) || item.type === 'end');
+    } else {
+      const first = projects[0];
+      if (first) list = list.filter((item: any) => item.name === first || item.type === 'end');
     }
     return list;
-  }, [data.budgetVariance, selectedProject, projects, projectFilterValues]);
+  }, [data.budgetVariance, projects, projectFilterValues]);
 
   return (
     <div className="page-panel insights-page">
@@ -312,8 +301,16 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* Metrics Row - Primary KPIs */}
+      {/* Metrics Row - Primary KPIs (skeleton when loading) */}
       <div className="metrics-row-compact" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
+        {dataLoading ? (
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <SkeletonMetric key={i} />
+            ))}
+          </>
+        ) : (
+        <>
         <EnhancedTooltip
           content={{
             title: 'Total Hours',
@@ -413,6 +410,8 @@ export default function OverviewPage() {
             )}
           </div>
         </EnhancedTooltip>
+        </>
+        )}
       </div>
 
       {/* Filter Bar - Power BI style cross-visual filtering */}
@@ -474,54 +473,33 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        {/* Budget Variance Bridge - Full Width */}
+        {/* Budget Variance Bridge - Full Width; project from filter chips or first project */}
         <div className="chart-card grid-full" style={{ gridColumn: '1 / -1' }}>
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="chart-card-header">
             <EnhancedTooltip
               content={{
                 title: 'Budget Variance Bridge',
-                description: 'Waterfall chart showing the breakdown of budget changes from baseline to forecast.',
-                calculation: 'Variance = Actual Cost - Planned Cost\n\nBridge shows:\n- Starting Budget (baseline)\n- Changes (positive/negative variances)\n- Ending Forecast',
+                description: 'Waterfall chart showing the breakdown of budget changes from baseline to forecast. Click a bar to filter the page by that project.',
+                calculation: 'Variance = Actual Cost - Planned Cost. Bridge shows starting budget, changes, and ending forecast.',
                 details: [
                   'Each bar represents a variance component',
-                  'Positive values increase budget',
-                  'Negative values decrease budget',
-                  'Final value shows forecasted total cost',
+                  'Click a bar to filter the page by project',
+                  'When no filters applied, first project is shown',
                 ],
               }}
             >
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Budget Variance Bridge</h3>
             </EnhancedTooltip>
-            {projects.length > 0 && (
-              <select
-                value={selectedProject || projects[0]}
-                onChange={(e) => setSelectedProject(e.target.value)}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: '0.8rem',
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  minWidth: '200px'
-                }}
-              >
-                {projects.map((proj: string) => (
-                  <option key={proj} value={proj}>{proj}</option>
-                ))}
-              </select>
-            )}
           </div>
           <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <Suspense fallback={<LoadingSpinner />}>
-              <BudgetVarianceChart
-                data={filteredBudgetVariance}
-                height="480px"
-                onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
-                activeFilters={projectFilterValues}
-              />
-            </Suspense>
+            <BudgetVarianceChart
+              data={filteredBudgetVariance}
+              height="480px"
+              isLoading={dataLoading}
+              isEmpty={!filteredBudgetVariance?.length}
+              onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
+              activeFilters={projectFilterValues}
+            />
           </div>
         </div>
 
