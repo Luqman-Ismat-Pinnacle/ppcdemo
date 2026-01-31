@@ -197,8 +197,25 @@ const ChartWrapper = React.memo(function ChartWrapper({
       finalOption.tooltip.extraCssText = 'z-index: 99999 !important; backdrop-filter: blur(30px); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);';
     }
 
+    // Ensure grid reserves space for axis labels so x-axis is visible
+    if (finalOption.grid && typeof finalOption.grid === 'object' && finalOption.grid.containLabel === undefined) {
+      finalOption.grid.containLabel = true;
+    }
+
     chart.setOption(finalOption);
     resolvedOptionRef.current = finalOption;
+
+    // Resize after layout so chart and axes render correctly (fixes 0-height init)
+    const resizeChart = () => {
+      if (chartInstanceRef.current) chartInstanceRef.current.resize();
+    };
+    const rafId = requestAnimationFrame(() => {
+      resizeChart();
+      requestAnimationFrame(resizeChart);
+    });
+
+    const resizeObserver = new ResizeObserver(() => resizeChart());
+    if (chartRef.current) resizeObserver.observe(chartRef.current);
 
     if (onChartReady) {
       onChartReady(chart);
@@ -218,14 +235,12 @@ const ChartWrapper = React.memo(function ChartWrapper({
       });
     }
 
-    // Handle resize
-    const handleResize = () => {
-      chart.resize();
-    };
-
+    const handleResize = () => chart.resize();
     window.addEventListener('resize', handleResize);
 
     return () => {
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       chart.dispose();
     };
@@ -245,10 +260,18 @@ const ChartWrapper = React.memo(function ChartWrapper({
     const chart = echarts.init(fullscreenChartRef.current, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
     fullscreenInstanceRef.current = chart;
     chart.setOption(resolvedOptionRef.current);
-    const handleResize = () => chart.resize();
-    window.addEventListener('resize', handleResize);
+    const resizeChart = () => chart.resize();
+    const rafId = requestAnimationFrame(() => {
+      resizeChart();
+      requestAnimationFrame(resizeChart);
+    });
+    const resizeObserver = new ResizeObserver(resizeChart);
+    resizeObserver.observe(fullscreenChartRef.current);
+    window.addEventListener('resize', resizeChart);
     return () => {
-      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', resizeChart);
       chart.dispose();
       fullscreenInstanceRef.current = null;
     };

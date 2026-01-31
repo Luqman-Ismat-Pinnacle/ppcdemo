@@ -52,7 +52,7 @@ export default function ForecastChart({
       itemWidth: 15,
       itemHeight: 3,
     },
-    grid: { left: 55, right: 15, top: 40, bottom: 25 },
+    grid: { left: 55, right: 15, top: 40, bottom: 50, containLabel: true },
     xAxis: {
       type: 'category',
       data: data.months,

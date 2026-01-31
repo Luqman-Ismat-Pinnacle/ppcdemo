@@ -67,7 +67,7 @@ export default function QCScatterChart({
       itemWidth: 8,
       itemHeight: 8,
     },
-    grid: { left: 50, right: 20, top: 50, bottom: 40 },
+    grid: { left: 50, right: 20, top: 50, bottom: 50, containLabel: true },
     xAxis: {
       type: 'value',
       name: 'Total Records',

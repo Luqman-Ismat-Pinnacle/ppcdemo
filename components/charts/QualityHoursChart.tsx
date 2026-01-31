@@ -58,7 +58,7 @@ export default function QualityHoursChart({
       itemWidth: 12,
       itemHeight: 12,
     },
-    grid: { left: 120, right: 70, top: 15, bottom: 50 },
+    grid: { left: 120, right: 70, top: 15, bottom: 50, containLabel: true },
     xAxis: {
       type: 'value',
       max: 100,

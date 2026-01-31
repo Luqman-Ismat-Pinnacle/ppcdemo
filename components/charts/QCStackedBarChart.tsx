@@ -67,7 +67,7 @@ export default function QCStackedBarChart({
       itemHeight: 8,
       itemGap: 8,
     },
-    grid: { left: 90, right: 15, top: 30, bottom: 20, containLabel: false },
+    grid: { left: 90, right: 15, top: 30, bottom: 45, containLabel: false },
     xAxis: {
       type: 'value',
       axisLine: { show: false },

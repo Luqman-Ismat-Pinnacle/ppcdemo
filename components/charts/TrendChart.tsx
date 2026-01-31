@@ -61,7 +61,7 @@ export default function TrendChart({
                   </div>`;
         }
       },
-      grid: { left: 40, right: 15, top: 10, bottom: 25 },
+      grid: { left: 40, right: 15, top: 10, bottom: 45, containLabel: true },
       xAxis: {
         type: 'category',
         data: dates,

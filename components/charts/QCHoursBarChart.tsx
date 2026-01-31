@@ -62,7 +62,7 @@ export default function QCHoursBarChart({
                 </div>`;
       },
     },
-    grid: { left: 120, right: 80, top: 20, bottom: 35, containLabel: false },
+    grid: { left: 120, right: 80, top: 20, bottom: 50, containLabel: false },
     xAxis: {
       type: 'value',
       name: xAxisLabel,

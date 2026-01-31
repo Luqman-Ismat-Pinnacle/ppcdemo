@@ -71,7 +71,7 @@ export default function QCPassFailStackedChart({
       top: 0,
       textStyle: { color: 'var(--text-secondary)', fontSize: 11 },
     },
-    grid: { left: 120, right: 80, top: 40, bottom: 35, containLabel: false },
+    grid: { left: 120, right: 80, top: 40, bottom: 50, containLabel: false },
     xAxis: {
       type: 'value',
       name: 'QC Pass and QC Fail',

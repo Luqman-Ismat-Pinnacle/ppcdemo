@@ -50,7 +50,7 @@ export default function QCTransactionBarChart({
                 </div>`;
       }
     },
-    grid: { left: 110, right: 55, top: 20, bottom: 35, containLabel: false },
+    grid: { left: 110, right: 55, top: 20, bottom: 50, containLabel: false },
     xAxis: {
       type: 'value',
       axisLine: { show: false },

@@ -51,7 +51,7 @@ export default function PlanForecastActualChart({
       itemWidth: 15,
       itemHeight: 3,
     },
-    grid: { left: 50, right: 80, top: 50, bottom: 40 },
+    grid: { left: 50, right: 80, top: 50, bottom: 55, containLabel: true },
     xAxis: {
       type: 'category',
       data: data.dates,
