@@ -93,7 +93,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* Filter Bar */}
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <InsightsFilterBar
           filters={pageFilters}
           onRemove={handleRemoveFilter}
@@ -175,7 +175,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Analyst Performance: Records vs Pass Rate</h3>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '400px' }}>
+          <div className="chart-card-body">
             <QCScatterChart
               data={data.qcByNameAndRole}
               labelField="name"
@@ -191,7 +191,7 @@ export default function QCDashboardPage() {
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Subproject Quality Analysis</h3>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '400px' }}>
+          <div className="chart-card-body">
             <QCScatterChart
               data={data.qcBySubproject.map((s) => ({
                 name: s.name,
@@ -213,12 +213,12 @@ export default function QCDashboardPage() {
       </div>
 
       {/* Individual QPCI Measures Performance Table */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-full">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Individual QPCI Measures Performance</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '300px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ overflow: 'auto' }}>
             {data.qcByNameAndRole && data.qcByNameAndRole.length > 0 ? (
               <table className="data-table">
                 <thead>
@@ -271,7 +271,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* Execute Hours Section */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Execute Hours Since Last QC Check</h3>
@@ -312,7 +312,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* Execute Hours by Project */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-full">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Execute Hours Since Last QC Check by Project</h3>
@@ -334,7 +334,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* QC Hours Section */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">QC Hours Since Last QC Check</h3>
@@ -375,7 +375,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* QC Hours by Project and Subproject */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-full">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">QC Hours Since Last QC Check by Project and Sub Project</h3>
@@ -397,7 +397,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* QC by Task Section */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">QC pass and QC Fail by Task</h3>
@@ -428,7 +428,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* Monthly QC Metrics */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">QC Pass Rate Per Month</h3>
@@ -459,7 +459,7 @@ export default function QCDashboardPage() {
       </div>
 
       {/* QC Feedback Time by Month */}
-      <div className="dashboard-grid" style={{ marginTop: '2rem' }}>
+      <div className="dashboard-grid">
         <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">QC Feedback Time</h3>

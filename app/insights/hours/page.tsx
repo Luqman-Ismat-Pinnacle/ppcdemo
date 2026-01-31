@@ -398,7 +398,7 @@ export default function HoursPage() {
         </div>
         
         {/* Filter Bar - Power BI style */}
-        <div style={{ marginBottom: '1rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
           <InsightsFilterBar
             filters={filterChips}
             onRemove={handleRemoveFilter}
@@ -514,7 +514,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 1: Task Efficiency (Full Width - Expanded) */}
-      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
+      <div className="chart-card" style={{ marginBottom: '2rem' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -535,7 +535,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 2: Quality Hours + Non-Execute */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
         {/* Quality Hours */}
         <div className="chart-card">
           <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -609,7 +609,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 2: Hours Variance Waterfall - Full Width Expanded */}
-      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
+      <div className="chart-card" style={{ marginBottom: '2rem' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -629,7 +629,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 3: Combined Stacked Bar Chart - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
+      <div className="chart-card" style={{ marginBottom: '2rem' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -675,7 +675,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 4: Labor Breakdown by Worker - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '500px' }}>
+      <div className="chart-card" style={{ marginBottom: '2rem' }}>
         <div className="chart-card-header" style={{ 
           borderBottom: '1px solid var(--border-color)', 
           display: 'flex', 
@@ -877,7 +877,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 5: Labor Breakdown by Role - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
+      <div className="chart-card" style={{ marginBottom: '2rem' }}>
         <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">

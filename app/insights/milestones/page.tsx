@@ -133,7 +133,7 @@ export default function MilestonesPage() {
       </div>
 
       {/* Filter Bar */}
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <InsightsFilterBar
           filters={pageFilters}
           onRemove={handleRemoveFilter}
@@ -149,7 +149,7 @@ export default function MilestonesPage() {
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Milestone Status</h3>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '320px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <MilestoneStatusPie
               data={data.milestoneStatusPie}
               height="300px"
@@ -174,7 +174,7 @@ export default function MilestonesPage() {
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Scoreboard</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '250px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ overflow: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -231,7 +231,7 @@ export default function MilestonesPage() {
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Detailed Milestones</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '400px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ overflow: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>

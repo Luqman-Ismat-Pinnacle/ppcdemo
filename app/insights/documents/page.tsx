@@ -60,7 +60,7 @@ export default function DocumentsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <InsightsFilterBar
           filters={pageFilters}
           onRemove={handleRemoveFilter}
@@ -73,7 +73,7 @@ export default function DocumentsPage() {
       <div className="dashboard-grid">
         {data.documentSignoffGauges.map((gauge, idx) => (
           <div key={idx} className="chart-card grid-quarter">
-            <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '200px', padding: '1.5rem' }}>
+            <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
               <div style={{ fontSize: '2.5rem', fontWeight: 800, color: gauge.color }}>{gauge.value}%</div>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'center' }}>{gauge.name}</div>
             </div>
@@ -83,25 +83,25 @@ export default function DocumentsPage() {
         {/* Pie Charts Row */}
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">DRD Status</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <DeliverableStatusPie data={data.deliverableByStatus.drd} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">Workflow Status</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <DeliverableStatusPie data={data.deliverableByStatus.workflow} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">SOP Status</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <DeliverableStatusPie data={data.deliverableByStatus.sop} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">QMP Status</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <DeliverableStatusPie data={data.deliverableByStatus.qmp} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
@@ -111,7 +111,7 @@ export default function DocumentsPage() {
           <div className="chart-card-header">
             <h3 className="chart-card-title">Detailed Deliverable Matrix</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '1rem' }}>
+          <div className="chart-card-body no-padding" style={{ overflow: 'auto', padding: '1rem' }}>
             <table className="data-table">
               <thead>
                 <tr>

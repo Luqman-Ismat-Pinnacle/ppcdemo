@@ -1116,14 +1116,22 @@ body {
   animation: slideIn 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Insights pages: much larger containers, content fits inside */
+/* Insights pages: large containers (override inline styles), consistent spacing */
+.insights-page .page-panel {
+  padding: 1.5rem 1.25rem 2.5rem;
+}
+
+.insights-page .page-header {
+  margin-bottom: 2rem;
+}
+
 .insights-page .dashboard-grid {
-  gap: 2rem;
-  padding: 0 0.5rem;
+  gap: 2.5rem;
+  padding: 0 0.25rem 1rem;
 }
 
 .insights-page .chart-card {
-  min-height: 520px;
+  min-height: 680px !important;
   padding: 0;
   overflow: visible;
   display: flex;
@@ -1131,7 +1139,7 @@ body {
 }
 
 .insights-page .chart-card-body {
-  min-height: 460px;
+  min-height: 620px !important;
   padding: 1.5rem 1.75rem;
   flex: 1;
   overflow: auto;
@@ -1140,7 +1148,7 @@ body {
 }
 
 .insights-page .chart-card-body.no-padding {
-  min-height: 460px;
+  min-height: 620px !important;
   padding: 1rem 1.25rem;
   overflow: auto;
 }
@@ -1169,10 +1177,11 @@ body {
   letter-spacing: 0.04em;
 }
 
-/* Ensure chart containers and tables fit inside cards */
+/* Chart and table areas fill containers */
 .insights-page .chart-container {
-  min-height: 380px;
+  min-height: 480px !important;
   width: 100%;
+  flex: 1;
 }
 
 .insights-page .data-table {
@@ -1182,6 +1191,19 @@ body {
 .insights-page table.data-table th,
 .insights-page table.data-table td {
   padding: 12px 14px;
+}
+
+/* Spacing between sections on Insights pages */
+.insights-page .metrics-row-compact {
+  margin-bottom: 2rem;
+}
+
+.insights-page .dashboard-grid + .dashboard-grid {
+  margin-top: 2.5rem;
+}
+
+.insights-page .chart-card + .chart-card {
+  margin-top: 0;
 }
 
 /* Dashboard Grid */

@@ -416,7 +416,7 @@ export default function OverviewPage() {
       </div>
 
       {/* Filter Bar - Power BI style cross-visual filtering */}
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
         <InsightsFilterBar
           filters={pageFilters}
           onRemove={handleRemoveFilter}
@@ -441,7 +441,7 @@ export default function OverviewPage() {
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Schedule Performance</h3>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+          <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
             <div style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, color: spi >= 1 ? '#10B981' : spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>
               {spi.toFixed(2)}
             </div>
@@ -464,7 +464,7 @@ export default function OverviewPage() {
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Cost Performance</h3>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+          <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
             <div style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, color: cpi >= 1 ? '#10B981' : cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>
               {cpi.toFixed(2)}
             </div>
@@ -513,7 +513,7 @@ export default function OverviewPage() {
               </select>
             )}
           </div>
-          <div className="chart-card-body" style={{ minHeight: '520px', padding: '1.5rem' }}>
+          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <Suspense fallback={<LoadingSpinner />}>
               <BudgetVarianceChart
                 data={filteredBudgetVariance}
@@ -549,7 +549,7 @@ export default function OverviewPage() {
               </div>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '0.5rem' }}>
+          <div className="chart-card-body no-padding" style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -678,7 +678,7 @@ export default function OverviewPage() {
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Projects: Efficiency vs Metrics</h3>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '0.5rem' }}>
+          <div className="chart-card-body no-padding" style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
