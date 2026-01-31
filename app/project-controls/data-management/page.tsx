@@ -265,12 +265,12 @@ const TableFilterHeader = ({
               position: 'fixed',
               top: `${filterDropdownPosition.top}px`,
               left: `${filterDropdownPosition.left}px`,
-              background: 'rgba(23, 25, 31, 1)',
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '12px',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)',
+              background: 'var(--bg-card)',
+              backdropFilter: 'blur(40px)',
+              WebkitBackdropFilter: 'blur(40px)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
               zIndex: 100000,
               minWidth: '280px',
               maxWidth: '350px',
@@ -279,20 +279,19 @@ const TableFilterHeader = ({
               display: 'flex',
               flexDirection: 'column',
               pointerEvents: 'auto',
-              animation: 'slideInDown 0.2s cubic-bezier(0, 0, 0.2, 1)'
             }}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
             onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
           >
             {/* Header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 Filter {field.header}
               </div>
             </div>
 
             {/* Sort Options */}
-            <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <button
                 type="button"
                 onClick={() => {
@@ -345,13 +344,22 @@ const TableFilterHeader = ({
               </button>
             </div>
 
-            <div style={{ padding: '0 8px 8px' }}>
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', margin: '4px 0 8px' }}></div>
-
-              <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ padding: '8px', borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 10px',
+                background: 'var(--bg-secondary)',
+                borderRadius: '4px',
+              }}>
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="var(--text-muted)" strokeWidth="2" fill="none">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
                 <input
                   type="text"
-                  placeholder="Search values..."
+                  placeholder="Search..."
                   autoFocus
                   value={searchText}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -361,129 +369,133 @@ const TableFilterHeader = ({
                     }));
                   }}
                   style={{
-                    width: '100%',
-                    padding: '8px 12px',
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-primary)',
                     fontSize: '0.75rem',
-                    background: 'rgba(0,0,0,0.2)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
-                    color: 'white',
                     outline: 'none',
                   }}
                 />
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomColumnFilters((prev: Record<string, Record<string, string[]>>) => ({
-                        ...prev,
-                        [section.key]: {
-                          ...(prev[section.key] || {}),
-                          [field.key]: uniqueValues,
-                        },
-                      }));
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '6px',
-                      fontSize: '0.65rem',
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      color: 'white',
-                      fontWeight: 600,
-                    }}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomColumnFilters((prev: Record<string, Record<string, string[]>>) => ({
-                        ...prev,
-                        [section.key]: {
-                          ...(prev[section.key] || {}),
-                          [field.key]: [],
-                        },
-                      }));
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '6px',
-                      fontSize: '0.65rem',
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      color: 'rgba(255,255,255,0.5)',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
               </div>
+            </div>
 
-              <div style={{
-                maxHeight: '200px',
-                overflowY: 'auto',
-                padding: '0 8px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px'
-              }}>
-                {uniqueValues
-                  .filter((val: string) => !searchText || val.toLowerCase().includes(searchText.toLowerCase()))
-                  .map((value: string) => {
-                    const isChecked = selectedValues.includes(value);
-                    return (
-                      <label
-                        key={value}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          padding: '6px 8px',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem',
-                          borderRadius: '6px',
-                          background: isChecked ? 'rgba(255,255,255,0.03)' : 'transparent',
-                          color: isChecked ? 'white' : 'var(--text-muted)',
-                          transition: 'all 0.1s'
+            <div style={{ padding: '6px 8px', display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomColumnFilters((prev: Record<string, Record<string, string[]>>) => ({
+                    ...prev,
+                    [section.key]: {
+                      ...(prev[section.key] || {}),
+                      [field.key]: uniqueValues,
+                    },
+                  }));
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  fontSize: '0.7rem',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'var(--text-primary)',
+                  fontWeight: 600,
+                }}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomColumnFilters((prev: Record<string, Record<string, string[]>>) => ({
+                    ...prev,
+                    [section.key]: {
+                      ...(prev[section.key] || {}),
+                      [field.key]: [],
+                    },
+                  }));
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  fontSize: '0.7rem',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  fontWeight: 600,
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+              {uniqueValues
+                .filter((val: string) => !searchText || val.toLowerCase().includes(searchText.toLowerCase()))
+                .map((value: string) => {
+                  const isChecked = selectedValues.includes(value);
+                  return (
+                    <label
+                      key={value}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        background: isChecked ? 'rgba(64, 224, 208, 0.1)' : 'transparent',
+                        borderLeft: isChecked ? '2px solid var(--pinnacle-teal)' : '2px solid transparent',
+                        color: isChecked ? 'var(--text-primary)' : 'var(--text-muted)',
+                        transition: 'background 0.1s',
+                        marginLeft: '4px',
+                        marginRight: '4px',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          setCustomColumnFilters((prev: Record<string, Record<string, string[]>>) => {
+                            const current = prev[section.key]?.[field.key] || [];
+                            const newValues = e.target.checked
+                              ? [...current, value]
+                              : current.filter((v: string) => v !== value);
+                            return {
+                              ...prev,
+                              [section.key]: {
+                                ...(prev[section.key] || {}),
+                                [field.key]: newValues,
+                              },
+                            };
+                          });
                         }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            setCustomColumnFilters((prev: Record<string, Record<string, string[]>>) => {
-                              const current = prev[section.key]?.[field.key] || [];
-                              const newValues = e.target.checked
-                                ? [...current, value]
-                                : current.filter((v: string) => v !== value);
-                              return {
-                                ...prev,
-                                [section.key]: {
-                                  ...(prev[section.key] || {}),
-                                  [field.key]: newValues,
-                                },
-                              };
-                            });
-                          }}
-                          style={{
-                            accentColor: 'var(--pinnacle-teal)',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {value}
-                        </span>
-                      </label>
-                    );
-                  })}
-              </div>
+                        style={{
+                          accentColor: 'var(--pinnacle-teal)',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {value}
+                      </span>
+                    </label>
+                  );
+                })}
+            </div>
+
+            <div style={{
+              padding: '6px 12px',
+              borderTop: '1px solid var(--border-color)',
+              fontSize: '0.65rem',
+              color: 'var(--text-muted)',
+              background: 'var(--bg-secondary)',
+            }}>
+              {uniqueValues.filter((v: string) => !searchText || v.toLowerCase().includes(searchText.toLowerCase())).length} values
             </div>
           </div>,
           document.body
@@ -2062,9 +2074,12 @@ export default function DataManagementPage() {
 
     const baseData = (data as any)[section.dataKey] || [];
 
+    const getRowKey = (row: any) =>
+      section.key === 'employees' ? (row.id ?? row.employeeId ?? row.employee_id ?? '') : row[section.idKey];
+
     // Apply any edited values
     const mergedData = baseData.map((row: any) => {
-      const edited = editedRows.get(row[section.idKey]);
+      const edited = editedRows.get(getRowKey(row));
       return edited ? { ...row, ...edited } : row;
     });
 
@@ -2763,7 +2778,7 @@ export default function DataManagementPage() {
       );
     }
 
-    // Text/Number input
+    // Text/Number input - match SearchableDropdown/select styling for consistency
     return (
       <div
         contentEditable
@@ -2776,14 +2791,20 @@ export default function DataManagementPage() {
           }
         }}
         style={{
+          width: '100%',
+          padding: '6px 10px',
           fontSize: '0.75rem',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           cursor: 'text',
-          background: isEdited ? 'rgba(205, 220, 57, 0.1)' : 'rgba(64, 224, 208, 0.02)',
+          background: isEdited ? 'rgba(205, 220, 57, 0.1)' : 'var(--bg-tertiary)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '4px',
+          color: 'var(--text-primary)',
           outline: 'none',
-          minHeight: '1.2em',
+          minHeight: '28px',
+          boxSizing: 'border-box',
         }}
       >
         {displayValue ?? '-'}
@@ -2796,6 +2817,13 @@ export default function DataManagementPage() {
   // ============================================================================
 
   // Build TanStack Table columns from section fields
+  const getRowId = useCallback((section: SectionConfig, row: any) => {
+    if (section.key === 'employees') {
+      return row.id ?? row.employeeId ?? row.employee_id ?? '';
+    }
+    return row[section.idKey];
+  }, []);
+
   const buildTableColumns = useCallback((section: SectionConfig): ColumnDef<any>[] => {
     const columns: ColumnDef<any>[] = [
       {
@@ -2809,7 +2837,7 @@ export default function DataManagementPage() {
           />
         ),
         cell: ({ row }) => {
-          const rowId = row.original[section.idKey];
+          const rowId = getRowId(section, row.original);
           return (
             <input
               type="checkbox"
@@ -2847,7 +2875,7 @@ export default function DataManagementPage() {
           />
         ),
         cell: ({ row }) => {
-          const rowId = row.original[section.idKey];
+          const rowId = getRowId(section, row.original);
           return renderCell(row.original, field, rowId);
         },
         enableSorting: true,
@@ -3016,7 +3044,7 @@ export default function DataManagementPage() {
     }
 
     return columns;
-  }, [getTableData, getUniqueValues, customColumnFilters, openFilterDropdown, filterSearchText, tableSortStates, formatSortIndicator, getNextSortState, selectedRows, handleRowSelect, renderCell, processingMPP, addToImportLog, refreshData, setUploadStatus, setProcessingMPP, setMppAnalysis]);
+  }, [getRowId, getTableData, getUniqueValues, customColumnFilters, openFilterDropdown, filterSearchText, tableSortStates, formatSortIndicator, getNextSortState, selectedRows, handleRowSelect, renderCell, processingMPP, addToImportLog, refreshData, setUploadStatus, setProcessingMPP, setMppAnalysis]);
 
   // ============================================================================
   // TABLE RENDERER
@@ -3524,9 +3552,9 @@ export default function DataManagementPage() {
                   </tr>
                 ) : (
                   table.getRowModel().rows.map((row) => {
-                    const rowId = row.original[section.idKey];
+                    const rowId = getRowId(section, row.original);
                     const isSelected = selectedRows.has(rowId);
-                    const isNew = newRows.some((nr: any) => nr[section.idKey] === rowId);
+                    const isNew = newRows.some((nr: any) => getRowId(section, nr) === rowId);
                     const hasRowEdits = editedRows.has(rowId);
 
                     return (
@@ -3724,7 +3752,7 @@ export default function DataManagementPage() {
 
       </div>
     );
-  }, [getCurrentSection, getTableData, tableSortStates, sortByState, getSortValueForField, formatSortIndicator, getNextSortState, editedRows, newRows, selectedRows, handleAddRow, handleDeleteSelected, handleSaveChanges, handleSelectAll, handleRowSelect, renderCell, isSyncing, isLoading, supabaseEnabled, snapshotScope, snapshotScopeId, snapshotType, snapshotDate, snapshotVersionName, snapshotCreatedBy, snapshotNotes, projectOptions, handleCreateSnapshot, handleLockSnapshots, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, changeControlSummary]);
+  }, [getRowId, getCurrentSection, getTableData, tableSortStates, sortByState, getSortValueForField, formatSortIndicator, getNextSortState, editedRows, newRows, selectedRows, handleAddRow, handleDeleteSelected, handleSaveChanges, handleSelectAll, handleRowSelect, renderCell, isSyncing, isLoading, supabaseEnabled, snapshotScope, snapshotScopeId, snapshotType, snapshotDate, snapshotVersionName, snapshotCreatedBy, snapshotNotes, projectOptions, handleCreateSnapshot, handleLockSnapshots, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, changeControlSummary]);
 
   // ============================================================================
   // RENDER
