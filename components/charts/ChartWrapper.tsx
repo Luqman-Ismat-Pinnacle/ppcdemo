@@ -31,6 +31,7 @@ import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
 import { SkeletonChart } from '@/components/ui/Skeleton';
 import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
+import { useChartHeaderActions } from './ChartCard';
 
 interface ChartWrapperProps {
   option: EChartsOption;
@@ -79,6 +80,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const themeContext = useTheme();
   const theme = themeContext?.theme || 'dark';
+  const headerActionsEl = useChartHeaderActions();
 
   const onRenderChart = useCallback((container: HTMLDivElement, opt: EChartsOption) => {
     const ch = echarts.init(container, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
@@ -304,32 +306,18 @@ const ChartWrapper = React.memo(function ChartWrapper({
     }
   };
 
-  return (
-    <div
-      className={`chart-container relative rounded-xl overflow-hidden ${className}`}
-      style={{
-        width: '100%',
-        height,
-        cursor: onClick ? 'pointer' : undefined,
-        ...style,
-      }}
-    >
-      {isLoading && (
-        <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg-primary)]/80">
-          <SkeletonChart
-            height={typeof height === 'number' ? `${height}px` : height}
-            className="flex-1 min-h-0"
-          />
-        </div>
-      )}
+  const useFillHeight = !!headerActionsEl;
+  const containerHeight = useFillHeight ? '100%' : height;
 
+  const actionButtons = (
+    <>
       {enableCompare && visualId && !isLoading && !isEmpty && (
         <button
           type="button"
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
           title="Compare with snapshots"
-          style={{ top: '8px', right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }}
+          style={headerActionsEl ? { marginLeft: 'auto' } : { position: 'absolute', top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="4" y="4" width="6" height="16" rx="1" />
@@ -343,7 +331,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
           title="Fullscreen"
-          style={{ top: '8px', right: enableExport ? '44px' : '8px' }}
+          style={!headerActionsEl ? { position: 'absolute', top: 8, right: enableExport ? 44 : 8 } : undefined}
         >
           ⛶
         </button>
@@ -354,11 +342,36 @@ const ChartWrapper = React.memo(function ChartWrapper({
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); handleExport(); }}
           title="Export as PNG"
-          style={{ top: '8px', right: '8px' }}
+          style={!headerActionsEl ? { position: 'absolute', top: 8, right: 8 } : undefined}
         >
           ⬇
         </button>
       )}
+    </>
+  );
+
+  return (
+    <div
+      className={`chart-container relative rounded-xl overflow-hidden ${className}`}
+      style={{
+        width: '100%',
+        height: containerHeight,
+        minHeight: useFillHeight ? 200 : undefined,
+        cursor: onClick ? 'pointer' : undefined,
+        ...style,
+      }}
+    >
+      {!headerActionsEl && actionButtons}
+      {headerActionsEl && typeof document !== 'undefined' && createPortal(actionButtons, headerActionsEl)}
+      {isLoading && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg-primary)]/80">
+          <SkeletonChart
+            height={typeof height === 'number' ? `${height}px` : height}
+            className="flex-1 min-h-0"
+          />
+        </div>
+      )}
+
       {!isLoading && isEmpty && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-transparent backdrop-blur-[1px]">
           <div className="flex flex-col items-center gap-2 p-6 text-center">

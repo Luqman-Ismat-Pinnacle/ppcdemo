@@ -17,6 +17,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
+import ChartCard from '@/components/charts/ChartCard';
 import QCTransactionBarChart from '@/components/charts/QCTransactionBarChart';
 import QCStackedBarChart from '@/components/charts/QCStackedBarChart';
 import QCScatterChart from '@/components/charts/QCScatterChart';
@@ -97,12 +98,8 @@ export default function QCDashboardPage() {
       {/* Top Row: Three Charts */}
       <div className="dashboard-grid">
         {/* QC Transaction by QC Gate */}
-        <div className="chart-card grid-third">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Transaction by QC Gate</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCTransactionBarChart
+        <ChartCard title="QC Transaction by QC Gate" gridClass="grid-full">
+          <QCTransactionBarChart
               data={qcByGate}
               height="220px"
               showLabels={true}
@@ -110,16 +107,11 @@ export default function QCDashboardPage() {
               onBarClick={(params) => handleBarClick(params, 'gate')}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
         {/* QC Transaction by Project */}
-        <div className="chart-card grid-third">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Transaction by Project</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCTransactionBarChart
+        <ChartCard title="QC Transaction by Project" gridClass="grid-full">
+          <QCTransactionBarChart
               data={(projectFilterValues.length > 0
                 ? data.qcTransactionByProject.filter((p: any) => projectFilterValues.includes(p.projectId))
                 : data.qcTransactionByProject
@@ -133,16 +125,11 @@ export default function QCDashboardPage() {
               onBarClick={(params) => handleBarClick(params, 'project')}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        {/* QC Transactions by QC Gate (Stacked) */}
-        <div className="chart-card grid-third">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Pass/Fail Distribution</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCStackedBarChart
+        {/* QC Pass/Fail Distribution */}
+        <ChartCard title="QC Pass/Fail Distribution" gridClass="grid-full">
+          <QCStackedBarChart
               data={(gateFilterValues.length > 0
                 ? data.qcByGateStatus.filter((g: any) => gateFilterValues.includes(g.gate))
                 : data.qcByGateStatus
@@ -159,17 +146,11 @@ export default function QCDashboardPage() {
               onBarClick={(params) => handleBarClick(params, 'gate')}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        {/* Bottom Row: Scatter Charts */}
-        {/* Records, Pass Rate by Name/Role */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Analyst Performance: Records vs Pass Rate</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCScatterChart
+        {/* Analyst Performance: Records vs Pass Rate */}
+        <ChartCard title="Analyst Performance: Records vs Pass Rate" gridClass="grid-full">
+          <QCScatterChart
               data={data.qcByNameAndRole}
               labelField="name"
               height="280px"
@@ -180,12 +161,8 @@ export default function QCDashboardPage() {
         </div>
 
         {/* Records, Pass Rate by Subproject */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Subproject Quality Analysis</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCScatterChart
+        <ChartCard title="Subproject Quality Analysis" gridClass="grid-full">
+          <QCScatterChart
               data={data.qcBySubproject.map((s) => ({
                 name: s.name,
                 role: 'Subproject',
@@ -201,17 +178,12 @@ export default function QCDashboardPage() {
               onPointClick={handleScatterClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* Individual QPCI Measures Performance Table */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-full">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Individual QPCI Measures Performance</h3>
-          </div>
-          <div className="chart-card-body no-padding" style={{ overflow: 'auto' }}>
+        <ChartCard title="Individual QPCI Measures Performance" gridClass="grid-full" noPadding>
             {data.qcByNameAndRole && data.qcByNameAndRole.length > 0 ? (
               <table className="data-table">
                 <thead>
@@ -259,18 +231,13 @@ export default function QCDashboardPage() {
                 No data available
               </div>
             )}
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* Execute Hours Section */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Execute Hours Since Last QC Check</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCHoursBarChart
+        <ChartCard title="Execute Hours Since Last QC Check" gridClass="grid-full">
+          <QCHoursBarChart
               data={data.executeHoursSinceLastQC.map((item) => ({
                 name: item.employeeName,
                 value: item.hours,
@@ -281,15 +248,10 @@ export default function QCDashboardPage() {
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">EX Hours to QC Check Ratio</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCHoursBarChart
+        <ChartCard title="EX Hours to QC Check Ratio" gridClass="grid-full">
+          <QCHoursBarChart
               data={data.exHoursToQCRatio.map((item) => ({
                 name: item.employeeName,
                 value: item.ratio,
@@ -300,18 +262,13 @@ export default function QCDashboardPage() {
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* Execute Hours by Project */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-full">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Execute Hours Since Last QC Check by Project</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCHoursBarChart
+        <ChartCard title="Execute Hours Since Last QC Check by Project" gridClass="grid-full">
+          <QCHoursBarChart
               data={data.executeHoursSinceLastQCByProject.map((item) => ({
                 name: item.projectName,
                 value: item.hours,
@@ -322,18 +279,13 @@ export default function QCDashboardPage() {
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* QC Hours Section */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Hours Since Last QC Check</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCHoursBarChart
+        <ChartCard title="QC Hours Since Last QC Check" gridClass="grid-full">
+          <QCHoursBarChart
               data={data.qcHoursSinceLastQC.map((item) => ({
                 name: item.employeeName,
                 value: item.hours,
@@ -344,15 +296,10 @@ export default function QCDashboardPage() {
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Hours to QC Check Ratio</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCHoursBarChart
+        <ChartCard title="QC Hours to QC Check Ratio" gridClass="grid-full">
+          <QCHoursBarChart
               data={data.qcHoursToQCRatio.map((item) => ({
                 name: item.employeeName,
                 value: item.ratio,
@@ -363,18 +310,13 @@ export default function QCDashboardPage() {
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* QC Hours by Project and Subproject */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-full">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Hours Since Last QC Check by Project and Sub Project</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCHoursBarChart
+        <ChartCard title="QC Hours Since Last QC Check by Project and Sub Project" gridClass="grid-full">
+          <QCHartsBarChart
               data={data.qcHoursSinceLastQCByProject.map((item) => ({
                 name: `${item.projectName}${item.subprojectName ? ' - ' + item.subprojectName : ''}`,
                 value: item.hours,
@@ -385,102 +327,71 @@ export default function QCDashboardPage() {
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* QC by Task Section */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC pass and QC Fail by Task</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCPassFailStackedChart
+        <ChartCard title="QC pass and QC Fail by Task" gridClass="grid-full">
+          <QCPassFailStackedChart
               data={data.qcPassFailByTask}
               height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Feedback by Task</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCFeedbackTimeBarChart
+        <ChartCard title="QC Feedback by Task" gridClass="grid-full">
+          <QCFeedbackTimeBarChart
               data={data.qcFeedbackTimeByTask}
               height="280px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* Monthly QC Metrics */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Pass Rate Per Month</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCPassRateLineChart
+        <ChartCard title="QC Pass Rate Per Month" gridClass="grid-full">
+          <QCPassRateLineChart
               data={data.qcPassRatePerMonth}
               height="260px"
               onPointClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Outcomes</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCOutcomesStackedChart
+        <ChartCard title="QC Outcomes" gridClass="grid-full">
+          <QCOutcomesStackedChart
               data={data.qcOutcomesByMonth}
               height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
       {/* QC Feedback Time by Month */}
       <div className="dashboard-grid">
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">QC Feedback Time</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCFeedbackTimeMonthlyChart
+        <ChartCard title="QC Feedback Time" gridClass="grid-full">
+          <QCFeedbackTimeMonthlyChart
               data={data.qcFeedbackTimeByMonth}
               height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Kickoff Feedback Time</h3>
-          </div>
-          <div className="chart-card-body">
-            <QCFeedbackTimeMonthlyChart
+        <ChartCard title="Kickoff Feedback Time" gridClass="grid-full">
+          <QCFeedbackTimeMonthlyChart
               data={data.kickoffFeedbackTimeByMonth}
               title="Kickoff Feedback Time"
               height="260px"
               onBarClick={handleBarClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
       </div>
 
     </div>

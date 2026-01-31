@@ -15,6 +15,7 @@
 import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
+import ChartCard from '@/components/charts/ChartCard';
 import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
 import PlanForecastActualChart from '@/components/charts/PlanForecastActualChart';
 import { formatDate } from '@/lib/utils';
@@ -145,29 +146,19 @@ export default function MilestonesPage() {
       {/* Top Row: Charts and Scoreboard */}
       <div className="dashboard-grid">
         {/* Milestone Status Pie */}
-        <div className="chart-card grid-quarter">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Milestone Status</h3>
-          </div>
-          <div className="chart-card-body" style={{ padding: '0.75rem 1rem' }}>
+        <ChartCard title="Milestone Status" gridClass="grid-quarter">
             <MilestoneStatusPie
               data={data.milestoneStatusPie}
               height="240px"
               onSliceClick={(params) => handleFilterClick('status', params.name, params.name)}
               activeFilters={statusFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
         {/* Plan vs Forecast vs Actual */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Plan vs Forecast vs Actual</h3>
-          </div>
-          <div className="chart-card-body">
-            <PlanForecastActualChart data={data.planVsForecastVsActual} height="260px" />
-          </div>
-        </div>
+        <ChartCard title="Plan vs Forecast vs Actual" gridClass="grid-full">
+          <PlanForecastActualChart data={data.planVsForecastVsActual} height="100%" />
+        </ChartCard>
 
         {/* Scoreboard */}
         <div className="chart-card grid-quarter">
@@ -227,11 +218,8 @@ export default function MilestonesPage() {
         </div>
 
         {/* Bottom: Milestones Table */}
-        <div className="chart-card grid-full">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Detailed Milestones</h3>
-          </div>
-          <div className="chart-card-body no-padding" style={{ overflow: 'auto' }}>
+        <ChartCard title="Detailed Milestones" gridClass="grid-full" noPadding>
+            <div style={{ overflow: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -332,8 +320,8 @@ export default function MilestonesPage() {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
+            </div>
+        </ChartCard>
       </div>
 
     </div>

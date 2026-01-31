@@ -13,6 +13,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import ChartCard from '@/components/charts/ChartCard';
 import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 
@@ -69,49 +70,29 @@ export default function DocumentsPage() {
         />
       </div>
 
-      {/* Gauge Row - Large KPI cards for glanceability */}
+      {/* Combined Percent + Pie cards (DRD, Workflow, SOP, QMP) */}
       <div className="dashboard-grid">
-        {data.documentSignoffGauges.map((gauge, idx) => (
-          <div key={idx} className="chart-card grid-quarter">
-            <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
-              <div style={{ fontSize: '2.5rem', fontWeight: 800, color: gauge.color }}>{gauge.value}%</div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'center' }}>{gauge.name}</div>
-            </div>
-          </div>
-        ))}
-
-        {/* Pie Charts Row */}
-        <div className="chart-card grid-quarter">
-          <div className="chart-card-header"><h3 className="chart-card-title">DRD Status</h3></div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.drd} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
-          </div>
-        </div>
-        <div className="chart-card grid-quarter">
-          <div className="chart-card-header"><h3 className="chart-card-title">Workflow Status</h3></div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.workflow} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
-          </div>
-        </div>
-        <div className="chart-card grid-quarter">
-          <div className="chart-card-header"><h3 className="chart-card-title">SOP Status</h3></div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.sop} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
-          </div>
-        </div>
-        <div className="chart-card grid-quarter">
-          <div className="chart-card-header"><h3 className="chart-card-title">QMP Status</h3></div>
-          <div className="chart-card-body" style={{ padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.qmp} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
-          </div>
-        </div>
+        {['drd', 'workflow', 'sop', 'qmp'].map((key, idx) => {
+          const gauge = data.documentSignoffGauges?.[idx] || { name: key.charAt(0).toUpperCase() + key.slice(1), value: 0, color: '#40E0D0' };
+          const pieData = (data.deliverableByStatus as Record<string, { name: string; value: number; color: string }[]>)[key] || [];
+          return (
+            <ChartCard key={key} title={`${gauge.name} Status`} gridClass="grid-quarter">
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+                <div style={{ flexShrink: 0, textAlign: 'center', padding: '0.75rem 0' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: gauge.color }}>{gauge.value}%</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{gauge.name} signoff</div>
+                </div>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <DeliverableStatusPie data={pieData} title="" height="100%" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
+                </div>
+              </div>
+            </ChartCard>
+          );
+        })}
 
         {/* Deliverables Table */}
-        <div className="chart-card grid-full">
-          <div className="chart-card-header">
-            <h3 className="chart-card-title">Detailed Deliverable Matrix</h3>
-          </div>
-          <div className="chart-card-body no-padding" style={{ overflow: 'auto', padding: '1rem' }}>
+        <ChartCard title="Detailed Deliverable Matrix" gridClass="grid-full" noPadding>
+          <div style={{ overflow: 'auto', padding: '1rem' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -167,7 +148,7 @@ export default function DocumentsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </ChartCard>
       </div>
     </div>
   );

@@ -1132,11 +1132,11 @@ body {
 .insights-page .dashboard-grid {
   gap: 1.5rem;
   padding: 0 0.25rem 0.5rem;
-  grid-auto-rows: minmax(380px, auto);
+  grid-auto-rows: minmax(420px, auto);
 }
 
 .insights-page .chart-card {
-  min-height: 380px;
+  min-height: 420px;
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -1144,7 +1144,7 @@ body {
 }
 
 .insights-page .chart-card-body {
-  min-height: 300px;
+  min-height: 340px;
   padding: 1rem 1.25rem;
   flex: 1;
   overflow: hidden;
@@ -1153,7 +1153,7 @@ body {
 }
 
 .insights-page .chart-card-body.no-padding {
-  min-height: 300px;
+  min-height: 340px;
   padding: 0.75rem 1rem;
   overflow: auto;
 }
@@ -1182,11 +1182,12 @@ body {
   letter-spacing: 0.04em;
 }
 
-/* Chart areas: contain within card, no overflow */
-.insights-page .chart-container {
+/* Chart areas: fill container, resize with card */
+.insights-page .chart-card-body .chart-container {
   width: 100%;
   flex: 1;
   min-height: 0;
+  height: 100% !important;
   overflow: hidden;
 }
 
@@ -1334,6 +1335,10 @@ body {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border-color: var(--pinnacle-teal);
+}
+
+.chart-header-actions .chart-action-btn {
+  position: static;
 }
 
 /* Metrics Row */

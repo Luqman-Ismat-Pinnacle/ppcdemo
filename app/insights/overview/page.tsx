@@ -17,6 +17,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
+import ChartCard from '@/components/charts/ChartCard';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
@@ -473,9 +474,10 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        {/* Budget Variance Bridge - Full Width; project from filter chips or first project */}
-        <div className="chart-card grid-full" style={{ gridColumn: '1 / -1' }}>
-          <div className="chart-card-header">
+        {/* Budget Variance Bridge - Full Width */}
+        <ChartCard
+          gridClass="grid-full"
+          title={
             <EnhancedTooltip
               content={{
                 title: 'Budget Variance Bridge',
@@ -490,35 +492,29 @@ export default function OverviewPage() {
             >
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Budget Variance Bridge</h3>
             </EnhancedTooltip>
-          </div>
-          <div className="chart-card-body" style={{ padding: '0.75rem 1rem' }}>
-            <BudgetVarianceChart
-              data={filteredBudgetVariance}
-              height="300px"
-              isLoading={dataLoading}
-              isEmpty={!filteredBudgetVariance?.length}
-              onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
-              activeFilters={projectFilterValues}
-            />
-          </div>
-        </div>
+          }
+        >
+          <BudgetVarianceChart
+            data={filteredBudgetVariance}
+            height="100%"
+            isLoading={dataLoading}
+            isEmpty={!filteredBudgetVariance?.length}
+            onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
+            activeFilters={projectFilterValues}
+          />
+        </ChartCard>
 
         {/* Count/Metrics Analysis Table */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <ChartCard
+          gridClass="grid-full"
+          noPadding
+          title={
             <EnhancedTooltip
               content={{
                 title: 'Count/Metrics Analysis',
-                description: 'Analysis of task metrics to determine hours defensibility. Shows remaining hours, count metrics, and variance status.',
-                calculation: 'For each task:\n- Defensible Hours = Count × Metric\n- Variance = Remaining Hours - Defensible Hours\n- Status = Based on variance threshold',
-                details: [
-                  'Rem Hrs: Remaining hours to complete task',
-                  'Count: Number of units/deliverables',
-                  'Metric: Hours per unit',
-                  'Def: Defensible hours (Count × Metric)',
-                  'Var: Variance (Rem Hrs - Def)',
-                  'Status indicates if hours are defensible',
-                ],
+                description: 'Analysis of task metrics to determine hours defensibility.',
+                calculation: 'For each task: Defensible Hours = Count × Metric',
+                details: ['Rem Hrs: Remaining hours', 'Def: Defensible hours', 'Var: Variance'],
               }}
             >
               <div>
@@ -526,8 +522,9 @@ export default function OverviewPage() {
                 <span className="chart-card-subtitle">Hours defensibility</span>
               </div>
             </EnhancedTooltip>
-          </div>
-          <div className="chart-card-body no-padding" style={{ overflow: 'auto', padding: '0.5rem' }}>
+          }
+        >
+          <div style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -634,11 +631,13 @@ export default function OverviewPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </ChartCard>
 
         {/* Projects Efficiency Metrics Table */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header">
+        <ChartCard
+          gridClass="grid-full"
+          noPadding
+          title={
             <EnhancedTooltip
               content={{
                 title: 'Projects: Efficiency vs Metrics',
@@ -655,8 +654,9 @@ export default function OverviewPage() {
             >
               <h3 className="chart-card-title" style={{ cursor: 'help' }}>Projects: Efficiency vs Metrics</h3>
             </EnhancedTooltip>
-          </div>
-          <div className="chart-card-body no-padding" style={{ overflow: 'auto', padding: '0.5rem' }}>
+          }
+        >
+          <div style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -741,7 +741,7 @@ export default function OverviewPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </ChartCard>
       </div>
     </div>
   );
