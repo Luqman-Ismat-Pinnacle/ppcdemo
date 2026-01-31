@@ -169,7 +169,12 @@ export default function QCStackedBarChart({
     <ChartWrapper
       option={option}
       height={height}
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      enableExport
+      enableFullscreen
+      exportFilename="qc-stacked-by-project"
+      visualTitle="QC by Project"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

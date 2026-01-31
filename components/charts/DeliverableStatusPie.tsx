@@ -19,12 +19,20 @@ interface DeliverableStatusPieProps {
   data: DeliverableStatus[];
   title: string;
   height?: string | number;
+  onSliceClick?: (params: { name: string; value: number }) => void;
+  activeFilters?: string[];
+  enableExport?: boolean;
+  enableFullscreen?: boolean;
 }
 
 export default function DeliverableStatusPie({
   data,
   title,
   height = '200px',
+  onSliceClick,
+  activeFilters = [],
+  enableExport = true,
+  enableFullscreen = true,
 }: DeliverableStatusPieProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const option: EChartsOption = {
@@ -77,16 +85,41 @@ export default function DeliverableStatusPie({
           fontSize: 11,
           color: 'var(--text-secondary)',
         },
-        data: data.map((d) => ({
-          value: d.value,
-          name: d.name,
-          percent: d.percent,
-          itemStyle: { color: d.color },
-        })),
+        data: data.map((d) => {
+          const isFiltered = activeFilters.length > 0 && !activeFilters.includes(d.name);
+          return {
+            value: d.value,
+            name: d.name,
+            percent: d.percent,
+            itemStyle: {
+              color: d.color,
+              opacity: isFiltered ? 0.35 : 1,
+              borderColor: activeFilters.includes(d.name) ? '#fff' : 'transparent',
+              borderWidth: activeFilters.includes(d.name) ? 2 : 0,
+            },
+          };
+        }),
       },
     ],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return (
+    <ChartWrapper
+      option={option}
+      height={height}
+      enableExport={enableExport}
+      enableFullscreen={enableFullscreen}
+      exportFilename="deliverable-status"
+      onClick={
+        onSliceClick
+          ? (params) => {
+              const name = params.name ?? '';
+              const value = typeof params.value === 'number' ? params.value : 0;
+              onSliceClick({ name: String(name), value });
+            }
+          : undefined
+      }
+    />
+  );
 }
 

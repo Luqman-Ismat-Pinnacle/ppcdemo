@@ -11,13 +11,42 @@
  * @module app/insights/documents/page
  */
 
-import React from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
+import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 
 export default function DocumentsPage() {
   const { filteredData } = useData();
   const data = filteredData;
+  const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
+  const statusFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'status').map((f) => f.value), [pageFilters]);
+
+  const handleFilterClick = useCallback((dimension: string, value: string, label?: string) => {
+    setPageFilters((prev) => {
+      const exists = prev.some((f) => f.dimension === dimension && f.value === value);
+      if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === value));
+      return [...prev, { dimension, value, label: label || value }];
+    });
+  }, []);
+
+  const handleRemoveFilter = useCallback((dimension: string, value: string) => {
+    setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
+  }, []);
+
+  const handleClearFilters = useCallback(() => setPageFilters([]), []);
+
+  const filteredDeliverables = useMemo(() => {
+    const list = data.deliverablesTracker || data.deliverables || [];
+    if (statusFilterValues.length === 0) return list;
+    return list.filter((d: any) => {
+      const drd = (d.drdStatus || d.status || '').toString();
+      const workflow = (d.workflowStatus || '').toString();
+      const sop = (d.sopStatus || '').toString();
+      const qmp = (d.qmpStatus || '').toString();
+      return statusFilterValues.some((s) => [drd, workflow, sop, qmp].includes(s));
+    });
+  }, [data.deliverablesTracker, data.deliverables, statusFilterValues]);
 
   return (
     <div className="page-panel insights-page">
@@ -28,6 +57,16 @@ export default function DocumentsPage() {
             Deliverable approval status by type
           </p>
         </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div style={{ marginBottom: '1rem' }}>
+        <InsightsFilterBar
+          filters={pageFilters}
+          onRemove={handleRemoveFilter}
+          onClearAll={handleClearFilters}
+          emptyMessage="Click any pie slice to filter the page"
+        />
       </div>
 
       {/* Gauge Row - Large KPI cards for glanceability */}
@@ -45,25 +84,25 @@ export default function DocumentsPage() {
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">DRD Status</h3></div>
           <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.drd} title="" height="280px" />
+            <DeliverableStatusPie data={data.deliverableByStatus.drd} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">Workflow Status</h3></div>
           <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.workflow} title="" height="280px" />
+            <DeliverableStatusPie data={data.deliverableByStatus.workflow} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">SOP Status</h3></div>
           <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.sop} title="" height="280px" />
+            <DeliverableStatusPie data={data.deliverableByStatus.sop} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">QMP Status</h3></div>
           <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
-            <DeliverableStatusPie data={data.deliverableByStatus.qmp} title="" height="280px" />
+            <DeliverableStatusPie data={data.deliverableByStatus.qmp} title="" height="280px" onSliceClick={(p) => handleFilterClick('status', p.name, p.name)} activeFilters={statusFilterValues} />
           </div>
         </div>
 
@@ -86,7 +125,7 @@ export default function DocumentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data.deliverablesTracker || data.deliverables || []).map((d: any, idx: number) => {
+                {filteredDeliverables.map((d: any, idx: number) => {
                   const customer = d.customer || '-';
                   const projectNum = d.projectNum || d.projectId || '-';
                   const name = d.name || '-';

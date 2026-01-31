@@ -14,9 +14,10 @@
  * @module app/insights/overview/page
  */
 
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
+import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import CompareButton from '@/components/ui/CompareButton';
 import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
@@ -62,6 +63,24 @@ export default function OverviewPage() {
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [countMetricsSort, setCountMetricsSort] = useState<SortState | null>(null);
   const [projectMetricsSort, setProjectMetricsSort] = useState<SortState | null>(null);
+
+  // Cross-visual filters (Power BI style)
+  const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
+  const projectFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'project').map((f) => f.value), [pageFilters]);
+
+  const handleFilterClick = useCallback((dimension: string, value: string, label?: string) => {
+    setPageFilters((prev) => {
+      const exists = prev.some((f) => f.dimension === dimension && f.value === value);
+      if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === value));
+      return [...prev, { dimension, value, label: label || value }];
+    });
+  }, []);
+
+  const handleRemoveFilter = useCallback((dimension: string, value: string) => {
+    setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
+  }, []);
+
+  const handleClearFilters = useCallback(() => setPageFilters([]), []);
 
   // Calculate metrics
   const totalHours = useMemo(() => {
@@ -214,8 +233,16 @@ export default function OverviewPage() {
     };
   }, [data.snapshots]);
 
+  const filteredCountMetrics = useMemo(() => {
+    let list = data.countMetricsAnalysis || [];
+    if (projectFilterValues.length > 0) {
+      list = list.filter((m: any) => projectFilterValues.includes(m.project));
+    }
+    return list;
+  }, [data.countMetricsAnalysis, projectFilterValues]);
+
   const sortedCountMetrics = useMemo(() => {
-    return sortByState(data.countMetricsAnalysis, countMetricsSort, (item, key) => {
+    return sortByState(filteredCountMetrics, countMetricsSort, (item, key) => {
       switch (key) {
         case 'project':
           return item.project;
@@ -237,10 +264,18 @@ export default function OverviewPage() {
           return null;
       }
     });
-  }, [data.countMetricsAnalysis, countMetricsSort]);
+  }, [filteredCountMetrics, countMetricsSort]);
+
+  const filteredProjectMetrics = useMemo(() => {
+    let list = data.projectsEfficiencyMetrics || [];
+    if (projectFilterValues.length > 0) {
+      list = list.filter((p: any) => projectFilterValues.includes(p.project));
+    }
+    return list;
+  }, [data.projectsEfficiencyMetrics, projectFilterValues]);
 
   const sortedProjectMetrics = useMemo(() => {
-    return sortByState(data.projectsEfficiencyMetrics, projectMetricsSort, (item, key) => {
+    return sortByState(filteredProjectMetrics, projectMetricsSort, (item, key) => {
       switch (key) {
         case 'project':
           return item.project;
@@ -256,7 +291,19 @@ export default function OverviewPage() {
           return null;
       }
     });
-  }, [data.projectsEfficiencyMetrics, projectMetricsSort]);
+  }, [filteredProjectMetrics, projectMetricsSort]);
+
+  const filteredBudgetVariance = useMemo(() => {
+    let list = data.budgetVariance || [];
+    const proj = selectedProject || projects[0];
+    if (proj && !projectFilterValues.length) {
+      list = list.filter((item: any) => item.name === proj || item.type === 'end');
+    }
+    if (projectFilterValues.length > 0) {
+      list = list.filter((item: any) => projectFilterValues.includes(item.name) || item.type === 'end');
+    }
+    return list;
+  }, [data.budgetVariance, selectedProject, projects, projectFilterValues]);
 
   return (
     <div className="page-panel insights-page">
@@ -372,6 +419,16 @@ export default function OverviewPage() {
         </EnhancedTooltip>
       </div>
 
+      {/* Filter Bar - Power BI style cross-visual filtering */}
+      <div style={{ marginBottom: '1rem' }}>
+        <InsightsFilterBar
+          filters={pageFilters}
+          onRemove={handleRemoveFilter}
+          onClearAll={handleClearFilters}
+          emptyMessage="Click any chart bar to filter the page"
+        />
+      </div>
+
       {/* Charts Grid */}
       <div className="dashboard-grid">
         {/* SPI and CPI - Large KPI cards for instant readability */}
@@ -476,12 +533,10 @@ export default function OverviewPage() {
           <div className="chart-card-body" style={{ minHeight: '520px', padding: '1.5rem' }}>
             <Suspense fallback={<LoadingSpinner />}>
               <BudgetVarianceChart
-                data={data.budgetVariance.filter((item: any) => {
-                  const itemProject = item.project || item.name;
-                  const currentProject = selectedProject || projects[0];
-                  return !currentProject || itemProject === currentProject || !item.project;
-                })}
+                data={filteredBudgetVariance}
                 height="480px"
+                onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
+                activeFilters={projectFilterValues}
               />
             </Suspense>
           </div>

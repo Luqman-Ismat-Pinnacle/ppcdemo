@@ -15,6 +15,7 @@
 
 import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
 import PlanForecastActualChart from '@/components/charts/PlanForecastActualChart';
 import { formatDate } from '@/lib/utils';
@@ -36,6 +37,24 @@ export default function MilestonesPage() {
   const data = filteredData;
   const [scoreboardSort, setScoreboardSort] = useState<SortState | null>(null);
   const [milestonesSort, setMilestonesSort] = useState<SortState | null>(null);
+  const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
+  const statusFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'status').map((f) => f.value), [pageFilters]);
+  const customerFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'customer').map((f) => f.value), [pageFilters]);
+
+  const handleFilterClick = useCallback((dimension: string, value: string, label?: string) => {
+    setPageFilters((prev) => {
+      const exists = prev.some((f) => f.dimension === dimension && f.value === value);
+      if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === value));
+      return [...prev, { dimension, value, label: label || value }];
+    });
+  }, []);
+
+  const handleRemoveFilter = useCallback((dimension: string, value: string) => {
+    setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
+  }, []);
+
+  const handleClearFilters = useCallback(() => setPageFilters([]), []);
+
   const [comparisonModal, setComparisonModal] = useState<{
     isOpen: boolean;
     visualId: string;
@@ -74,8 +93,14 @@ export default function MilestonesPage() {
     };
   }, [hierarchyFilter, dateFilter]);
 
+  const filteredScoreboard = useMemo(() => {
+    let list = data.milestoneScoreboard || [];
+    if (customerFilterValues.length > 0) list = list.filter((i: any) => customerFilterValues.includes(i.customer));
+    return list;
+  }, [data.milestoneScoreboard, customerFilterValues]);
+
   const sortedScoreboard = useMemo(() => {
-    return sortByState(data.milestoneScoreboard, scoreboardSort, (item, key) => {
+    return sortByState(filteredScoreboard, scoreboardSort, (item, key) => {
       switch (key) {
         case 'customer':
           return item.customer;
@@ -89,10 +114,22 @@ export default function MilestonesPage() {
           return null;
       }
     });
-  }, [data.milestoneScoreboard, scoreboardSort]);
+  }, [filteredScoreboard, scoreboardSort]);
+
+  const filteredMilestones = useMemo(() => {
+    let list = data.milestones || [];
+    if (statusFilterValues.length > 0) {
+      list = list.filter((m: any) => {
+        const s = (m.status || '').toString();
+        return statusFilterValues.some((f) => s === f || (f === 'Completed' && (s === 'Complete' || s === 'Completed')));
+      });
+    }
+    if (customerFilterValues.length > 0) list = list.filter((m: any) => customerFilterValues.includes(m.customer));
+    return list;
+  }, [data.milestones, statusFilterValues, customerFilterValues]);
 
   const sortedMilestones = useMemo(() => {
-    return sortByState(data.milestones, milestonesSort, (item, key) => {
+    return sortByState(filteredMilestones, milestonesSort, (item, key) => {
       switch (key) {
         case 'customer':
           return item.customer;
@@ -120,7 +157,7 @@ export default function MilestonesPage() {
           return null;
       }
     });
-  }, [data.milestones, milestonesSort]);
+  }, [filteredMilestones, milestonesSort]);
 
   return (
     <div className="page-panel insights-page">
@@ -131,6 +168,16 @@ export default function MilestonesPage() {
             Status, progress, and variance at a glance
           </p>
         </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div style={{ marginBottom: '1rem' }}>
+        <InsightsFilterBar
+          filters={pageFilters}
+          onRemove={handleRemoveFilter}
+          onClearAll={handleClearFilters}
+          emptyMessage="Click any chart slice or table to filter the page"
+        />
       </div>
 
       {/* Top Row: Charts and Scoreboard */}
@@ -179,7 +226,12 @@ export default function MilestonesPage() {
             </div>
           </div>
           <div className="chart-card-body" style={{ minHeight: '320px', padding: '1.5rem' }}>
-            <MilestoneStatusPie data={data.milestoneStatusPie} height="300px" />
+            <MilestoneStatusPie
+              data={data.milestoneStatusPie}
+              height="300px"
+              onSliceClick={(params) => handleFilterClick('status', params.name, params.name)}
+              activeFilters={statusFilterValues}
+            />
           </div>
         </div>
 

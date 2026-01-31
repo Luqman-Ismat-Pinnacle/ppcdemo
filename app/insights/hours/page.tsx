@@ -14,8 +14,9 @@
  * @module app/insights/hours/page
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
 import QualityHoursChart from '@/components/charts/QualityHoursChart';
 import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
@@ -56,6 +57,7 @@ export default function HoursPage() {
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [selectedRoles, setSelectedRoles] = useState<Set<string>>(new Set());
   const [selectedChargeCodes, setSelectedChargeCodes] = useState<Set<string>>(new Set());
+  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
   const [chargeType, setChargeType] = useState<'all' | 'billable' | 'non-billable'>('all');
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
   const [workerTableSort, setWorkerTableSort] = useState<SortState | null>(null);
@@ -95,12 +97,19 @@ export default function HoursPage() {
     return data.nonExecuteHours.percent;
   }, [data?.nonExecuteHours]);
 
-  // Handle chart bar clicks for filtering
+  // Handle chart bar clicks for filtering - dimension-aware based on current view
   const handleBarClick = (params: { name: string; dataIndex: number; value?: number }) => {
+    const updateSet = (prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(params.name)) next.delete(params.name);
+      else next.add(params.name);
+      return next;
+    };
+    if (stackedView === 'chargeCode') setSelectedChargeCodes(updateSet);
+    else if (stackedView === 'project') setSelectedProjects(updateSet);
+    else if (stackedView === 'role') setSelectedRoles(updateSet);
     setActiveFilters((prev) => {
-      if (prev.includes(params.name)) {
-        return prev.filter((f) => f !== params.name);
-      }
+      if (prev.includes(params.name)) return prev.filter((f) => f !== params.name);
       return [...prev, params.name];
     });
   };
@@ -110,6 +119,7 @@ export default function HoursPage() {
     setSelectedEmployees(new Set());
     setSelectedRoles(new Set());
     setSelectedChargeCodes(new Set());
+    setSelectedProjects(new Set());
     setChargeType('all');
   };
 
@@ -156,23 +166,41 @@ export default function HoursPage() {
   }, [data?.laborBreakdown, selectedEmployees, selectedRoles, selectedChargeCodes, chargeType]);
   
   // Count active filters
-  const activeFilterCount = selectedEmployees.size + selectedRoles.size + selectedChargeCodes.size + (chargeType !== 'all' ? 1 : 0);
+  const activeFilterCount = selectedEmployees.size + selectedRoles.size + selectedChargeCodes.size + selectedProjects.size + (chargeType !== 'all' ? 1 : 0);
 
-  // Prepare labor breakdown chart data - empty state when no data
+  // Build filter chips for FilterBar (Power BI style)
+  const filterChips: FilterChip[] = useMemo(() => {
+    const chips: FilterChip[] = [];
+    selectedChargeCodes.forEach((v) => chips.push({ dimension: 'chargeCode', value: v, label: v }));
+    selectedProjects.forEach((v) => chips.push({ dimension: 'project', value: v, label: v }));
+    selectedRoles.forEach((v) => chips.push({ dimension: 'role', value: v, label: v }));
+    selectedEmployees.forEach((v) => chips.push({ dimension: 'employee', value: v, label: v }));
+    if (chargeType !== 'all') chips.push({ dimension: 'chargeType', value: chargeType, label: chargeType === 'billable' ? 'Billable Only' : 'Non-Billable Only' });
+    return chips;
+  }, [selectedChargeCodes, selectedProjects, selectedRoles, selectedEmployees, chargeType]);
+
+  const handleRemoveFilter = useCallback((dimension: string, value: string) => {
+    if (dimension === 'chargeCode') setSelectedChargeCodes((s) => { const n = new Set(s); n.delete(value); return n; });
+    if (dimension === 'project') setSelectedProjects((s) => { const n = new Set(s); n.delete(value); return n; });
+    if (dimension === 'role') setSelectedRoles((s) => { const n = new Set(s); n.delete(value); return n; });
+    if (dimension === 'employee') setSelectedEmployees((s) => { const n = new Set(s); n.delete(value); return n; });
+    if (dimension === 'chargeType') setChargeType('all');
+    setActiveFilters((p) => p.filter((f) => f !== value));
+  }, []);
+
+  // Prepare labor breakdown chart data - use filtered workers so clicks apply page-wide
   const laborByChargeCode = useMemo(() => {
-    // Check if we have valid data
-    const hasValidData = data?.laborBreakdown?.byWorker && 
-                         data.laborBreakdown.byWorker.length > 0 &&
-                         data.laborBreakdown.weeks && 
+    const workers = filteredLaborBreakdown;
+    const hasValidData = workers.length > 0 &&
+                         data?.laborBreakdown?.weeks &&
                          data.laborBreakdown.weeks.length > 0;
     
     if (!hasValidData) {
       return { months: [], dataByCategory: {} };
     }
     
-    // Get all unique charge codes that have data
     const allChargeCodes = [...new Set(
-      data.laborBreakdown.byWorker
+      workers
         .map((w) => w.chargeCode)
         .filter((code): code is string => !!code && code.length > 0)
     )];
@@ -188,7 +216,7 @@ export default function HoursPage() {
     
     allChargeCodes.forEach((code) => {
       dataByCategory[code] = new Array(months.length).fill(0);
-      data.laborBreakdown.byWorker
+      workers
         .filter((w) => w.chargeCode === code)
         .forEach((worker) => {
           if (worker.data && Array.isArray(worker.data)) {
@@ -202,21 +230,24 @@ export default function HoursPage() {
     });
 
     return { months, dataByCategory };
-  }, [data?.laborBreakdown]);
+  }, [filteredLaborBreakdown, data?.laborBreakdown?.weeks]);
 
   const laborByProject = useMemo(() => {
-    // Check if we have valid data
-    const hasValidData = data?.laborBreakdown?.byPhase && 
-                         data.laborBreakdown.byPhase.length > 0 &&
-                         data.laborBreakdown.weeks && 
+    const byPhase = data?.laborBreakdown?.byPhase || [];
+    const hasValidData = byPhase.length > 0 &&
+                         data?.laborBreakdown?.weeks &&
                          data.laborBreakdown.weeks.length > 0;
     
     if (!hasValidData) {
       return { months: [], dataByCategory: {} };
     }
+
+    const filteredPhase = selectedProjects.size > 0
+      ? byPhase.filter((p) => selectedProjects.has(p.project))
+      : byPhase;
     
     const allProjects = [...new Set(
-      data.laborBreakdown.byPhase
+      filteredPhase
         .map((p) => p.project)
         .filter((proj): proj is string => !!proj && proj.length > 0)
     )];
@@ -232,7 +263,7 @@ export default function HoursPage() {
     
     allProjects.forEach((project) => {
       dataByCategory[project] = new Array(months.length).fill(0);
-      data.laborBreakdown.byPhase
+      filteredPhase
         .filter((p) => p.project === project)
         .forEach((phase) => {
           if (phase.data && Array.isArray(phase.data)) {
@@ -246,13 +277,12 @@ export default function HoursPage() {
     });
 
     return { months, dataByCategory };
-  }, [data?.laborBreakdown]);
+  }, [data?.laborBreakdown, selectedProjects]);
 
   const laborByRole = useMemo(() => {
-    // Check if we have valid data
-    const hasValidData = data?.laborBreakdown?.byWorker && 
-                         data.laborBreakdown.byWorker.length > 0 &&
-                         data.laborBreakdown.weeks && 
+    const workers = filteredLaborBreakdown;
+    const hasValidData = workers.length > 0 &&
+                         data?.laborBreakdown?.weeks &&
                          data.laborBreakdown.weeks.length > 0;
     
     if (!hasValidData) {
@@ -260,7 +290,7 @@ export default function HoursPage() {
     }
     
     const allRoles = [...new Set(
-      data.laborBreakdown.byWorker
+      workers
         .map((w) => w.role)
         .filter((role): role is string => !!role && role.length > 0)
     )];
@@ -276,7 +306,7 @@ export default function HoursPage() {
     
     allRoles.forEach((role) => {
       dataByCategory[role] = new Array(months.length).fill(0);
-      data.laborBreakdown.byWorker
+      workers
         .filter((w) => w.role === role)
         .forEach((worker) => {
           if (worker.data && Array.isArray(worker.data)) {
@@ -290,7 +320,7 @@ export default function HoursPage() {
     });
 
     return { months, dataByCategory };
-  }, [data?.laborBreakdown]);
+  }, [filteredLaborBreakdown, data?.laborBreakdown?.weeks]);
 
   // Get current stacked chart data based on view
   const currentStackedData = useMemo(() => {
@@ -378,7 +408,16 @@ export default function HoursPage() {
           </p>
         </div>
         
-        {/* Filter Controls */}
+        {/* Filter Bar - Power BI style */}
+        <div style={{ marginBottom: '1rem' }}>
+          <InsightsFilterBar
+            filters={filterChips}
+            onRemove={handleRemoveFilter}
+            onClearAll={clearFilters}
+            emptyMessage="Click any chart segment to filter the page"
+          />
+        </div>
+        {/* Filter Controls (legacy - kept for dropdowns) */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Charge Type Filter */}
           <select

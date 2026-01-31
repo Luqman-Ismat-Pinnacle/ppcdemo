@@ -14,8 +14,9 @@
  * @module app/insights/qc-dashboard/page
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import QCTransactionBarChart from '@/components/charts/QCTransactionBarChart';
 import QCStackedBarChart from '@/components/charts/QCStackedBarChart';
 import QCScatterChart from '@/components/charts/QCScatterChart';
@@ -34,6 +35,31 @@ export default function QCDashboardPage() {
   const { filteredData } = useData();
   const data = filteredData;
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
+  const gateFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'gate').map((f) => f.value), [pageFilters]);
+  const projectFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'project').map((f) => f.value), [pageFilters]);
+
+  const handleFilterClick = useCallback((dimension: string, value: string, label?: string) => {
+    setPageFilters((prev) => {
+      const exists = prev.some((f) => f.dimension === dimension && f.value === value);
+      if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === value));
+      return [...prev, { dimension, value, label: label || value }];
+    });
+    setActiveFilters((prev) => {
+      if (prev.includes(value)) return prev.filter((f) => f !== value);
+      return [...prev, value];
+    });
+  }, []);
+
+  const handleRemoveFilter = useCallback((dimension: string, value: string) => {
+    setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
+    setActiveFilters((prev) => prev.filter((f) => f !== value));
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setPageFilters([]);
+    setActiveFilters([]);
+  }, []);
   const [comparisonModal, setComparisonModal] = useState<{
     isOpen: boolean;
     visualId: string;
@@ -42,10 +68,11 @@ export default function QCDashboardPage() {
     currentData: any;
   } | null>(null);
 
-  // Aggregate QC Transaction by Gate
+  // Aggregate QC Transaction by Gate - filter by gate when filter active
   const qcByGate = useMemo(() => {
     const gateMap = new Map<string, number>();
     data.qcTransactionByGate.forEach((item) => {
+      if (gateFilterValues.length > 0 && !gateFilterValues.includes(item.gate)) return;
       const count = gateMap.get(item.gate) || 0;
       gateMap.set(item.gate, count + item.count);
     });
@@ -54,25 +81,15 @@ export default function QCDashboardPage() {
       count,
       project: '',
     }));
-  }, [data.qcTransactionByGate]);
+  }, [data.qcTransactionByGate, gateFilterValues]);
 
   // Handle chart clicks for filtering
-  const handleBarClick = (params: { name: string; dataIndex: number }) => {
-    setActiveFilters((prev) => {
-      if (prev.includes(params.name)) {
-        return prev.filter((f) => f !== params.name);
-      }
-      return [...prev, params.name];
-    });
+  const handleBarClick = (params: { name: string; dataIndex: number }, dimension: 'gate' | 'project' = 'gate') => {
+    handleFilterClick(dimension, params.name, params.name);
   };
 
   const handleScatterClick = (params: { name: string }) => {
-    setActiveFilters((prev) => {
-      if (prev.includes(params.name)) {
-        return prev.filter((f) => f !== params.name);
-      }
-      return [...prev, params.name];
-    });
+    handleFilterClick('project', params.name, params.name);
   };
 
   return (
@@ -84,6 +101,16 @@ export default function QCDashboardPage() {
             Quality control volume, pass rates, and feedback cycles
           </p>
         </div>
+      </div>
+
+      {/* Filter Bar */}
+      <div style={{ marginBottom: '1rem' }}>
+        <InsightsFilterBar
+          filters={pageFilters}
+          onRemove={handleRemoveFilter}
+          onClearAll={handleClearFilters}
+          emptyMessage="Click any chart to filter the page"
+        />
       </div>
 
       {/* Top Row: Three Charts */}
@@ -109,7 +136,7 @@ export default function QCDashboardPage() {
               data={qcByGate}
               height="250px"
               showLabels={true}
-              onBarClick={handleBarClick}
+              onBarClick={(params) => handleBarClick(params, 'gate')}
               activeFilters={activeFilters}
             />
           </div>
@@ -133,14 +160,17 @@ export default function QCDashboardPage() {
           </div>
           <div className="chart-card-body">
             <QCTransactionBarChart
-              data={data.qcTransactionByProject.map((p) => ({
+              data={(projectFilterValues.length > 0
+                ? data.qcTransactionByProject.filter((p: any) => projectFilterValues.includes(p.projectId))
+                : data.qcTransactionByProject
+              ).map((p: any) => ({
                 gate: p.projectId,
                 count: p.unprocessed + p.pass + p.fail,
                 project: p.projectId,
               }))}
               height="250px"
               showLabels={true}
-              onBarClick={handleBarClick}
+              onBarClick={(params) => handleBarClick(params, 'project')}
               activeFilters={activeFilters}
             />
           </div>
@@ -164,7 +194,10 @@ export default function QCDashboardPage() {
           </div>
           <div className="chart-card-body">
             <QCStackedBarChart
-              data={data.qcByGateStatus.map((g) => ({
+              data={(gateFilterValues.length > 0
+                ? data.qcByGateStatus.filter((g: any) => gateFilterValues.includes(g.gate))
+                : data.qcByGateStatus
+              ).map((g: any) => ({
                 projectId: g.gate,
                 customer: '',
                 site: '',
@@ -174,7 +207,7 @@ export default function QCDashboardPage() {
                 portfolio: g.portfolio || '',
               }))}
               height="250px"
-              onBarClick={handleBarClick}
+              onBarClick={(params) => handleBarClick(params, 'gate')}
               activeFilters={activeFilters}
             />
           </div>

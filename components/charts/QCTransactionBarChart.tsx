@@ -101,6 +101,9 @@ export default function QCTransactionBarChart({
     <ChartWrapper
       option={option}
       height={height}
+      enableExport
+      enableFullscreen
+      exportFilename="qc-transactions"
       visualTitle="QC Transactions"
       isEmpty={data.length === 0}
       onChartReady={(chart) => {

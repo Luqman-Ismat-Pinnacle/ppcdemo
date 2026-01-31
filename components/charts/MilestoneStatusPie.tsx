@@ -21,9 +21,20 @@ import type { MilestoneStatusItem } from '@/types/data';
 interface MilestoneStatusPieProps {
   data: MilestoneStatusItem[];
   height?: string | number;
+  onSliceClick?: (params: { name: string; value: number }) => void;
+  activeFilters?: string[];
+  enableExport?: boolean;
+  enableFullscreen?: boolean;
 }
 
-export default function MilestoneStatusPie({ data, height = '300px' }: MilestoneStatusPieProps) {
+export default function MilestoneStatusPie({
+  data,
+  height = '300px',
+  onSliceClick,
+  activeFilters = [],
+  enableExport = true,
+  enableFullscreen = true,
+}: MilestoneStatusPieProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const option: EChartsOption = {
     backgroundColor: 'transparent',
@@ -65,17 +76,42 @@ export default function MilestoneStatusPie({ data, height = '300px' }: Milestone
         avoidLabelOverlap: false,
         label: { show: false },
         labelLine: { show: false },
-        data: data.map((d) => ({
-          value: d.value,
-          name: d.name,
-          itemStyle: { color: d.color },
-        })),
+        data: data.map((d) => {
+          const isFiltered = activeFilters.length > 0 && !activeFilters.includes(d.name);
+          return {
+            value: d.value,
+            name: d.name,
+            itemStyle: {
+              color: d.color,
+              opacity: isFiltered ? 0.35 : 1,
+              borderColor: activeFilters.includes(d.name) ? '#fff' : 'transparent',
+              borderWidth: activeFilters.includes(d.name) ? 2 : 0,
+            },
+          };
+        }),
       },
     ],
     // Center text removed per user request - total shown in tooltip only
     graphic: [],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return (
+    <ChartWrapper
+      option={option}
+      height={height}
+      enableExport={enableExport}
+      enableFullscreen={enableFullscreen}
+      exportFilename="milestone-status"
+      onClick={
+        onSliceClick
+          ? (params) => {
+              const name = params.name ?? '';
+              const value = typeof params.value === 'number' ? params.value : 0;
+              onSliceClick({ name: String(name), value });
+            }
+          : undefined
+      }
+    />
+  );
 }
 

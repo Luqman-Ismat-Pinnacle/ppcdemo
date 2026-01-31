@@ -24,7 +24,8 @@
  * ```
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
@@ -35,6 +36,14 @@ interface ChartWrapperProps {
   className?: string;
   height?: string | number;
   onChartReady?: (chart: echarts.ECharts) => void;
+  /** Called when user clicks a chart element. Enables Power BI-style cross-filtering. */
+  onClick?: (params: { name?: string; value?: unknown; dataIndex?: number; seriesName?: string; [key: string]: unknown }) => void;
+  /** Show export PNG button in corner */
+  enableExport?: boolean;
+  /** Show fullscreen button; opens chart in a modal overlay */
+  enableFullscreen?: boolean;
+  /** Filename for export (without extension) */
+  exportFilename?: string;
   visualId?: string;
   visualTitle?: string;
   isLoading?: boolean;
@@ -47,6 +56,10 @@ const ChartWrapper = React.memo(function ChartWrapper({
   className = '',
   height = '300px',
   onChartReady,
+  onClick,
+  enableExport = false,
+  enableFullscreen = false,
+  exportFilename = 'chart',
   visualId,
   visualTitle = 'Chart',
   isLoading = false,
@@ -54,6 +67,10 @@ const ChartWrapper = React.memo(function ChartWrapper({
 }: ChartWrapperProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
+  const resolvedOptionRef = useRef<EChartsOption | null>(null);
+  const fullscreenChartRef = useRef<HTMLDivElement>(null);
+  const fullscreenInstanceRef = useRef<echarts.ECharts | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const themeContext = useTheme();
   const theme = themeContext?.theme || 'dark';
 
@@ -181,9 +198,24 @@ const ChartWrapper = React.memo(function ChartWrapper({
     }
 
     chart.setOption(finalOption);
+    resolvedOptionRef.current = finalOption;
 
     if (onChartReady) {
       onChartReady(chart);
+    }
+
+    if (onClick) {
+      chart.off('click');
+      chart.on('click', (params: any) => {
+        onClick({
+          name: params.name,
+          value: params.value,
+          dataIndex: params.dataIndex,
+          seriesName: params.seriesName,
+          data: params.data,
+          ...params,
+        });
+      });
     }
 
     // Handle resize
@@ -197,12 +229,51 @@ const ChartWrapper = React.memo(function ChartWrapper({
       window.removeEventListener('resize', handleResize);
       chart.dispose();
     };
-  }, [option, onChartReady, theme]);
+  }, [option, onChartReady, onClick, theme]);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [isFullscreen]);
+
+  // Fullscreen overlay chart
+  useEffect(() => {
+    if (!isFullscreen || !fullscreenChartRef.current || !resolvedOptionRef.current) return;
+    const chart = echarts.init(fullscreenChartRef.current, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
+    fullscreenInstanceRef.current = chart;
+    chart.setOption(resolvedOptionRef.current);
+    const handleResize = () => chart.resize();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.dispose();
+      fullscreenInstanceRef.current = null;
+    };
+  }, [isFullscreen, theme]);
+
+  const handleExport = () => {
+    const chart = chartInstanceRef.current;
+    if (chart) {
+      const url = chart.getDataURL({ type: 'png', pixelRatio: 2 });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${exportFilename}-${Date.now()}.png`;
+      a.click();
+    }
+  };
 
   return (
     <div
       className={`chart-container relative rounded-xl overflow-hidden ${className}`}
-      style={{ width: '100%', height, ...style }}
+      style={{
+        width: '100%',
+        height,
+        cursor: onClick ? 'pointer' : undefined,
+        ...style,
+      }}
     >
       {isLoading && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-transparent backdrop-blur-[2px]">
@@ -214,6 +285,58 @@ const ChartWrapper = React.memo(function ChartWrapper({
         </div>
       )}
 
+      {enableFullscreen && !isLoading && !isEmpty && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
+          title="Fullscreen"
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: enableExport ? '42px' : '8px',
+            zIndex: 10,
+            width: '28px',
+            height: '28px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.5)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          ⛶
+        </button>
+      )}
+      {enableExport && !isLoading && !isEmpty && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleExport(); }}
+          title="Export as PNG"
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            zIndex: 10,
+            width: '28px',
+            height: '28px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.5)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          ⬇
+        </button>
+      )}
       {!isLoading && isEmpty && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-transparent backdrop-blur-[1px]">
           <div className="flex flex-col items-center gap-2 p-6 text-center">
@@ -231,6 +354,95 @@ const ChartWrapper = React.memo(function ChartWrapper({
         ref={chartRef}
         className={`w-full h-full transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
       />
+      {isFullscreen && typeof document !== 'undefined' && createPortal(
+        <div
+          role="dialog"
+          aria-label={`${visualTitle} fullscreen`}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(0,0,0,0.85)',
+              cursor: 'pointer',
+            }}
+            onClick={() => setIsFullscreen(false)}
+            aria-hidden
+          />
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              width: '100%',
+              maxWidth: '95vw',
+              height: '85vh',
+              background: 'var(--bg-primary)',
+              borderRadius: 12,
+              border: '1px solid var(--border-color)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ flex: 1, minHeight: 0 }} ref={fullscreenChartRef} />
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: 'var(--border-color)',
+                  border: 'none',
+                  borderRadius: 8,
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                Close
+              </button>
+              {enableExport && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const chart = fullscreenInstanceRef.current;
+                    if (chart) {
+                      const url = chart.getDataURL({ type: 'png', pixelRatio: 2 });
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${exportFilename}-${Date.now()}.png`;
+                      a.click();
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'var(--pinnacle-teal)',
+                    border: 'none',
+                    borderRadius: 8,
+                    color: '#0a0a0a',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                  }}
+                >
+                  Export PNG
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 });

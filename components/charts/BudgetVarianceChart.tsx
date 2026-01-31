@@ -20,9 +20,20 @@ import type { BudgetVarianceItem } from '@/types/data';
 interface BudgetVarianceChartProps {
   data: BudgetVarianceItem[];
   height?: string | number;
+  onBarClick?: (params: { name: string; value: number; dataIndex: number }) => void;
+  activeFilters?: string[];
+  enableExport?: boolean;
+  enableFullscreen?: boolean;
 }
 
-export default function BudgetVarianceChart({ data, height = '300px' }: BudgetVarianceChartProps) {
+export default function BudgetVarianceChart({
+  data,
+  height = '300px',
+  onBarClick,
+  activeFilters = [],
+  enableExport = true,
+  enableFullscreen = true,
+}: BudgetVarianceChartProps) {
   const categories = data.map((item) => item.name);
   const values = data.map((item) => item.value);
 
@@ -94,17 +105,25 @@ export default function BudgetVarianceChart({ data, height = '300px' }: BudgetVa
     series: [
       {
         type: 'bar',
-        data: values.map((val, idx) => ({
-          value: val,
-          itemStyle: {
-            color:
-              data[idx].type === 'start' || data[idx].type === 'end'
-                ? '#40E0D0'
-                : val > 0
-                  ? '#CDDC39'
-                  : '#E91E63',
-          },
-        })),
+        data: values.map((val, idx) => {
+          const name = categories[idx];
+          const isFiltered = activeFilters.length > 0 && !activeFilters.includes(name);
+          const baseColor =
+            data[idx].type === 'start' || data[idx].type === 'end'
+              ? '#40E0D0'
+              : val > 0
+                ? '#CDDC39'
+                : '#E91E63';
+          return {
+            value: val,
+            itemStyle: {
+              color: baseColor,
+              opacity: isFiltered ? 0.35 : 1,
+              borderColor: activeFilters.includes(name) ? '#fff' : 'transparent',
+              borderWidth: activeFilters.includes(name) ? 2 : 0,
+            },
+          };
+        }),
         label: {
           show: true,
           position: 'top',
@@ -125,6 +144,24 @@ export default function BudgetVarianceChart({ data, height = '300px' }: BudgetVa
     ],
   };
 
-  return <ChartWrapper option={option} height={height} />;
+  return (
+    <ChartWrapper
+      option={option}
+      height={height}
+      enableExport={enableExport}
+      enableFullscreen={enableFullscreen}
+      exportFilename="budget-variance"
+      onClick={
+        onBarClick
+          ? (params) => {
+              const idx = params.dataIndex ?? 0;
+              const name = params.name ?? categories[idx];
+              const val = params.value ?? values[idx];
+              onBarClick({ name: String(name), value: Number(val), dataIndex: idx });
+            }
+          : undefined
+      }
+    />
+  );
 }
 
