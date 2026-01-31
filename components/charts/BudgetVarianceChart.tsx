@@ -105,9 +105,21 @@ export default function BudgetVarianceChart({ data, height = '300px' }: BudgetVa
                   : '#E91E63',
           },
         })),
-        // Numbers removed from bars - now shown in tooltip only
         label: {
-          show: false,
+          show: true,
+          position: 'top',
+          formatter: (params: any) => {
+            const val = params.value;
+            if (val == null) return '';
+            const item = data[params.dataIndex];
+            if (item?.type === 'start' || item?.type === 'end') {
+              return `$${(val / 1000).toFixed(0)}k`;
+            }
+            return (val > 0 ? '+' : '') + `$${(val / 1000).toFixed(0)}k`;
+          },
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'var(--text-secondary)',
         },
       },
     ],

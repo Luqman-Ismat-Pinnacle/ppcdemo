@@ -16,10 +16,7 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
 import { useData } from '@/lib/data-context';
-import GaugeChart from '@/components/charts/GaugeChart';
 import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
-import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
-import PercentCompleteDonut from '@/components/charts/PercentCompleteDonut';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import CompareButton from '@/components/ui/CompareButton';
 import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
@@ -262,15 +259,18 @@ export default function OverviewPage() {
   }, [data.projectsEfficiencyMetrics, projectMetricsSort]);
 
   return (
-    <div className="page-panel">
+    <div className="page-panel insights-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Portfolio Overview</h1>
+          <p className="page-description" style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            Key performance at a glance
+          </p>
         </div>
       </div>
 
-      {/* Metrics Row */}
-      <div className="metrics-row-compact">
+      {/* Metrics Row - Primary KPIs */}
+      <div className="metrics-row-compact" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
         <EnhancedTooltip
           content={{
             title: 'Total Hours',
@@ -374,47 +374,26 @@ export default function OverviewPage() {
 
       {/* Charts Grid */}
       <div className="dashboard-grid">
-        {/* SPI and CPI Gauges */}
+        {/* SPI and CPI - Large KPI cards for instant readability */}
         <div className="chart-card grid-half">
           <div className="chart-card-header">
             <EnhancedTooltip
               content={{
                 title: 'Schedule Performance Index (SPI)',
                 description: 'Measures schedule efficiency - how much work has been completed compared to what was planned.',
-                calculation: 'SPI = Earned Value (EV) / Planned Value (PV)\n\nWhere:\n- EV = Baseline Cost × % Complete\n- PV = Baseline Cost (planned work)',
-                details: [
-                  'SPI = 1.0: On schedule',
-                  'SPI > 1.0: Ahead of schedule',
-                  'SPI < 1.0: Behind schedule',
-                  'Industry target: SPI ≥ 0.95',
-                ],
+                calculation: 'SPI = Earned Value (EV) / Planned Value (PV)',
+                details: ['SPI = 1.0: On schedule', 'SPI > 1.0: Ahead', 'SPI < 1.0: Behind', 'Target: ≥ 0.95'],
               }}
             >
-              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Schedule Performance Index (SPI)</h3>
+              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Schedule Performance</h3>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body" style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: '100%', maxWidth: '300px' }}>
-              <Suspense fallback={<LoadingSpinner />}>
-                <GaugeChart
-                  value={Math.round(spi * 100)}
-                  label="SPI"
-                  color={spi >= 1 ? '#10B981' : spi >= 0.9 ? '#F59E0B' : '#EF4444'}
-                  height="180px"
-                />
-              </Suspense>
-              <div style={{ textAlign: 'center', marginTop: '-20px' }}>
-                <span style={{
-                  fontSize: '1.5rem',
-                  fontWeight: 700,
-                  color: spi >= 1 ? '#10B981' : spi >= 0.9 ? '#F59E0B' : '#EF4444'
-                }}>
-                  {spi.toFixed(2)}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                  {spi >= 1 ? 'On/Ahead' : spi >= 0.9 ? 'Slightly Behind' : 'Behind Schedule'}
-                </span>
-              </div>
+          <div className="chart-card-body" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+            <div style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, color: spi >= 1 ? '#10B981' : spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>
+              {spi.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '8px' }}>
+              {spi >= 1 ? 'On or ahead of schedule' : spi >= 0.9 ? 'Slightly behind' : 'Behind schedule'}
             </div>
           </div>
         </div>
@@ -424,41 +403,20 @@ export default function OverviewPage() {
             <EnhancedTooltip
               content={{
                 title: 'Cost Performance Index (CPI)',
-                description: 'Measures cost efficiency - how much value has been earned for every dollar spent.',
-                calculation: 'CPI = Earned Value (EV) / Actual Cost (AC)\n\nWhere:\n- EV = Baseline Cost × % Complete\n- AC = Actual Cost spent',
-                details: [
-                  'CPI = 1.0: On budget',
-                  'CPI > 1.0: Under budget (efficient)',
-                  'CPI < 1.0: Over budget',
-                  'Industry target: CPI ≥ 0.95',
-                ],
+                description: 'Measures cost efficiency - value earned per dollar spent.',
+                calculation: 'CPI = Earned Value (EV) / Actual Cost (AC)',
+                details: ['CPI = 1.0: On budget', 'CPI > 1.0: Under budget', 'CPI < 1.0: Over budget', 'Target: ≥ 0.95'],
               }}
             >
-              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Cost Performance Index (CPI)</h3>
+              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Cost Performance</h3>
             </EnhancedTooltip>
           </div>
-          <div className="chart-card-body" style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: '100%', maxWidth: '300px' }}>
-              <Suspense fallback={<LoadingSpinner />}>
-                <GaugeChart
-                  value={Math.round(cpi * 100)}
-                  label="CPI"
-                  color={cpi >= 1 ? '#10B981' : cpi >= 0.9 ? '#F59E0B' : '#EF4444'}
-                  height="180px"
-                />
-              </Suspense>
-              <div style={{ textAlign: 'center', marginTop: '-20px' }}>
-                <span style={{
-                  fontSize: '1.5rem',
-                  fontWeight: 700,
-                  color: cpi >= 1 ? '#10B981' : cpi >= 0.9 ? '#F59E0B' : '#EF4444'
-                }}>
-                  {cpi.toFixed(2)}
-                </span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
-                  {cpi >= 1 ? 'On/Under Budget' : cpi >= 0.9 ? 'Slightly Over' : 'Over Budget'}
-                </span>
-              </div>
+          <div className="chart-card-body" style={{ minHeight: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+            <div style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, color: cpi >= 1 ? '#10B981' : cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>
+              {cpi.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '8px' }}>
+              {cpi >= 1 ? 'On or under budget' : cpi >= 0.9 ? 'Slightly over' : 'Over budget'}
             </div>
           </div>
         </div>
@@ -515,7 +473,7 @@ export default function OverviewPage() {
               />
             </div>
           </div>
-          <div className="chart-card-body" style={{ height: '450px' }}>
+          <div className="chart-card-body" style={{ minHeight: '520px', padding: '1.5rem' }}>
             <Suspense fallback={<LoadingSpinner />}>
               <BudgetVarianceChart
                 data={data.budgetVariance.filter((item: any) => {
@@ -523,7 +481,7 @@ export default function OverviewPage() {
                   const currentProject = selectedProject || projects[0];
                   return !currentProject || itemProject === currentProject || !item.project;
                 })}
-                height="420px"
+                height="480px"
               />
             </Suspense>
           </div>
@@ -564,8 +522,8 @@ export default function OverviewPage() {
               }}
             />
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '400px', overflow: 'auto' }}>
-            <table className="data-table">
+          <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '0.5rem' }}>
+            <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
                   {[
@@ -652,7 +610,7 @@ export default function OverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedCountMetrics.slice(0, 10).map((item, idx) => (
+                {sortedCountMetrics.slice(0, 15).map((item, idx) => (
                   <tr key={idx}>
                     <td>{item.project}</td>
                     <td>{item.task}</td>
@@ -704,8 +662,8 @@ export default function OverviewPage() {
               }}
             />
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '400px', overflow: 'auto' }}>
-            <table className="data-table">
+          <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '0.5rem' }}>
+            <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
                   {[
@@ -773,7 +731,7 @@ export default function OverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedProjectMetrics.slice(0, 10).map((project, idx) => (
+                {sortedProjectMetrics.slice(0, 15).map((project, idx) => (
                   <tr key={idx}>
                     <td>{project.project}</td>
                     <td className="number">{project.efficiency}%</td>

@@ -1124,6 +1124,50 @@ body {
   animation: slideIn 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Insights pages: larger containers, more space, glanceable */
+.insights-page .dashboard-grid {
+  gap: 1.5rem;
+  padding: 0 0.25rem;
+}
+
+.insights-page .chart-card {
+  min-height: 320px;
+  padding: 0;
+}
+
+.insights-page .chart-card-body {
+  min-height: 320px;
+  padding: 1.5rem;
+}
+
+.insights-page .chart-card-body.no-padding {
+  min-height: 360px;
+  padding: 1rem;
+}
+
+.insights-page .chart-card-header {
+  padding: 1.25rem 1.5rem;
+}
+
+.insights-page .chart-card-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.insights-page .metric-card {
+  padding: 1.25rem 1.5rem;
+  min-height: 100px;
+}
+
+.insights-page .metric-value {
+  font-size: 2rem;
+}
+
+.insights-page .metric-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
 /* Dashboard Grid */
 .dashboard-grid {
   display: grid;

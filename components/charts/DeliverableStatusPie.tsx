@@ -26,13 +26,21 @@ export default function DeliverableStatusPie({
   title,
   height = '200px',
 }: DeliverableStatusPieProps) {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
   const option: EChartsOption = {
     backgroundColor: 'transparent',
-    title: {
+    title: title ? {
       text: title,
       left: 'center',
       bottom: 0,
       textStyle: { color: 'var(--text-secondary)', fontSize: 10 },
+    } : {
+      text: total > 0 ? String(total) : '—',
+      left: 'center',
+      top: '38%',
+      textStyle: { fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' },
+      subtext: 'Total',
+      subtextStyle: { fontSize: 10, color: 'var(--text-muted)' },
     },
     tooltip: {
       trigger: 'item',
@@ -60,14 +68,14 @@ export default function DeliverableStatusPie({
     series: [
       {
         type: 'pie',
-        radius: ['0%', '60%'],
-        center: ['35%', '45%'],
+        radius: ['45%', '70%'],
+        center: ['50%', '50%'],
         label: {
           show: true,
-          position: 'inside',
-          formatter: (p: any) => `${p.data.value}\n(${p.data.percent}%)`,
-          fontSize: 8,
-          color: '#fff',
+          position: 'outside',
+          formatter: (p: any) => `${p.name}: ${p.value}`,
+          fontSize: 11,
+          color: 'var(--text-secondary)',
         },
         data: data.map((d) => ({
           value: d.value,

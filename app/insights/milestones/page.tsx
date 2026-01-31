@@ -123,10 +123,13 @@ export default function MilestonesPage() {
   }, [data.milestones, milestonesSort]);
 
   return (
-    <div className="page-panel">
+    <div className="page-panel insights-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Portfolio Milestone Tracker</h1>
+          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            Status, progress, and variance at a glance
+          </p>
         </div>
       </div>
 
@@ -175,8 +178,8 @@ export default function MilestonesPage() {
               />
             </div>
           </div>
-          <div className="chart-card-body">
-            <MilestoneStatusPie data={data.milestoneStatusPie} height="250px" />
+          <div className="chart-card-body" style={{ minHeight: '320px', padding: '1.5rem' }}>
+            <MilestoneStatusPie data={data.milestoneStatusPie} height="300px" />
           </div>
         </div>
 
@@ -205,7 +208,7 @@ export default function MilestonesPage() {
             </div>
           </div>
           <div className="chart-card-body">
-            <PlanForecastActualChart data={data.planVsForecastVsActual} height="250px" />
+            <PlanForecastActualChart data={data.planVsForecastVsActual} height="320px" />
           </div>
         </div>
 

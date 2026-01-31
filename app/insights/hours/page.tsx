@@ -369,10 +369,13 @@ export default function HoursPage() {
   }, [roleRows, roleTableSort]);
 
   return (
-    <div className="page-panel" style={{ height: 'calc(100vh - 100px)', overflow: 'auto' }}>
-      <div className="page-header" style={{ marginBottom: '1rem' }}>
+    <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto' }}>
+      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
           <h1 className="page-title">Hours & Labor Analysis</h1>
+          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            Labor distribution, efficiency, and variance
+          </p>
         </div>
         
         {/* Filter Controls */}
@@ -483,7 +486,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 1: Task Efficiency (Full Width - Expanded) */}
-      <div className="chart-card" style={{ marginBottom: '1rem', minHeight: '700px' }}>
+      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -687,7 +690,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 2: Hours Variance Waterfall - Full Width Expanded */}
-      <div className="chart-card" style={{ marginBottom: '1rem', minHeight: '550px' }}>
+      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -718,7 +721,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 3: Combined Stacked Bar Chart - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '1rem', minHeight: '500px' }}>
+      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -775,7 +778,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 4: Labor Breakdown by Worker - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '1rem', minHeight: '600px' }}>
+      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '500px' }}>
         <div className="chart-card-header" style={{ 
           borderBottom: '1px solid var(--border-color)', 
           display: 'flex', 
@@ -988,7 +991,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 5: Labor Breakdown by Role - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '1rem', minHeight: '400px' }}>
+      <div className="chart-card" style={{ marginBottom: '1.5rem', minHeight: '420px' }}>
         <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">

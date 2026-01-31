@@ -25,9 +25,16 @@ interface MilestoneStatusPieProps {
 
 export default function MilestoneStatusPie({ data, height = '300px' }: MilestoneStatusPieProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
-
   const option: EChartsOption = {
     backgroundColor: 'transparent',
+    title: {
+      text: total > 0 ? String(total) : '—',
+      left: 'center',
+      top: '38%',
+      textStyle: { fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' },
+      subtext: 'Total',
+      subtextStyle: { fontSize: 11, color: 'var(--text-muted)' },
+    },
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {

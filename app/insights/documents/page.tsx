@@ -13,7 +13,6 @@
 
 import React from 'react';
 import { useData } from '@/lib/data-context';
-import GaugeChart from '@/components/charts/GaugeChart';
 import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
 
 export default function DocumentsPage() {
@@ -21,19 +20,23 @@ export default function DocumentsPage() {
   const data = filteredData;
 
   return (
-    <div className="page-panel">
+    <div className="page-panel insights-page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Portfolio PMF Document Tracker</h1>
+          <h1 className="page-title">Document Tracker</h1>
+          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            Deliverable approval status by type
+          </p>
         </div>
       </div>
 
-      {/* Gauge Row */}
+      {/* Gauge Row - Large KPI cards for glanceability */}
       <div className="dashboard-grid">
         {data.documentSignoffGauges.map((gauge, idx) => (
           <div key={idx} className="chart-card grid-quarter">
-            <div className="chart-card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '180px' }}>
-              <GaugeChart value={gauge.value} label={gauge.name} color={gauge.color} height="150px" />
+            <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '200px', padding: '1.5rem' }}>
+              <div style={{ fontSize: '2.5rem', fontWeight: 800, color: gauge.color }}>{gauge.value}%</div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'center' }}>{gauge.name}</div>
             </div>
           </div>
         ))}
@@ -41,26 +44,26 @@ export default function DocumentsPage() {
         {/* Pie Charts Row */}
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">DRD Status</h3></div>
-          <div className="chart-card-body">
-            <DeliverableStatusPie data={data.deliverableByStatus.drd} title="" height="250px" />
+          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+            <DeliverableStatusPie data={data.deliverableByStatus.drd} title="" height="280px" />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">Workflow Status</h3></div>
-          <div className="chart-card-body">
-            <DeliverableStatusPie data={data.deliverableByStatus.workflow} title="" height="250px" />
+          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+            <DeliverableStatusPie data={data.deliverableByStatus.workflow} title="" height="280px" />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">SOP Status</h3></div>
-          <div className="chart-card-body">
-            <DeliverableStatusPie data={data.deliverableByStatus.sop} title="" height="250px" />
+          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+            <DeliverableStatusPie data={data.deliverableByStatus.sop} title="" height="280px" />
           </div>
         </div>
         <div className="chart-card grid-quarter">
           <div className="chart-card-header"><h3 className="chart-card-title">QMP Status</h3></div>
-          <div className="chart-card-body">
-            <DeliverableStatusPie data={data.deliverableByStatus.qmp} title="" height="250px" />
+          <div className="chart-card-body" style={{ minHeight: '300px', padding: '1.5rem' }}>
+            <DeliverableStatusPie data={data.deliverableByStatus.qmp} title="" height="280px" />
           </div>
         </div>
 
@@ -69,7 +72,7 @@ export default function DocumentsPage() {
           <div className="chart-card-header">
             <h3 className="chart-card-title">Detailed Deliverable Matrix</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ minHeight: '400px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ minHeight: '420px', overflow: 'auto', padding: '1rem' }}>
             <table className="data-table">
               <thead>
                 <tr>
