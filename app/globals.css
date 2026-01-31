@@ -534,7 +534,7 @@ body {
   top: 100%;
   left: 0;
   min-width: 180px;
-  background: var(--bg-card);
+  background: var(--bg-secondary);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border: 1px solid var(--border-color);
@@ -850,9 +850,7 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  background: var(--bg-card);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   min-width: 200px;
@@ -899,10 +897,8 @@ body {
   position: absolute;
   left: 100%;
   top: 0;
-  background: rgba(20, 20, 20, 0.9);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   min-width: 180px;
   max-height: 350px;
@@ -939,10 +935,8 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  background: rgba(20, 20, 20, 0.95);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   min-width: 150px;
   z-index: 1000;
@@ -980,9 +974,7 @@ body {
   position: absolute;
   top: 100%;
   right: 0;
-  background: var(--bg-card);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   min-width: 180px;
@@ -1124,48 +1116,72 @@ body {
   animation: slideIn 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Insights pages: larger containers, more space, glanceable */
+/* Insights pages: much larger containers, content fits inside */
 .insights-page .dashboard-grid {
-  gap: 1.5rem;
-  padding: 0 0.25rem;
+  gap: 2rem;
+  padding: 0 0.5rem;
 }
 
 .insights-page .chart-card {
-  min-height: 320px;
+  min-height: 520px;
   padding: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
 }
 
 .insights-page .chart-card-body {
-  min-height: 320px;
-  padding: 1.5rem;
+  min-height: 460px;
+  padding: 1.5rem 1.75rem;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .insights-page .chart-card-body.no-padding {
-  min-height: 360px;
-  padding: 1rem;
+  min-height: 460px;
+  padding: 1rem 1.25rem;
+  overflow: auto;
 }
 
 .insights-page .chart-card-header {
   padding: 1.25rem 1.5rem;
+  flex-shrink: 0;
 }
 
 .insights-page .chart-card-title {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
 .insights-page .metric-card {
   padding: 1.25rem 1.5rem;
-  min-height: 100px;
+  min-height: 120px;
 }
 
 .insights-page .metric-value {
-  font-size: 2rem;
+  font-size: 2.25rem;
 }
 
 .insights-page .metric-label {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   letter-spacing: 0.04em;
+}
+
+/* Ensure chart containers and tables fit inside cards */
+.insights-page .chart-container {
+  min-height: 380px;
+  width: 100%;
+}
+
+.insights-page .data-table {
+  font-size: 0.875rem;
+}
+
+.insights-page table.data-table th,
+.insights-page table.data-table td {
+  padding: 12px 14px;
 }
 
 /* Dashboard Grid */
@@ -1209,13 +1225,18 @@ body {
 }
 
 /* Chart Card Styles */
-/* Shared dropdown/container theme - matches chart-card */
+/* Shared dropdown/container theme - solid, not transparent */
 .dropdown-container {
-  background: var(--bg-card);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Snapshot dropdown: stay inside viewport (no overflow on right) */
+.snapshot-dropdown-panel {
+  max-width: min(420px, calc(100vw - 24px));
 }
 
 .chart-card {

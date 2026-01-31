@@ -261,12 +261,13 @@ export default function Header() {
               </span>
             )}
           </button>
-          <div className={`nav-dropdown-content dropdown-container ${showSnapshots ? 'open' : ''}`} style={{
+          <div className={`nav-dropdown-content dropdown-container snapshot-dropdown-panel ${showSnapshots ? 'open' : ''}`} style={{
             position: 'absolute',
             top: '100%',
             right: 0,
+            left: 'auto',
             marginTop: '8px',
-            minWidth: '380px',
+            minWidth: '320px',
             maxWidth: '420px',
             zIndex: 1000,
             maxHeight: '80vh',
@@ -274,7 +275,7 @@ export default function Header() {
             display: showSnapshots ? 'flex' : 'none',
             flexDirection: 'column',
           }}>
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)' }}>
               <div>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Snapshots</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Manual &amp; automatic capture</div>

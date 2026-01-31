@@ -204,7 +204,7 @@ export default function StatusAndLogsDropdown() {
                 padding: '10px 16px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                background: activeTab === 'status' ? 'var(--bg-secondary)' : 'transparent',
+                background: activeTab === 'status' ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
                 color: activeTab === 'status' ? 'var(--text-primary)' : 'var(--text-muted)',
                 border: 'none',
                 cursor: 'pointer',
@@ -220,7 +220,7 @@ export default function StatusAndLogsDropdown() {
                 padding: '10px 16px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                background: activeTab === 'logs' ? 'var(--bg-secondary)' : 'transparent',
+                background: activeTab === 'logs' ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
                 color: activeTab === 'logs' ? 'var(--text-primary)' : 'var(--text-muted)',
                 border: 'none',
                 cursor: 'pointer',
@@ -264,22 +264,24 @@ export default function StatusAndLogsDropdown() {
                   <button
                     onClick={handleWorkdaySync}
                     disabled={workdaySyncing}
+                    className="nav-dropdown-trigger"
                     style={{
                       width: '100%',
-                      padding: '10px',
-                      background: workdaySyncing ? 'var(--bg-tertiary)' : 'var(--pinnacle-teal)',
-                      color: workdaySyncing ? 'var(--text-muted)' : '#000',
-                      border: 'none',
-                      borderRadius: '6px',
+                      padding: '10px 14px',
+                      background: workdaySyncing ? 'var(--bg-tertiary)' : 'var(--bg-tertiary)',
+                      color: workdaySyncing ? 'var(--text-muted)' : 'var(--text-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
                       fontWeight: 600,
+                      fontSize: '0.8rem',
                       cursor: workdaySyncing ? 'wait' : 'pointer',
                     }}
                   >
-                    {workdaySyncing ? '⟳ Syncing...' : '⚡ Sync Workday Data'}
+                    {workdaySyncing ? 'Syncing…' : 'Sync Workday Data'}
                   </button>
                   {workdayMessage && (
                     <div style={{ marginTop: '8px', padding: '8px', borderRadius: '4px', background: workdayStatus === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: workdayStatus === 'success' ? '#10B981' : '#EF4444', fontSize: '0.75rem' }}>
-                      {workdayStatus === 'success' ? '✓' : '✗'} {workdayMessage}
+                      {workdayMessage}
                     </div>
                   )}
                   {workdayLogs.length > 0 && (
