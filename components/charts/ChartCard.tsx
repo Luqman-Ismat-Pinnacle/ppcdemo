@@ -2,12 +2,14 @@
 
 /**
  * ChartCard – Wrapper for chart visuals with header and Compare slot.
- * Provides ChartHeaderActionsContext so ChartWrapper can render Compare/Export/Fullscreen in the header.
+ * ChartWrapper registers its action buttons via context; they render in the header.
  */
 
-import React, { createContext, useContext, useState, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-const ChartHeaderActionsContext = createContext<HTMLDivElement | null>(null);
+type SetHeaderActions = (node: ReactNode) => void;
+
+const ChartHeaderActionsContext = createContext<SetHeaderActions | null>(null);
 
 export function useChartHeaderActions() {
   return useContext(ChartHeaderActionsContext);
@@ -32,15 +34,11 @@ export default function ChartCard({
   noPadding = false,
   children,
 }: ChartCardProps) {
-  const [actionsEl, setActionsEl] = useState<HTMLDivElement | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [headerActions, setHeaderActions] = useState<ReactNode>(null);
+  const setActions = useCallback((node: ReactNode) => setHeaderActions(node), []);
 
   return (
-    <div
-      ref={containerRef}
-      className={`chart-card ${gridClass} ${className}`}
-      style={style}
-    >
+    <div className={`chart-card ${gridClass} ${className}`} style={style}>
       <div
         className="chart-card-header"
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
@@ -55,14 +53,12 @@ export default function ChartCard({
             <span className="chart-card-subtitle" style={{ marginLeft: 8 }}>{subtitle}</span>
           )}
         </div>
-        <div
-          ref={(el) => { if (el) setActionsEl(el); }}
-          className="chart-header-actions"
-          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-        />
+        <div className="chart-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {headerActions}
+        </div>
       </div>
       <div className={`chart-card-body ${noPadding ? 'no-padding' : ''}`}>
-        <ChartHeaderActionsContext.Provider value={actionsEl}>
+        <ChartHeaderActionsContext.Provider value={setActions}>
           {children}
         </ChartHeaderActionsContext.Provider>
       </div>

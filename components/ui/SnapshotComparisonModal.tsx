@@ -67,6 +67,11 @@ export default function SnapshotComparisonModal({
     [selectedSnapshotId, snapshots]
   );
 
+  const resizeCharts = useCallback(() => {
+    currentChartRef.current?.resize?.();
+    snapshotChartRef.current?.resize?.();
+  }, []);
+
   // Render current (left) chart – use useLayoutEffect so container ref is set before we init chart
   useLayoutEffect(() => {
     if (!isOpen || visualType !== 'chart' || !onRenderChart || currentData == null) return;
@@ -74,9 +79,16 @@ export default function SnapshotComparisonModal({
     if (!container) return;
     const chart = onRenderChart(container, currentData as EChartsOption);
     currentChartRef.current = chart;
-    const ro = new ResizeObserver(() => chart?.resize?.());
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(() => chart?.resize?.());
+    });
     ro.observe(container);
+    // Initial resize after layout settles (containers may have 0 size on first paint)
+    const t1 = requestAnimationFrame(() => chart?.resize?.());
+    const t2 = setTimeout(() => chart?.resize?.(), 150);
     return () => {
+      cancelAnimationFrame(t1);
+      clearTimeout(t2);
       ro.disconnect();
       if (chart?.dispose) chart.dispose();
       currentChartRef.current = null;
@@ -94,14 +106,29 @@ export default function SnapshotComparisonModal({
     if (!container) return;
     const chart = onRenderChart(container, selectedSnapshot.data as EChartsOption);
     snapshotChartRef.current = chart;
-    const ro = new ResizeObserver(() => chart?.resize?.());
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(() => chart?.resize?.());
+    });
     ro.observe(container);
+    const t1 = requestAnimationFrame(() => {
+      chart?.resize?.();
+      setTimeout(() => chart?.resize?.(), 100);
+    });
     return () => {
+      cancelAnimationFrame(t1);
       ro.disconnect();
       if (chart?.dispose) chart.dispose();
       snapshotChartRef.current = null;
     };
   }, [isOpen, visualType, selectedSnapshot, onRenderChart]);
+
+  // Resize charts when modal opens or window resizes
+  useEffect(() => {
+    if (!isOpen) return;
+    resizeCharts();
+    window.addEventListener('resize', resizeCharts);
+    return () => window.removeEventListener('resize', resizeCharts);
+  }, [isOpen, resizeCharts]);
 
   const handleDownloadPng = useCallback(async () => {
     const el = modalContentRef.current;
@@ -384,7 +411,7 @@ export default function SnapshotComparisonModal({
                 currentData != null ? (
                   <div
                     ref={(el) => { currentContainerRef.current = el; }}
-                    style={{ width: '100%', flex: 1, minHeight: 0 }}
+                    style={{ width: '100%', flex: 1, minHeight: 200 }}
                   />
                 ) : (
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
@@ -432,7 +459,7 @@ export default function SnapshotComparisonModal({
               ) : visualType === 'chart' ? (
                 <div
                   ref={(el) => { snapshotContainerRef.current = el; }}
-                  style={{ width: '100%', flex: 1, minHeight: 0 }}
+                  style={{ width: '100%', flex: 1, minHeight: 200 }}
                 />
               ) : (
                 <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
