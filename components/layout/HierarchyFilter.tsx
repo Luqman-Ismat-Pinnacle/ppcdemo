@@ -404,16 +404,12 @@ export default function HierarchyFilter() {
       </button>
 
       {isOpen && (
-        <div style={{
+        <div className="dropdown-container" style={{
           position: 'absolute',
           top: '100%',
           right: 0,
           marginTop: '8px',
           minWidth: '300px',
-          background: '#1a1a1a',
-          border: '1px solid rgba(64, 224, 208, 0.2)',
-          borderRadius: '8px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
           zIndex: 1000,
           overflow: 'hidden',
         }}>

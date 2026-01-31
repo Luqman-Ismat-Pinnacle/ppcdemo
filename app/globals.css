@@ -534,12 +534,12 @@ body {
   top: 100%;
   left: 0;
   min-width: 180px;
-  background: rgba(20, 20, 20, 0.9);
+  background: var(--bg-card);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   opacity: 0;
   visibility: hidden;
   transform: translateY(-8px);
@@ -617,7 +617,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   z-index: 10000;
   opacity: 0;
@@ -850,11 +850,11 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  background: rgba(20, 20, 20, 0.9);
+  background: var(--bg-card);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   min-width: 200px;
   max-height: 400px;
   overflow-y: auto;
@@ -980,11 +980,11 @@ body {
   position: absolute;
   top: 100%;
   right: 0;
-  background: rgba(20, 20, 20, 0.85);
+  background: var(--bg-card);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   min-width: 180px;
   z-index: 1000;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -1165,6 +1165,15 @@ body {
 }
 
 /* Chart Card Styles */
+/* Shared dropdown/container theme - matches chart-card */
+.dropdown-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
 .chart-card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);

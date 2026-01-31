@@ -23,14 +23,12 @@ import Image from 'next/image';
 import { useTheme } from '@/lib/theme-context';
 import { useUser } from '@/lib/user-context';
 import { useData } from '@/lib/data-context';
-import { useLogs } from '@/lib/logs-context';
 import { createSnapshot, type SnapshotCreateInput } from '@/lib/snapshot-utils';
 import { syncTable } from '@/lib/supabase';
 import Navigation from './Navigation';
 import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
-import DatabaseStatusIndicator from './DatabaseStatusIndicator';
-import WorkdayStatusIndicator from './WorkdayStatusIndicator';
+import StatusAndLogsDropdown from './StatusAndLogsDropdown';
 
 /**
  * Header component displaying the main application header.
@@ -53,24 +51,6 @@ export default function Header() {
   // Get user info from context
   const { user, logout: userLogout } = useUser();
   const { data, updateData, hierarchyFilter } = useData();
-  const { engineLogs, changeLogs, clearEngineLogs, clearChangeLogs } = useLogs();
-  const [showLogs, setShowLogs] = useState(false);
-  const logsRef = useRef<HTMLDivElement>(null);
-
-  // Group engine logs by engine name for separate sections
-  const engineLogsByEngine = useMemo(() => {
-    const order = ['CPM', 'Actuals', 'Workday'];
-    const map = new Map<string, typeof engineLogs>();
-    engineLogs.forEach(entry => {
-      const name = entry.engine || 'Other';
-      if (!map.has(name)) map.set(name, []);
-      map.get(name)!.push(entry);
-    });
-    const ordered: { engine: string; entries: typeof engineLogs }[] = [];
-    order.forEach(engine => { if (map.has(engine)) ordered.push({ engine, entries: map.get(engine)! }); });
-    map.forEach((entries, engine) => { if (!order.includes(engine)) ordered.push({ engine, entries }); });
-    return ordered;
-  }, [engineLogs]);
 
   // Snapshot dropdown state
   const [showSnapshots, setShowSnapshots] = useState(false);
@@ -116,13 +96,6 @@ export default function Header() {
   const [snapshotNotes, setSnapshotNotes] = useState<string>('');
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
 
-  const formatLogTime = (value: string | undefined) => {
-    if (!value) return '--';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '--';
-    return date.toLocaleString('en-US', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-  };
-
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -136,16 +109,6 @@ export default function Header() {
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutsideLogs = (event: MouseEvent) => {
-      if (logsRef.current && !logsRef.current.contains(event.target as Node)) {
-        setShowLogs(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutsideLogs);
-    return () => document.removeEventListener('mousedown', handleClickOutsideLogs);
   }, []);
 
   useEffect(() => {
@@ -255,9 +218,7 @@ export default function Header() {
         <Navigation />
       </div>
       <div className="header-right">
-        <DatabaseStatusIndicator />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        <WorkdayStatusIndicator />
+        <StatusAndLogsDropdown />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <DateFilterControl />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
@@ -301,16 +262,13 @@ export default function Header() {
               </span>
             )}
           </button>
-          <div className={`nav-dropdown-content snapshot-dropdown-content ${showSnapshots ? 'open' : ''}`} style={{
+          <div className={`nav-dropdown-content dropdown-container snapshot-dropdown-content ${showSnapshots ? 'open' : ''}`} style={{
             position: 'absolute',
             top: '100%',
             right: 0,
             marginTop: '8px',
             minWidth: '400px',
             maxWidth: '500px',
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             zIndex: 1000,
             maxHeight: '80vh',
@@ -421,8 +379,7 @@ export default function Header() {
                         <>
                           <option value="wbs-gantt">WBS & Gantt Chart</option>
                           <option value="resourcing">Resourcing</option>
-                          <option value="folders">Folders</option>
-                          <option value="project-health">Project Health</option>
+                          <option value="folders">Project Plans</option>
                           <option value="data-management">Data Management</option>
                         </>
                       )}
@@ -581,58 +538,6 @@ export default function Header() {
           </div>
         </div>
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        <div ref={logsRef} className="nav-dropdown logs-dropdown" style={{ position: 'relative' }}>
-          <button
-            className={`nav-dropdown-trigger ${showLogs ? 'active' : ''}`}
-            onClick={() => setShowLogs(prev => !prev)}
-          >
-            Logs {(engineLogs.length + changeLogs.length) > 0 && `(${engineLogs.length + changeLogs.length})`}
-          </button>
-          <div className={`nav-dropdown-content logs-dropdown-content ${showLogs ? 'open' : ''}`}>
-            <div className="logs-dropdown-header">
-              <span className="logs-dropdown-title">Logs</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {engineLogs.length > 0 && (
-                  <button type="button" onClick={clearEngineLogs} className="logs-dropdown-clear">Clear engines</button>
-                )}
-                {changeLogs.length > 0 && (
-                  <button type="button" onClick={clearChangeLogs} className="logs-dropdown-clear">Clear changes</button>
-                )}
-                <button type="button" onClick={() => setShowLogs(false)} aria-label="Close logs" className="logs-dropdown-close">✕</button>
-              </div>
-            </div>
-            <div className="logs-dropdown-body">
-              {engineLogsByEngine.map(({ engine, entries }) => (
-                <section key={engine} className="logs-engine-section">
-                  <h4 className="logs-engine-heading">{engine} ({entries.length})</h4>
-                  {entries.slice(0, 15).map(entry => (
-                    <div key={entry.id} className="logs-engine-entry">
-                      <div className="logs-engine-entry-meta">
-                        <span className="logs-engine-name">{entry.engine}</span>
-                        <span className="logs-engine-time">{formatLogTime(entry.createdAt)}</span>
-                      </div>
-                      <pre className="logs-engine-pre">{entry.lines.join('\n')}</pre>
-                    </div>
-                  ))}
-                </section>
-              ))}
-              <section className="logs-engine-section">
-                <h4 className="logs-engine-heading">Change Logs ({changeLogs.length})</h4>
-                {changeLogs.length === 0 ? (
-                  <div className="logs-empty">No change logs yet. Edits and syncs will appear here.</div>
-                ) : (
-                  changeLogs.slice(0, 15).map(entry => (
-                    <div key={entry.id} className="logs-change-entry">
-                      <div className="logs-change-desc">{entry.description}</div>
-                      <div className="logs-change-meta">{entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}</div>
-                    </div>
-                  ))
-                )}
-              </section>
-            </div>
-          </div>
-        </div>
-
         {/* Profile Dropdown */}
         <div ref={profileRef} style={{ position: 'relative' }}>
           <button

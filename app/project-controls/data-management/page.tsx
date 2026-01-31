@@ -2088,14 +2088,19 @@ export default function DataManagementPage() {
       ? [...mergedData.filter((t: any) => !t.isSubTask), ...newRows]
       : [...mergedData, ...newRows];
 
-    // Apply default filter: hide inactive/terminated rows unless showInactive is true (name-based + isActive fallback)
+    // Apply default filter: hide inactive/terminated rows unless showInactive is true
     if (!showInactive) {
+      const INACTIVE_TERMS = ['terminated', 'inactive', 'closed', 'archived', 'cancelled', 'inactive_-_current'];
+      const textKeys = ['name', 'taskName', 'projectName', 'projectNumber', 'status', 'description', 'employmentStatus', 'workerType'];
       processed = processed.filter((row: any) => {
-        const name = (row.name || row.taskName || row.projectNumber || '').toString().toLowerCase();
-        if (name.includes('terminated') || name.includes('inactive')) return false;
-        if (row.isActive === false || row.is_active === false) return false;
-        const status = (row.status || '').toString().toLowerCase();
-        if (status.includes('terminated') || status.includes('inactive')) return false;
+        if (row.isActive === false || row.is_active === false || row.active === false) return false;
+        const lower = (v: any) => String(v ?? '').toLowerCase();
+        for (const k of textKeys) {
+          const val = row[k];
+          if (val == null) continue;
+          const str = lower(val);
+          if (INACTIVE_TERMS.some((t) => str.includes(t))) return false;
+        }
         return true;
       });
     }

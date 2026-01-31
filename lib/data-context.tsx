@@ -27,39 +27,51 @@ import { LogsContext } from '@/lib/logs-context';
 // ACTIVE-ONLY & PRUNE EMPTY HIERARCHY
 // ============================================================================
 
+const INACTIVE_TERMS = ['terminated', 'inactive', 'closed', 'archived', 'cancelled', 'inactive_-_current'];
+
+function anyTextContains(obj: Record<string, unknown>, terms: string[], keys: string[]): boolean {
+  const lower = (v: unknown) => String(v ?? '').toLowerCase();
+  for (const k of keys) {
+    const val = obj[k];
+    if (val == null) continue;
+    const str = lower(val);
+    if (terms.some((t) => str.includes(t.toLowerCase()))) return true;
+  }
+  return false;
+}
+
 /**
  * Filter out inactive entities and remove hierarchy nodes with nothing under them.
- * - Employees: exclude if name or status contains 'terminated' or 'inactive'
- * - Projects: exclude if name contains 'inactive', unless has a plan (has_schedule)
+ * - Employees: exclude if name, status, or employmentStatus contains inactive terms
+ * - Projects: exclude if name/projectNumber/status contains inactive terms, unless has a plan
  * - Sites / Customers / Portfolios: keep if they have at least one kept project/site/customer
  * Mutates mergedData in place.
  */
 function applyActiveOnlyAndPruneEmpty(mergedData: Partial<SampleData>): void {
-  const nameContains = (text: string | null | undefined, terms: string[]) => {
-    const lower = (text || '').toLowerCase();
-    return terms.some((t) => lower.includes(t.toLowerCase()));
-  };
-
-  const isActiveEmployee = (e: { name?: string; status?: string }) => {
-    const n = e.name || '';
-    const s = (e as { status?: string }).status || '';
-    return !nameContains(n, ['terminated', 'inactive']) && !nameContains(s, ['terminated', 'inactive']);
-  };
-
   const hasPlan = (p: { has_schedule?: boolean; hasSchedule?: boolean }) =>
     p.has_schedule === true || p.hasSchedule === true;
 
-  const isActiveProject = (p: { name?: string; has_schedule?: boolean; hasSchedule?: boolean }) =>
-    hasPlan(p) || !nameContains(p.name, ['inactive']);
+  const isActiveEmployee = (e: Record<string, unknown>) => {
+    if ((e.isActive === false || e.is_active === false)) return false;
+    const textKeys = ['name', 'status', 'employmentStatus', 'workerType', 'worker_type', 'employeeType', 'employee_type'];
+    return !anyTextContains(e, INACTIVE_TERMS, textKeys);
+  };
 
-  // 1. Employees: exclude if name or status contains 'terminated' or 'inactive'
+  const isActiveProject = (p: Record<string, unknown>) => {
+    if (hasPlan(p as any)) return true;
+    if (p.active === false || p.isActive === false) return false;
+    const textKeys = ['name', 'projectName', 'projectNumber', 'project_number', 'status', 'description'];
+    return !anyTextContains(p, INACTIVE_TERMS, textKeys);
+  };
+
+  // 1. Employees
   if (mergedData.employees && Array.isArray(mergedData.employees)) {
-    mergedData.employees = mergedData.employees.filter(isActiveEmployee);
+    mergedData.employees = mergedData.employees.filter((e) => isActiveEmployee(e as Record<string, unknown>));
   }
 
-  // 2. Projects: exclude if name contains 'inactive', unless has a plan
+  // 2. Projects
   if (mergedData.projects && Array.isArray(mergedData.projects)) {
-    mergedData.projects = mergedData.projects.filter(isActiveProject);
+    mergedData.projects = mergedData.projects.filter((p) => isActiveProject(p as Record<string, unknown>));
   }
 
   // 3. Sites: keep if they have at least one kept project (no active requirement on site)

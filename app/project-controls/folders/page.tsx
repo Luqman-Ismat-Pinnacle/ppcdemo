@@ -1,16 +1,15 @@
 'use client';
 
 /**
- * MPP File Import Page
- * 
- * Upload Microsoft Project files to Supabase Storage,
- * process with MPXJ, and sync extracted data to Supabase.
+ * Project Plans Page
+ * Upload MPP files, process with MPXJ, run auto project health checks, and sync to Supabase.
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
 import { createClient } from '@supabase/supabase-js';
 import { convertMppParserOutput } from '@/lib/data-converter';
+import { runProjectHealthAutoCheck, type ProjectHealthAutoResult } from '@/lib/project-health-auto-check';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 
 interface ProcessingLog {
@@ -28,6 +27,7 @@ interface UploadedFile {
   workdayProjectId?: string;
   status: 'uploading' | 'uploaded' | 'processing' | 'syncing' | 'complete' | 'error';
   storagePath?: string;
+  healthCheck?: ProjectHealthAutoResult;
 }
 
 // Supabase client for storage
@@ -57,6 +57,7 @@ export default function DocumentsPage() {
   const [availableWorkdayProjects, setAvailableWorkdayProjects] = useState<DropdownOption[]>([]);
   const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
+  const [expandedHealthFileId, setExpandedHealthFileId] = useState<string | null>(null);
   
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
@@ -373,6 +374,10 @@ export default function DocumentsPage() {
       
       addLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
 
+      // Auto project health check
+      const healthResult = runProjectHealthAutoCheck(convertedData);
+      addLog(healthResult.issues.length > 0 ? 'warning' : 'success', `[Health] Score: ${healthResult.score}% (${healthResult.passed}/${healthResult.totalChecks})${healthResult.issues.length > 0 ? ` · Issues: ${healthResult.issues.join('; ')}` : ''}`);
+
       // Parser log: names from MPP so we can verify converter output vs Workday
       const phasesList = (convertedData.phases || []).map((p: any) => `"${p.id}: ${(p.name || '').slice(0, 50)}"`).join(', ');
       const unitsList = (convertedData.units || []).map((u: any) => `"${u.id}: ${(u.name || '').slice(0, 40)} (project: ${u.projectId || u.project_id || '-'})"`).join(', ');
@@ -575,7 +580,7 @@ export default function DocumentsPage() {
       // Complete the process
       addLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
       setUploadedFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'complete' as const } : f
+        f.id === fileId ? { ...f, status: 'complete' as const, healthCheck: healthResult } : f
       ));
       await refreshData();
 
@@ -626,7 +631,7 @@ export default function DocumentsPage() {
   return (
     <div className="page-panel">
       <div className="page-header">
-        <h1 className="page-title">MPP File Import</h1>
+        <h1 className="page-title">Project Plans</h1>
       </div>
 
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
@@ -761,6 +766,7 @@ export default function DocumentsPage() {
                     <th>File Name</th>
                     <th>Size</th>
                     <th>Project ID</th>
+                    <th>Health Score</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -794,6 +800,27 @@ export default function DocumentsPage() {
                       </td>
                       <td>{(file.fileSize / 1024 / 1024).toFixed(2)} MB</td>
                       <td>{file.workdayProjectId || '-'}</td>
+                      <td>
+                        {file.healthCheck ? (
+                          <span
+                            onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)}
+                            style={{
+                              cursor: 'pointer',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: file.healthCheck.score >= 80 ? 'rgba(16,185,129,0.2)' : file.healthCheck.score >= 50 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+                              color: file.healthCheck.score >= 80 ? '#10B981' : file.healthCheck.score >= 50 ? '#F59E0B' : '#EF4444',
+                              fontWeight: 600,
+                              fontSize: '0.8rem',
+                            }}
+                            title={file.healthCheck.issues.join('\n') || 'All checks passed'}
+                          >
+                            {file.healthCheck.score}%
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                        )}
+                      </td>
                       <td>
                         <span
                           className={`badge badge-${file.status === 'complete' ? 'success' :
@@ -845,6 +872,37 @@ export default function DocumentsPage() {
                 </tbody>
               </table>
             )}
+            {expandedHealthFileId && (() => {
+              const file = uploadedFiles.find((f) => f.id === expandedHealthFileId);
+              const h = file?.healthCheck;
+              if (!file || !h) return null;
+              return (
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <strong>Project Health: {file.fileName}</strong>
+                    <button onClick={() => setExpandedHealthFileId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.2rem' }}>×</button>
+                  </div>
+                  <div style={{ fontSize: '0.9rem', marginBottom: '12px' }}>
+                    Score: <strong style={{ color: h.score >= 80 ? '#10B981' : h.score >= 50 ? '#F59E0B' : '#EF4444' }}>{h.score}%</strong> ({h.passed}/{h.totalChecks} checks passed)
+                  </div>
+                  {h.issues.length > 0 && (
+                    <div style={{ marginBottom: '12px', fontSize: '0.8rem' }}>
+                      <div style={{ fontWeight: 600, marginBottom: '6px', color: '#F59E0B' }}>Flagged:</div>
+                      <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>{h.issues.map((i, idx) => <li key={idx}>{i}</li>)}</ul>
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {h.results.map((r, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span>{r.passed ? '✓' : '✗'}</span>
+                        <span>{r.checkName}</span>
+                        {r.message && <span style={{ color: r.passed ? 'var(--text-muted)' : '#F59E0B' }}>— {r.message}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

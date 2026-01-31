@@ -3,6 +3,12 @@
 const nextConfig = {
   output: 'standalone',
 
+  async redirects() {
+    return [
+      { source: '/project-controls/project-health', destination: '/project-controls/folders', permanent: true },
+    ];
+  },
+
   // Performance optimizations
   compress: true,
 

@@ -284,6 +284,29 @@ export const HELP_CONTENT: Record<string, PageHelpContent> = {
     relatedPages: ['hours', 'wbs-gantt', 'data-management'],
   },
 
+  'project-plans': {
+    id: 'project-plans',
+    title: 'Project Plans',
+    category: 'Project Controls',
+    description: 'Upload MPP schedule files, process with MPXJ, run auto project health checks, and sync to Supabase. Health scores and flagged issues are shown per file after processing.',
+    features: [
+      { title: 'MPP Upload', description: 'Upload Microsoft Project files and link to Workday projects', icon: '📤' },
+      { title: 'Auto Health Check', description: 'Automatic project health scoring when parsing (logic, resources, effort, structure)', icon: '✅' },
+      { title: 'Health Score', description: 'Per-file health score with flagged issues and pass/fail breakdown', icon: '📈' },
+      { title: 'Sync to Supabase', description: 'Convert hierarchy and sync phases, units, tasks to database', icon: '🔄' },
+    ],
+    tour: [
+      { target: '.chart-card', title: 'Upload MPP', content: 'Select an MPP file and link it to a Workday project before uploading.', placement: 'bottom' },
+      { target: '.data-table', title: 'Files & Health', content: 'Processed files show a health score. Click the score to see detailed check results and flagged issues.', placement: 'top' },
+    ],
+    faqs: [
+      { question: 'How is the health score calculated?', answer: 'The auto check evaluates: task logic (predecessors/successors), resource assignments, planned effort, duration, large tasks (>100 hrs), and non-execution ratio. Score = passed checks / total checks × 100.' },
+      { question: 'What gets flagged?', answer: 'Tasks without logic links, execution tasks without resources, no baseline hours, tasks >100 hrs with count=1, and non-execution exceeding 25% of execution hours.' },
+      { question: 'How do I re-run health check?', answer: 'Re-process the file with Run MPXJ. The health check runs automatically during parsing.' },
+    ],
+    relatedPages: ['data-management', 'wbs-gantt', 'overview'],
+  },
+
   'project-health': {
     id: 'project-health',
     title: 'Project Health',

@@ -42,6 +42,7 @@ const ROUTE_TO_HELP_ID: Record<string, string> = {
   '/project-controls/data-management': 'data-management',
   '/project-controls/wbs-gantt': 'wbs-gantt',
   '/project-controls/resourcing': 'resourcing',
+  '/project-controls/folders': 'project-plans',
   '/project-management/forecast': 'forecast',
   '/project-management/sprint': 'sprint',
   '/project-management/qc-log': 'qc-log',
