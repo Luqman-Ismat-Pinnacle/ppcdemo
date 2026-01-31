@@ -1120,75 +1120,72 @@ body {
   animation: slideIn 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Insights pages: balanced layouts, contained sizing */
+/* Insights pages: large containers (override inline styles), consistent spacing */
 .insights-page .page-panel {
-  padding: 1.25rem 1.5rem 2rem;
+  padding: 1.5rem 1.25rem 2.5rem;
 }
 
 .insights-page .page-header {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .insights-page .dashboard-grid {
-  gap: 1.25rem;
-  padding: 0 0.25rem 0.5rem;
-  grid-auto-rows: minmax(360px, auto);
+  gap: 2.5rem;
+  padding: 0 0.25rem 1rem;
 }
 
 .insights-page .chart-card {
-  min-height: 360px;
+  min-height: 680px !important;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
 
 .insights-page .chart-card-body {
-  min-height: 280px;
-  padding: 1rem 1.25rem;
+  min-height: 620px !important;
+  padding: 1.5rem 1.75rem;
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
 }
 
 .insights-page .chart-card-body.no-padding {
-  min-height: 280px;
-  padding: 0.75rem 1rem;
+  min-height: 620px !important;
+  padding: 1rem 1.25rem;
   overflow: auto;
 }
 
 .insights-page .chart-card-header {
-  padding: 0.875rem 1.25rem;
+  padding: 1.25rem 1.5rem;
   flex-shrink: 0;
 }
 
 .insights-page .chart-card-title {
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
 .insights-page .metric-card {
-  padding: 1rem 1.25rem;
-  min-height: 100px;
+  padding: 1.25rem 1.5rem;
+  min-height: 120px;
 }
 
 .insights-page .metric-value {
-  font-size: 2rem;
+  font-size: 2.25rem;
 }
 
 .insights-page .metric-label {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   letter-spacing: 0.04em;
 }
 
-/* Chart areas: fill container, resize with card */
-.insights-page .chart-card-body .chart-container {
-  width: 100% !important;
+/* Chart and table areas fill containers */
+.insights-page .chart-container {
+  min-height: 480px !important;
+  width: 100%;
   flex: 1;
-  min-height: 240px;
-  height: 100% !important;
-  overflow: hidden;
 }
 
 .insights-page .data-table {
@@ -1202,11 +1199,11 @@ body {
 
 /* Spacing between sections on Insights pages */
 .insights-page .metrics-row-compact {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .insights-page .dashboard-grid + .dashboard-grid {
-  margin-top: 1.5rem;
+  margin-top: 2.5rem;
 }
 
 .insights-page .chart-card + .chart-card {
