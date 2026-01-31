@@ -9,6 +9,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import { useLogs } from '@/lib/logs-context';
+import { runWorkdaySyncStream } from '@/lib/workday-sync-stream';
 
 
 
@@ -23,6 +24,7 @@ export default function WorkdayStatusIndicator() {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
+  const [syncMethod, setSyncMethod] = useState<'current' | 'stream'>('current');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close on click outside
@@ -41,8 +43,9 @@ export default function WorkdayStatusIndicator() {
     setLogs(prev => [`[${time}] ${msg}`, ...prev].slice(0, 50)); // Increased log limit
   };
 
-  // Helper to run a single sync step
-  const runSyncStep = async (type: string, payload: any = {}) => {
+  // Helper to run a single sync step (optional onLog for collecting entries)
+  const runSyncStep = async (type: string, payload: any = {}, onLog?: (msg: string) => void) => {
+    const log = onLog ?? addLog;
     const response = await fetch('/api/workday', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,18 +57,17 @@ export default function WorkdayStatusIndicator() {
 
     const data = await response.json();
 
-    // Append detailed logs from backend if available
     if (data.logs && Array.isArray(data.logs)) {
-      data.logs.forEach((l: string) => addLog(l));
+      data.logs.forEach((l: string) => log(l));
     }
 
     if (response.ok && data.success) {
       const count = data.summary?.synced || data.summary?.total || 0;
-      setMessage(`Synced ${count} ${type}`); // Update transient message
-      addLog(`Success: ${count} ${type} synced`);
+      setMessage(`Synced ${count} ${type}`);
+      log(`Success: ${count} ${type} synced`);
       return data;
     } else {
-      if (data.error) addLog(`Error: ${data.error}`);
+      if (data.error) log(`Error: ${data.error}`);
       throw new Error(data.error || `${type} sync failed`);
     }
   };
@@ -76,30 +78,56 @@ export default function WorkdayStatusIndicator() {
     setIsSyncing(true);
     setStatus('idle');
     setMessage('');
-    setLogs([]); // Clear previous logs
+    setLogs([]);
 
-    addLog('Starting Full Workday Sync Sequence...');
+    const logEntries: string[] = [];
+    const pushLog = (msg: string) => {
+      const entry = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEntries.push(entry);
+      setLogs(prev => [entry, ...prev].slice(0, 50));
+    };
+
+    pushLog(`Starting Full Workday Sync (${syncMethod === 'stream' ? 'Stream' : 'Current'} method)...`);
 
     try {
-      // Run Unified Sync (handles Employees -> Portfolios -> Projects -> Hours sequence on backend)
-      addLog('Requesting Unified Sync...');
-      const data = await runSyncStep('unified');
+      if (syncMethod === 'stream') {
+        pushLog('Requesting Unified Sync (stream)...');
+        const { success } = await runWorkdaySyncStream({
+          syncType: 'unified',
+          onEvent: (ev) => {
+            if (ev.type === 'step') {
+              if (ev.status === 'started') pushLog(`Step: ${ev.step} started`);
+              if (ev.status === 'chunk') pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} (${ev.startDate}–${ev.endDate})`);
+              if (ev.status === 'chunk_done') pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} done`);
+              if (ev.status === 'done') pushLog(`Step: ${ev.step} done`);
+            }
+            if (ev.type === 'error') pushLog(`Error: ${ev.error}`);
+            if (ev.type === 'done' && ev.logs) ev.logs.forEach((l: string) => pushLog(l));
+          },
+        });
 
-      setStatus('success');
-      if (data?.summary?.noNewHours === true) {
-        setMessage('Sync complete. No new hour data in date range.');
+        setStatus(success ? 'success' : 'error');
+        setMessage(success ? 'Sync Complete' : 'Sync Failed');
+        pushLog(success ? '--- Full Sync Completed Successfully ---' : '--- Sync Failed ---');
       } else {
-        setMessage('Sync Complete');
-      }
-      addLog('--- Full Sync Completed Successfully ---');
-      addEngineLog('Workday', [...logs]);
-      await refreshData();
+        pushLog('Requesting Unified Sync (current)...');
+        const data = await runSyncStep('unified', {}, pushLog);
 
+        setStatus('success');
+        if (data?.summary?.noNewHours === true) {
+          setMessage('Sync complete. No new hour data in date range.');
+        } else {
+          setMessage('Sync Complete');
+        }
+        pushLog('--- Full Sync Completed Successfully ---');
+      }
+      addEngineLog('Workday', logEntries);
+      await refreshData();
     } catch (error: any) {
       setStatus('error');
       setMessage('Sync Failed');
-      addLog(`Sync Aborted: ${error.message}`);
-      addEngineLog('Workday', [...logs]);
+      pushLog(`Sync Aborted: ${error.message}`);
+      addEngineLog('Workday', logEntries);
     } finally {
       setIsSyncing(false);
     }
@@ -148,6 +176,29 @@ export default function WorkdayStatusIndicator() {
           <div style={{ marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontWeight: 600 }}>Workday Sync</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{status === 'idle' ? 'Ready' : status}</div>
+          </div>
+
+          {/* Sync Method */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Method</label>
+            <select
+              value={syncMethod}
+              onChange={(e) => setSyncMethod(e.target.value as 'current' | 'stream')}
+              disabled={isSyncing}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                fontSize: '0.8rem',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                cursor: isSyncing ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <option value="current">Current (sequential, one request)</option>
+              <option value="stream">Stream (chunked NDJSON, more stable)</option>
+            </select>
           </div>
 
           {/* Sync Button */}
