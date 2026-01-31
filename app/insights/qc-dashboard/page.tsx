@@ -157,8 +157,7 @@ export default function QCDashboardPage() {
               onPointClick={handleScatterClick}
               activeFilters={allFilterValues}
             />
-          </div>
-        </div>
+        </ChartCard>
 
         {/* Records, Pass Rate by Subproject */}
         <ChartCard title="Subproject Quality Analysis" gridClass="grid-full">
@@ -316,7 +315,7 @@ export default function QCDashboardPage() {
       {/* QC Hours by Project and Subproject */}
       <div className="dashboard-grid">
         <ChartCard title="QC Hours Since Last QC Check by Project and Sub Project" gridClass="grid-full">
-          <QCHartsBarChart
+          <QCHoursBarChart
               data={data.qcHoursSinceLastQCByProject.map((item) => ({
                 name: `${item.projectName}${item.subprojectName ? ' - ' + item.subprojectName : ''}`,
                 value: item.hours,
