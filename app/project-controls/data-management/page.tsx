@@ -155,8 +155,8 @@ const TableFilterHeader = ({
 
   const uniqueValues = useMemo(() => {
     const sectionData = (data as any)[section.dataKey] || [];
-    return getUniqueValues(field.key, sectionData);
-  }, [field.key, section.dataKey, data, getUniqueValues]);
+    return getUniqueValues(field.key, sectionData, field);
+  }, [field.key, field, section.dataKey, data, getUniqueValues]);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between', whiteSpace: 'nowrap' }}>
@@ -606,24 +606,49 @@ export default function DataManagementPage() {
     };
   }, [openFilterDropdown]);
 
-  // Get unique values for a column (for filter dropdown)
-  const getUniqueValues = useCallback((fieldKey: string, data: any[]): string[] => {
+  // Helper: get cell value with snake_case fallback (for DB that returns snake_case)
+  const getCellValue = useCallback((row: any, fieldKey: string): unknown => {
+    const camel = row[fieldKey];
+    if (camel !== undefined && camel !== null && camel !== '') return camel;
+    const snake = fieldKey.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+    return row[snake];
+  }, []);
+
+  // Get unique values for a column (for filter dropdown). For FK types, uses display names for better UX.
+  const getUniqueValues = useCallback((fieldKey: string, data: any[], field?: FieldConfig): string[] => {
+    const FK_TYPES = ['employee', 'project', 'customer', 'site', 'portfolio', 'phase', 'task', 'unit', 'changeRequest'];
     const values = new Set<string>();
-    data.forEach((row: any) => {
-      const value = row[fieldKey];
-      if (value === null || value === undefined || value === '') {
-        values.add('(blank)');
-      } else {
-        values.add(String(value));
-      }
-    });
+
+    if (field && FK_TYPES.includes(field.type)) {
+      const options = getOptionsForType(field.type);
+      data.forEach((row: any) => {
+        const value = getCellValue(row, fieldKey);
+        if (value === null || value === undefined || value === '') {
+          values.add('(blank)');
+        } else {
+          const option = options.find((o: any) => String(o.id) === String(value));
+          values.add(option?.name ?? String(value));
+        }
+      });
+    } else {
+      data.forEach((row: any) => {
+        const value = getCellValue(row, fieldKey);
+        if (value === null || value === undefined || value === '') {
+          values.add('(blank)');
+        } else if (typeof value === 'boolean') {
+          values.add(value ? 'Yes' : 'No');
+        } else {
+          values.add(String(value));
+        }
+      });
+    }
+
     return Array.from(values).sort((a, b) => {
-      // Sort with (blank) at the end
       if (a === '(blank)') return 1;
       if (b === '(blank)') return -1;
       return a.localeCompare(b);
     });
-  }, []);
+  }, [getCellValue, getOptionsForType]);
 
   const changeLog = data.changeLog || [];
   const changeControlSummary = data.changeControlSummary || { byProject: [], byMonth: [] };
@@ -1045,6 +1070,44 @@ export default function DataManagementPage() {
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
       })
+    },
+    {
+      key: 'employees',
+      label: 'Employees',
+      dataKey: 'employees',
+      idKey: 'id',
+      fields: [
+        { key: 'id', header: 'ID', type: 'text', editable: false, autoCalculated: false },
+        { key: 'employeeId', header: 'Employee ID', type: 'text', editable: false, autoCalculated: false },
+        { key: 'name', header: 'Name', type: 'text', editable: true },
+        { key: 'email', header: 'Email', type: 'text', editable: true },
+        { key: 'jobTitle', header: 'Job Title', type: 'text', editable: true },
+        { key: 'managementLevel', header: 'Mgmt Level', type: 'select', editable: true, selectOptions: ['Individual Contributor', 'Manager', 'Senior Manager', 'Director', 'VP', 'Partner'] },
+        { key: 'manager', header: 'Manager', type: 'text', editable: true },
+        { key: 'employeeType', header: 'Type', type: 'select', editable: true, selectOptions: ['Regular', 'Contractor', 'Intern'] },
+        { key: 'role', header: 'Role', type: 'text', editable: true },
+        { key: 'department', header: 'Department', type: 'text', editable: true },
+        { key: 'hourlyRate', header: 'Rate', type: 'number', editable: true },
+        { key: 'utilizationPercent', header: 'Util %', type: 'number', editable: true },
+        { key: 'isActive', header: 'Active', type: 'boolean', editable: true },
+      ],
+      defaultNewRow: () => ({
+        id: '', // Database will auto-generate
+        employeeId: '',
+        name: '',
+        email: '',
+        jobTitle: '',
+        managementLevel: 'Individual Contributor',
+        manager: '',
+        employeeType: 'Regular',
+        role: '',
+        department: '',
+        hourlyRate: 0,
+        utilizationPercent: 80,
+        isActive: true,
+        createdAt: getCurrentTimestamp(),
+        updatedAt: getCurrentTimestamp(),
+      }),
     },
     {
       key: 'tasks',
@@ -1886,44 +1949,6 @@ export default function DataManagementPage() {
       })
     },
     {
-      key: 'employees',
-      label: 'Employees',
-      dataKey: 'employees',
-      idKey: 'id',
-      fields: [
-        { key: 'id', header: 'ID', type: 'text', editable: false, autoCalculated: false },
-        { key: 'employeeId', header: 'Employee ID', type: 'text', editable: true },
-        { key: 'name', header: 'Name', type: 'text', editable: true },
-        { key: 'email', header: 'Email', type: 'text', editable: true },
-        { key: 'jobTitle', header: 'Job Title', type: 'text', editable: true },
-        { key: 'managementLevel', header: 'Mgmt Level', type: 'select', editable: true, selectOptions: ['Individual Contributor', 'Manager', 'Senior Manager', 'Director', 'VP', 'Partner'] },
-        { key: 'manager', header: 'Manager', type: 'text', editable: true },
-        { key: 'employeeType', header: 'Type', type: 'select', editable: true, selectOptions: ['Regular', 'Contractor', 'Intern'] },
-        { key: 'role', header: 'Role', type: 'text', editable: true },
-        { key: 'department', header: 'Department', type: 'text', editable: true },
-        { key: 'hourlyRate', header: 'Rate', type: 'number', editable: true },
-        { key: 'utilizationPercent', header: 'Util %', type: 'number', editable: true },
-        { key: 'isActive', header: 'Active', type: 'boolean', editable: true },
-      ],
-      defaultNewRow: () => ({
-        id: '', // Database will auto-generate
-        employeeId: '',
-        name: '',
-        email: '',
-        jobTitle: '',
-        managementLevel: 'Individual Contributor',
-        manager: '',
-        employeeType: 'Regular',
-        role: '',
-        department: '',
-        hourlyRate: 0,
-        utilizationPercent: 80,
-        isActive: true,
-        createdAt: getCurrentTimestamp(),
-        updatedAt: getCurrentTimestamp(),
-      }),
-    },
-    {
       key: 'projectDocuments',
       label: 'Project Documents',
       dataKey: 'projectDocuments',
@@ -2002,7 +2027,7 @@ export default function DataManagementPage() {
   }, []);
 
   const getSortValueForField = useCallback((row: Record<string, any>, field: FieldConfig): SortValue => {
-    const value = row[field.key];
+    const value = getCellValue(row, field.key);
     if (value === null || value === undefined) return null;
 
     switch (field.type) {
@@ -2029,7 +2054,7 @@ export default function DataManagementPage() {
       default:
         return value;
     }
-  }, [getOptionsForType]);
+  }, [getOptionsForType, getCellValue]);
 
   const getTableData = useCallback(() => {
     const section = getCurrentSection();
@@ -2053,21 +2078,26 @@ export default function DataManagementPage() {
       processed = processed.filter((row: any) => row.isActive !== false);
     }
 
-    // Apply column filters (Excel-style: selected values)
+    // Apply column filters (Excel-style: selected values). Uses display names for FK types.
     const tableFilters = customColumnFilters[section.key] || {};
     if (Object.keys(tableFilters).length > 0) {
       processed = processed.filter((row: any) => {
         for (const [fieldKey, selectedValues] of Object.entries(tableFilters)) {
           if (!selectedValues || selectedValues.length === 0) continue;
 
-          const cellValue = row[fieldKey];
-          // Handle specific types for filtering
+          const field = section.fields.find((f: FieldConfig) => f.key === fieldKey);
+          const rawValue = getCellValue(row, fieldKey);
+
           let cellValueStr = '(blank)';
-          if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
-            if (typeof cellValue === 'boolean') {
-              cellValueStr = cellValue ? 'Yes' : 'No';
+          if (rawValue !== null && rawValue !== undefined && rawValue !== '') {
+            if (typeof rawValue === 'boolean') {
+              cellValueStr = rawValue ? 'Yes' : 'No';
+            } else if (field && ['employee', 'project', 'customer', 'site', 'portfolio', 'phase', 'task', 'unit', 'changeRequest'].includes(field.type)) {
+              const options = getOptionsForType(field.type);
+              const option = options.find((o: any) => String(o.id) === String(rawValue));
+              cellValueStr = option?.name ?? String(rawValue);
             } else {
-              cellValueStr = String(cellValue);
+              cellValueStr = String(rawValue);
             }
           }
 
@@ -2108,7 +2138,7 @@ export default function DataManagementPage() {
     }
 
     return processed;
-  }, [getCurrentSection, data, editedRows, newRows, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, showInactive, customColumnFilters, tableSortStates, getSortValueForField]);
+  }, [getCurrentSection, data, editedRows, newRows, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, showInactive, customColumnFilters, tableSortStates, getSortValueForField, getCellValue, getOptionsForType]);
 
 
   // Clean data for Supabase - simple 1:1 mapping with minimal transformations
@@ -2573,7 +2603,7 @@ export default function DataManagementPage() {
     field: FieldConfig,
     rowId: string
   ) => {
-    const value = row[field.key];
+    const value = getCellValue(row, field.key);
     const isEdited = editedRows.has(rowId) && editedRows.get(rowId)?.[field.key] !== undefined;
     const editedValue = isEdited ? editedRows.get(rowId)?.[field.key] : value;
     const displayValue = editedValue ?? value;
@@ -2759,7 +2789,7 @@ export default function DataManagementPage() {
         {displayValue ?? '-'}
       </div>
     );
-  }, [editedRows, handleCellEdit, getOptionsForType]);
+  }, [editedRows, handleCellEdit, getOptionsForType, getCellValue]);
 
   // ============================================================================
   // TANSTACK TABLE SETUP
