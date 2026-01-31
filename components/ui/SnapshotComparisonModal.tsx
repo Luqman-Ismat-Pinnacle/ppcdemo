@@ -4,11 +4,14 @@
  * Snapshot Comparison Modal – simplified side‑by‑side compare.
  * Uses only visual snapshots for this visual; ECharts in both panels, scaled to fit.
  * Styled to match site chart-card containers.
+ * Full viewport fill, PNG export, Excel export.
  */
 
-import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import type { EChartsOption } from 'echarts';
 import { useData } from '@/lib/data-context';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
 
 interface SnapshotComparisonModalProps {
   isOpen: boolean;
@@ -28,8 +31,6 @@ type SnapshotItem = {
   data: any;
 };
 
-const CONTENT_HEIGHT = 'min(65vh, 600px)';
-
 export default function SnapshotComparisonModal({
   isOpen,
   onClose,
@@ -45,6 +46,7 @@ export default function SnapshotComparisonModal({
   const snapshotChartRef = useRef<any>(null);
   const currentContainerRef = useRef<HTMLDivElement | null>(null);
   const snapshotContainerRef = useRef<HTMLDivElement | null>(null);
+  const modalContentRef = useRef<HTMLDivElement | null>(null);
 
   // Use full data.visualSnapshots (not filteredData) so list isn't affected by hierarchy filter
   const snapshots = useMemo((): SnapshotItem[] => {
@@ -101,6 +103,78 @@ export default function SnapshotComparisonModal({
     };
   }, [isOpen, visualType, selectedSnapshot, onRenderChart]);
 
+  const handleDownloadPng = useCallback(async () => {
+    const el = modalContentRef.current;
+    if (!el) return;
+    try {
+      const canvas = await html2canvas(el, {
+        backgroundColor: 'rgba(20, 20, 24, 0.95)',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `compare-${visualId}-${Date.now()}.png`;
+      a.click();
+    } catch (e) {
+      console.error('PNG export failed:', e);
+    }
+  }, [visualId]);
+
+  const extractChartData = (opt: any): Record<string, unknown>[] => {
+    if (!opt || typeof opt !== 'object') return [];
+    const xAxis = Array.isArray(opt.xAxis) ? opt.xAxis[0] : opt.xAxis;
+    const series = opt.series || [];
+    if (xAxis?.data && series.length > 0) {
+      const categories = xAxis.data as string[];
+      return categories.map((cat, i) => {
+        const row: Record<string, unknown> = { category: cat };
+        series.forEach((s: any) => {
+          const val = s.data?.[i];
+          row[s.name || 'value'] = val;
+        });
+        return row;
+      });
+    }
+    if (series[0]?.data && (series[0].type === 'pie' || !xAxis?.data)) {
+      return (series[0].data as { name?: string; value?: unknown }[]).map((d) => ({ name: d.name, value: d.value }));
+    }
+    return [];
+  };
+
+  const handleDownloadExcel = useCallback(() => {
+    const wb = XLSX.utils.book_new();
+    const safeName = (s: string) => s.replace(/[\\/*?:\[\]]/g, '_').slice(0, 31);
+    if (visualType === 'table') {
+      const currentArr = Array.isArray(currentData) ? currentData : [];
+      if (currentArr.length > 0) {
+        const ws = XLSX.utils.json_to_sheet(currentArr);
+        XLSX.utils.book_append_sheet(wb, ws, safeName('Current'));
+      }
+      if (selectedSnapshot?.data && Array.isArray(selectedSnapshot.data)) {
+        const ws = XLSX.utils.json_to_sheet(selectedSnapshot.data);
+        XLSX.utils.book_append_sheet(wb, ws, safeName(selectedSnapshot.name || 'Snapshot'));
+      }
+    } else {
+      const currentRows = extractChartData(currentData);
+      if (currentRows.length > 0) {
+        const ws = XLSX.utils.json_to_sheet(currentRows);
+        XLSX.utils.book_append_sheet(wb, ws, safeName('Current'));
+      }
+      if (selectedSnapshot?.data) {
+        const snapRows = extractChartData(selectedSnapshot.data);
+        if (snapRows.length > 0) {
+          const ws = XLSX.utils.json_to_sheet(snapRows);
+          XLSX.utils.book_append_sheet(wb, ws, safeName(selectedSnapshot.name || 'Snapshot'));
+        }
+      }
+    }
+    if (wb.SheetNames.length === 0) return;
+    XLSX.writeFile(wb, `compare-${visualId}-${Date.now()}.xlsx`);
+  }, [visualType, currentData, selectedSnapshot, visualId]);
+
   const handleDeleteSnapshot = async (snapshotId: string) => {
     if (!confirm('Delete this snapshot?')) return;
     try {
@@ -152,35 +226,37 @@ export default function SnapshotComparisonModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.4)',
+        width: '100vw',
+        height: '100dvh',
+        maxHeight: '100vh',
+        background: 'rgba(0,0,0,0.5)',
         backdropFilter: 'blur(12px) saturate(120%)',
         WebkitBackdropFilter: 'blur(12px) saturate(120%)',
         zIndex: 99999,
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
+        flexDirection: 'column',
+        overflow: 'hidden',
       }}
       onClick={onClose}
     >
       <div
+        ref={(el) => { modalContentRef.current = el; }}
         className="chart-card"
         style={{
           width: '100%',
-          maxWidth: '95vw',
-          maxHeight: '90vh',
+          height: '100%',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          background: 'rgba(20, 20, 24, 0.75)',
+          background: 'rgba(20, 20, 24, 0.98)',
           border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: '0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05)',
+          borderRadius: 0,
+          boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ ...headerStyle, background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ ...headerStyle, background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
           <div>
             <h2 className="chart-card-title" style={{ margin: 0, fontSize: '1.25rem' }}>
               {visualTitle}
@@ -189,25 +265,59 @@ export default function SnapshotComparisonModal({
               Compare with snapshot · {snapshots.length} saved
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: 8,
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: '1.25rem',
-              lineHeight: 1,
-              width: 36,
-              height: 36,
-            }}
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              type="button"
+              onClick={handleDownloadPng}
+              style={{
+                padding: '8px 14px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+              }}
+            >
+              Download PNG
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              style={{
+                padding: '8px 14px',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+              }}
+            >
+              Download Excel
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                padding: 8,
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontSize: '1.25rem',
+                lineHeight: 1,
+                width: 36,
+                height: 36,
+              }}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Controls */}
@@ -216,7 +326,7 @@ export default function SnapshotComparisonModal({
             padding: '0.75rem 1.25rem',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             background: 'rgba(255,255,255,0.04)',
-            backdropFilter: 'blur(6px)',
+            flexShrink: 0,
             display: 'flex',
             flexWrap: 'wrap',
             gap: 12,
@@ -249,17 +359,16 @@ export default function SnapshotComparisonModal({
           </select>
         </div>
 
-        {/* Content – side‑by‑side only; equal height so ECharts scale to fit both */}
+        {/* Content – side‑by‑side; fills remaining space */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            overflow: 'auto',
-            padding: '1.25rem',
+            overflow: 'hidden',
+            padding: '1rem',
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '1rem',
-            alignContent: 'stretch',
           }}
         >
           {/* Left: Current */}
@@ -275,15 +384,15 @@ export default function SnapshotComparisonModal({
                 currentData != null ? (
                   <div
                     ref={(el) => { currentContainerRef.current = el; }}
-                    style={{ width: '100%', height: CONTENT_HEIGHT, minHeight: 320 }}
+                    style={{ width: '100%', flex: 1, minHeight: 0 }}
                   />
                 ) : (
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', minHeight: 320 }}>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                     Current chart not available for compare
                   </div>
                 )
               ) : (
-                <div style={{ maxHeight: 400, overflow: 'auto' }}>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                   {renderTable(Array.isArray(currentData) ? currentData : [])}
                 </div>
               )}
@@ -323,10 +432,10 @@ export default function SnapshotComparisonModal({
               ) : visualType === 'chart' ? (
                 <div
                   ref={(el) => { snapshotContainerRef.current = el; }}
-                  style={{ width: '100%', height: CONTENT_HEIGHT, minHeight: 320 }}
+                  style={{ width: '100%', flex: 1, minHeight: 0 }}
                 />
               ) : (
-                <div style={{ maxHeight: 400, overflow: 'auto' }}>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
                   {renderTable(Array.isArray(selectedSnapshot.data) ? selectedSnapshot.data : [])}
                 </div>
               )}
