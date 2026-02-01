@@ -21,98 +21,6 @@ import type { SampleData, HierarchyFilter, DateFilter } from '@/types/data';
 import { transformData } from '@/lib/data-transforms';
 import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
-import { LogsContext } from '@/lib/logs-context';
-
-// ============================================================================
-// ACTIVE-ONLY & PRUNE EMPTY HIERARCHY
-// ============================================================================
-
-const INACTIVE_TERMS = ['terminated', 'inactive', 'closed', 'archived', 'cancelled', 'inactive_-_current'];
-
-function anyTextContains(obj: Record<string, unknown>, terms: string[], keys: string[]): boolean {
-  const lower = (v: unknown) => String(v ?? '').toLowerCase();
-  for (const k of keys) {
-    const val = obj[k];
-    if (val == null) continue;
-    const str = lower(val);
-    if (terms.some((t) => str.includes(t.toLowerCase()))) return true;
-  }
-  return false;
-}
-
-/**
- * Filter out inactive entities and remove hierarchy nodes with nothing under them.
- * - Employees: exclude if name, status, or employmentStatus contains inactive terms
- * - Projects: exclude if name/projectNumber/status contains inactive terms, unless has a plan
- * - Sites / Customers / Portfolios: keep if they have at least one kept project/site/customer
- * Mutates mergedData in place.
- */
-function applyActiveOnlyAndPruneEmpty(mergedData: Partial<SampleData>): void {
-  const hasPlan = (p: { has_schedule?: boolean; hasSchedule?: boolean }) =>
-    p.has_schedule === true || p.hasSchedule === true;
-
-  const isActiveEmployee = (e: Record<string, unknown>) => {
-    if ((e.isActive === false || e.is_active === false)) return false;
-    const textKeys = ['name', 'status', 'employmentStatus', 'workerType', 'worker_type', 'employeeType', 'employee_type'];
-    return !anyTextContains(e, INACTIVE_TERMS, textKeys);
-  };
-
-  const isActiveProject = (p: Record<string, unknown>) => {
-    if (hasPlan(p as any)) return true;
-    if (p.active === false || p.isActive === false) return false;
-    const textKeys = ['name', 'projectName', 'projectNumber', 'project_number', 'status', 'description'];
-    return !anyTextContains(p, INACTIVE_TERMS, textKeys);
-  };
-
-  // 1. Employees
-  if (mergedData.employees && Array.isArray(mergedData.employees)) {
-    mergedData.employees = mergedData.employees.filter((e) => isActiveEmployee(e as Record<string, unknown>));
-  }
-
-  // 2. Projects
-  if (mergedData.projects && Array.isArray(mergedData.projects)) {
-    mergedData.projects = mergedData.projects.filter((p) => isActiveProject(p as Record<string, unknown>));
-  }
-
-  // 3. Sites: keep if they have at least one kept project (no active requirement on site)
-  const projectSiteIds = new Set(
-    (mergedData.projects || []).map(
-      (p: { siteId?: string; site_id?: string }) => p.siteId || p.site_id || ''
-    )
-  );
-  if (mergedData.sites && Array.isArray(mergedData.sites)) {
-    mergedData.sites = mergedData.sites.filter((s: { id?: string; siteId?: string }) => {
-      const sid = s.id || s.siteId;
-      return !!sid && projectSiteIds.has(sid);
-    });
-  }
-
-  // 4. Customers: keep if they have at least one kept site
-  const siteCustomerIds = new Set(
-    (mergedData.sites || []).map(
-      (s: { customerId?: string; customer_id?: string }) => s.customerId || s.customer_id || ''
-    )
-  );
-  if (mergedData.customers && Array.isArray(mergedData.customers)) {
-    mergedData.customers = mergedData.customers.filter((c: { id?: string; customerId?: string }) => {
-      const cid = c.id || c.customerId;
-      return !!cid && siteCustomerIds.has(cid);
-    });
-  }
-
-  // 5. Portfolios: keep if they have at least one kept customer
-  const customerPortfolioIds = new Set(
-    (mergedData.customers || []).map(
-      (c: { portfolioId?: string; portfolio_id?: string }) => c.portfolioId || c.portfolio_id || ''
-    )
-  );
-  if (mergedData.portfolios && Array.isArray(mergedData.portfolios)) {
-    mergedData.portfolios = mergedData.portfolios.filter((p: { id?: string; portfolioId?: string }) => {
-      const pid = p.id || p.portfolioId;
-      return !!pid && customerPortfolioIds.has(pid);
-    });
-  }
-}
 
 // ============================================================================
 // EMPTY DATA STRUCTURE
@@ -197,6 +105,8 @@ function createEmptyData(): SampleData {
     catchUpLog: [],
     projectHealth: [],
     projectLog: [],
+    projectMappings: [],
+    taskMappings: [],
     epics: [],
     features: [],
     userStories: [],
@@ -264,7 +174,6 @@ interface DataProviderProps {
  * Automatically fetches data from Supabase on initialization.
  */
 export function DataProvider({ children }: DataProviderProps) {
-  const logsContext = useContext(LogsContext);
   // State starts EMPTY - populated from Supabase on mount
   const [data, setData] = useState<SampleData>(createEmptyData);
   const [isLoading, setIsLoading] = useState(true);
@@ -304,7 +213,12 @@ export function DataProvider({ children }: DataProviderProps) {
             }
           }
 
-          // Ensure Senior Managers have portfolios (before pruning)
+          // Filter out inactive employees globally
+          if (mergedData.employees && Array.isArray(mergedData.employees)) {
+            mergedData.employees = mergedData.employees.filter((e: any) => e.isActive !== false && e.status !== 'Inactive');
+          }
+
+          // Ensure Senior Managers have portfolios
           if (mergedData.employees && mergedData.portfolios) {
             mergedData.portfolios = ensurePortfoliosForSeniorManagers(
               mergedData.employees as any[],
@@ -312,14 +226,9 @@ export function DataProvider({ children }: DataProviderProps) {
             );
           }
 
-          // Filter inactive (employees, projects) and prune empty hierarchy (sites, customers, portfolios)
-          applyActiveOnlyAndPruneEmpty(mergedData);
-
           if (Object.keys(mergedData).length > 0) {
             // Apply transformations to build computed views (wbsData, laborBreakdown, etc.)
-            const transformedData = transformData(mergedData, {
-              onLog: (engine, lines) => logsContext?.addEngineLog(engine, lines),
-            });
+            const transformedData = transformData(mergedData);
             // Replace all data, not merge, to ensure fresh state
             setData({ ...createEmptyData(), ...mergedData, ...transformedData });
             logger.debug('Loaded and transformed data from database:', Object.keys(mergedData).map(k => {
@@ -344,36 +253,15 @@ export function DataProvider({ children }: DataProviderProps) {
    * Automatically applies transformations to build computed views
    */
   const updateData = (updates: Partial<SampleData>) => {
-    const keys = Object.keys(updates);
-    if (keys.length > 0 && !(keys.length === 1 && keys[0] === 'wbsData')) {
-      logsContext?.addChangeLog?.({
-        user: 'System',
-        action: 'update',
-        entityType: 'data',
-        entityId: keys.join(','),
-        description: `Updated: ${keys.join(', ')}`,
-      });
-    }
     setData((prev) => {
       const merged = { ...prev, ...updates };
       // When only wbsData is updated (e.g. CPM results), keep it and skip full transform to avoid overwriting with a fresh build
+      const keys = Object.keys(updates);
       if (keys.length === 1 && keys[0] === 'wbsData') {
         return merged;
       }
-      // When hierarchy or people/projects are updated, re-apply active-only and prune empty so UI stays consistent
-      const touchesEntities =
-        'employees' in updates ||
-        'projects' in updates ||
-        'portfolios' in updates ||
-        'customers' in updates ||
-        'sites' in updates;
-      if (touchesEntities) {
-        applyActiveOnlyAndPruneEmpty(merged);
-      }
       // Re-apply transformations when raw data changes
-      const transformedData = transformData(merged, {
-        onLog: (engine, lines) => logsContext?.addEngineLog(engine, lines),
-      });
+      const transformedData = transformData(merged);
       return { ...merged, ...transformedData };
     });
   };
@@ -416,20 +304,9 @@ export function DataProvider({ children }: DataProviderProps) {
         }
       }
 
-      // Same filters as load: ensure portfolios then filter inactive + prune empty hierarchy
-      if (mergedData.employees && mergedData.portfolios) {
-        mergedData.portfolios = ensurePortfoliosForSeniorManagers(
-          mergedData.employees as any[],
-          mergedData.portfolios as any[]
-        );
-      }
-      applyActiveOnlyAndPruneEmpty(mergedData);
-
       if (Object.keys(mergedData).length > 0) {
         // Apply transformations to build computed views
-        const transformedData = transformData(mergedData, {
-          onLog: (engine, lines) => logsContext?.addEngineLog(engine, lines),
-        });
+        const transformedData = transformData(mergedData);
         // Replace all data, not merge, to ensure fresh state
         setData({ ...createEmptyData(), ...mergedData, ...transformedData });
         logger.debug('Refreshed data from database:', Object.keys(mergedData).map(k => {
@@ -808,9 +685,7 @@ export function DataProvider({ children }: DataProviderProps) {
 
     // =========================================================================
     // APPLY DATE FILTER
-    // WBS actual hours and actual cost are cumulative (all-time); do not let date filter affect wbsData.
     // =========================================================================
-    const wbsDataBeforeDateFilter = filtered.wbsData;
     if (dateFilter && dateFilter.type !== 'all') {
       const now = new Date();
       let startDate: Date, endDate: Date;
@@ -876,9 +751,6 @@ export function DataProvider({ children }: DataProviderProps) {
         });
       }
     }
-
-    // Ensure WBS Gantt always gets cumulative actual hours and actual cost (wbsData never date-filtered)
-    filtered.wbsData = wbsDataBeforeDateFilter;
 
     return filtered;
   }, [data, hierarchyFilter, dateFilter]);

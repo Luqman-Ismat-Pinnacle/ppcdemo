@@ -308,25 +308,23 @@ function buildHierarchyMaps(data: {
   const tasksByProject = new Map<string, any[]>();
   const employeesById = new Map<string, any>();
 
-  // Build customer maps (supports both hierarchy_nodes parent_id and legacy portfolio_id)
+  // Build customer maps (supports both hierarchy_nodes parent_id and legacy portfolio_id). Use String keys for consistent lookup.
   customers.forEach((customer: any) => {
-    const portfolioId = customer.parent_id || customer.portfolioId || customer.portfolio_id;
-    if (portfolioId) {
-      if (!customersByPortfolio.has(portfolioId)) {
-        customersByPortfolio.set(portfolioId, []);
-      }
-      customersByPortfolio.get(portfolioId)!.push(customer);
+    const portfolioId = customer.parent_id ?? customer.portfolioId ?? customer.portfolio_id;
+    if (portfolioId != null && portfolioId !== '') {
+      const key = String(portfolioId);
+      if (!customersByPortfolio.has(key)) customersByPortfolio.set(key, []);
+      customersByPortfolio.get(key)!.push(customer);
     }
   });
 
-  // Build site maps (supports both hierarchy_nodes parent_id and legacy customer_id)
+  // Build site maps (supports both hierarchy_nodes parent_id and legacy customer_id). Use String keys for consistent lookup.
   sites.forEach((site: any) => {
-    const customerId = site.parent_id || site.customerId || site.customer_id;
-    if (customerId) {
-      if (!sitesByCustomer.has(customerId)) {
-        sitesByCustomer.set(customerId, []);
-      }
-      sitesByCustomer.get(customerId)!.push(site);
+    const customerId = site.parent_id ?? site.customerId ?? site.customer_id;
+    if (customerId != null && customerId !== '') {
+      const key = String(customerId);
+      if (!sitesByCustomer.has(key)) sitesByCustomer.set(key, []);
+      sitesByCustomer.get(key)!.push(site);
     }
   });
 
@@ -349,31 +347,28 @@ function buildHierarchyMaps(data: {
     }
   });
 
-  // Build project maps - only include projects with MPP uploaded (has_schedule = true)
+  // Build project maps - only include projects with MPP uploaded (has_schedule = true). Use String keys for consistent lookup.
   (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true).forEach((project: any) => {
-    const unitId = project.unitId || project.unit_id;
-    const siteId = project.siteId || project.site_id;
-    const customerId = project.customerId || project.customer_id;
+    const unitId = project.unitId ?? project.unit_id;
+    const siteId = project.siteId ?? project.site_id;
+    const customerId = project.customerId ?? project.customer_id;
 
-    if (unitId) {
-      if (!projectsByUnit.has(unitId)) {
-        projectsByUnit.set(unitId, []);
-      }
-      projectsByUnit.get(unitId)!.push(project);
+    if (unitId != null && unitId !== '') {
+      const key = String(unitId);
+      if (!projectsByUnit.has(key)) projectsByUnit.set(key, []);
+      projectsByUnit.get(key)!.push(project);
     }
 
-    if (siteId) {
-      if (!projectsBySite.has(siteId)) {
-        projectsBySite.set(siteId, []);
-      }
-      projectsBySite.get(siteId)!.push(project);
+    if (siteId != null && siteId !== '') {
+      const key = String(siteId);
+      if (!projectsBySite.has(key)) projectsBySite.set(key, []);
+      projectsBySite.get(key)!.push(project);
     }
 
-    if (customerId) {
-      if (!projectsByCustomer.has(customerId)) {
-        projectsByCustomer.set(customerId, []);
-      }
-      projectsByCustomer.get(customerId)!.push(project);
+    if (customerId != null && customerId !== '') {
+      const key = String(customerId);
+      if (!projectsByCustomer.has(key)) projectsByCustomer.set(key, []);
+      projectsByCustomer.get(key)!.push(project);
     }
   });
 
@@ -1450,7 +1445,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     let wbsCounter = 1;
 
     portfolios.forEach((portfolio: any, pIdx: number) => {
-      const portfolioId = portfolio.id || portfolio.portfolioId;
+      const portfolioId = portfolio.id ?? portfolio.portfolioId;
+      const portfolioIdStr = portfolioId != null ? String(portfolioId) : '';
       const portfolioWbs = `${wbsCounter}`;
 
       // Calculate portfolio name
@@ -1471,7 +1467,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         children: []
       };
 
-      const allPortfolioCustomers = maps.customersByPortfolio.get(portfolioId) || [];
+      const allPortfolioCustomers = (portfolioIdStr ? maps.customersByPortfolio.get(portfolioIdStr) : null) || [];
       allPortfolioCustomers.forEach((customer: any, cIdx: number) => {
         const customerId = customer.id || customer.customerId;
         const customerWbs = `${portfolioWbs}.${cIdx + 1}`;
@@ -1486,14 +1482,16 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           children: []
         };
 
-        // Place sites under customer based on PROJECT's customerId (not site.customerId).
-        // A site like Fort McMurray can belong to 2 customers; we show it under each customer with only that customer's projects.
-        const customerProjectsRaw = maps.projectsByCustomer.get(customerId) || [];
+        // Place sites under customer: use project-driven grouping when projects have siteId
+        // (so shared sites like Fort McMurray show under the correct customer per project).
+        // Fall back to site.customerId when no projects have siteId so sites still show.
+        const customerIdStr = String(customerId);
+        const customerProjectsRaw = (maps.projectsByCustomer.get(customerId) || maps.projectsByCustomer.get(customerIdStr) || []) as any[];
         const projectsBySiteId = new Map<string, any[]>();
         const customerProjectsNoSite: any[] = [];
         customerProjectsRaw.forEach((p: any) => {
-          const pSiteId = p.siteId || p.site_id;
-          if (!pSiteId) {
+          const pSiteId = p.siteId ?? p.site_id;
+          if (pSiteId == null || pSiteId === '') {
             customerProjectsNoSite.push(p);
             return;
           }
@@ -1502,35 +1500,63 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           projectsBySiteId.get(key)!.push(p);
         });
 
-        let sIdx = 0;
-        projectsBySiteId.forEach((siteProjects, siteId) => {
-          const site = sitesById.get(siteId);
-          const siteName = site?.name || `Site ${sIdx + 1}`;
-          const siteWbs = `${customerWbs}.${sIdx + 1}`;
+        const useProjectDrivenSites = projectsBySiteId.size > 0;
 
-          const siteItem: TransformWBSItem = {
-            id: `wbs-site-${siteId}-cust-${customerId}`,
-            wbsCode: siteWbs,
-            name: siteName,
-            type: 'site',
-            itemType: 'site',
-            percentComplete: site?.percentComplete ?? site?.percent_complete ?? 0,
-            children: []
-          };
+        if (useProjectDrivenSites) {
+          let sIdx = 0;
+          projectsBySiteId.forEach((siteProjects, siteId) => {
+            const site = sitesById.get(siteId);
+            const siteName = site?.name || `Site ${sIdx + 1}`;
+            const siteWbs = `${customerWbs}.${sIdx + 1}`;
 
-          const siteProjectsDeduped = Array.from(new Map(siteProjects.map((p: any) => [String(p.id ?? p.projectId), p])).values());
-          siteProjectsDeduped.forEach((project: any, prIdx: number) => {
-            siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
+            const siteItem: TransformWBSItem = {
+              id: `wbs-site-${siteId}-cust-${customerId}`,
+              wbsCode: siteWbs,
+              name: siteName,
+              type: 'site',
+              itemType: 'site',
+              percentComplete: site?.percentComplete ?? site?.percent_complete ?? 0,
+              children: []
+            };
+
+            const siteProjectsDeduped = Array.from(new Map(siteProjects.map((p: any) => [String(p.id ?? p.projectId), p])).values());
+            siteProjectsDeduped.forEach((project: any, prIdx: number) => {
+              siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
+            });
+            customerItem.children?.push(siteItem);
+            sIdx++;
           });
-          customerItem.children?.push(siteItem);
-          sIdx++;
-        });
+        } else {
+          // Fallback: use site.customerId so sites still show when projects don't have siteId
+          const customerSites = maps.sitesByCustomer.get(customerId) || maps.sitesByCustomer.get(customerIdStr) || [];
+          customerSites.forEach((site: any, sIdx: number) => {
+            const siteId = site.id || site.siteId;
+            const siteWbs = `${customerWbs}.${sIdx + 1}`;
 
-        // Projects directly under customer (no site, or site not in this customer's project set)
+            const siteItem: TransformWBSItem = {
+              id: `wbs-site-${siteId}`,
+              wbsCode: siteWbs,
+              name: site.name || `Site ${sIdx + 1}`,
+              type: 'site',
+              itemType: 'site',
+              percentComplete: site.percentComplete ?? site.percent_complete ?? 0,
+              children: []
+            };
+
+            const siteProjectsRaw = maps.projectsBySite.get(siteId) || maps.projectsBySite.get(String(siteId)) || [];
+            const siteProjects = Array.from(new Map(siteProjectsRaw.map((p: any) => [String(p.id ?? p.projectId), p])).values());
+            siteProjects.forEach((project: any, prIdx: number) => {
+              siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
+            });
+            customerItem.children?.push(siteItem);
+          });
+        }
+
+        // Projects directly under customer (no site)
         const customerProjectsFiltered = Array.from(new Map(customerProjectsNoSite.map((p: any) => [String(p.id ?? p.projectId), p])).values());
-        const customerProjects = Array.from(new Map(customerProjectsFiltered.map((p: any) => [String(p.id ?? p.projectId), p])).values());
+        const numSites = useProjectDrivenSites ? projectsBySiteId.size : (maps.sitesByCustomer.get(customerId) || maps.sitesByCustomer.get(customerIdStr) || []).length;
         customerProjectsFiltered.forEach((project: any, prIdx: number) => {
-          customerItem.children?.push(buildProjectNode(project, `${customerWbs}.${projectsBySiteId.size + prIdx + 1}`));
+          customerItem.children?.push(buildProjectNode(project, `${customerWbs}.${numSites + prIdx + 1}`));
         });
 
         portfolioItem.children?.push(customerItem);
