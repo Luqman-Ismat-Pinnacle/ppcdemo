@@ -12,6 +12,7 @@ import type { EChartsOption } from 'echarts';
 import { useData } from '@/lib/data-context';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+import { generateId } from '@/lib/database-schema';
 
 interface SnapshotComparisonModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export default function SnapshotComparisonModal({
   currentData,
   onRenderChart,
 }: SnapshotComparisonModalProps) {
-  const { data, updateData } = useData();
+  const { data, updateData, saveVisualSnapshot } = useData();
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null);
   const currentChartRef = useRef<any>(null);
   const snapshotChartRef = useRef<any>(null);
@@ -227,6 +228,29 @@ export default function SnapshotComparisonModal({
     }
   };
 
+  const handleCaptureSnapshot = useCallback(async () => {
+    const name = prompt('Snapshot name (e.g., Baseline, Week 1):');
+    if (!name?.trim()) return;
+    const snapshot = {
+      id: generateId('VSN'),
+      visualId,
+      visualType,
+      visualTitle,
+      snapshotName: name.trim(),
+      snapshotDate: new Date().toISOString().split('T')[0],
+      data: visualType === 'chart' ? currentData : (Array.isArray(currentData) ? currentData : []),
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      createdBy: 'User',
+    };
+    const ok = await saveVisualSnapshot(snapshot);
+    if (ok) {
+      setSelectedSnapshotId(snapshot.id);
+    } else {
+      alert('Failed to save snapshot.');
+    }
+  }, [visualId, visualType, visualTitle, currentData, saveVisualSnapshot]);
+
   useEffect(() => {
     if (!isOpen) return;
     const prevOverflow = document.body.style.overflow;
@@ -391,6 +415,22 @@ export default function SnapshotComparisonModal({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={handleCaptureSnapshot}
+            style={{
+              padding: '8px 14px',
+              background: 'var(--pinnacle-teal)',
+              color: '#000',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontSize: '0.8125rem',
+            }}
+          >
+            Save current as snapshot
+          </button>
         </div>
 
         {/* Content – side‑by‑side; fills remaining space */}
@@ -490,44 +530,59 @@ function renderTable(data: any[]) {
     );
   }
   const columns = Object.keys(data[0]);
+  const humanize = (s: string) =>
+    s.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).replace(/_/g, ' ').trim();
+
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-      <thead>
-        <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
-          {columns.map((col) => (
-            <th
-              key={col}
-              style={{
-                padding: '10px 8px',
-                textAlign: 'left',
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                fontSize: '0.75rem',
-                textTransform: 'uppercase',
-              }}
-            >
-              {col}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {data.slice(0, 100).map((row, idx) => (
-          <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-            {columns.map((col) => {
-              const val = row[col];
-              const str = val == null ? '' : String(val);
-              const isPercent = typeof val === 'number' && (col.toLowerCase().includes('percent') || col.toLowerCase().includes('%') || col === 'efficiency' || col === 'metricsRatio' || col === 'passRate');
-              const display = isPercent ? `${Number(Number(val).toFixed(2))}%` : str;
-              return (
-                <td key={col} style={{ padding: '8px', color: 'var(--text-secondary)' }}>
-                  {display}
-                </td>
-              );
-            })}
+    <div style={{ overflow: 'auto', flex: 1, minHeight: 0 }}>
+      <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+            {columns.map((col) => (
+              <th
+                key={col}
+                style={{
+                  padding: '10px 12px',
+                  textAlign: 'left',
+                  fontWeight: 600,
+                  color: 'var(--pinnacle-teal)',
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  position: 'sticky',
+                  top: 0,
+                  background: 'var(--bg-secondary)',
+                  zIndex: 5,
+                }}
+              >
+                {humanize(col)}
+              </th>
+            ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {data.map((row, idx) => (
+            <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+              {columns.map((col) => {
+                const val = row[col];
+                const str = val == null ? '' : String(val);
+                const isPercent =
+                  typeof val === 'number' &&
+                  (col.toLowerCase().includes('percent') ||
+                    col.toLowerCase().includes('%') ||
+                    col === 'efficiency' ||
+                    col === 'metricsRatio' ||
+                    col === 'passRate');
+                const display = isPercent ? `${Number(Number(val).toFixed(2))}%` : str;
+                return (
+                  <td key={col} style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>
+                    {display}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

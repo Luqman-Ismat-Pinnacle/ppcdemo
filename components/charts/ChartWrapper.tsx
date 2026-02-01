@@ -31,6 +31,7 @@ import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
 import { SkeletonChart } from '@/components/ui/Skeleton';
 import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
+import { CompareIcon, FullscreenIcon, DownloadIcon } from '@/components/ui/ChartActionIcons';
 import { useChartHeaderActions } from './ChartCard';
 
 interface ChartWrapperProps {
@@ -317,12 +318,9 @@ const ChartWrapper = React.memo(function ChartWrapper({
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
           title="Compare with snapshots"
-          style={inChartCard ? undefined : { position: 'absolute', top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }}
+          style={inChartCard ? undefined : { top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="4" y="4" width="6" height="16" rx="1" />
-            <rect x="14" y="4" width="6" height="16" rx="1" />
-          </svg>
+          <CompareIcon size={14} />
         </button>
       )}
       {enableFullscreen && !isLoading && !isEmpty && (
@@ -331,9 +329,9 @@ const ChartWrapper = React.memo(function ChartWrapper({
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
           title="Fullscreen"
-          style={!inChartCard ? { position: 'absolute', top: 8, right: enableExport ? 44 : 8 } : undefined}
+          style={!inChartCard ? { top: 8, right: enableExport ? 44 : 8 } : undefined}
         >
-          ⛶
+          <FullscreenIcon size={14} />
         </button>
       )}
       {enableExport && !isLoading && !isEmpty && (
@@ -342,9 +340,9 @@ const ChartWrapper = React.memo(function ChartWrapper({
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); handleExport(); }}
           title="Export as PNG"
-          style={!inChartCard ? { position: 'absolute', top: 8, right: 8 } : undefined}
+          style={!inChartCard ? { top: 8, right: 8 } : undefined}
         >
-          ⬇
+          <DownloadIcon size={14} />
         </button>
       )}
     </>

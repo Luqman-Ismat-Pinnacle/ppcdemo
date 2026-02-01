@@ -1,14 +1,15 @@
 'use client';
 
 /**
- * TableCompareExport – Puts Compare and Export Excel in chart header when inside ChartCard,
- * or in top-right when not. Opens SnapshotComparisonModal on Compare and downloads Excel on Export.
+ * TableCompareExport – Compare, Fullscreen, Export in chart header.
+ * Icon-only buttons matching chart visuals. Opens SnapshotComparisonModal on Compare.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import SnapshotComparisonModal from './SnapshotComparisonModal';
 import { useChartHeaderActions } from '@/components/charts/ChartCard';
+import { CompareIcon, FullscreenIcon, DownloadIcon } from './ChartActionIcons';
 
 interface TableCompareExportProps {
   visualId: string;
@@ -20,19 +21,6 @@ interface TableCompareExportProps {
   style?: React.CSSProperties;
 }
 
-const buttonBaseStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  background: 'var(--bg-secondary)',
-  border: '1px solid var(--border-color)',
-  borderRadius: '4px',
-  color: 'var(--text-primary)',
-  cursor: 'pointer',
-  fontSize: '0.75rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px',
-};
-
 export default function TableCompareExport({
   visualId,
   visualTitle,
@@ -43,6 +31,7 @@ export default function TableCompareExport({
 }: TableCompareExportProps) {
   const setHeaderActions = useChartHeaderActions();
   const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const dataArray = Array.isArray(data) ? data : [];
   const dataRef = useRef(dataArray);
   dataRef.current = dataArray;
@@ -66,26 +55,24 @@ export default function TableCompareExport({
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
           title="Compare with snapshots"
-          style={buttonBaseStyle}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          Compare
+          <CompareIcon size={14} />
+        </button>
+        <button
+          type="button"
+          className="chart-action-btn"
+          onClick={(e) => { e.stopPropagation(); setIsFullscreenOpen(true); }}
+          title="Fullscreen"
+        >
+          <FullscreenIcon size={14} />
         </button>
         <button
           type="button"
           className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); handleExportExcel(); }}
           title="Export to Excel"
-          style={buttonBaseStyle}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          Export
+          <DownloadIcon size={14} />
         </button>
       </>
     );
@@ -100,26 +87,24 @@ export default function TableCompareExport({
         className="chart-action-btn"
         onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
         title="Compare with snapshots"
-        style={buttonBaseStyle}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        Compare
+        <CompareIcon size={14} />
+      </button>
+      <button
+        type="button"
+        className="chart-action-btn"
+        onClick={(e) => { e.stopPropagation(); setIsFullscreenOpen(true); }}
+        title="Fullscreen"
+      >
+        <FullscreenIcon size={14} />
       </button>
       <button
         type="button"
         className="chart-action-btn"
         onClick={(e) => { e.stopPropagation(); handleExportExcel(); }}
         title="Export to Excel"
-        style={buttonBaseStyle}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-        Export
+        <DownloadIcon size={14} />
       </button>
     </>
   );
@@ -158,6 +143,37 @@ export default function TableCompareExport({
           visualType="table"
           currentData={dataArray}
         />
+      )}
+      {isFullscreenOpen && (
+        <div
+          role="dialog"
+          aria-label={`${visualTitle} fullscreen`}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'rgba(0,0,0,0.9)',
+          }}
+          onClick={() => setIsFullscreenOpen(false)}
+        >
+          <div style={{ flex: 1, overflow: 'auto', padding: 24 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border-color)', overflow: 'auto' }}>
+              {children}
+            </div>
+          </div>
+          <div style={{ padding: 12, borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="chart-action-btn"
+              onClick={() => setIsFullscreenOpen(false)}
+              title="Close"
+            >
+              <span style={{ fontSize: 18 }}>×</span>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

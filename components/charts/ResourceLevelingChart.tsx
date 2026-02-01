@@ -103,5 +103,5 @@ export default function ResourceLevelingChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} enableCompare visualId="resource-leveling" visualTitle="Resource Leveling" />;
+  return <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-leveling" visualTitle="Resource Leveling" />;
 }

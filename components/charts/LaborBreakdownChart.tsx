@@ -375,9 +375,10 @@ export default function LaborBreakdownChart({
         height={chartHeightNum}
         onClick={handleClick}
         enableCompare
+        enableExport
+        enableFullscreen
         visualId="labor-breakdown"
         visualTitle="Labor Hours Distribution"
-        enableExport
         exportFilename="labor-breakdown"
         isEmpty={false}
       />

@@ -401,7 +401,7 @@ export default function HoursWaterfallChart({ data, height = '500px' }: HoursWat
         borderRadius: '8px',
         background: 'rgba(26, 26, 26, 0.3)',
       }}>
-        <ChartWrapper option={option} height={chartHeight} enableCompare visualId="hours-waterfall" visualTitle="Hours Waterfall" />
+        <ChartWrapper option={option} height={chartHeight} enableCompare enableExport enableFullscreen visualId="hours-waterfall" visualTitle="Hours Waterfall" />
       </div>
     </div>
   );

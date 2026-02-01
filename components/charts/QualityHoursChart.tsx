@@ -112,6 +112,8 @@ export default function QualityHoursChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="quality-hours"
       visualTitle="Quality Hours Breakdown"
       isEmpty={data.tasks.length === 0}

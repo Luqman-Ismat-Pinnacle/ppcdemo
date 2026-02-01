@@ -298,9 +298,10 @@ export default function TaskHoursEfficiencyChart({
       height={calculatedHeight}
       onClick={handleClick}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="task-hours-efficiency"
       visualTitle="Task Hours Efficiency"
-      enableExport
       exportFilename="task-hours-efficiency"
       isEmpty={false}
     />

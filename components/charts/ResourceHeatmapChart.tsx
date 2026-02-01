@@ -645,7 +645,7 @@ export default function ResourceHeatmapChart({
       )}
 
       <div style={{ flex: 1, minHeight: 0 }}>
-        <ChartWrapper option={option} height={height} enableCompare visualId="resource-heatmap" visualTitle="Resource Heatmap" />
+        <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-heatmap" visualTitle="Resource Heatmap" />
       </div>
     </div>
   );

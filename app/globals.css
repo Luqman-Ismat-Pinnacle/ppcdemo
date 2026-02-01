@@ -1365,12 +1365,11 @@ body {
   min-height: 360px;
 }
 
-/* Chart action buttons (export, fullscreen) */
+/* Chart action buttons – square, icon-only, reference style */
 .chart-action-btn {
-  position: absolute;
-  z-index: 10;
   width: 32px;
   height: 32px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1379,13 +1378,18 @@ body {
   border-radius: 8px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  flex-shrink: 0;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+  position: absolute;
+  z-index: 10;
 }
 .chart-action-btn:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border-color: var(--pinnacle-teal);
+}
+.chart-action-btn svg {
+  flex-shrink: 0;
 }
 
 .chart-header-actions .chart-action-btn {
