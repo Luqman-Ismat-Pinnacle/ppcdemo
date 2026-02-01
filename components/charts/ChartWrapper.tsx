@@ -25,6 +25,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
@@ -487,7 +488,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
         </div>,
         document.body
       )}
-      {enableCompare && visualId && isCompareOpen && (
+      {enableCompare && visualId && isCompareOpen && typeof document !== 'undefined' && createPortal(
         <SnapshotComparisonModal
           isOpen={isCompareOpen}
           onClose={() => setIsCompareOpen(false)}
@@ -496,7 +497,8 @@ const ChartWrapper = React.memo(function ChartWrapper({
           visualType="chart"
           currentData={resolvedOptionRef.current}
           onRenderChart={onRenderChart}
-        />
+        />,
+        document.body
       )}
     </div>
   );

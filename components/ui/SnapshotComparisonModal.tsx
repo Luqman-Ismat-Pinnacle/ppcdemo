@@ -227,6 +227,13 @@ export default function SnapshotComparisonModal({
     }
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prevOverflow; };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const cardStyle = {
@@ -268,7 +275,7 @@ export default function SnapshotComparisonModal({
     >
       <div
         ref={(el) => { modalContentRef.current = el; }}
-        className="chart-card"
+        className="snapshot-compare-modal-inner"
         style={{
           width: '100%',
           height: '100%',
@@ -406,12 +413,12 @@ export default function SnapshotComparisonModal({
                 Current
               </h3>
             </div>
-            <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
               {visualType === 'chart' ? (
                 currentData != null ? (
                   <div
                     ref={(el) => { currentContainerRef.current = el; }}
-                    style={{ width: '100%', flex: 1, minHeight: 200 }}
+                    style={{ width: '100%', flex: 1, minHeight: 0 }}
                   />
                 ) : (
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
@@ -451,7 +458,7 @@ export default function SnapshotComparisonModal({
                 </button>
               )}
             </div>
-            <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
               {!selectedSnapshot ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                   Select a snapshot to compare
@@ -459,7 +466,7 @@ export default function SnapshotComparisonModal({
               ) : visualType === 'chart' ? (
                 <div
                   ref={(el) => { snapshotContainerRef.current = el; }}
-                  style={{ width: '100%', flex: 1, minHeight: 200 }}
+                  style={{ width: '100%', flex: 1, minHeight: 0 }}
                 />
               ) : (
                 <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
