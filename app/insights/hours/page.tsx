@@ -381,86 +381,83 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Row 1: Task Efficiency */}
-      <ChartCard
-        gridClass="grid-full"
-        title={
-          <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
-              <path d="M12 20V10M18 20V4M6 20v-4"></path>
-            </svg>
-            Task Hours Efficiency
-            {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
-          </h3>
-        }
-      >
-        <TaskHoursEfficiencyChart
-          data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-          height="100%"
-          onBarClick={handleBarClick}
-          activeFilters={activeFilters}
-        />
-      </ChartCard>
-
-      {/* Row 2: Quality Hours + Non-Execute */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-        {/* Quality Hours */}
-        <ChartCard
-          title={
-            <EnhancedTooltip
-              content={{
-                title: 'Quality Hours by Charge Code',
-                description: 'Breakdown of quality control hours by charge code, showing productive, rework, and idle time.',
-                calculation: 'Quality Hours % = (QC Hours / Total Hours) × 100\n\nWhere:\n- QC Hours = Hours logged with QC-related charge codes\n- Total Hours = Sum of all hours in the period',
-                details: [
-                  'Shows distribution of quality hours across charge codes',
-                  'Higher percentages indicate more time spent on quality activities',
-                  'Includes productive, rework, and idle QC hours',
-                ],
-              }}
-            >
-              <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'help' }}>
-                Quality Hours by Charge Code {qualityHoursPercent !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{qualityHoursPercent}%</strong>}
-              </h3>
-            </EnhancedTooltip>
-          }
-        >
-          <QualityHoursChart
-            data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+      {/* Row 1: Task Efficiency (Full Width - Expanded) */}
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '700px' }} title={
+        <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+            <path d="M12 20V10M18 20V4M6 20v-4"></path>
+          </svg>
+          Task Hours Efficiency
+          {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
+        </h3>
+      }>
+        <div style={{ padding: '16px', height: '620px' }}>
+          <TaskHoursEfficiencyChart
+            data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
             height="100%"
             onBarClick={handleBarClick}
             activeFilters={activeFilters}
           />
+        </div>
+      </ChartCard>
+
+      {/* Row 2: Quality Hours + Non-Execute */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        {/* Quality Hours */}
+        <ChartCard title={
+          <EnhancedTooltip
+            content={{
+              title: 'Quality Hours by Charge Code',
+              description: 'Breakdown of quality control hours by charge code, showing productive, rework, and idle time.',
+              calculation: 'Quality Hours % = (QC Hours / Total Hours) × 100\n\nWhere:\n- QC Hours = Hours logged with QC-related charge codes\n- Total Hours = Sum of all hours in the period',
+              details: [
+                'Shows distribution of quality hours across charge codes',
+                'Higher percentages indicate more time spent on quality activities',
+                'Includes productive, rework, and idle QC hours',
+              ],
+            }}
+          >
+            <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'help' }}>
+              Quality Hours by Charge Code {qualityHoursPercent !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{qualityHoursPercent}%</strong>}
+            </h3>
+          </EnhancedTooltip>
+        }>
+          <div style={{ padding: '16px', height: '300px' }}>
+            <QualityHoursChart
+              data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+              height="100%"
+              onBarClick={handleBarClick}
+              activeFilters={activeFilters}
+            />
+          </div>
         </ChartCard>
 
         {/* Non-Execute Hours */}
-        <ChartCard
-          title={
-            <EnhancedTooltip
-              content={{
-                title: 'Non-Execute Hours',
-                description: 'Hours spent on non-execution activities such as overhead, TPW (The Pinnacle Way), and other indirect work.',
-                calculation: 'Non-Execute % = (Non-Execute Hours / Total Hours) × 100\n\nWhere:\n- Non-Execute Hours = Hours with overhead/TPW charge codes\n- Total Hours = Sum of all logged hours',
-                details: [
-                  'Includes overhead project hours',
-                  'TPW (The Pinnacle Way) methodology hours',
-                  'Other indirect/non-billable activities',
-                  'Lower percentages indicate more time on direct execution',
-                ],
-              }}
-            >
-              <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'help' }}>
-                Non-Execute Hours {nonExecutePercent !== null && <strong style={{ marginLeft: '8px', color: '#F59E0B' }}>{nonExecutePercent}%</strong>}
-              </h3>
-            </EnhancedTooltip>
-          }
-        >
-          <div style={{ display: 'flex', gap: '1rem', height: '100%' }}>
+        <ChartCard title={
+          <EnhancedTooltip
+            content={{
+              title: 'Non-Execute Hours',
+              description: 'Hours spent on non-execution activities such as overhead, TPW (The Pinnacle Way), and other indirect work.',
+              calculation: 'Non-Execute % = (Non-Execute Hours / Total Hours) × 100\n\nWhere:\n- Non-Execute Hours = Hours with overhead/TPW charge codes\n- Total Hours = Sum of all logged hours',
+              details: [
+                'Includes overhead project hours',
+                'TPW (The Pinnacle Way) methodology hours',
+                'Other indirect/non-billable activities',
+                'Lower percentages indicate more time on direct execution',
+              ],
+            }}
+          >
+            <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'help' }}>
+              Non-Execute Hours {nonExecutePercent !== null && <strong style={{ marginLeft: '8px', color: '#F59E0B' }}>{nonExecutePercent}%</strong>}
+            </h3>
+          </EnhancedTooltip>
+        }>
+          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '300px' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
               <NonExecutePieChart 
                 data={data?.nonExecuteHours?.tpwComparison || []} 
-                height="100%" 
+                height="220px" 
                 showLabels={true} 
               />
             </div>
@@ -468,7 +465,7 @@ export default function HoursPage() {
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>Other Breakdown</div>
               <NonExecutePieChart 
                 data={data?.nonExecuteHours?.otherBreakdown || []} 
-                height="100%" 
+                height="220px" 
                 showLabels={true} 
               />
             </div>
@@ -476,29 +473,29 @@ export default function HoursPage() {
         </ChartCard>
       </div>
 
-      {/* Hours Variance Waterfall */}
-      <ChartCard
-        gridClass="grid-full"
-        title={
-          <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
-              <rect x="4" y="14" width="4" height="6" rx="1"></rect>
-              <rect x="10" y="8" width="4" height="12" rx="1"></rect>
-              <rect x="16" y="4" width="4" height="16" rx="1"></rect>
-            </svg>
-            Hours Variance Waterfall
-          </h3>
-        }
-      >
-        <HoursWaterfallChart
-          data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-          height="100%"
-        />
+      {/* Hours Variance Waterfall - Full Width */}
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '550px' }} title={
+        <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+            <rect x="4" y="14" width="4" height="6" rx="1"></rect>
+            <rect x="10" y="8" width="4" height="12" rx="1"></rect>
+            <rect x="16" y="4" width="4" height="16" rx="1"></rect>
+          </svg>
+          Hours Variance Waterfall
+        </h3>
+      }>
+        <div style={{ padding: '16px', height: '470px' }}>
+          <HoursWaterfallChart
+            data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
+            height="450px"
+          />
+        </div>
       </ChartCard>
 
       {/* Labor Hours Distribution */}
       <ChartCard
         gridClass="grid-full"
+        style={{ marginBottom: '1rem', minHeight: '500px' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -532,19 +529,22 @@ export default function HoursPage() {
           </div>
         }
       >
-        <LaborBreakdownChart
-          months={currentStackedData.months}
-          dataByCategory={currentStackedData.dataByCategory}
-          height="100%"
-          onBarClick={handleBarClick}
-          activeFilters={activeFilters}
-        />
+        <div style={{ padding: '16px', height: '420px' }}>
+          <LaborBreakdownChart
+            months={currentStackedData.months}
+            dataByCategory={currentStackedData.dataByCategory}
+            height="400px"
+            onBarClick={handleBarClick}
+            activeFilters={activeFilters}
+          />
+        </div>
       </ChartCard>
 
       {/* Labor Breakdown by Worker */}
       <ChartCard
         gridClass="grid-full"
         noPadding
+        style={{ marginBottom: '1rem', minHeight: '600px' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -748,6 +748,7 @@ export default function HoursPage() {
       <ChartCard
         gridClass="grid-full"
         noPadding
+        style={{ marginBottom: '1rem', minHeight: '400px' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">

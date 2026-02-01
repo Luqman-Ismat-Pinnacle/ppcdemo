@@ -1222,8 +1222,14 @@ export default function WBSGanttPage() {
               {virtualRows.map((row) => {
                 const isCritical = row.isCritical;
                 const efficiency = row.taskEfficiency || 0;
+                const progress = row.percentComplete || 0;
                 const effColor = efficiency >= 100 ? '#40E0D0' : efficiency >= 90 ? '#CDDC39' : '#F59E0B';
-                const itemColor = isCritical ? WBS_COLORS.critical : (row.hasChildren ? (WBS_COLORS as any)[row.itemType] || '#40E0D0' : effColor);
+                const progressColor = progress >= 100 ? '#22c55e' : progress >= 75 ? '#22c55e' : progress >= 50 ? '#eab308' : progress >= 25 ? '#f97316' : '#ef4444';
+                const itemColor = isCritical
+                  ? WBS_COLORS.critical
+                  : row.hasChildren
+                    ? progressColor
+                    : effColor;
                 const isExpanded = expandedIds.has(row.id);
 
                 return (

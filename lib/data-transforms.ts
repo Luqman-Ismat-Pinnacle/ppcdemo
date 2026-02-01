@@ -1623,6 +1623,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           let sumActualHrs = 0;
           let sumBaselineCst = 0;
           let sumActualCst = 0;
+          let sumPercentComplete = 0;
+          let childCount = 0;
           item.children.forEach((c: any) => {
             const s = c.startDate ?? c.baselineStartDate;
             const e = c.endDate ?? c.baselineEndDate;
@@ -1632,6 +1634,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             sumActualHrs += Number(c.actualHours) || 0;
             sumBaselineCst += Number(c.baselineCost) || 0;
             sumActualCst += Number(c.actualCost) || 0;
+            const pct = c.percentComplete ?? c.percent_complete ?? 0;
+            sumPercentComplete += pct;
+            childCount++;
           });
           if (minStart) item.startDate = minStart;
           if (maxEnd) item.endDate = maxEnd;
@@ -1639,6 +1644,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           item.actualHours = item.actualHours ?? (sumActualHrs || undefined);
           item.baselineCost = item.baselineCost ?? (sumBaselineCst || undefined);
           item.actualCost = item.actualCost ?? (sumActualCst || undefined);
+          if (childCount > 0) {
+            item.percentComplete = item.percentComplete ?? item.percent_complete ?? Math.round(sumPercentComplete / childCount);
+          }
         }
       });
     };

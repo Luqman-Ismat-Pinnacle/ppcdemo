@@ -158,7 +158,7 @@ export default function StatusAndLogsDropdown() {
         className="nav-dropdown-trigger"
         onClick={() => setIsOpen(!isOpen)}
         style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        title="Status & Logs"
+        title="System Health & Logs"
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span
@@ -171,7 +171,7 @@ export default function StatusAndLogsDropdown() {
               animation: dbChecking ? 'pulse 1s infinite' : undefined,
             }}
           />
-          <span>Status</span>
+          <span>System Health</span>
           {totalLogCount > 0 && (
             <span style={{ fontSize: '0.7rem', background: 'var(--accent-color)', color: 'white', padding: '2px 6px', borderRadius: '10px' }}>
               {totalLogCount}
@@ -211,7 +211,7 @@ export default function StatusAndLogsDropdown() {
                 borderBottom: activeTab === 'status' ? '2px solid var(--pinnacle-teal)' : '2px solid transparent',
               }}
             >
-              Status
+              Health
             </button>
             <button
               onClick={() => setActiveTab('logs')}
