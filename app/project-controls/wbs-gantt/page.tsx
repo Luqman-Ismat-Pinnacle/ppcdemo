@@ -82,7 +82,7 @@ function filterWbsItemsByPath(items: any[], path: (string | undefined)[]): any[]
 export default function WBSGanttPage() {
   const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter } = useData();
   const { addEngineLog } = useLogs();
-  const fixedColsWidth = 1240;
+  const fixedColsWidth = 1390; // WBS 100 + Name 450 + Type 80 + ... (Name expanded for full names)
   const data = filteredData;
   const employees = fullData.employees;
 
@@ -1115,7 +1115,7 @@ export default function WBSGanttPage() {
                 <th style={{ width: '100px', position: 'sticky', left: 0, top: 0, zIndex: 40, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   WBS Code
                 </th>
-                <th style={{ width: '300px', position: 'sticky', left: '100px', top: 0, zIndex: 40, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '450px', minWidth: '450px', position: 'sticky', left: '100px', top: 0, zIndex: 40, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600 }}>
                   Name
                 </th>
                 <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -1263,13 +1263,11 @@ export default function WBSGanttPage() {
                       zIndex: 10,
                       background: isCritical ? '#1a1010' : 'var(--bg-primary)',
                       borderRight: '1px solid #444',
-                      maxWidth: '300px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
+                      minWidth: '450px',
+                      width: '450px'
                     }}>
                       <EnhancedTooltip content={row.name || ''}>
-                        <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 400, fontSize: '0.7rem', color: isCritical ? '#ef4444' : 'inherit', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.name}</span>
+                        <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 400, fontSize: '0.7rem', color: isCritical ? '#ef4444' : 'inherit', display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{row.name}</span>
                       </EnhancedTooltip>
                     </td>
                     <td><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
