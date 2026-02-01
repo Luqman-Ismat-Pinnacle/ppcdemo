@@ -25,8 +25,7 @@ interface TaskHoursEfficiencyChartProps {
   activeFilters?: string[];
 }
 
-// Row height for each task bar (including padding) – enough space to avoid overlap
-const ROW_HEIGHT = 40;
+const ROW_HEIGHT = 36;
 const MIN_CHART_HEIGHT = 300;
 
 export default function TaskHoursEfficiencyChart({
@@ -137,8 +136,8 @@ export default function TaskHoursEfficiencyChart({
         data: ['Completed', 'Remaining'],
       },
       grid: { 
-        left: 220,
-        right: 90,
+        left: 280,
+        right: 60,
         top: 20, 
         bottom: 50,
         containLabel: false
@@ -163,13 +162,14 @@ export default function TaskHoursEfficiencyChart({
         data: validData.tasks,
         axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
         axisLabel: {
-          color: 'rgba(255,255,255,0.85)',
-          fontSize: 11,
+          color: 'rgba(255,255,255,0.9)',
+          fontSize: 12,
           fontWeight: 500,
-          width: 200,
+          width: 250,
           overflow: 'truncate',
-          margin: 20,
-          interval: 0, // show all labels
+          ellipsis: '…',
+          margin: 16,
+          interval: 0,
         },
         axisTick: { show: false },
         splitLine: { show: false },
@@ -195,9 +195,9 @@ export default function TaskHoursEfficiencyChart({
               },
             };
           }),
-          barWidth: 28,
+          barWidth: 22,
           barGap: '100%',
-          barCategoryGap: '120%', // more vertical space between rows
+          barCategoryGap: '50%',
           label: { show: false },
           emphasis: { 
             itemStyle: { 
@@ -221,28 +221,10 @@ export default function TaskHoursEfficiencyChart({
               borderRadius: [0, 4, 4, 0],
             },
           })),
-          barWidth: 28,
+          barWidth: 22,
           barGap: '100%',
-          barCategoryGap: '120%',
-          label: {
-            show: true,
-            position: 'right',
-            distance: 12,
-            formatter: (params: any) => {
-              const progress = validData.progressPercent[params.dataIndex] || 0;
-              return `{prog|${progress}%}`;
-            },
-            rich: {
-              prog: {
-                color: '#fff',
-                fontSize: 11,
-                fontWeight: 600,
-                padding: [3, 8],
-                backgroundColor: 'rgba(0,0,0,0.4)',
-                borderRadius: 4,
-              }
-            }
-          },
+          barCategoryGap: '50%',
+          label: { show: false },
           emphasis: { 
             itemStyle: { 
               color: 'rgba(100, 100, 100, 0.5)',

@@ -99,6 +99,7 @@ export default function ResourcingPage() {
   }, [data.resourceHeatmap, roleFilter, data.employees]);
 
   const [levelingParams, setLevelingParams] = useState<LevelingParams>(DEFAULT_LEVELING_PARAMS);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(true);
   const [levelingLog, setLevelingLog] = useState<LevelingLogEntry[]>([
     {
       timestamp: new Date().toISOString(),
@@ -736,20 +737,48 @@ export default function ResourcingPage() {
       {/* Results & Suggestions */}
       {levelingSuggestions.length > 0 && (
         <div className="chart-card" style={{ flexShrink: 0, background: 'linear-gradient(135deg, rgba(64,224,208,0.04) 0%, rgba(205,220,57,0.02) 100%)', border: '1px solid var(--border-color)' }}>
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <path d="M12 16v-4M12 8h.01"></path>
-            </svg>
-            <h3 className="chart-card-title">Results &amp; Suggestions</h3>
-            <EnhancedTooltip content={{
-              title: 'Engine Suggestions',
-              description: 'Actionable recommendations from the resource leveling run. Each suggestion explains why it occurred, what it means, and how to fix it.',
-              details: ['Click Implement to open the relevant page and apply the fix']
-            }}>
-              <span style={{ cursor: 'help', fontSize: '0.85rem', color: 'var(--text-muted)' }}>({levelingSuggestions.length} suggestions)</span>
-            </EnhancedTooltip>
+          <div
+            className="chart-card-header"
+            style={{
+              borderBottom: suggestionsExpanded ? '1px solid var(--border-color)' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              cursor: 'pointer',
+            }}
+            onClick={() => setSuggestionsExpanded(prev => !prev)}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="var(--pinnacle-teal)"
+                strokeWidth="2"
+                style={{ transform: suggestionsExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }}
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 16v-4M12 8h.01"></path>
+              </svg>
+              <h3 className="chart-card-title" style={{ margin: 0 }}>Results &amp; Suggestions</h3>
+              <EnhancedTooltip content={{
+                title: 'Engine Suggestions',
+                description: 'Actionable recommendations from the resource leveling run. Each suggestion explains why it occurred, what it means, and how to fix it.',
+                details: ['Click Implement to open the relevant page and apply the fix']
+              }}>
+                <span style={{ cursor: 'help', fontSize: '0.85rem', color: 'var(--text-muted)' }} onClick={(e) => e.stopPropagation()}>({levelingSuggestions.length} suggestions)</span>
+              </EnhancedTooltip>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {suggestionsExpanded ? 'Collapse' : 'Expand'}
+            </span>
           </div>
+          {suggestionsExpanded && (
           <div className="chart-card-body" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {levelingSuggestions.map((s) => {
               const typeColor = s.type === 'error' ? '#EF4444' : s.type === 'delay' ? '#F59E0B' : s.type === 'warning' ? '#F59E0B' : s.type === 'overallocated' ? '#E91E63' : 'var(--pinnacle-teal)';
@@ -810,6 +839,7 @@ export default function ResourcingPage() {
               );
             })}
           </div>
+          )}
         </div>
       )}
 

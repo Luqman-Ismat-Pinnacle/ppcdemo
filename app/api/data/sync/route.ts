@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     });
 
     const body = await req.json();
-    const { dataKey, records, operation, projectId, storagePath } = body;
+    const { dataKey, records, operation, projectId, storagePath, healthScore, healthCheckJson } = body;
 
     if (!dataKey) {
       return NextResponse.json(
