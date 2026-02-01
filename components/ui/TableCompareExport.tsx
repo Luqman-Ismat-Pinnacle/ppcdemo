@@ -125,7 +125,7 @@ export default function TableCompareExport({
   );
 
   return (
-    <div style={{ position: 'relative', ...style }} className={className}>
+    <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', ...style }} className={className}>
       {!setHeaderActions && (
         <div
           style={{
@@ -140,7 +140,13 @@ export default function TableCompareExport({
           {buttonsEl}
         </div>
       )}
-      <div style={{ paddingTop: !setHeaderActions ? 48 : 0 }}>
+      <div style={{ 
+        paddingTop: !setHeaderActions ? 48 : 0,
+        flex: 1,
+        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
         {children}
       </div>
       {isCompareOpen && (

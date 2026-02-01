@@ -530,7 +530,6 @@ export default function OverviewPage() {
             visualTitle="Count/Metrics Analysis"
             data={sortedCountMetrics}
           >
-            <div style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -636,7 +635,6 @@ export default function OverviewPage() {
                 ))}
               </tbody>
             </table>
-            </div>
           </TableCompareExport>
         </ChartCard>
 
@@ -668,7 +666,6 @@ export default function OverviewPage() {
             visualTitle="Projects Efficiency vs Metrics"
             data={sortedProjectMetrics}
           >
-            <div style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -752,7 +749,6 @@ export default function OverviewPage() {
                 ))}
               </tbody>
             </table>
-            </div>
           </TableCompareExport>
         </ChartCard>
       </div>

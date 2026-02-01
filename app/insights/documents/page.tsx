@@ -98,7 +98,6 @@ export default function DocumentsPage() {
             visualTitle="Detailed Deliverable Matrix"
             data={filteredDeliverables}
           >
-          <div style={{ overflow: 'auto', padding: '1rem' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -153,7 +152,6 @@ export default function DocumentsPage() {
                 })}
               </tbody>
             </table>
-          </div>
           </TableCompareExport>
         </ChartCard>
       </div>

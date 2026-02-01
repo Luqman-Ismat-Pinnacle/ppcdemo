@@ -22,6 +22,7 @@ import QualityHoursChart from '@/components/charts/QualityHoursChart';
 import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
 import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
 import HoursWaterfallChart from '@/components/charts/HoursWaterfallChart';
+import ChartCard from '@/components/charts/ChartCard';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import TableCompareExport from '@/components/ui/TableCompareExport';
 import {
@@ -380,9 +381,10 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Row 1: Task Efficiency (Full Width - Expanded) */}
-      <div className="chart-card" style={{ marginBottom: '2rem' }}>
-        <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
+      {/* Row 1: Task Efficiency */}
+      <ChartCard
+        gridClass="grid-full"
+        title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
               <path d="M12 20V10M18 20V4M6 20v-4"></path>
@@ -390,23 +392,22 @@ export default function HoursPage() {
             Task Hours Efficiency
             {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
           </h3>
-        </div>
-        <div style={{ padding: '16px', height: '620px' }}>
-          <TaskHoursEfficiencyChart
-            data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height="100%"
-            onBarClick={handleBarClick}
-            activeFilters={activeFilters}
-          />
-        </div>
-      </div>
+        }
+      >
+        <TaskHoursEfficiencyChart
+          data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
+          height="100%"
+          onBarClick={handleBarClick}
+          activeFilters={activeFilters}
+        />
+      </ChartCard>
 
       {/* Row 2: Quality Hours + Non-Execute */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
         {/* Quality Hours */}
-        <div className="chart-card">
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <EnhancedTooltip
+        <ChartCard
+          title={
+            <EnhancedTooltip
               content={{
                 title: 'Quality Hours by Charge Code',
                 description: 'Breakdown of quality control hours by charge code, showing productive, rework, and idle time.',
@@ -422,20 +423,19 @@ export default function HoursPage() {
                 Quality Hours by Charge Code {qualityHoursPercent !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{qualityHoursPercent}%</strong>}
               </h3>
             </EnhancedTooltip>
-          </div>
-          <div style={{ padding: '16px', height: '300px' }}>
-            <QualityHoursChart
-              data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
-              height="100%"
-              onBarClick={handleBarClick}
-              activeFilters={activeFilters}
-            />
-          </div>
-        </div>
+          }
+        >
+          <QualityHoursChart
+            data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+            height="100%"
+            onBarClick={handleBarClick}
+            activeFilters={activeFilters}
+          />
+        </ChartCard>
 
         {/* Non-Execute Hours */}
-        <div className="chart-card">
-          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <ChartCard
+          title={
             <EnhancedTooltip
               content={{
                 title: 'Non-Execute Hours',
@@ -453,13 +453,14 @@ export default function HoursPage() {
                 Non-Execute Hours {nonExecutePercent !== null && <strong style={{ marginLeft: '8px', color: '#F59E0B' }}>{nonExecutePercent}%</strong>}
               </h3>
             </EnhancedTooltip>
-          </div>
-          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '300px' }}>
+          }
+        >
+          <div style={{ display: 'flex', gap: '1rem', height: '100%' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
               <NonExecutePieChart 
                 data={data?.nonExecuteHours?.tpwComparison || []} 
-                height="220px" 
+                height="100%" 
                 showLabels={true} 
               />
             </div>
@@ -467,17 +468,18 @@ export default function HoursPage() {
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>Other Breakdown</div>
               <NonExecutePieChart 
                 data={data?.nonExecuteHours?.otherBreakdown || []} 
-                height="220px" 
+                height="100%" 
                 showLabels={true} 
               />
             </div>
           </div>
-        </div>
+        </ChartCard>
       </div>
 
-      {/* Row 2: Hours Variance Waterfall - Full Width Expanded */}
-      <div className="chart-card" style={{ marginBottom: '2rem' }}>
-        <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
+      {/* Hours Variance Waterfall */}
+      <ChartCard
+        gridClass="grid-full"
+        title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
               <rect x="4" y="14" width="4" height="6" rx="1"></rect>
@@ -486,18 +488,18 @@ export default function HoursPage() {
             </svg>
             Hours Variance Waterfall
           </h3>
-        </div>
-        <div style={{ padding: '16px', height: '470px' }}>
-          <HoursWaterfallChart
-            data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height="450px"
-          />
-        </div>
-      </div>
+        }
+      >
+        <HoursWaterfallChart
+          data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
+          height="100%"
+        />
+      </ChartCard>
 
-      {/* Row 3: Combined Stacked Bar Chart - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '2rem' }}>
-        <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', padding: '12px 16px' }}>
+      {/* Labor Hours Distribution */}
+      <ChartCard
+        gridClass="grid-full"
+        title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
               <rect x="3" y="3" width="7" height="18" rx="1"></rect>
@@ -505,9 +507,9 @@ export default function HoursPage() {
             </svg>
             Labor Hours Distribution
           </h3>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {/* View Toggle */}
-            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
+        }
+        subtitle={
+          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
             {stackedViewLabels.map(({ key, label }) => (
               <button
                 key={key}
@@ -527,29 +529,23 @@ export default function HoursPage() {
                 {label}
               </button>
             ))}
-            </div>
           </div>
-        </div>
-        <div style={{ padding: '16px', height: '420px' }}>
-          <LaborBreakdownChart
-            months={currentStackedData.months}
-            dataByCategory={currentStackedData.dataByCategory}
-            height="400px"
-            onBarClick={handleBarClick}
-            activeFilters={activeFilters}
-          />
-        </div>
-      </div>
+        }
+      >
+        <LaborBreakdownChart
+          months={currentStackedData.months}
+          dataByCategory={currentStackedData.dataByCategory}
+          height="100%"
+          onBarClick={handleBarClick}
+          activeFilters={activeFilters}
+        />
+      </ChartCard>
 
-      {/* Row 4: Labor Breakdown by Worker - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '2rem' }}>
-        <div className="chart-card-header" style={{ 
-          borderBottom: '1px solid var(--border-color)', 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          padding: '12px 16px'
-        }}>
+      {/* Labor Breakdown by Worker */}
+      <ChartCard
+        gridClass="grid-full"
+        noPadding
+        title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -563,8 +559,9 @@ export default function HoursPage() {
               </span>
             )}
           </h3>
+        }
+        subtitle={
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* Employee Filter Dropdown in Header */}
             <select
               value=""
               onChange={(e) => {
@@ -618,13 +615,13 @@ export default function HoursPage() {
               </button>
             )}
           </div>
-        </div>
-        <div className="chart-card-body no-padding" style={{ height: 'calc(100% - 60px)', overflow: 'auto' }}>
-          <TableCompareExport
-            visualId="labor-by-worker"
-            visualTitle="Labor Breakdown by Worker"
-            data={sortedLaborBreakdown}
-          >
+        }
+      >
+        <TableCompareExport
+          visualId="labor-by-worker"
+          visualTitle="Labor Breakdown by Worker"
+          data={sortedLaborBreakdown}
+        >
           <table className="data-table" id="table-labor-worker" style={{ fontSize: '0.75rem' }}>
             <thead>
               <tr>
@@ -745,12 +742,13 @@ export default function HoursPage() {
             </tbody>
           </table>
           </TableCompareExport>
-        </div>
-      </div>
+      </ChartCard>
 
-      {/* Row 5: Labor Breakdown by Role - Full Width */}
-      <div className="chart-card" style={{ marginBottom: '2rem' }}>
-        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Labor Breakdown by Role */}
+      <ChartCard
+        gridClass="grid-full"
+        noPadding
+        title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -760,13 +758,13 @@ export default function HoursPage() {
             </svg>
             Labor Breakdown by Role
           </h3>
-        </div>
-        <div className="chart-card-body no-padding" style={{ height: 'calc(100% - 60px)', overflow: 'auto' }}>
-          <TableCompareExport
-            visualId="labor-by-role"
-            visualTitle="Labor Breakdown by Role"
-            data={sortedRoleRows}
-          >
+        }
+      >
+        <TableCompareExport
+          visualId="labor-by-role"
+          visualTitle="Labor Breakdown by Role"
+          data={sortedRoleRows}
+        >
           <table className="data-table" id="table-labor-role" style={{ fontSize: '0.75rem' }}>
             <thead>
               <tr>
@@ -887,9 +885,7 @@ export default function HoursPage() {
             </tbody>
           </table>
           </TableCompareExport>
-        </div>
-      </div>
-
+      </ChartCard>
     </div>
   );
 }

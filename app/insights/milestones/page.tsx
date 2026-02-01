@@ -225,7 +225,6 @@ export default function MilestonesPage() {
             visualTitle="Detailed Milestones"
             data={sortedMilestones}
           >
-            <div style={{ overflow: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
@@ -326,7 +325,6 @@ export default function MilestonesPage() {
                 ))}
               </tbody>
             </table>
-            </div>
           </TableCompareExport>
         </ChartCard>
       </div>

@@ -1183,7 +1183,7 @@ body {
 }
 
 .insights-page .chart-card {
-  min-height: 680px !important;
+  min-height: 450px;
   padding: 0;
   overflow: visible;
   display: flex;
@@ -1191,18 +1191,18 @@ body {
 }
 
 .insights-page .chart-card-body {
-  min-height: 620px !important;
+  min-height: 380px;
   padding: 1.5rem 1.75rem;
   flex: 1;
-  overflow: auto;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
 
 .insights-page .chart-card-body.no-padding {
-  min-height: 620px !important;
-  padding: 1rem 1.25rem;
+  padding: 0;
   overflow: auto;
+  max-height: 650px;
 }
 
 .insights-page .chart-card-header {
@@ -1217,7 +1217,7 @@ body {
 
 .insights-page .metric-card {
   padding: 1.25rem 1.5rem;
-  min-height: 120px;
+  min-height: auto;
 }
 
 .insights-page .metric-value {
@@ -1231,9 +1231,11 @@ body {
 
 /* Chart and table areas fill containers */
 .insights-page .chart-container {
-  min-height: 480px !important;
+  min-height: 380px;
   width: 100%;
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .insights-page .data-table {
