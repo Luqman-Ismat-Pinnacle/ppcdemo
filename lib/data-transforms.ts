@@ -3161,51 +3161,64 @@ export function buildProjectsEfficiencyMetrics(data: Partial<SampleData>) {
 
 // ============================================================================
 // QUALITY HOURS TRANSFORMATION
-// Builds quality hours chart data
+// Builds quality hours by charge code from hours entries
 // ============================================================================
 
+function isQCChargeCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  const c = code.toLowerCase();
+  return c.includes('qc') || c.includes('quality') || c.includes('rework') || c.includes('review');
+}
+
 export function buildQualityHours(data: Partial<SampleData>) {
-  const tasks = data.tasks || [];
   const hours = data.hours || [];
-
-  // Filter QC tasks (tasks with QC in name or is_qc flag)
-  const qcTasks = tasks.filter((t: any) =>
-    String(t.taskName || t.name || '').toLowerCase().includes('qc') ||
-    String(t.chargeCode || '').toLowerCase().includes('qc') ||
-    t.isQC
-  );
-
-  const regularTasks = tasks.filter((t: any) =>
-    !String(t.taskName || t.name || '').toLowerCase().includes('qc') &&
-    !t.isQC
-  );
-
-  // Build categories
-  const categories = ['Execution', 'QC Review', 'Rework'];
-
-  // Group by task or project
-  const taskNames = [...new Set(regularTasks.slice(0, 10).map((t: any) => t.taskName || t.name || 'Task'))];
-
-  const chartData: number[][] = taskNames.map((taskName, idx) => {
-    const task = regularTasks.find((t: any) => (t.taskName || t.name) === taskName);
-    const baselineHours = task?.baselineHours || 0;
-    const actualHours = task?.actualHours || 0;
-
-    // Estimate breakdown
-    const execHours = actualHours * 0.75;
-    const qcHours = actualHours * 0.20;
-    const reworkHours = actualHours * 0.05;
-
-    return [Math.round(execHours), Math.round(qcHours), Math.round(reworkHours)];
+  const tasks = data.tasks || [];
+  const taskMap = new Map<string, any>();
+  tasks.forEach((t: any) => {
+    const id = t.id || t.taskId;
+    if (id) taskMap.set(id, t);
   });
 
+  // Aggregate hours by charge code from hours entries
+  const byCode = new Map<string, number>();
+  let totalHours = 0;
+  let qcHours = 0;
+
+  hours.forEach((h: any) => {
+    const code = (h.chargeCode || h.charge_code || 'Unknown').trim() || 'Unknown';
+    const taskId = h.taskId || h.task_id;
+    const task = taskId ? taskMap.get(taskId) : null;
+    const codeFromTask = task?.chargeCode || task?.charge_code || '';
+    const effectiveCode = code !== 'Unknown' ? code : (codeFromTask || 'Unknown');
+    const hrs = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
+    if (hrs <= 0) return;
+    totalHours += hrs;
+    const isQC = isQCChargeCode(effectiveCode);
+    if (isQC) qcHours += hrs;
+    byCode.set(effectiveCode, (byCode.get(effectiveCode) || 0) + hrs);
+  });
+
+  // Sort by hours desc, take top charge codes
+  const sorted = [...byCode.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+  const chargeCodes = sorted.map(([c]) => c);
+  const hoursPerCode = sorted.map(([, v]) => v);
+
+  const qcPercent = totalHours > 0 ? Math.round((qcHours / totalHours) * 100) : 0;
+  const categories = ['Hours'];
+  const dataMatrix = chargeCodes.length > 0 ? [hoursPerCode] : [];
+
   return {
-    tasks: taskNames,
+    tasks: chargeCodes,
     categories,
-    data: chartData,
-    qcPercent: chartData.map(row => row[1] > 0 ? Math.round((row[1] / (row[0] + row[1] + row[2])) * 100) : 0),
-    poorQualityPercent: chartData.map(row => row[2] > 0 ? Math.round((row[2] / (row[0] + row[1] + row[2])) * 100) : 0),
-    project: taskNames.map((_, idx) => regularTasks[idx]?.projectId || 'Unknown')
+    data: chargeCodes.length > 0 ? chargeCodes.map((_, i) => [hoursPerCode[i] ?? 0]) : [],
+    qcPercent: chargeCodes.map((code) => (isQCChargeCode(code) ? 100 : 0)),
+    poorQualityPercent: chargeCodes.map(() => 0),
+    project: chargeCodes.map(() => ''),
+    totalHours,
+    qcHours,
+    qcPercentOverall: qcPercent,
   };
 }
 
@@ -3215,10 +3228,17 @@ export function buildQualityHours(data: Partial<SampleData>) {
 // ============================================================================
 
 /**
- * Helper function to check if a charge code is TPW-related
- * TPW (The Pinnacle Way) filtering: checks if charge code contains "TPW" or "The Pinnacle Way"
- * Use this function to filter hours/data for TPW visuals
+ * Helper to check if Description contains "TPW The Pinnacle Way".
+ * TPW/Non-Execute hours come from Hours Entries where Description includes this text.
  */
+export function isTPWDescription(description: string | null | undefined): boolean {
+  if (!description || typeof description !== 'string') return false;
+  return description.toUpperCase().includes('TPW THE PINNACLE WAY') ||
+    description.toUpperCase().includes('THE PINNACLE WAY') ||
+    description.toUpperCase().includes('TPW');
+}
+
+/** @deprecated Use isTPWDescription for Hours Entries; kept for backward compatibility */
 export function isTPWChargeCode(chargeCode: string | null | undefined): boolean {
   if (!chargeCode) return false;
   const code = chargeCode.toUpperCase();
@@ -3229,54 +3249,35 @@ export function buildNonExecuteHours(data: Partial<SampleData>) {
   const hours = data.hours || [];
   const tasks = data.tasks || [];
 
-  // Return empty structure if no data
   if (hours.length === 0 && tasks.length === 0) {
-    return {
-      total: 0,
-      fte: 0,
-      percent: 0,
-      tpwComparison: [],
-      otherBreakdown: []
-    };
+    return { total: 0, fte: 0, percent: 0, tpwComparison: [], otherBreakdown: [] };
   }
 
-  // Calculate total hours from actual data only
-  const totalHours = hours.reduce((sum: number, h: any) => sum + (h.hours || 0), 0) ||
+  const totalHours = hours.reduce((sum: number, h: any) => sum + (typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0), 0) ||
     tasks.reduce((sum: number, t: any) => sum + (t.actualHours || 0), 0);
 
   if (totalHours === 0) {
-    return {
-      total: 0,
-      fte: 0,
-      percent: 0,
-      tpwComparison: [],
-      otherBreakdown: []
-    };
+    return { total: 0, fte: 0, percent: 0, tpwComparison: [], otherBreakdown: [] };
   }
 
-  // Categorize hours by charge code - TPW filtering
+  // TPW/Non-Execute: filter Hours Entries by Description containing "TPW The Pinnacle Way"
   const tpwHours = hours.filter((h: any) => {
-    const chargeCode = h.chargeCode || h.charge_code || '';
-    return isTPWChargeCode(chargeCode);
+    const desc = h.description || h.desc || '';
+    return isTPWDescription(desc);
   });
+  const tpwHoursTotal = tpwHours.reduce((sum: number, h: any) => sum + (typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0), 0);
 
-  const nonTpwHours = hours.filter((h: any) => {
-    const chargeCode = h.chargeCode || h.charge_code || '';
-    return !isTPWChargeCode(chargeCode);
-  });
+  const nonTpwHours = hours.filter((h: any) => !isTPWDescription(h.description || h.desc || ''));
+  const billable = nonTpwHours.filter((h: any) => h.isBillable !== false && h.billable !== false);
+  const nonBillable = nonTpwHours.filter((h: any) => h.isBillable === false || h.billable === false);
+  const billableHours = billable.reduce((sum: number, h: any) => sum + (typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0), 0);
+  const nonBillableHours = nonBillable.reduce((sum: number, h: any) => sum + (typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0), 0);
 
-  const billable = nonTpwHours.filter((h: any) => h.isBillable !== false);
-  const nonBillable = nonTpwHours.filter((h: any) => h.isBillable === false);
-
-  const tpwHoursTotal = tpwHours.reduce((sum: number, h: any) => sum + (h.hours || 0), 0);
-  const billableHours = billable.reduce((sum: number, h: any) => sum + (h.hours || 0), 0);
-  const nonBillableHours = nonBillable.reduce((sum: number, h: any) => sum + (h.hours || 0), 0);
-
-  const nonExecutePercent = totalHours > 0 ? Math.round((nonBillableHours / totalHours) * 100) : 0;
+  const nonExecutePercent = totalHours > 0 ? Math.round(((tpwHoursTotal + nonBillableHours) / totalHours) * 100) : 0;
 
   return {
-    total: Math.round(nonBillableHours),
-    fte: +(nonBillableHours / 2080).toFixed(2),
+    total: Math.round(tpwHoursTotal + nonBillableHours),
+    fte: +((tpwHoursTotal + nonBillableHours) / 2080).toFixed(2),
     percent: nonExecutePercent,
     tpwComparison: [
       { name: 'TPW', value: Math.round(tpwHoursTotal), color: '#8B5CF6' },

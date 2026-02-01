@@ -75,16 +75,13 @@ export default function HoursPage() {
     return total > 0 ? Math.round((totalActual / total) * 100) : null;
   }, [data?.taskHoursEfficiency]);
 
-  // Calculate quality hours percentage - no hardcoded fallback
+  // Calculate quality hours percentage - from buildQualityHours qcPercentOverall or fallback
   const qualityHoursPercent = useMemo(() => {
-    if (!data?.qualityHours?.data?.length) return null;
-    const total = data.qualityHours.data.reduce((sum, row) => {
-      return sum + row.reduce((rowSum, val) => rowSum + val, 0);
-    }, 0);
-    const qcTotal = data.qualityHours.data.reduce((sum, row) => {
-      return sum + (row[1] || 0);
-    }, 0);
-    return total > 0 ? Math.round((qcTotal / total) * 100) : null;
+    const qh = data?.qualityHours as { qcPercentOverall?: number; data?: number[][]; tasks?: string[] } | undefined;
+    if (qh?.qcPercentOverall != null) return qh.qcPercentOverall;
+    if (!qh?.data?.length) return null;
+    const total = qh.data.reduce((sum, row) => sum + (Array.isArray(row) ? row.reduce((s, v) => s + v, 0) : 0), 0);
+    return total > 0 ? Math.round(((qh.data.reduce((s, row) => s + (row?.[1] ?? row?.[0] ?? 0), 0) / total) * 100)) : null;
   }, [data?.qualityHours]);
 
   // Calculate non-execute percentage - no hardcoded fallback
@@ -360,8 +357,31 @@ export default function HoursPage() {
     });
   }, [roleRows, roleTableSort]);
 
+  // Flatten table data for Compare modal and Excel export (proper columns)
+  const flattenedWorkerData = useMemo(() => {
+    return sortedLaborBreakdown.map((w) => {
+      const row: Record<string, string | number> = { name: w.name, role: w.role, project: w.project };
+      tableWeeks.forEach((week, i) => {
+        row[formatWeekLabel(week)] = typeof (w.data || [])[i] === 'number' ? Number((w.data || [])[i].toFixed(1)) : 0;
+      });
+      row.Total = typeof w.total === 'number' ? Number(w.total.toFixed(1)) : 0;
+      return row;
+    });
+  }, [sortedLaborBreakdown, tableWeeks]);
+
+  const flattenedRoleData = useMemo(() => {
+    return sortedRoleRows.map((r) => {
+      const row: Record<string, string | number> = { role: r.role, Employees: r.employeeCount };
+      tableWeeks.forEach((week, i) => {
+        row[formatWeekLabel(week)] = typeof r.weeklyTotals[i] === 'number' ? Number(r.weeklyTotals[i].toFixed(1)) : 0;
+      });
+      row.Total = typeof r.total === 'number' ? Number(r.total.toFixed(1)) : 0;
+      return row;
+    });
+  }, [sortedRoleRows, tableWeeks]);
+
   return (
-    <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto' }}>
+    <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <div>
           <h1 className="page-title">Hours & Labor Analysis</h1>
@@ -452,29 +472,33 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '300px' }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '300px', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
-              <NonExecutePieChart 
-                data={data?.nonExecuteHours?.tpwComparison || []} 
-                height="220px" 
-                showLabels={true} 
-              />
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+                <NonExecutePieChart 
+                  data={data?.nonExecuteHours?.tpwComparison || []} 
+                  height="220px" 
+                  showLabels={true} 
+                />
+              </div>
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>Other Breakdown</div>
-              <NonExecutePieChart 
-                data={data?.nonExecuteHours?.otherBreakdown || []} 
-                height="220px" 
-                showLabels={true} 
-              />
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+                <NonExecutePieChart 
+                  data={data?.nonExecuteHours?.otherBreakdown || []} 
+                  height="220px" 
+                  showLabels={true} 
+                />
+              </div>
             </div>
           </div>
         </ChartCard>
       </div>
 
-      {/* Hours Variance Waterfall - Full Width */}
-      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '550px' }} title={
+      {/* Hours Variance Waterfall - Full Width, taller */}
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '720px' }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
             <rect x="4" y="14" width="4" height="6" rx="1"></rect>
@@ -484,10 +508,10 @@ export default function HoursPage() {
           Hours Variance Waterfall
         </h3>
       }>
-        <div style={{ padding: '16px', height: '470px' }}>
+        <div style={{ padding: '16px', height: '620px' }}>
           <HoursWaterfallChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height="450px"
+            height="580px"
           />
         </div>
       </ChartCard>
@@ -495,7 +519,7 @@ export default function HoursPage() {
       {/* Labor Hours Distribution */}
       <ChartCard
         gridClass="grid-full"
-        style={{ marginBottom: '1rem', minHeight: '500px' }}
+        style={{ marginBottom: '1rem', minHeight: '600px' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -529,11 +553,11 @@ export default function HoursPage() {
           </div>
         }
       >
-        <div style={{ padding: '16px', height: '420px' }}>
+        <div style={{ padding: '16px', height: '520px' }}>
           <LaborBreakdownChart
             months={currentStackedData.months}
             dataByCategory={currentStackedData.dataByCategory}
-            height="400px"
+            height="480px"
             onBarClick={handleBarClick}
             activeFilters={activeFilters}
           />
@@ -620,7 +644,7 @@ export default function HoursPage() {
         <TableCompareExport
           visualId="labor-by-worker"
           visualTitle="Labor Breakdown by Worker"
-          data={sortedLaborBreakdown}
+          data={flattenedWorkerData}
         >
           <table className="data-table" id="table-labor-worker" style={{ fontSize: '0.75rem' }}>
             <thead>
@@ -764,7 +788,7 @@ export default function HoursPage() {
         <TableCompareExport
           visualId="labor-by-role"
           visualTitle="Labor Breakdown by Role"
-          data={sortedRoleRows}
+          data={flattenedRoleData}
         >
           <table className="data-table" id="table-labor-role" style={{ fontSize: '0.75rem' }}>
             <thead>

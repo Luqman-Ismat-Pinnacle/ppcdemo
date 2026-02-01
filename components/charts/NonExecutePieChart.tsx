@@ -42,9 +42,9 @@ export default function NonExecutePieChart({
       }
     },
     legend: {
-      orient: 'vertical',
-      right: 0,
-      top: 'center',
+      orient: 'horizontal',
+      bottom: 8,
+      left: 'center',
       textStyle: { color: 'var(--text-secondary)', fontSize: 9 },
       itemWidth: 8,
       itemHeight: 8,
@@ -53,7 +53,7 @@ export default function NonExecutePieChart({
       {
         type: 'pie',
         radius: ['0%', '70%'],
-        center: ['35%', '50%'],
+        center: ['50%', '50%'],
         label: {
           show: showLabels,
           position: 'inside',

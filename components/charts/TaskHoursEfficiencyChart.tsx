@@ -1,16 +1,8 @@
 'use client';
 
 /**
- * @fileoverview Task Hours Progress Chart Component.
- * 
- * Displays task-level progress as horizontal bar chart:
- * - Baseline hours (total bar - faded)
- * - Actual hours completed (filled portion)
- * - Progress percentage shown
- * - Color-coded by completion status
- * - Vertical scroll for many tasks
- * 
- * @module components/charts/TaskHoursEfficiencyChart
+ * Task Hours Efficiency Chart – horizontal stacked bar showing Completed vs Remaining.
+ * Displays task-level baseline (actual + remaining) with efficiency %.
  */
 
 import React, { useMemo } from 'react';
@@ -25,251 +17,181 @@ interface TaskHoursEfficiencyChartProps {
   activeFilters?: string[];
 }
 
-const ROW_HEIGHT = 36;
-const MIN_CHART_HEIGHT = 300;
+const ROW_HEIGHT = 40;
+const MIN_HEIGHT = 320;
 
 export default function TaskHoursEfficiencyChart({
   data,
-  height = '100%',
   onBarClick,
   activeFilters = [],
 }: TaskHoursEfficiencyChartProps) {
   const isFiltered = activeFilters.length > 0;
-  
-  // Validate and prepare data - now focused on progress (baseline vs actual)
-  const validData = useMemo(() => {
-    const tasks = data?.tasks || [];
-    const actualWorked = data?.actualWorked || [];
-    const estimatedAdded = data?.estimatedAdded || [];
-    const efficiency = data?.efficiency || [];
-    
-    // Filter to only include tasks with valid data
-    const validIndices: number[] = [];
-    tasks.forEach((task, idx) => {
-      // Include tasks that have either baseline (actual + remaining) or actual hours
-      const baseline = (actualWorked[idx] || 0) + (estimatedAdded[idx] || 0);
-      if (task && baseline > 0) {
-        validIndices.push(idx);
-      }
+
+  const { tasks, actualWorked, remainingHours, progressPercent, chartHeight } = useMemo(() => {
+    const rawTasks = data?.tasks || [];
+    const rawActual = data?.actualWorked || [];
+    const rawEstimated = data?.estimatedAdded || [];
+
+    const valid: { task: string; actual: number; remaining: number; progress: number }[] = [];
+    rawTasks.forEach((task, i) => {
+      const actual = rawActual[i] ?? 0;
+      const remaining = rawEstimated[i] ?? 0;
+      const baseline = actual + remaining;
+      if (!task || baseline <= 0) return;
+      const progress = baseline > 0 ? Math.round((actual / baseline) * 100) : 0;
+      valid.push({ task, actual, remaining, progress });
     });
-    
-    return {
-      tasks: validIndices.map(idx => tasks[idx]),
-      actualWorked: validIndices.map(idx => actualWorked[idx] || 0),
-      baselineHours: validIndices.map(idx => (actualWorked[idx] || 0) + (estimatedAdded[idx] || 0)),
-      remainingHours: validIndices.map(idx => estimatedAdded[idx] || 0),
-      efficiency: validIndices.map(idx => efficiency[idx] || 0),
-      // Calculate progress percentage
-      progressPercent: validIndices.map(idx => {
-        const baseline = (actualWorked[idx] || 0) + (estimatedAdded[idx] || 0);
-        const actual = actualWorked[idx] || 0;
-        return baseline > 0 ? Math.round((actual / baseline) * 100) : 0;
-      }),
-    };
+
+    const tasks = valid.map((v) => v.task);
+    const actualWorked = valid.map((v) => v.actual);
+    const remainingHours = valid.map((v) => v.remaining);
+    const progressPercent = valid.map((v) => v.progress);
+    const chartHeight = Math.max(MIN_HEIGHT, tasks.length * ROW_HEIGHT + 90);
+
+    return { tasks, actualWorked, remainingHours, progressPercent, chartHeight };
   }, [data]);
-  
-  const taskCount = validData.tasks?.length || 0;
-  
-  // Chart height: enough for each row + legend; parent scrolls when tall
-  const calculatedHeight = useMemo(() => {
-    if (taskCount === 0) return MIN_CHART_HEIGHT;
-    return Math.max(MIN_CHART_HEIGHT, taskCount * ROW_HEIGHT + 80); // +80 for legend/padding
-  }, [taskCount]);
-  
-  // Build ECharts option - Progress view (Baseline vs Actual Completed)
+
   const option: EChartsOption = useMemo(() => {
-    if (taskCount === 0) return {};
-    
+    if (tasks.length === 0) return {};
+
+    const completedColor = (idx: number) => {
+      const p = progressPercent[idx] ?? 0;
+      if (p >= 100) return '#10B981';
+      if (p >= 75) return '#40E0D0';
+      if (p >= 50) return '#F59E0B';
+      return '#EF4444';
+    };
+
     return {
       backgroundColor: 'transparent',
       animation: true,
-      animationDuration: 500,
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
-        backgroundColor: 'rgba(20, 20, 20, 0.96)',
-        borderColor: 'rgba(64, 224, 208, 0.3)',
-        borderWidth: 1,
-        textStyle: { color: '#fff', fontSize: 12 },
         formatter: (params: any) => {
-          if (!params || params.length === 0) return '';
+          if (!params?.length) return '';
           const idx = params[0]?.dataIndex;
-          if (idx == null || !validData.tasks[idx]) return '';
-          
-          const baseline = validData.baselineHours[idx] || 0;
-          const actual = validData.actualWorked[idx] || 0;
-          const remaining = validData.remainingHours[idx] || 0;
-          const progress = validData.progressPercent[idx] || 0;
-          
-          const progressColor = progress >= 100 ? '#10B981' : progress >= 75 ? '#40E0D0' : progress >= 50 ? '#F59E0B' : '#EF4444';
-          
-          const html = `<div style="padding:4px 0;">
-            <div style="font-weight:bold;margin-bottom:8px;font-size:13px;color:#40E0D0;border-bottom:1px solid rgba(64,224,208,0.3);padding-bottom:6px;">${validData.tasks[idx]}</div>
-            <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:4px;">
-              <span style="color:rgba(255,255,255,0.7);">Progress:</span>
-              <span style="font-weight:bold;color:${progressColor}">${progress}%</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;gap:20px;margin:4px 0;">
-              <span style="color:rgba(255,255,255,0.7);">Baseline Hours:</span>
-              <span style="font-weight:bold;">${baseline.toLocaleString()} hrs</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;gap:20px;margin:4px 0;">
-              <span style="color:rgba(255,255,255,0.7);">Actual Completed:</span>
-              <span style="font-weight:bold;color:#40E0D0">${actual.toLocaleString()} hrs</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;gap:20px;margin:4px 0;">
-              <span style="color:rgba(255,255,255,0.7);">Remaining:</span>
-              <span style="font-weight:bold;color:#F59E0B">${remaining.toLocaleString()} hrs</span>
-            </div>
-          </div>`;
-          
-          return html;
+          if (idx == null) return '';
+          const name = tasks[idx];
+          const actual = actualWorked[idx] ?? 0;
+          const remaining = remainingHours[idx] ?? 0;
+          const total = actual + remaining;
+          const pct = progressPercent[idx] ?? 0;
+          return `<div style="font-weight:bold;margin-bottom:6px;color:#40E0D0">${name}</div>
+            <div>Progress: <strong>${pct}%</strong></div>
+            <div>Completed: <strong>${actual.toLocaleString()} hrs</strong></div>
+            <div>Remaining: <strong>${remaining.toLocaleString()} hrs</strong></div>
+            <div>Total: <strong>${total.toLocaleString()} hrs</strong></div>`;
         },
-        extraCssText: 'box-shadow: 0 6px 24px rgba(0,0,0,0.5); border-radius: 10px; padding: 12px 14px;'
       },
       legend: {
-        bottom: 10,
-        textStyle: { color: 'rgba(255,255,255,0.8)', fontSize: 11 },
+        data: ['Completed', 'Remaining'],
+        bottom: 8,
+        textStyle: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
         itemWidth: 14,
         itemHeight: 14,
-        itemGap: 24,
-        data: ['Completed', 'Remaining'],
+        itemGap: 20,
       },
-      grid: { 
-        left: 280,
-        right: 60,
-        top: 20, 
-        bottom: 50,
-        containLabel: false
+      grid: {
+        left: 260,
+        right: 50,
+        top: 16,
+        bottom: 44,
+        containLabel: false,
       },
       xAxis: {
         type: 'value',
         axisLine: { show: false },
-        axisLabel: { 
-          color: 'rgba(255,255,255,0.6)', 
+        axisLabel: {
+          color: 'rgba(255,255,255,0.6)',
           fontSize: 10,
-          formatter: (value: number) => value >= 1000 ? `${(value/1000).toFixed(1)}k` : value.toString()
+          formatter: (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)),
         },
-        splitLine: { 
-          lineStyle: { 
-            color: 'rgba(255,255,255,0.06)', 
-            type: 'dashed' 
-          } 
-        },
+        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } },
       },
       yAxis: {
         type: 'category',
-        data: validData.tasks,
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+        data: tasks,
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
         axisLabel: {
           color: 'rgba(255,255,255,0.9)',
           fontSize: 12,
-          fontWeight: 500,
-          width: 250,
+          width: 240,
           overflow: 'truncate',
           ellipsis: '…',
-          margin: 16,
+          margin: 14,
           interval: 0,
         },
         axisTick: { show: false },
         splitLine: { show: false },
-        axisPointer: { show: false },
       },
       series: [
         {
           name: 'Completed',
           type: 'bar',
           stack: 'total',
-          data: validData.actualWorked.map((v, i) => {
-            const progress = validData.progressPercent[i] || 0;
-            const progressColor = progress >= 100 ? '#10B981' : progress >= 75 ? '#40E0D0' : progress >= 50 ? '#F59E0B' : '#EF4444';
-            return {
-              value: v,
-              itemStyle: {
-                color: isFiltered && !activeFilters.includes(validData.tasks[i])
-                  ? 'rgba(64, 224, 208, 0.25)'
-                  : progressColor,
-                borderColor: activeFilters.includes(validData.tasks[i]) ? '#fff' : 'transparent',
-                borderWidth: activeFilters.includes(validData.tasks[i]) ? 2 : 0,
-                borderRadius: [4, 0, 0, 4],
-              },
-            };
-          }),
-          barWidth: 22,
+          barWidth: 26,
           barGap: '100%',
-          barCategoryGap: '50%',
-          label: { show: false },
-          emphasis: { 
-            itemStyle: { 
-              shadowBlur: 10,
-              shadowColor: 'rgba(64, 224, 208, 0.4)'
-            } 
-          },
+          barCategoryGap: '45%',
+          data: actualWorked.map((v, i) => ({
+            value: v,
+            itemStyle: {
+              color:
+                isFiltered && !activeFilters.includes(tasks[i])
+                  ? 'rgba(64, 224, 208, 0.2)'
+                  : completedColor(i),
+              borderRadius: [6, 0, 0, 6],
+            },
+          })),
+          emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(64, 224, 208, 0.35)' } },
         },
         {
           name: 'Remaining',
           type: 'bar',
           stack: 'total',
-          data: validData.remainingHours.map((v, i) => ({
+          barWidth: 26,
+          barGap: '100%',
+          barCategoryGap: '45%',
+          data: remainingHours.map((v, i) => ({
             value: v,
             itemStyle: {
-              color: isFiltered && !activeFilters.includes(validData.tasks[i])
-                ? 'rgba(100, 100, 100, 0.15)'
-                : 'rgba(100, 100, 100, 0.3)',
-              borderColor: activeFilters.includes(validData.tasks[i]) ? '#fff' : 'transparent',
-              borderWidth: activeFilters.includes(validData.tasks[i]) ? 2 : 0,
-              borderRadius: [0, 4, 4, 0],
+              color: isFiltered && !activeFilters.includes(tasks[i]) ? 'rgba(100,100,100,0.15)' : 'rgba(100,100,100,0.35)',
+              borderRadius: [0, 6, 6, 0],
             },
           })),
-          barWidth: 22,
-          barGap: '100%',
-          barCategoryGap: '50%',
-          label: { show: false },
-          emphasis: { 
-            itemStyle: { 
-              color: 'rgba(100, 100, 100, 0.5)',
-              shadowBlur: 10,
-              shadowColor: 'rgba(100, 100, 100, 0.4)'
-            } 
-          },
+          emphasis: { itemStyle: { color: 'rgba(100,100,100,0.5)' } },
         },
       ],
     };
-  }, [validData, isFiltered, activeFilters, taskCount]);
+  }, [tasks, actualWorked, remainingHours, progressPercent, isFiltered, activeFilters]);
 
   const handleClick = useMemo(() => {
     if (!onBarClick) return undefined;
-    return (params: { name?: string; dataIndex?: number }) => {
-      const dataIndex = params?.dataIndex;
-      if (dataIndex != null && validData.tasks[dataIndex]) {
-        onBarClick({ name: validData.tasks[dataIndex], dataIndex });
-      }
+    return (params: { dataIndex?: number }) => {
+      const idx = params?.dataIndex;
+      if (idx != null && tasks[idx]) onBarClick({ name: tasks[idx], dataIndex: idx });
     };
-  }, [onBarClick, validData.tasks]);
+  }, [onBarClick, tasks]);
 
-  // Empty state
-  if (taskCount === 0) {
+  if (tasks.length === 0) {
     return (
-      <div style={{ 
-        width: '100%',
-        height: typeof height === 'number' ? `${height}px` : height,
-        display: 'flex', 
-        flexDirection: 'column', 
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(26, 26, 26, 0.5)',
-        borderRadius: '8px',
-        border: '1px dashed rgba(255,255,255,0.1)',
-        minHeight: '200px'
-      }}>
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5">
-          <rect x="3" y="3" width="7" height="18" rx="1"></rect>
-          <rect x="14" y="8" width="7" height="13" rx="1"></rect>
-        </svg>
-        <div style={{ marginTop: '16px', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500 }}>
+      <div
+        style={{
+          width: '100%',
+          minHeight: 200,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(26,26,26,0.5)',
+          borderRadius: 8,
+          border: '1px dashed rgba(255,255,255,0.1)',
+        }}
+      >
+        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, marginBottom: 8 }}>
           No Task Efficiency Data
         </div>
-        <div style={{ marginTop: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '12px' }}>
+        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>
           Task hours data will appear here when available
         </div>
       </div>
@@ -279,7 +201,7 @@ export default function TaskHoursEfficiencyChart({
   return (
     <ChartWrapper
       option={option}
-      height={calculatedHeight}
+      height={chartHeight}
       onClick={handleClick}
       enableCompare
       enableExport

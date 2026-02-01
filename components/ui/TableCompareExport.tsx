@@ -3,9 +3,11 @@
 /**
  * TableCompareExport – Compare, Fullscreen, Export in chart header.
  * Icon-only buttons matching chart visuals. Opens SnapshotComparisonModal on Compare.
+ * Portals modal to document.body (like ChartWrapper) so it renders above all content.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SnapshotComparisonModal from './SnapshotComparisonModal';
 import { useChartHeaderActions } from '@/components/charts/ChartCard';
@@ -134,7 +136,7 @@ export default function TableCompareExport({
       }}>
         {children}
       </div>
-      {isCompareOpen && (
+      {isCompareOpen && typeof document !== 'undefined' && createPortal(
         <SnapshotComparisonModal
           isOpen={isCompareOpen}
           onClose={() => setIsCompareOpen(false)}
@@ -142,7 +144,8 @@ export default function TableCompareExport({
           visualTitle={visualTitle}
           visualType="table"
           currentData={dataArray}
-        />
+        />,
+        document.body
       )}
       {isFullscreenOpen && (
         <div
