@@ -391,7 +391,7 @@ export default function HoursPage() {
           {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
         </h3>
       }>
-        <div style={{ padding: '16px', height: '620px' }}>
+        <div style={{ padding: '16px', maxHeight: '580px', overflowY: 'auto' }}>
           <TaskHoursEfficiencyChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
             height="100%"
@@ -422,7 +422,7 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ padding: '16px', height: '300px' }}>
+          <div style={{ padding: '16px', maxHeight: '400px', overflowY: 'auto' }}>
             <QualityHoursChart
               data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
               height="100%"

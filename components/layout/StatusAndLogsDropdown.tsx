@@ -6,6 +6,56 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+
+/** Humanize technical log messages into user-friendly English */
+function humanizeLogLine(line: string): string {
+  const raw = line.replace(/^\[\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\]\s*/i, '').trim();
+  // Workday sync
+  if (raw.includes('Step: unified started')) return 'Starting full data sync…';
+  if (raw.includes('Step: unified done')) return 'Data sync completed';
+  if (raw.includes('Step: employees started')) return 'Fetching employees…';
+  if (raw.includes('Step: hierarchy started')) return 'Fetching projects and hierarchy…';
+  if (raw.includes('Step: hours started')) return 'Fetching hours and costs…';
+  if (raw.includes('Hours chunk ') && raw.includes(' done')) {
+    const m = raw.match(/Hours chunk (\d+)\/(\d+)/);
+    if (m) return `Finished syncing period ${m[1]} of ${m[2]}`;
+  }
+  if (raw.includes('Hours chunk ') && raw.includes('–')) {
+    const m = raw.match(/Hours chunk (\d+)\/(\d+)\s*\(([^–]+)–([^)]+)\)/);
+    if (m) {
+      const fmt = (s: string) => { try { const d = new Date(s.trim()); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return s; } };
+      return `Syncing hours for ${fmt(m[3])} – ${fmt(m[4])} (${m[1]} of ${m[2]})`;
+    }
+  }
+  if (raw.startsWith('--- Step 1:')) return 'Step 1: Fetching employees and portfolios';
+  if (raw.startsWith('--- Step 2:')) return 'Step 2: Fetching projects, customers, and sites';
+  if (raw.startsWith('--- Step 3:')) return 'Step 3: Fetching hours and cost data';
+  if (raw.startsWith('--- Step 4:')) return 'Step 4: Ledger sync skipped (not required)';
+  if (/^Synced \d+ employees?\.?$/i.test(raw)) return raw.replace(/^Synced (\d+) employees?\.?$/i, 'Updated $1 employee records');
+  if (/^Synced: .+ Portfolios/.test(raw)) return raw.replace(/Synced:/, 'Updated:').replace(/Portfolios/g, 'portfolios').replace(/Customers/g, 'customers').replace(/Sites/g, 'sites').replace(/Projects/g, 'projects');
+  if (/^Synced \d+ hour entries/.test(raw)) return raw.replace(/^Synced (\d+) hour entries/, 'Imported $1 hour entries');
+  if (raw.includes('No labor transactions') || raw.includes('No new hour data')) return 'No new hour data in the selected date range';
+  if (raw.includes('Error in')) return raw.replace(/Error in (\w+) sync:/, 'Could not sync $1:');
+  if (raw.includes('Full Sync Completed Successfully')) return 'Sync completed successfully';
+  if (raw.includes('Sync Failed') || raw.includes('Sync Aborted')) return raw;
+  if (raw.includes('Requesting Unified Sync')) return 'Connecting to Workday…';
+  if (raw.includes('Starting Full Workday Sync')) return raw.replace('Starting Full Workday Sync (', 'Starting sync (').replace(' method)...', ' method)');
+  // CPM / Schedule
+  if (raw.includes('Engine Initialized')) return 'Schedule analysis started';
+  if (raw.includes('> Loading ') && raw.includes(' tasks')) return raw.replace('> Loading ', 'Loaded ').replace('...', '');
+  if (raw.includes('tasks have predecessor links')) return raw.replace('> ', '').replace(' have predecessor links', ' have dependency links');
+  if (raw.includes('Calculation took ')) return raw.replace('> Calculation took ', 'Analysis completed in ').replace('ms', ' ms');
+  if (raw.includes('RESULTS SUMMARY:')) return 'Results';
+  if (raw.includes('• Duration:')) return raw.replace('• ', '').replace(' (', ' — ');
+  if (raw.includes('• Critical Path:')) return raw.replace('• Critical Path: ', '').replace(' tasks identified', ' tasks on critical path');
+  if (raw.includes('• Average Float:')) return raw.replace('• Average Float: ', 'Average float: ').replace(' days', ' days');
+  if (raw.includes('dangling logic') || raw.includes('open ends')) return raw.replace('! WARNING: ', 'Note: ').replace(' tasks have open ends (dangling logic)', ' tasks may have missing dependency links');
+  if (raw.includes('Unlinked:')) return raw.replace('  - Unlinked:', '  • Missing link:');
+  if (raw.includes('NOTE: Using project dates')) return 'Using project dates for duration (no dependency links)';
+  if (raw.includes('Ledger sync disabled')) return 'Ledger sync skipped';
+  if (raw.includes('Hours sync includes cost data')) return 'Hour entries include cost data for schedules';
+  return raw;
+}
 import { useData } from '@/lib/data-context';
 import { useLogs } from '@/lib/logs-context';
 import { runWorkdaySyncStream } from '@/lib/workday-sync-stream';
@@ -85,11 +135,11 @@ export default function StatusAndLogsDropdown() {
       logEntries.push(entry);
       setWorkdayLogs(prev => [entry, ...prev].slice(0, 50));
     };
-    pushLog(`Starting Full Workday Sync (${syncMethod === 'stream' ? 'Stream' : 'Current'} method)...`);
+    pushLog(`Starting sync (${syncMethod === 'stream' ? 'streaming' : 'standard'} method)…`);
 
     try {
       if (syncMethod === 'stream') {
-        pushLog('Requesting Unified Sync (stream)...');
+        pushLog('Connecting to Workday…');
         const { success } = await runWorkdaySyncStream({
           syncType: 'unified',
           onEvent: (ev) => {
@@ -105,20 +155,20 @@ export default function StatusAndLogsDropdown() {
         });
         setWorkdayStatus(success ? 'success' : 'error');
         setWorkdayMessage(success ? 'Sync Complete' : 'Sync Failed');
-        pushLog(success ? '--- Full Sync Completed Successfully ---' : '--- Sync Failed ---');
+        pushLog(success ? 'Sync completed successfully' : 'Sync failed');
       } else {
-        pushLog('Requesting Unified Sync (current)...');
+        pushLog('Connecting to Workday…');
         const data = await runSyncStep('unified', {}, pushLog);
         setWorkdayStatus('success');
         setWorkdayMessage(data?.summary?.noNewHours ? 'No new hour data in date range.' : 'Sync Complete');
-        pushLog('--- Full Sync Completed Successfully ---');
+        pushLog('Sync completed successfully');
       }
       addEngineLog('Workday', logEntries);
       await refreshData();
     } catch (err: any) {
       setWorkdayStatus('error');
       setWorkdayMessage('Sync Failed');
-      pushLog(`Sync Aborted: ${err.message}`);
+      pushLog(`Sync stopped: ${err.message}`);
       addEngineLog('Workday', logEntries);
     } finally {
       setWorkdaySyncing(false);
@@ -133,19 +183,20 @@ export default function StatusAndLogsDropdown() {
     return () => document.removeEventListener('mousedown', handler);
   }, [isOpen, workdaySyncing]);
 
-  const getDbColor = (s: ConnectionStatus) => s === 'connected' ? '#10B981' : s === 'degraded' ? '#F59E0B' : '#EF4444';
-  const workdayColor = workdayStatus === 'success' ? '#10B981' : workdayStatus === 'error' ? '#EF4444' : '#6B7280';
+  const getDbColor = (s: ConnectionStatus) => s === 'connected' ? 'var(--pinnacle-teal)' : s === 'degraded' ? 'var(--pinnacle-orange)' : 'var(--color-error)';
+  const workdayColor = workdayStatus === 'success' ? 'var(--pinnacle-teal)' : workdayStatus === 'error' ? 'var(--color-error)' : 'var(--text-muted)';
   const engineLogsByEngine = useMemo(() => {
     const order = ['CPM', 'Actuals', 'Workday'];
+    const engineLabels: Record<string, string> = { CPM: 'Schedule Analysis', Actuals: 'Actuals', Workday: 'Workday Sync' };
     const map = new Map<string, typeof engineLogs>();
     engineLogs.forEach(entry => {
       const name = entry.engine || 'Other';
       if (!map.has(name)) map.set(name, []);
       map.get(name)!.push(entry);
     });
-    const ordered: { engine: string; entries: typeof engineLogs }[] = [];
-    order.forEach(e => { if (map.has(e)) ordered.push({ engine: e, entries: map.get(e)! }); });
-    map.forEach((entries, e) => { if (!order.includes(e)) ordered.push({ engine: e, entries }); });
+    const ordered: { engine: string; label: string; entries: typeof engineLogs }[] = [];
+    order.forEach(e => { if (map.has(e)) ordered.push({ engine: e, label: engineLabels[e] || e, entries: map.get(e)! }); });
+    map.forEach((entries, e) => { if (!order.includes(e)) ordered.push({ engine: e, label: engineLabels[e] || e, entries }); });
     return ordered;
   }, [engineLogs]);
 
@@ -166,14 +217,14 @@ export default function StatusAndLogsDropdown() {
               width: '10px',
               height: '10px',
               borderRadius: '50%',
-              background: dbStatus ? getDbColor(dbStatus.status) : '#6B7280',
+              background: dbStatus ? getDbColor(dbStatus.status) : 'var(--text-muted)',
               boxShadow: dbChecking ? '0 0 6px #3B82F6' : undefined,
               animation: dbChecking ? 'pulse 1s infinite' : undefined,
             }}
           />
           <span>System Health</span>
-          {totalLogCount > 0 && (
-            <span style={{ fontSize: '0.7rem', background: 'var(--accent-color)', color: 'white', padding: '2px 6px', borderRadius: '10px' }}>
+            {totalLogCount > 0 && (
+            <span style={{ fontSize: '0.7rem', background: 'var(--pinnacle-teal)', color: '#000', padding: '2px 7px', borderRadius: '10px', fontWeight: 600 }}>
               {totalLogCount}
             </span>
           )}
@@ -189,12 +240,16 @@ export default function StatusAndLogsDropdown() {
           top: '100%',
           right: 0,
           marginTop: '8px',
-          width: '400px',
+          width: '420px',
           maxWidth: '95vw',
           maxHeight: '75vh',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 1000,
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-lg)',
         }}>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)' }}>
             <button
@@ -217,17 +272,17 @@ export default function StatusAndLogsDropdown() {
               onClick={() => setActiveTab('logs')}
               style={{
                 flex: 1,
-                padding: '10px 16px',
-                fontSize: '0.8rem',
+                padding: '12px 16px',
+                fontSize: '0.85rem',
                 fontWeight: 600,
                 background: activeTab === 'logs' ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
-                color: activeTab === 'logs' ? 'var(--text-primary)' : 'var(--text-muted)',
+                color: activeTab === 'logs' ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
                 border: 'none',
                 cursor: 'pointer',
                 borderBottom: activeTab === 'logs' ? '2px solid var(--pinnacle-teal)' : '2px solid transparent',
               }}
             >
-              Logs {totalLogCount > 0 && `(${totalLogCount})`}
+              Activity Log {totalLogCount > 0 && `(${totalLogCount})`}
             </button>
           </div>
 
@@ -236,30 +291,30 @@ export default function StatusAndLogsDropdown() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {/* Database Status */}
                 <section>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>Database</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: dbStatus ? getDbColor(dbStatus.status) : '#6B7280' }} />
-                    <span>{dbStatus?.status === 'connected' ? 'Connected' : dbStatus?.status === 'degraded' ? 'Degraded' : 'Disconnected'}</span>
-                    {dbStatus?.latency != null && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{dbStatus.latency}ms</span>}
-                    <button onClick={checkDbConnection} disabled={dbChecking} style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: dbChecking ? 'wait' : 'pointer' }}>Refresh</button>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px' }}>Database</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: dbStatus ? getDbColor(dbStatus.status) : 'var(--text-muted)' }} />
+                    <span style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{dbStatus?.status === 'connected' ? 'Connected' : dbStatus?.status === 'degraded' ? 'Degraded' : 'Disconnected'}</span>
+                    {dbStatus?.latency != null && <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{dbStatus.latency} ms</span>}
+                    <button onClick={checkDbConnection} disabled={dbChecking} style={{ fontSize: '0.75rem', padding: '6px 10px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: dbChecking ? 'wait' : 'pointer' }}>Refresh</button>
                   </div>
                 </section>
 
                 {/* Workday Sync */}
                 <section>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>Workday Sync</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: workdaySyncing ? '#3B82F6' : workdayColor }} />
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px' }}>Workday sync</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: workdaySyncing ? 'var(--pinnacle-teal)' : workdayColor }} />
                     <span style={{ fontSize: '0.8rem' }}>{workdaySyncing ? 'Syncing...' : workdayStatus === 'idle' ? 'Ready' : workdayStatus}</span>
                   </div>
                   <select
                     value={syncMethod}
                     onChange={(e) => setSyncMethod(e.target.value as 'current' | 'stream')}
                     disabled={workdaySyncing}
-                    style={{ width: '100%', padding: '8px 10px', fontSize: '0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', marginBottom: '8px' }}
+                    style={{ width: '100%', padding: '10px 12px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: '10px', color: 'var(--text-primary)' }}
                   >
-                    <option value="current">Current (sequential)</option>
-                    <option value="stream">Stream (chunked, stable)</option>
+                    <option value="current">Standard sync</option>
+                    <option value="stream">Streaming sync (recommended)</option>
                   </select>
                   <button
                     onClick={handleWorkdaySync}
@@ -280,13 +335,15 @@ export default function StatusAndLogsDropdown() {
                     {workdaySyncing ? 'Syncing…' : 'Sync Workday Data'}
                   </button>
                   {workdayMessage && (
-                    <div style={{ marginTop: '8px', padding: '8px', borderRadius: '4px', background: workdayStatus === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: workdayStatus === 'success' ? '#10B981' : '#EF4444', fontSize: '0.75rem' }}>
+                    <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: workdayStatus === 'success' ? 'rgba(64,224,208,0.12)' : 'rgba(239,68,68,0.12)', color: workdayStatus === 'success' ? 'var(--pinnacle-teal)' : 'var(--color-error)', fontSize: '0.8rem', borderLeft: `3px solid ${workdayStatus === 'success' ? 'var(--pinnacle-teal)' : 'var(--color-error)'}` }}>
                       {workdayMessage}
                     </div>
                   )}
                   {workdayLogs.length > 0 && (
-                    <div style={{ marginTop: '8px', maxHeight: '120px', overflow: 'auto', fontSize: '0.65rem', fontFamily: 'monospace', background: 'var(--bg-primary)', padding: '8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
-                      {workdayLogs.slice(0, 10).map((l, i) => <div key={i} style={{ marginBottom: '2px' }}>{l}</div>)}
+                    <div style={{ marginTop: '10px', maxHeight: '140px', overflow: 'auto', fontSize: '0.78rem', lineHeight: 1.5, background: 'var(--bg-tertiary)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                      {workdayLogs.slice(0, 10).map((l, i) => (
+                        <div key={i} style={{ marginBottom: '4px' }}>{humanizeLogLine(l)}</div>
+                      ))}
                     </div>
                   )}
                 </section>
@@ -294,33 +351,97 @@ export default function StatusAndLogsDropdown() {
             )}
 
             {activeTab === 'logs' && (
-              <div>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  {engineLogs.length > 0 && <button onClick={clearEngineLogs} className="logs-dropdown-clear">Clear engines</button>}
-                  {changeLogs.length > 0 && <button onClick={clearChangeLogs} className="logs-dropdown-clear">Clear changes</button>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                  {engineLogs.length > 0 && (
+                    <button
+                      onClick={clearEngineLogs}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Clear activity
+                    </button>
+                  )}
+                  {changeLogs.length > 0 && (
+                    <button
+                      onClick={clearChangeLogs}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        color: 'var(--text-secondary)',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Clear changes
+                    </button>
+                  )}
                 </div>
-                {engineLogsByEngine.map(({ engine, entries }) => (
-                  <section key={engine} style={{ marginBottom: '1rem' }}>
-                    <h4 style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '6px' }}>{engine} ({entries.length})</h4>
-                    {entries.slice(0, 12).map(entry => (
-                      <div key={entry.id} style={{ marginBottom: '8px', padding: '6px 8px', background: 'var(--bg-tertiary)', borderRadius: '4px', fontSize: '0.7rem' }}>
-                        <div style={{ marginBottom: '4px', color: 'var(--text-muted)' }}>{formatLogTime(entry.createdAt)}</div>
-                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.65rem' }}>{entry.lines.join('\n')}</pre>
-                      </div>
-                    ))}
+                {engineLogsByEngine.map(({ engine, label, entries }) => (
+                  <section key={engine}>
+                    <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pinnacle-teal)' }} />
+                      {label}
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {entries.slice(0, 12).map(entry => (
+                        <div key={entry.id} style={{
+                          padding: '10px 12px',
+                          background: 'var(--bg-tertiary)',
+                          borderRadius: 'var(--radius-sm)',
+                          borderLeft: '3px solid var(--pinnacle-teal)',
+                          fontSize: '0.8rem',
+                          lineHeight: 1.5,
+                          color: 'var(--text-primary)',
+                        }}>
+                          <div style={{ marginBottom: '6px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                            {formatLogTime(entry.createdAt)}
+                          </div>
+                          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' }}>
+                            {entry.lines.map((l, i) => humanizeLogLine(l)).join('\n')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </section>
                 ))}
                 <section>
-                  <h4 style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '6px' }}>Change Logs ({changeLogs.length})</h4>
+                  <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pinnacle-lime)' }} />
+                    Data changes
+                  </h4>
                   {changeLogs.length === 0 ? (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>No change logs yet.</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                      No recent changes
+                    </div>
                   ) : (
-                    changeLogs.slice(0, 12).map(entry => (
-                      <div key={entry.id} style={{ marginBottom: '6px', padding: '6px 8px', background: 'var(--bg-tertiary)', borderRadius: '4px', fontSize: '0.7rem' }}>
-                        <div>{entry.description}</div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}</div>
-                      </div>
-                    ))
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {changeLogs.slice(0, 12).map(entry => (
+                        <div key={entry.id} style={{
+                          padding: '10px 12px',
+                          background: 'var(--bg-tertiary)',
+                          borderRadius: 'var(--radius-sm)',
+                          borderLeft: '3px solid var(--pinnacle-lime)',
+                          fontSize: '0.8rem',
+                        }}>
+                          <div style={{ color: 'var(--text-primary)' }}>{entry.description}</div>
+                          <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                            {entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </section>
               </div>

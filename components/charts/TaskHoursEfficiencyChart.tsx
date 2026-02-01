@@ -25,8 +25,8 @@ interface TaskHoursEfficiencyChartProps {
   activeFilters?: string[];
 }
 
-// Row height for each task bar (including padding)
-const ROW_HEIGHT = 50;
+// Row height for each task bar (including padding) – enough space to avoid overlap
+const ROW_HEIGHT = 40;
 const MIN_CHART_HEIGHT = 300;
 
 export default function TaskHoursEfficiencyChart({
@@ -71,10 +71,10 @@ export default function TaskHoursEfficiencyChart({
   
   const taskCount = validData.tasks?.length || 0;
   
-  // Calculate chart height based on number of tasks
+  // Chart height: enough for each row + legend; parent scrolls when tall
   const calculatedHeight = useMemo(() => {
     if (taskCount === 0) return MIN_CHART_HEIGHT;
-    return Math.max(MIN_CHART_HEIGHT, taskCount * ROW_HEIGHT + 100); // +100 for legend/padding
+    return Math.max(MIN_CHART_HEIGHT, taskCount * ROW_HEIGHT + 80); // +80 for legend/padding
   }, [taskCount]);
   
   // Build ECharts option - Progress view (Baseline vs Actual Completed)
@@ -168,10 +168,12 @@ export default function TaskHoursEfficiencyChart({
           fontWeight: 500,
           width: 200,
           overflow: 'truncate',
-          margin: 16,
+          margin: 20,
+          interval: 0, // show all labels
         },
         axisTick: { show: false },
         splitLine: { show: false },
+        axisPointer: { show: false },
       },
       series: [
         {
@@ -193,9 +195,9 @@ export default function TaskHoursEfficiencyChart({
               },
             };
           }),
-          barWidth: 24,
+          barWidth: 28,
           barGap: '100%',
-          barCategoryGap: '60%',
+          barCategoryGap: '120%', // more vertical space between rows
           label: { show: false },
           emphasis: { 
             itemStyle: { 
@@ -219,9 +221,9 @@ export default function TaskHoursEfficiencyChart({
               borderRadius: [0, 4, 4, 0],
             },
           })),
-          barWidth: 24,
+          barWidth: 28,
           barGap: '100%',
-          barCategoryGap: '60%',
+          barCategoryGap: '120%',
           label: {
             show: true,
             position: 'right',

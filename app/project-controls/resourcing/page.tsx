@@ -15,6 +15,7 @@
  */
 
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import ResourceHeatmapChart from '@/components/charts/ResourceHeatmapChart';
 import ResourceLevelingChart from '@/components/charts/ResourceLevelingChart';
@@ -38,7 +39,23 @@ import {
 type GanttInterval = 'week' | 'month' | 'quarter' | 'year';
 type GanttGroupBy = 'employee' | 'role';
 
+type SuggestionType = 'error' | 'delay' | 'warning' | 'overallocated' | 'underutilized';
+
+interface LevelingSuggestion {
+  id: string;
+  type: SuggestionType;
+  title: string;
+  why: string;
+  what: string;
+  how: string;
+  taskId?: string;
+  taskName?: string;
+  resourceName?: string;
+  delayDays?: number;
+}
+
 export default function ResourcingPage() {
+  const router = useRouter();
   const { filteredData } = useData();
   const data = filteredData;
 
@@ -463,6 +480,14 @@ export default function ResourcingPage() {
     return { left, width };
   };
 
+  /** Maps importance number (1–4) to user-friendly label */
+  const formatImportance = useCallback((importance: number): string => {
+    if (importance >= 4) return 'Critical';
+    if (importance >= 3) return 'High';
+    if (importance >= 2) return 'Medium';
+    return 'Low';
+  }, []);
+
   const topDelays = useMemo(() => levelingResult.delayedTasks.slice(0, 5), [levelingResult.delayedTasks]);
   const sortedTopDelays = useMemo(() => {
     return sortByState(topDelays, topDelaysSort, (task, key) => {
@@ -478,6 +503,97 @@ export default function ResourcingPage() {
       }
     });
   }, [topDelays, topDelaysSort]);
+
+  /** Build actionable suggestions from engine results */
+  const levelingSuggestions = useMemo((): LevelingSuggestion[] => {
+    const suggestions: LevelingSuggestion[] = [];
+    let idx = 0;
+
+    // Unscheduled tasks (errors)
+    levelingResult.errors.forEach((err) => {
+      suggestions.push({
+        id: `err-${idx++}`,
+        type: 'error',
+        title: `Task "${err.name}" could not be scheduled`,
+        why: `The engine could not find a valid slot for this task within the scheduling window.`,
+        what: err.message,
+        how: 'Assign a resource to the task in Data Management, extend the buffer days, or adjust the max schedule window.',
+        taskId: err.taskId,
+        taskName: err.name,
+      });
+    });
+
+    // Delayed tasks (top 3 by delay)
+    levelingResult.delayedTasks.slice(0, 3).forEach((task) => {
+      suggestions.push({
+        id: `delay-${idx++}`,
+        type: 'delay',
+        title: `"${task.name}" delayed by ${task.delayDays} days`,
+        why: `Resource conflict: the task had to wait for available capacity.`,
+        what: `Importance: ${formatImportance(task.importance)}. Delays may push downstream tasks.`,
+        how: 'Add resources, split the task across multiple people, or increase workday hours in Engine Parameters.',
+        taskId: task.taskId,
+        taskName: task.name,
+        delayDays: task.delayDays,
+      });
+    });
+
+    // Input warnings (e.g. no assigned resource)
+    levelingInputs.warnings.slice(0, 2).forEach((w) => {
+      suggestions.push({
+        id: `warn-${idx++}`,
+        type: 'warning',
+        title: w,
+        why: 'Input data may not fully define resource requirements.',
+        what: 'The engine used fallbacks (e.g. all resources) for this task.',
+        how: 'Edit the task in Data Management to assign a specific resource or role.',
+      });
+    });
+
+    // Over-allocated resources (>100%)
+    levelingResult.resourceUtilization
+      .filter((u) => u.utilizationPct > 100)
+      .slice(0, 2)
+      .forEach((u) => {
+        suggestions.push({
+          id: `over-${idx++}`,
+          type: 'overallocated',
+          title: `"${u.name}" is over-allocated (${u.utilizationPct.toFixed(0)}%)`,
+          why: 'Assigned hours exceed available capacity.',
+          what: `${u.totalAssigned.toFixed(0)} hrs assigned vs ${u.totalAvailable.toFixed(0)} hrs available.`,
+          how: 'Reduce task hours, reassign to another resource, or split the task across multiple people.',
+          resourceName: u.name,
+        });
+      });
+
+    // Under-utilized resources (<30%) – only if we have many
+    const underUtil = levelingResult.resourceUtilization.filter((u) => u.utilizationPct < 30 && u.utilizationPct > 0);
+    if (underUtil.length >= 2) {
+      underUtil.slice(0, 1).forEach((u) => {
+        suggestions.push({
+          id: `under-${idx++}`,
+          type: 'underutilized',
+          title: `"${u.name}" under-utilized (${u.utilizationPct.toFixed(0)}%)`,
+          why: 'Resource has spare capacity that could be used elsewhere.',
+          what: `${underUtil.length} resource(s) below 30% utilization.`,
+          how: 'Reassign tasks from over-allocated resources or add new tasks to balance the load.',
+          resourceName: u.name,
+        });
+      });
+    }
+
+    return suggestions;
+  }, [levelingResult.errors, levelingResult.delayedTasks, levelingResult.resourceUtilization, levelingInputs.warnings, formatImportance]);
+
+  const handleImplementSuggestion = useCallback((s: LevelingSuggestion) => {
+    if (s.taskId) {
+      router.push('/project-controls/wbs-gantt');
+    } else if (s.type === 'warning' || s.type === 'overallocated' || s.type === 'underutilized') {
+      router.push('/project-controls/data-management');
+    } else {
+      router.push('/project-controls/wbs-gantt');
+    }
+  }, [router]);
 
   const formatNumericValue = (value: number | null | undefined, digits = 2) => {
     if (value == null || Number.isNaN(value)) return '--';
@@ -616,6 +732,86 @@ export default function ResourcingPage() {
           )}
         </div>
       </div>
+
+      {/* Results & Suggestions */}
+      {levelingSuggestions.length > 0 && (
+        <div className="chart-card" style={{ flexShrink: 0, background: 'linear-gradient(135deg, rgba(64,224,208,0.04) 0%, rgba(205,220,57,0.02) 100%)', border: '1px solid var(--border-color)' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M12 16v-4M12 8h.01"></path>
+            </svg>
+            <h3 className="chart-card-title">Results &amp; Suggestions</h3>
+            <EnhancedTooltip content={{
+              title: 'Engine Suggestions',
+              description: 'Actionable recommendations from the resource leveling run. Each suggestion explains why it occurred, what it means, and how to fix it.',
+              details: ['Click Implement to open the relevant page and apply the fix']
+            }}>
+              <span style={{ cursor: 'help', fontSize: '0.85rem', color: 'var(--text-muted)' }}>({levelingSuggestions.length} suggestions)</span>
+            </EnhancedTooltip>
+          </div>
+          <div className="chart-card-body" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {levelingSuggestions.map((s) => {
+              const typeColor = s.type === 'error' ? '#EF4444' : s.type === 'delay' ? '#F59E0B' : s.type === 'warning' ? '#F59E0B' : s.type === 'overallocated' ? '#E91E63' : 'var(--pinnacle-teal)';
+              const typeLabel = s.type === 'error' ? 'Scheduling Issue' : s.type === 'delay' ? 'Delay' : s.type === 'warning' ? 'Input Warning' : s.type === 'overallocated' ? 'Over-allocated' : 'Under-utilized';
+              return (
+                <div
+                  key={s.id}
+                  style={{
+                    padding: '1rem 1.25rem',
+                    background: 'var(--bg-tertiary)',
+                    borderRadius: 'var(--radius-sm)',
+                    borderLeft: `4px solid ${typeColor}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: typeColor, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{typeLabel}</span>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginTop: '4px' }}>{s.title}</div>
+                    </div>
+                    <button
+                      onClick={() => handleImplementSuggestion(s)}
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        background: 'var(--pinnacle-teal)',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: 'var(--radius-sm)',
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      Implement
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    <EnhancedTooltip content={{ title: 'Why', description: s.why }}>
+                      <span style={{ cursor: 'help', padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: '6px', borderBottom: '1px dotted var(--border-color)' }}>
+                        <strong style={{ color: 'var(--text-muted)' }}>Why:</strong> {s.why.slice(0, 50)}{s.why.length > 50 ? '…' : ''}
+                      </span>
+                    </EnhancedTooltip>
+                    <EnhancedTooltip content={{ title: 'What', description: s.what }}>
+                      <span style={{ cursor: 'help', padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: '6px', borderBottom: '1px dotted var(--border-color)' }}>
+                        <strong style={{ color: 'var(--text-muted)' }}>What:</strong> {s.what.slice(0, 50)}{s.what.length > 50 ? '…' : ''}
+                      </span>
+                    </EnhancedTooltip>
+                    <EnhancedTooltip content={{ title: 'How to fix', description: s.how }}>
+                      <span style={{ cursor: 'help', padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: '6px', borderBottom: '1px dotted var(--border-color)' }}>
+                        <strong style={{ color: 'var(--text-muted)' }}>How:</strong> {s.how.slice(0, 60)}{s.how.length > 60 ? '…' : ''}
+                      </span>
+                    </EnhancedTooltip>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Resource Leveling View - Quarterly Table and Monthly Chart */}
       <div className="chart-card grid-full" style={{ marginTop: '2rem' }}>
@@ -891,29 +1087,54 @@ export default function ResourcingPage() {
                     {[
                       { key: 'task', label: 'Task', align: 'left' as const },
                       { key: 'delayDays', label: 'Delay', align: 'center' as const },
-                      { key: 'importance', label: 'Importance', align: 'center' as const },
-                    ].map(({ key, label, align }) => {
+                      { key: 'importance', label: 'Importance', align: 'center' as const, tooltip: 'Priority impact on schedule. Critical = highest, Low = least critical.' },
+                    ].map(({ key, label, align, tooltip }) => {
                       const indicator = formatSortIndicator(topDelaysSort, key);
                       return (
                         <th key={key} style={{ textAlign: align }}>
-                          <button
-                            type="button"
-                            onClick={() => setTopDelaysSort(prev => getNextSortState(prev, key))}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              padding: 0,
-                              color: 'inherit',
-                              cursor: 'pointer',
-                              fontWeight: 600,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            {label}
-                            {indicator && <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>{indicator}</span>}
-                          </button>
+                          {tooltip ? (
+                            <EnhancedTooltip content={{ title: 'Importance', description: tooltip }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setTopDelaysSort(prev => getNextSortState(prev, key))}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    padding: 0,
+                                    color: 'inherit',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                >
+                                  {label}
+                                  {indicator && <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>{indicator}</span>}
+                                </button>
+                              </span>
+                            </EnhancedTooltip>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setTopDelaysSort(prev => getNextSortState(prev, key))}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                padding: 0,
+                                color: 'inherit',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              {label}
+                              {indicator && <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>{indicator}</span>}
+                            </button>
+                          )}
                         </th>
                       );
                     })}
@@ -924,7 +1145,7 @@ export default function ResourcingPage() {
                     <tr key={task.taskId}>
                       <td>{task.name}</td>
                       <td style={{ textAlign: 'center' }}>{task.delayDays}d</td>
-                      <td style={{ textAlign: 'center' }}>{task.importance}</td>
+                      <td style={{ textAlign: 'center' }}>{formatImportance(task.importance)}</td>
                     </tr>
                   ))}
                 </tbody>

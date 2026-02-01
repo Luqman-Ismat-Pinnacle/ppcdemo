@@ -38,16 +38,16 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 const STORAGE_BUCKET = 'project-documents';
 
 export default function DocumentsPage() {
-  const { refreshData, data: fullData } = useData();
+  const { refreshData, filteredData } = useData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Split projects by plan status (has_schedule / hasSchedule) for the plan-status container
   const { projectsWithPlan, projectsWithoutPlan } = useMemo(() => {
-    const projects = fullData?.projects || [];
+    const projects = filteredData?.projects || [];
     const withPlan = projects.filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
     const withoutPlan = projects.filter((p: any) => !(p.has_schedule === true || p.hasSchedule === true));
     return { projectsWithPlan: withPlan, projectsWithoutPlan: withoutPlan };
-  }, [fullData?.projects]);
+  }, [filteredData?.projects]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -773,7 +773,7 @@ export default function DocumentsPage() {
                 </thead>
                 <tbody>
                   {uploadedFiles.map((file) => {
-                    const isCurrentVersion = fullData?.projectDocuments?.some(
+                    const isCurrentVersion = filteredData?.projectDocuments?.some(
                       (d: any) =>
                         (d.storagePath === file.storagePath || d.storage_path === file.storagePath) &&
                         (d.isCurrentVersion === true || d.is_current_version === true)

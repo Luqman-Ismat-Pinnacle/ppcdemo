@@ -1292,7 +1292,14 @@ export default function WBSGanttPage() {
                     <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{formatCurrency(row.remainingCost ?? Math.max(0, (row.baselineCost || 0) - (row.actualCost || 0)))}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     <td>
-                      <div className="progress-bar" style={{ width: '25px', height: '6px' }}>
+                      <div
+                        className="progress-bar"
+                        style={{
+                          width: '25px',
+                          height: '6px',
+                          background: row.hasChildren && (row.percentComplete || 0) === 0 ? progressColor : undefined
+                        }}
+                      >
                         <div className="progress-bar-fill" style={{ width: `${row.percentComplete || 0}%`, background: itemColor }}></div>
                       </div>
                     </td>
@@ -1342,6 +1349,8 @@ export default function WBSGanttPage() {
                               return '#ef4444';
                             };
                             const progressColor = getProgressColor(row.percentComplete || 0);
+                            const pct = row.percentComplete || 0;
+                            const barBg = isMilestone ? 'transparent' : (pct === 0 ? progressColor : '#333');
 
                             return (
                               <div
@@ -1359,7 +1368,7 @@ export default function WBSGanttPage() {
                                   left: `calc(${dateColumns.length * 100}% * ${leftPct / 100})`,
                                   height: '18px',
                                   top: '6px',
-                                  background: isMilestone ? 'transparent' : '#333',
+                                  background: barBg,
                                   borderRadius: '3px',
                                   zIndex: 5,
                                   border: (row.isCritical || row.is_critical) ? '2px solid #ef4444' : 'none',

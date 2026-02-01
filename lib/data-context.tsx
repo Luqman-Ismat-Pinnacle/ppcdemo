@@ -752,6 +752,14 @@ export function DataProvider({ children }: DataProviderProps) {
       }
     }
 
+    // Rebuild computed views (taskHoursEfficiency, qualityHours, laborBreakdown, wbsData, etc.)
+    // from the filtered raw data so hierarchy/date filters apply across the entire website
+    const hasActiveFilter = (hierarchyFilter?.path?.length ?? 0) > 0 || (dateFilter && dateFilter.type !== 'all');
+    if (hasActiveFilter) {
+      const transformed = transformData(filtered);
+      Object.assign(filtered, transformed);
+    }
+
     return filtered;
   }, [data, hierarchyFilter, dateFilter]);
 

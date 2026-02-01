@@ -15,6 +15,9 @@ import ChartWrapper from './ChartWrapper';
 import type { EChartsOption } from 'echarts';
 import type { QualityHours } from '@/types/data';
 
+const ROW_HEIGHT = 36;
+const MIN_CHART_HEIGHT = 200;
+
 interface QualityHoursChartProps {
   data: QualityHours;
   height?: string | number;
@@ -30,6 +33,8 @@ export default function QualityHoursChart({
 }: QualityHoursChartProps) {
   const colors = ['#40E0D0', '#FF9800', '#E91E63', '#CDDC39', '#9E9D24'];
   const isFiltered = activeFilters.length > 0;
+  const taskCount = data.tasks?.length || 0;
+  const calculatedHeight = Math.max(MIN_CHART_HEIGHT, taskCount * ROW_HEIGHT + 80);
 
   const option: EChartsOption = useMemo(() => ({
     backgroundColor: 'transparent',
@@ -58,7 +63,7 @@ export default function QualityHoursChart({
       itemWidth: 12,
       itemHeight: 12,
     },
-    grid: { left: 120, right: 70, top: 15, bottom: 50, containLabel: true },
+    grid: { left: 140, right: 80, top: 15, bottom: 50, containLabel: true },
     xAxis: {
       type: 'value',
       max: 100,
@@ -77,8 +82,10 @@ export default function QualityHoursChart({
       axisLabel: {
         color: 'var(--text-secondary)',
         fontSize: 11,
-        width: 100,
+        width: 120,
         overflow: 'truncate',
+        margin: 14,
+        interval: 0,
       },
       axisTick: { show: false },
     },
@@ -101,8 +108,9 @@ export default function QualityHoursChart({
           },
         };
       }),
-      barWidth: 20,
-      barGap: '25%',
+      barWidth: 24,
+      barGap: '100%',
+      barCategoryGap: '100%',
       emphasis: { itemStyle: { opacity: 0.85 } },
     })),
   }), [data, isFiltered, activeFilters]);
@@ -110,7 +118,7 @@ export default function QualityHoursChart({
   return (
     <ChartWrapper
       option={option}
-      height={height}
+      height={calculatedHeight}
       enableCompare
       enableExport
       enableFullscreen
