@@ -16,6 +16,7 @@ import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import ChartCard from '@/components/charts/ChartCard';
+import TableCompareExport from '@/components/ui/TableCompareExport';
 import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
 import PlanForecastActualChart from '@/components/charts/PlanForecastActualChart';
 import { formatDate } from '@/lib/utils';
@@ -219,6 +220,11 @@ export default function MilestonesPage() {
 
         {/* Bottom: Milestones Table */}
         <ChartCard title="Detailed Milestones" gridClass="grid-full" noPadding>
+          <TableCompareExport
+            visualId="detailed-milestones"
+            visualTitle="Detailed Milestones"
+            data={sortedMilestones}
+          >
             <div style={{ overflow: 'auto' }}>
             <table className="data-table">
               <thead>
@@ -321,6 +327,7 @@ export default function MilestonesPage() {
               </tbody>
             </table>
             </div>
+          </TableCompareExport>
         </ChartCard>
       </div>
 

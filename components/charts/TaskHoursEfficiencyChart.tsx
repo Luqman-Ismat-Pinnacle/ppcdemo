@@ -13,10 +13,10 @@
  * @module components/charts/TaskHoursEfficiencyChart
  */
 
-import React, { useMemo, useRef, useEffect, useState } from 'react';
-import * as echarts from 'echarts';
+import React, { useMemo } from 'react';
 import type { EChartsOption } from 'echarts';
 import type { TaskHoursEfficiency } from '@/types/data';
+import ChartWrapper from './ChartWrapper';
 
 interface TaskHoursEfficiencyChartProps {
   data: TaskHoursEfficiency;
@@ -35,9 +35,6 @@ export default function TaskHoursEfficiencyChart({
   onBarClick,
   activeFilters = [],
 }: TaskHoursEfficiencyChartProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstance = useRef<echarts.ECharts | null>(null);
-  const [mounted, setMounted] = useState(false);
   const isFiltered = activeFilters.length > 0;
   
   // Validate and prepare data - now focused on progress (baseline vs actual)
@@ -256,64 +253,15 @@ export default function TaskHoursEfficiencyChart({
     };
   }, [validData, isFiltered, activeFilters, taskCount]);
 
-  // Initialize mounted state
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
-  // Initialize and manage chart
-  useEffect(() => {
-    if (!mounted || !chartRef.current || taskCount === 0) return;
-
-    // Initialize chart
-    if (!chartInstance.current) {
-      chartInstance.current = echarts.init(chartRef.current, undefined, {
-        renderer: 'canvas',
-      });
-    }
-
-    // Set options
-    chartInstance.current.setOption(option, { notMerge: true });
-
-    // Add click handler
-    if (onBarClick) {
-      chartInstance.current.off('click');
-      chartInstance.current.on('click', (params: any) => {
-        const taskName = validData.tasks[params.dataIndex];
-        if (taskName) {
-          onBarClick({ name: taskName, dataIndex: params.dataIndex });
-        }
-      });
-    }
-
-    return () => {
-      chartInstance.current?.off('click');
+  const handleClick = useMemo(() => {
+    if (!onBarClick) return undefined;
+    return (params: { name?: string; dataIndex?: number }) => {
+      const dataIndex = params?.dataIndex;
+      if (dataIndex != null && validData.tasks[dataIndex]) {
+        onBarClick({ name: validData.tasks[dataIndex], dataIndex });
+      }
     };
-  }, [mounted, option, onBarClick, validData.tasks, taskCount]);
-
-  // Handle resize
-  useEffect(() => {
-    if (!mounted || !chartRef.current) return;
-
-    const resizeObserver = new ResizeObserver(() => {
-      chartInstance.current?.resize();
-    });
-
-    resizeObserver.observe(chartRef.current);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [mounted]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      chartInstance.current?.dispose();
-      chartInstance.current = null;
-    };
-  }, []);
+  }, [onBarClick, validData.tasks]);
 
   // Empty state
   if (taskCount === 0) {
@@ -344,25 +292,17 @@ export default function TaskHoursEfficiencyChart({
     );
   }
 
-  // Determine if we need scrolling
-  const containerHeight = typeof height === 'number' ? height : parseInt(height) || 400;
-  const needsScroll = calculatedHeight > containerHeight;
-
   return (
-    <div style={{ 
-      width: '100%', 
-      height: typeof height === 'number' ? `${height}px` : height,
-      overflow: needsScroll ? 'auto' : 'hidden',
-      position: 'relative'
-    }}>
-      <div 
-        ref={chartRef} 
-        style={{ 
-          width: '100%', 
-          height: `${calculatedHeight}px`,
-          minHeight: `${MIN_CHART_HEIGHT}px`
-        }} 
-      />
-    </div>
+    <ChartWrapper
+      option={option}
+      height={calculatedHeight}
+      onClick={handleClick}
+      enableCompare
+      visualId="task-hours-efficiency"
+      visualTitle="Task Hours Efficiency"
+      enableExport
+      exportFilename="task-hours-efficiency"
+      isEmpty={false}
+    />
   );
 }

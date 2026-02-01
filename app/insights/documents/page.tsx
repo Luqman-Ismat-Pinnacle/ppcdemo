@@ -14,6 +14,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartCard from '@/components/charts/ChartCard';
+import TableCompareExport from '@/components/ui/TableCompareExport';
 import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 
@@ -92,6 +93,11 @@ export default function DocumentsPage() {
 
         {/* Deliverables Table */}
         <ChartCard title="Detailed Deliverable Matrix" gridClass="grid-full" noPadding>
+          <TableCompareExport
+            visualId="detailed-deliverable-matrix"
+            visualTitle="Detailed Deliverable Matrix"
+            data={filteredDeliverables}
+          >
           <div style={{ overflow: 'auto', padding: '1rem' }}>
             <table className="data-table">
               <thead>
@@ -148,6 +154,7 @@ export default function DocumentsPage() {
               </tbody>
             </table>
           </div>
+          </TableCompareExport>
         </ChartCard>
       </div>
     </div>

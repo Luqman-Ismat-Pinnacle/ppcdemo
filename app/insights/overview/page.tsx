@@ -21,6 +21,7 @@ import ChartCard from '@/components/charts/ChartCard';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
+import TableCompareExport from '@/components/ui/TableCompareExport';
 import {
   type SortState,
   formatSortIndicator,
@@ -524,7 +525,12 @@ export default function OverviewPage() {
             </EnhancedTooltip>
           }
         >
-          <div style={{ overflow: 'auto', padding: '0.5rem' }}>
+          <TableCompareExport
+            visualId="count-metrics-analysis"
+            visualTitle="Count/Metrics Analysis"
+            data={sortedCountMetrics}
+          >
+            <div style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -630,7 +636,8 @@ export default function OverviewPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </TableCompareExport>
         </ChartCard>
 
         {/* Projects Efficiency Metrics Table */}
@@ -656,7 +663,12 @@ export default function OverviewPage() {
             </EnhancedTooltip>
           }
         >
-          <div style={{ overflow: 'auto', padding: '0.5rem' }}>
+          <TableCompareExport
+            visualId="projects-efficiency-metrics"
+            visualTitle="Projects Efficiency vs Metrics"
+            data={sortedProjectMetrics}
+          >
+            <div style={{ overflow: 'auto', padding: '0.5rem' }}>
             <table className="data-table" style={{ fontSize: '0.875rem' }}>
               <thead>
                 <tr>
@@ -740,7 +752,8 @@ export default function OverviewPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </TableCompareExport>
         </ChartCard>
       </div>
     </div>

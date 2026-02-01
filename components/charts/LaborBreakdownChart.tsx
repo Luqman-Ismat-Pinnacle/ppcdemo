@@ -17,8 +17,9 @@
  * @module components/charts/LaborBreakdownChart
  */
 
-import React, { useMemo, useEffect, useRef, useState, useCallback } from 'react';
-import * as echarts from 'echarts';
+import React, { useMemo, useCallback } from 'react';
+import type { EChartsOption } from 'echarts';
+import ChartWrapper from './ChartWrapper';
 
 // Pinnacle brand colors - Consistent with ResourceHeatmapChart Assigned view
 // These align with the utilization heatmap coloring for visual consistency
@@ -88,11 +89,6 @@ export default function LaborBreakdownChart({
   activeFilters = [],
   title,
 }: LaborBreakdownChartProps) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstance = useRef<echarts.ECharts | null>(null);
-  const [mounted, setMounted] = useState(false);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-
   // Determine if we have valid data
   const hasValidData = useMemo(() => {
     return hasValidChartData(months, dataByCategory);
@@ -120,7 +116,7 @@ export default function LaborBreakdownChart({
   }, [periodTotals]);
 
   // Build ECharts option with enhanced styling
-  const option = useMemo(() => {
+  const option: EChartsOption = useMemo(() => {
     const series = categories.map((cat: string, i: number) => {
       const categoryData = chartData[cat] || [];
       const colorIndex = i % PINNACLE_COLORS.length;
@@ -300,88 +296,20 @@ export default function LaborBreakdownChart({
     };
   }, [chartMonths, chartData, categories, isFiltered, activeFilters, periodTotals]);
 
-  // Click handler with enhanced data
-  const handleClick = useCallback((params: any) => {
+  const handleClick = useCallback((params: { seriesName?: string; dataIndex?: number; value?: number }) => {
     if (onBarClick && params) {
-      onBarClick({ 
-        name: params.seriesName, 
-        dataIndex: params.dataIndex,
+      onBarClick({
+        name: params.seriesName ?? '',
+        dataIndex: params.dataIndex ?? 0,
         value: params.value || 0
       });
     }
   }, [onBarClick]);
 
-  // Initialize mounted state
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
-  // Initialize and manage chart instance
-  useEffect(() => {
-    if (!mounted || !chartRef.current) return;
-
-    // Initialize chart
-    if (!chartInstance.current) {
-      chartInstance.current = echarts.init(chartRef.current, undefined, {
-        renderer: 'canvas',
-        useDirtyRect: true // Performance optimization
-      });
-    }
-
-    // Set options
-    chartInstance.current.setOption(option, {
-      notMerge: true,
-      lazyUpdate: true
-    });
-
-    // Add click handler
-    chartInstance.current.off('click');
-    chartInstance.current.on('click', handleClick);
-
-    return () => {
-      chartInstance.current?.off('click');
-    };
-  }, [mounted, option, handleClick]);
-
-  // Handle resize with ResizeObserver for better responsiveness
-  useEffect(() => {
-    if (!mounted || !chartRef.current) return;
-
-    // Create resize observer for smooth resizing
-    resizeObserverRef.current = new ResizeObserver(() => {
-      if (chartInstance.current) {
-        chartInstance.current.resize();
-      }
-    });
-
-    resizeObserverRef.current.observe(chartRef.current);
-
-    // Also listen to window resize as fallback
-    const handleWindowResize = () => {
-      chartInstance.current?.resize();
-    };
-    window.addEventListener('resize', handleWindowResize);
-
-    return () => {
-      resizeObserverRef.current?.disconnect();
-      window.removeEventListener('resize', handleWindowResize);
-    };
-  }, [mounted]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      chartInstance.current?.dispose();
-      chartInstance.current = null;
-    };
-  }, []);
-
   // Convert height to string if number
   const containerHeight = typeof height === 'number' ? `${height}px` : height;
-  // Calculate chart height (subtract stats bar height when showing data)
-  const heightNum = typeof height === 'number' ? height : parseInt(height);
-  const chartHeight = grandTotal > 0 ? `${heightNum - 60}px` : containerHeight;
+  const heightNum = typeof height === 'number' ? height : parseInt(String(height), 10) || 380;
+  const chartHeightNum = grandTotal > 0 ? heightNum - 60 : heightNum;
 
   // Show empty state when no valid data
   if (!hasValidData) {
@@ -442,14 +370,16 @@ export default function LaborBreakdownChart({
           </div>
         </div>
       )}
-      
-      {/* Chart Container */}
-      <div 
-        ref={chartRef} 
-        style={{ 
-          width: '100%', 
-          height: chartHeight
-        }} 
+      <ChartWrapper
+        option={option}
+        height={chartHeightNum}
+        onClick={handleClick}
+        enableCompare
+        visualId="labor-breakdown"
+        visualTitle="Labor Hours Distribution"
+        enableExport
+        exportFilename="labor-breakdown"
+        isEmpty={false}
       />
     </div>
   );

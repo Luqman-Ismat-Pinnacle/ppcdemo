@@ -18,6 +18,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import ChartCard from '@/components/charts/ChartCard';
+import TableCompareExport from '@/components/ui/TableCompareExport';
 import QCTransactionBarChart from '@/components/charts/QCTransactionBarChart';
 import QCStackedBarChart from '@/components/charts/QCStackedBarChart';
 import QCScatterChart from '@/components/charts/QCScatterChart';
@@ -183,6 +184,11 @@ export default function QCDashboardPage() {
       {/* Individual QPCI Measures Performance Table */}
       <div className="dashboard-grid">
         <ChartCard title="Individual QPCI Measures Performance" gridClass="grid-full" noPadding>
+          <TableCompareExport
+            visualId="qc-by-name-and-role"
+            visualTitle="Individual QPCI Measures Performance"
+            data={data.qcByNameAndRole || []}
+          >
             {data.qcByNameAndRole && data.qcByNameAndRole.length > 0 ? (
               <table className="data-table">
                 <thead>
@@ -230,6 +236,7 @@ export default function QCDashboardPage() {
                 No data available
               </div>
             )}
+          </TableCompareExport>
         </ChartCard>
       </div>
 

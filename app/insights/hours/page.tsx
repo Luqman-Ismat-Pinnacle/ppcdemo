@@ -23,6 +23,7 @@ import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
 import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
 import HoursWaterfallChart from '@/components/charts/HoursWaterfallChart';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
+import TableCompareExport from '@/components/ui/TableCompareExport';
 import {
   type SortState,
   formatSortIndicator,
@@ -377,116 +378,6 @@ export default function HoursPage() {
             emptyMessage="Click any chart segment to filter the page"
           />
         </div>
-        {/* Filter Controls (legacy - kept for dropdowns) */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Charge Type Filter */}
-          <select
-            value={chargeType}
-            onChange={(e) => {
-              const v = e.target.value as 'all' | 'billable' | 'non-billable';
-              setPageFilters((prev) => {
-                const without = prev.filter((f) => f.dimension !== 'chargeType');
-                if (v === 'all') return without;
-                return [...without, { dimension: 'chargeType' as const, value: v, label: v === 'billable' ? 'Billable Only' : 'Non-Billable Only' }];
-              });
-            }}
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.75rem',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="all">All Charge Types</option>
-            <option value="billable">Billable Only</option>
-            <option value="non-billable">Non-Billable Only</option>
-          </select>
-          
-          {/* Role Filter Dropdown */}
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value) {
-                const val = e.target.value;
-                setPageFilters((prev) => {
-                  const exists = prev.some((f) => f.dimension === 'role' && f.value === val);
-                  if (exists) return prev.filter((f) => !(f.dimension === 'role' && f.value === val));
-                  return [...prev, { dimension: 'role', value: val, label: val }];
-                });
-                e.target.value = '';
-              }
-            }}
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.75rem',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="">Filter by Role {selectedRoles.size > 0 ? `(${selectedRoles.size})` : ''}</option>
-            {roles.map(role => (
-              <option key={role} value={role}>{selectedRoles.has(role) ? '✓ ' : ''}{role}</option>
-            ))}
-          </select>
-          
-          {/* Charge Code Filter Dropdown */}
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value) {
-                const val = e.target.value;
-                setPageFilters((prev) => {
-                  const exists = prev.some((f) => f.dimension === 'chargeCode' && f.value === val);
-                  if (exists) return prev.filter((f) => !(f.dimension === 'chargeCode' && f.value === val));
-                  return [...prev, { dimension: 'chargeCode', value: val, label: val }];
-                });
-                e.target.value = '';
-              }
-            }}
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.75rem',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="">Filter by Charge Code {selectedChargeCodes.size > 0 ? `(${selectedChargeCodes.size})` : ''}</option>
-            {chargeCodes.map(code => (
-              <option key={code} value={code}>{selectedChargeCodes.has(code) ? '✓ ' : ''}{code}</option>
-            ))}
-          </select>
-          
-          {/* Clear Filters Button */}
-          {pageFilters.length > 0 && (
-            <button
-              onClick={clearFilters}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'var(--pinnacle-teal)',
-                color: '#000',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              Clear Filters ({pageFilters.length}) ✕
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Row 1: Task Efficiency (Full Width - Expanded) */}
@@ -729,6 +620,11 @@ export default function HoursPage() {
           </div>
         </div>
         <div className="chart-card-body no-padding" style={{ height: 'calc(100% - 60px)', overflow: 'auto' }}>
+          <TableCompareExport
+            visualId="labor-by-worker"
+            visualTitle="Labor Breakdown by Worker"
+            data={sortedLaborBreakdown}
+          >
           <table className="data-table" id="table-labor-worker" style={{ fontSize: '0.75rem' }}>
             <thead>
               <tr>
@@ -848,6 +744,7 @@ export default function HoursPage() {
               )}
             </tbody>
           </table>
+          </TableCompareExport>
         </div>
       </div>
 
@@ -865,6 +762,11 @@ export default function HoursPage() {
           </h3>
         </div>
         <div className="chart-card-body no-padding" style={{ height: 'calc(100% - 60px)', overflow: 'auto' }}>
+          <TableCompareExport
+            visualId="labor-by-role"
+            visualTitle="Labor Breakdown by Role"
+            data={sortedRoleRows}
+          >
           <table className="data-table" id="table-labor-role" style={{ fontSize: '0.75rem' }}>
             <thead>
               <tr>
@@ -984,6 +886,7 @@ export default function HoursPage() {
               )}
             </tbody>
           </table>
+          </TableCompareExport>
         </div>
       </div>
 
