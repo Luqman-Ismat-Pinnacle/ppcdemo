@@ -10,8 +10,8 @@ import type { EChartsOption } from 'echarts';
 import type { QualityHours } from '@/types/data';
 import ChartWrapper from './ChartWrapper';
 
-const ROW_HEIGHT = 36;
-const MIN_HEIGHT = 200;
+const ROW_HEIGHT = 40;
+const MIN_HEIGHT = 300;
 const COLORS = ['#40E0D0', '#CDDC39', '#FF9800', '#E91E63', '#8B5CF6', '#10B981', '#F59E0B', '#6366F1'];
 
 interface QualityHoursChartProps {
@@ -23,6 +23,7 @@ interface QualityHoursChartProps {
 
 export default function QualityHoursChart({
   data,
+  height = 440,
   onBarClick,
   activeFilters = [],
 }: QualityHoursChartProps) {
@@ -33,7 +34,8 @@ export default function QualityHoursChart({
     return chargeCodes.map((_, i) => (data.data[i]?.[0] ?? data.data[i]?.reduce((a, b) => a + b, 0) ?? 0));
   }, [data.data, chargeCodes]);
 
-  const chartHeight = Math.max(MIN_HEIGHT, chargeCodes.length * ROW_HEIGHT + 80);
+  const heightNum = typeof height === 'number' ? height : parseInt(String(height), 10) || 440;
+  const chartHeight = Math.max(MIN_HEIGHT, heightNum, chargeCodes.length * ROW_HEIGHT + 90);
 
   const option: EChartsOption = useMemo(() => {
     if (chargeCodes.length === 0 || hoursData.every((h) => h === 0)) return {};
@@ -137,7 +139,7 @@ export default function QualityHoursChart({
   return (
     <ChartWrapper
       option={option}
-      height={chartHeight}
+      height={chartHeight as number}
       onClick={handleClick}
       enableCompare
       enableExport

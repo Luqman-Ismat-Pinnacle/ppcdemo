@@ -402,7 +402,7 @@ export default function HoursPage() {
       </div>
 
       {/* Row 1: Task Efficiency (Full Width - Expanded) */}
-      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '700px' }} title={
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '720px' }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
             <path d="M12 20V10M18 20V4M6 20v-4"></path>
@@ -411,10 +411,10 @@ export default function HoursPage() {
           {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
         </h3>
       }>
-        <div style={{ padding: '16px', maxHeight: '580px', overflowY: 'auto' }}>
+        <div style={{ padding: '16px', height: '620px', minHeight: '620px', overflowY: 'auto' }}>
           <TaskHoursEfficiencyChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height="100%"
+            height={580}
             onBarClick={handleBarClick}
             activeFilters={activeFilters}
           />
@@ -426,6 +426,7 @@ export default function HoursPage() {
         {/* Quality Hours */}
         <ChartCard title={
           <EnhancedTooltip
+            placement="right"
             content={{
               title: 'Quality Hours by Charge Code',
               description: 'Breakdown of quality control hours by charge code, showing productive, rework, and idle time.',
@@ -442,10 +443,10 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ padding: '16px', maxHeight: '400px', overflowY: 'auto' }}>
+          <div style={{ padding: '16px', height: '480px', minHeight: '480px', overflowY: 'auto' }}>
             <QualityHoursChart
               data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
-              height="100%"
+              height={440}
               onBarClick={handleBarClick}
               activeFilters={activeFilters}
             />
@@ -455,6 +456,7 @@ export default function HoursPage() {
         {/* Non-Execute Hours */}
         <ChartCard title={
           <EnhancedTooltip
+            placement="right"
             content={{
               title: 'Non-Execute Hours',
               description: 'Hours spent on non-execution activities such as overhead, TPW (The Pinnacle Way), and other indirect work.',
@@ -472,24 +474,26 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '300px', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '380px', minHeight: '380px' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+              <div style={{ width: '100%', height: '300px', minHeight: '300px' }}>
                 <NonExecutePieChart 
                   data={data?.nonExecuteHours?.tpwComparison || []} 
-                  height="220px" 
-                  showLabels={true} 
+                  height={300}
+                  showLabels={true}
+                  visualId="non-execute-tpw"
                 />
               </div>
             </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>Other Breakdown</div>
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+              <div style={{ width: '100%', height: '300px', minHeight: '300px' }}>
                 <NonExecutePieChart 
                   data={data?.nonExecuteHours?.otherBreakdown || []} 
-                  height="220px" 
-                  showLabels={true} 
+                  height={300}
+                  showLabels={true}
+                  visualId="non-execute-other"
                 />
               </div>
             </div>
@@ -519,7 +523,7 @@ export default function HoursPage() {
       {/* Labor Hours Distribution */}
       <ChartCard
         gridClass="grid-full"
-        style={{ marginBottom: '1rem', minHeight: '600px' }}
+        style={{ marginBottom: '1rem', minHeight: '720px' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -553,11 +557,11 @@ export default function HoursPage() {
           </div>
         }
       >
-        <div style={{ padding: '16px', height: '520px' }}>
+        <div style={{ padding: '16px', height: '660px', minHeight: '660px', overflow: 'hidden' }}>
           <LaborBreakdownChart
             months={currentStackedData.months}
             dataByCategory={currentStackedData.dataByCategory}
-            height="480px"
+            height={620}
             onBarClick={handleBarClick}
             activeFilters={activeFilters}
           />

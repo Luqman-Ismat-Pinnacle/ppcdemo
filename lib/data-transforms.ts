@@ -3179,39 +3179,47 @@ export function buildQualityHours(data: Partial<SampleData>) {
     if (id) taskMap.set(id, t);
   });
 
-  // Aggregate hours by charge code from hours entries
   const byCode = new Map<string, number>();
   let totalHours = 0;
   let qcHours = 0;
 
+  // Use same charge code logic as labor breakdown: hour entry first, then task, then EX
   hours.forEach((h: any) => {
-    const code = (h.chargeCode || h.charge_code || 'Unknown').trim() || 'Unknown';
     const taskId = h.taskId || h.task_id;
     const task = taskId ? taskMap.get(taskId) : null;
-    const codeFromTask = task?.chargeCode || task?.charge_code || '';
-    const effectiveCode = code !== 'Unknown' ? code : (codeFromTask || 'Unknown');
+    const code = (h.chargeCode || h.charge_code || task?.chargeCode || task?.charge_code || 'EX').trim() || 'EX';
     const hrs = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
     if (hrs <= 0) return;
     totalHours += hrs;
-    const isQC = isQCChargeCode(effectiveCode);
-    if (isQC) qcHours += hrs;
-    byCode.set(effectiveCode, (byCode.get(effectiveCode) || 0) + hrs);
+    if (isQCChargeCode(code)) qcHours += hrs;
+    byCode.set(code, (byCode.get(code) || 0) + hrs);
   });
 
-  // Sort by hours desc, take top charge codes
+  // Fallback: when no hours data, derive from tasks by charge code
+  if (byCode.size === 0) {
+    const taskActualHours = buildTaskActualHoursMap(hours);
+    tasks.forEach((t: any) => {
+      const code = (t.chargeCode || t.charge_code || 'EX').trim() || 'EX';
+      const taskId = t.id || t.taskId;
+      const hrs = taskActualHours.get(taskId) ?? (t.actualHours ?? t.actual_hours ?? 0);
+      if (hrs > 0) {
+        totalHours += hrs;
+        if (isQCChargeCode(code)) qcHours += hrs;
+        byCode.set(code, (byCode.get(code) || 0) + hrs);
+      }
+    });
+  }
+
   const sorted = [...byCode.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 15);
   const chargeCodes = sorted.map(([c]) => c);
   const hoursPerCode = sorted.map(([, v]) => v);
-
   const qcPercent = totalHours > 0 ? Math.round((qcHours / totalHours) * 100) : 0;
-  const categories = ['Hours'];
-  const dataMatrix = chargeCodes.length > 0 ? [hoursPerCode] : [];
 
   return {
     tasks: chargeCodes,
-    categories,
+    categories: ['Hours'],
     data: chargeCodes.length > 0 ? chargeCodes.map((_, i) => [hoursPerCode[i] ?? 0]) : [],
     qcPercent: chargeCodes.map((code) => (isQCChargeCode(code) ? 100 : 0)),
     poorQualityPercent: chargeCodes.map(() => 0),

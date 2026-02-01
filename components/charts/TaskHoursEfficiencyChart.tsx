@@ -17,8 +17,8 @@ interface TaskHoursEfficiencyChartProps {
   activeFilters?: string[];
 }
 
-const ROW_HEIGHT = 40;
-const MIN_HEIGHT = 320;
+const ROW_HEIGHT = 44;
+const MIN_HEIGHT = 400;
 
 export default function TaskHoursEfficiencyChart({
   data,
@@ -46,7 +46,7 @@ export default function TaskHoursEfficiencyChart({
     const actualWorked = valid.map((v) => v.actual);
     const remainingHours = valid.map((v) => v.remaining);
     const progressPercent = valid.map((v) => v.progress);
-    const chartHeight = Math.max(MIN_HEIGHT, tasks.length * ROW_HEIGHT + 90);
+    const chartHeight = Math.max(MIN_HEIGHT, tasks.length * ROW_HEIGHT + 100);
 
     return { tasks, actualWorked, remainingHours, progressPercent, chartHeight };
   }, [data]);
@@ -93,10 +93,10 @@ export default function TaskHoursEfficiencyChart({
         itemGap: 20,
       },
       grid: {
-        left: 260,
-        right: 50,
-        top: 16,
-        bottom: 44,
+        left: 280,
+        right: 60,
+        top: 24,
+        bottom: 50,
         containLabel: false,
       },
       xAxis: {
@@ -115,11 +115,11 @@ export default function TaskHoursEfficiencyChart({
         axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
         axisLabel: {
           color: 'rgba(255,255,255,0.9)',
-          fontSize: 12,
-          width: 240,
+          fontSize: 13,
+          width: 260,
           overflow: 'truncate',
           ellipsis: '…',
-          margin: 14,
+          margin: 16,
           interval: 0,
         },
         axisTick: { show: false },
@@ -130,9 +130,9 @@ export default function TaskHoursEfficiencyChart({
           name: 'Completed',
           type: 'bar',
           stack: 'total',
-          barWidth: 26,
-          barGap: '100%',
-          barCategoryGap: '45%',
+          barWidth: 32,
+          barGap: '80%',
+          barCategoryGap: '35%',
           data: actualWorked.map((v, i) => ({
             value: v,
             itemStyle: {
@@ -149,9 +149,9 @@ export default function TaskHoursEfficiencyChart({
           name: 'Remaining',
           type: 'bar',
           stack: 'total',
-          barWidth: 26,
-          barGap: '100%',
-          barCategoryGap: '45%',
+          barWidth: 32,
+          barGap: '80%',
+          barCategoryGap: '35%',
           data: remainingHours.map((v, i) => ({
             value: v,
             itemStyle: {

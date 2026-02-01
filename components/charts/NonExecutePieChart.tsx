@@ -18,12 +18,14 @@ interface NonExecutePieChartProps {
   data: Array<{ name: string; value: number; color: string }>;
   height?: string | number;
   showLabels?: boolean;
+  visualId?: string;
 }
 
 export default function NonExecutePieChart({
   data,
   height = '200px',
   showLabels = true,
+  visualId = 'non-execute-pie',
 }: NonExecutePieChartProps) {
   const option: EChartsOption = {
     backgroundColor: 'transparent',
@@ -71,6 +73,6 @@ export default function NonExecutePieChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="non-execute-pie" visualTitle="Non-Execute Hours" />;
+  return <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId={visualId} visualTitle="Non-Execute Hours" />;
 }
 

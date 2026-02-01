@@ -308,7 +308,9 @@ const ChartWrapper = React.memo(function ChartWrapper({
   };
 
   const inChartCard = !!setHeaderActions;
-  const containerHeight = inChartCard ? '100%' : height;
+  // Use explicit height when provided (number or px string); only fall back to 100% when no explicit height
+  const hasExplicitHeight = typeof height === 'number' || (typeof height === 'string' && /^\d+px$/.test(height));
+  const containerHeight = hasExplicitHeight ? (typeof height === 'number' ? `${height}px` : height) : (inChartCard ? '100%' : height);
 
   const actionButtons = (
     <>
