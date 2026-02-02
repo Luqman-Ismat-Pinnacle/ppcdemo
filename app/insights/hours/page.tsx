@@ -49,12 +49,14 @@ function NonExecuteCompareButton({ onOpen }: { onOpen: () => void }) {
         type="button"
         onClick={onOpen}
         title="Compare with snapshots"
+        aria-label="Compare with snapshots"
         style={{
-          width: 32,
-          height: 32,
-          display: 'flex',
+          display: 'inline-flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          gap: 6,
+          padding: '6px 12px',
+          fontSize: 12,
+          fontWeight: 600,
           background: 'var(--bg-tertiary)',
           border: '1px solid rgba(255,255,255,0.2)',
           borderRadius: 8,
@@ -63,6 +65,7 @@ function NonExecuteCompareButton({ onOpen }: { onOpen: () => void }) {
         }}
       >
         <CompareIcon size={14} />
+        <span>Compare</span>
       </button>
     );
     return () => setHeaderActions?.(null);

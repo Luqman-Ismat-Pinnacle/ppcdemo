@@ -248,8 +248,6 @@ export default function ResourceHeatmapChart({
     return processedData;
   }, [processedData, viewType]);
 
-  const isEmpty = !filteredData.resources.length || !filteredData.weeks.length;
-
   const heatmapData = useMemo(() => {
     const items: number[][] = [];
     filteredData.data.forEach((row, i) => {
@@ -636,24 +634,7 @@ export default function ResourceHeatmapChart({
       )}
 
       <div style={{ flex: 1, minHeight: 0 }}>
-        {isEmpty ? (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            minHeight: 200,
-            color: 'var(--text-muted)',
-            fontSize: '0.9rem',
-            background: 'var(--bg-tertiary)',
-            borderRadius: 8,
-            border: '1px solid var(--border-color)'
-          }}>
-            No resource or week data available. Ensure employees and hours are loaded.
-          </div>
-        ) : (
-          <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-heatmap" visualTitle="Resource Heatmap" />
-        )}
+        <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-heatmap" visualTitle="Resource Heatmap" />
       </div>
     </div>
   );

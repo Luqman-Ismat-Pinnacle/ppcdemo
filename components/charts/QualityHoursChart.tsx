@@ -16,6 +16,8 @@ const COLORS = ['#40E0D0', '#CDDC39', '#FF9800', '#E91E63', '#8B5CF6', '#10B981'
 
 interface QualityHoursChartProps {
   data: QualityHours;
+  /** When qualityHours.tasks is empty, use these task names (e.g. from taskHoursEfficiency) so chart shows same rows with zero QC hours */
+  taskOrder?: string[];
   height?: string | number;
   onBarClick?: (params: { name: string; dataIndex: number }) => void;
   activeFilters?: string[];
@@ -23,22 +25,25 @@ interface QualityHoursChartProps {
 
 export default function QualityHoursChart({
   data,
+  taskOrder,
   height = 440,
   onBarClick,
   activeFilters = [],
 }: QualityHoursChartProps) {
   const isFiltered = activeFilters.length > 0;
-  const chargeCodes = data.tasks || [];
+  // Use qualityHours.tasks when present; otherwise same order as Task Hours Efficiency so chart shows same rows (zeros if no QC)
+  const chargeCodes = (data.tasks?.length ? data.tasks : (taskOrder?.length ? taskOrder : [])) || [];
   const hoursData = useMemo(() => {
-    if (!data.data?.length || !chargeCodes.length) return [];
-    return chargeCodes.map((_, i) => (data.data[i]?.[0] ?? data.data[i]?.reduce((a, b) => a + b, 0) ?? 0));
+    if (!chargeCodes.length) return [];
+    if (!data.data?.length) return chargeCodes.map(() => 0);
+    return chargeCodes.map((_, i) => (data.data?.[i]?.[0] ?? (Array.isArray(data.data?.[i]) ? (data.data[i] as number[]).reduce((a, b) => a + b, 0) : 0) ?? 0));
   }, [data.data, chargeCodes]);
 
   const heightNum = typeof height === 'number' ? height : parseInt(String(height), 10) || 440;
   const chartHeight = Math.max(MIN_HEIGHT, heightNum, chargeCodes.length * ROW_HEIGHT + 90);
 
   const option: EChartsOption = useMemo(() => {
-    if (chargeCodes.length === 0 || hoursData.every((h) => h === 0)) return {};
+    if (chargeCodes.length === 0) return {};
 
     return {
       backgroundColor: 'transparent',
