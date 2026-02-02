@@ -2567,6 +2567,12 @@ export const buildCatchUpLog = (data: Partial<SampleData>): CatchUpEntry[] => {
 // RESOURCE HEATMAP TRANSFORMATION
 // ============================================================================
 
+/** Normalize employee ID for consistent map key/lookup (DB may return number or string). */
+function normId(value: unknown): string {
+  if (value == null || value === '') return '';
+  return String(value).trim();
+}
+
 /**
  * Build resource heatmap data from hours and employees.
  * When allHoursForWeekRange is provided, the week list is built from it so all dates show; values still use data.hours (filtered).
@@ -2583,16 +2589,25 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
     return { resources: [], weeks: [], data: [] };
   }
 
-  // Build hours by employee Map - use string keys so DB number/string ID mismatch doesn't break lookup
+  // Build hours by employee Map - normalized keys so DB number/string ID mismatch doesn't break lookup
   const hoursByEmployee = new Map<string, any[]>();
   hours.forEach((h: any) => {
     const empId = h.employeeId ?? h.employee_id;
-    if (empId != null && empId !== '') {
-      const key = String(empId).trim();
+    const key = normId(empId);
+    if (key) {
       if (!hoursByEmployee.has(key)) hoursByEmployee.set(key, []);
       hoursByEmployee.get(key)!.push(h);
     }
   });
+
+  if (typeof window !== 'undefined' && (window as any).__DEBUG__) {
+    const matched = employees.filter((e: any) => {
+      const k1 = normId(e.id);
+      const k2 = normId(e.employeeId);
+      return (k1 && hoursByEmployee.has(k1)) || (k2 && hoursByEmployee.has(k2));
+    }).length;
+    console.debug('[buildResourceHeatmap] employees:', employees.length, 'hours:', hours.length, 'hoursByEmployee keys:', hoursByEmployee.size, 'employees with hours:', matched);
+  }
 
   // Get unique weeks from hours data (use hoursForWeekList so all dates show when date filter is applied), or generate current weeks if no hours
   let rawWeeks: string[] = [];
@@ -2636,10 +2651,10 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
 
     const weeklyHours = new Array(rawWeeks.length).fill(0);
 
-    // Look up by both id and employeeId (stringified) - DB may use either column for the same value
+    // Look up by both id and employeeId with normalized keys
     const empHours =
-      hoursByEmployee.get(String(emp.id ?? '').trim()) ||
-      hoursByEmployee.get(String(emp.employeeId ?? '').trim()) ||
+      hoursByEmployee.get(normId(emp.id)) ||
+      hoursByEmployee.get(normId(emp.employeeId)) ||
       [];
     empHours.forEach((h: any) => {
       const hourDateNorm = normalizeDateString(h.date || h.entry_date);
