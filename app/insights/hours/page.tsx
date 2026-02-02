@@ -14,17 +14,22 @@
  * @module app/insights/hours/page
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import * as echarts from 'echarts';
+import type { EChartsOption } from 'echarts';
 import { useData } from '@/lib/data-context';
+import { useTheme } from '@/lib/theme-context';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
 import QualityHoursChart from '@/components/charts/QualityHoursChart';
-import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
+import NonExecutePieChart, { buildNonExecutePieOption } from '@/components/charts/NonExecutePieChart';
 import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
 import HoursWaterfallChart from '@/components/charts/HoursWaterfallChart';
-import ChartCard from '@/components/charts/ChartCard';
+import ChartCard, { useChartHeaderActions } from '@/components/charts/ChartCard';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import TableCompareExport from '@/components/ui/TableCompareExport';
+import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
+import { CompareIcon } from '@/components/ui/ChartActionIcons';
 import {
   type SortState,
   formatSortIndicator,
@@ -34,6 +39,36 @@ import {
 
 /** View type for the combined stacked bar chart */
 type StackedViewType = 'chargeCode' | 'project' | 'role';
+
+/** Puts a Compare button in the chart header that opens the Non-Execute snapshot comparison modal (both pies). */
+function NonExecuteCompareButton({ onOpen }: { onOpen: () => void }) {
+  const setHeaderActions = useChartHeaderActions();
+  React.useEffect(() => {
+    setHeaderActions?.(
+      <button
+        type="button"
+        onClick={onOpen}
+        title="Compare with snapshots"
+        style={{
+          width: 32,
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid rgba(255,255,255,0.2)',
+          borderRadius: 8,
+          color: 'var(--text-secondary)',
+          cursor: 'pointer',
+        }}
+      >
+        <CompareIcon size={14} />
+      </button>
+    );
+    return () => setHeaderActions?.(null);
+  }, [onOpen, setHeaderActions]);
+  return null;
+}
 
 /**
  * Format week date to readable label
@@ -55,6 +90,13 @@ export default function HoursPage() {
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
   const [workerTableSort, setWorkerTableSort] = useState<SortState | null>(null);
   const [roleTableSort, setRoleTableSort] = useState<SortState | null>(null);
+  const [isNonExecuteCompareOpen, setIsNonExecuteCompareOpen] = useState(false);
+  const theme = useTheme()?.theme || 'dark';
+  const onRenderNonExecuteChart = useCallback((container: HTMLDivElement, option: EChartsOption) => {
+    const ch = echarts.init(container, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
+    ch.setOption(option);
+    return ch;
+  }, [theme]);
 
   const selectedEmployees = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'employee').map((f) => f.value)), [pageFilters]);
   const selectedRoles = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'role').map((f) => f.value)), [pageFilters]);
@@ -495,6 +537,7 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
+          <NonExecuteCompareButton onOpen={() => setIsNonExecuteCompareOpen(true)} />
           <div style={{ display: 'flex', gap: '1rem', padding: '1rem', minHeight: 320 }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
@@ -504,6 +547,7 @@ export default function HoursPage() {
                   height={300}
                   showLabels={true}
                   visualId="non-execute-tpw"
+                  enableCompare={false}
                 />
               </div>
             </div>
@@ -515,6 +559,7 @@ export default function HoursPage() {
                   height={300}
                   showLabels={true}
                   visualId="non-execute-other"
+                  enableCompare={false}
                 />
               </div>
             </div>
@@ -524,7 +569,7 @@ export default function HoursPage() {
 
       {/* Hours Variance Waterfall - Full Width */}
       <div className="dashboard-grid">
-      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem' }} title={
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: 520 }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
             <rect x="4" y="14" width="4" height="6" rx="1"></rect>
@@ -534,10 +579,10 @@ export default function HoursPage() {
           Hours Variance Waterfall
         </h3>
       }>
-        <div style={{ padding: '16px', minHeight: 400 }}>
+        <div style={{ padding: '16px', minHeight: 480 }}>
           <HoursWaterfallChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height={380}
+            height={440}
           />
         </div>
       </ChartCard>
@@ -939,6 +984,22 @@ export default function HoursPage() {
           </TableCompareExport>
       </ChartCard>
       </div>
+
+      {/* Non-Execute Compare modal – shows both TPW and Other pie charts */}
+      {typeof document !== 'undefined' && (
+        <SnapshotComparisonModal
+          isOpen={isNonExecuteCompareOpen}
+          onClose={() => setIsNonExecuteCompareOpen(false)}
+          visualId="non-execute-hours"
+          visualTitle="Non-Execute Hours"
+          visualType="chart"
+          currentData={{
+            tpw: buildNonExecutePieOption(data?.nonExecuteHours?.tpwComparison || [], true),
+            other: buildNonExecutePieOption(data?.nonExecuteHours?.otherBreakdown || [], true),
+          }}
+          onRenderChart={onRenderNonExecuteChart}
+        />
+      )}
     </div>
   );
 }

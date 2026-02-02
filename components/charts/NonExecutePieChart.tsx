@@ -14,20 +14,22 @@ import React from 'react';
 import ChartWrapper from './ChartWrapper';
 import type { EChartsOption } from 'echarts';
 
+export type NonExecutePieDataItem = { name: string; value: number; color: string };
+
 interface NonExecutePieChartProps {
-  data: Array<{ name: string; value: number; color: string }>;
+  data: NonExecutePieDataItem[];
   height?: string | number;
   showLabels?: boolean;
   visualId?: string;
+  enableCompare?: boolean;
 }
 
-export default function NonExecutePieChart({
-  data,
-  height = '200px',
-  showLabels = true,
-  visualId = 'non-execute-pie',
-}: NonExecutePieChartProps) {
-  const option: EChartsOption = {
+/** Build ECharts option for non-execute pie (for compare snapshot / multi-chart modal). */
+export function buildNonExecutePieOption(
+  data: NonExecutePieDataItem[],
+  showLabels = true
+): EChartsOption {
+  return {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
@@ -72,7 +74,27 @@ export default function NonExecutePieChart({
       },
     ],
   };
-
-  return <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId={visualId} visualTitle="Non-Execute Hours" />;
 }
+
+export default function NonExecutePieChart({
+  data,
+  height = '200px',
+  showLabels = true,
+  visualId = 'non-execute-pie',
+  enableCompare = true,
+}: NonExecutePieChartProps) {
+  const option: EChartsOption = buildNonExecutePieOption(data, showLabels);
+  return (
+    <ChartWrapper
+      option={option}
+      height={height}
+      enableCompare={enableCompare}
+      enableExport
+      enableFullscreen
+      visualId={visualId}
+      visualTitle="Non-Execute Hours"
+    />
+  );
+}
+
 

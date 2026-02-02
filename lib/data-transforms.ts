@@ -3291,7 +3291,7 @@ function isQCChargeCode(code: string | null | undefined): boolean {
   return c.includes('qc') || c.includes('quality') || c.includes('rework') || c.includes('review');
 }
 
-export function buildQualityHours(data: Partial<SampleData>) {
+export function buildQualityHours(data: Partial<SampleData>, options?: { taskOrder?: string[] }) {
   const hours = data.hours || [];
   const tasks = data.tasks || [];
   const taskMap = new Map<string, any>();
@@ -3300,11 +3300,72 @@ export function buildQualityHours(data: Partial<SampleData>) {
     if (id) taskMap.set(id, t);
   });
 
+  const taskOrder = options?.taskOrder;
+
+  // When taskOrder is provided (same as Task Hours Efficiency), aggregate QC hours per task.
+  // If taskOrder is empty array, derive same task names as buildTaskHoursEfficiency so chart shows same charge codes.
+  const effectiveTaskOrder =
+    taskOrder !== undefined
+      ? taskOrder.length > 0
+        ? taskOrder
+        : (() => {
+            const taskActualHours = buildTaskActualHoursMap(hours);
+            const validTasks = tasks.filter((t: any) => {
+              const taskId = t.id || t.taskId;
+              const hasBaseline = t.baselineHours || t.budgetHours || t.baseline_hours || t.budget_hours;
+              const hasActualFromTask = t.actualHours || t.actual_hours;
+              const hasActualFromHours = taskActualHours.has(taskId);
+              return hasBaseline || hasActualFromTask || hasActualFromHours;
+            });
+            return validTasks.map((t: any) => t.taskName || t.name || t.task_name || t.taskId || 'Task');
+          })()
+      : null;
+
+  if (effectiveTaskOrder && effectiveTaskOrder.length > 0) {
+    const taskNameToId = new Map<string, string>();
+    tasks.forEach((t: any) => {
+      const name = t.taskName || t.name || t.task_name || t.taskId || '';
+      const id = t.id || t.taskId;
+      if (name && id) taskNameToId.set(name, id);
+    });
+    const qcHoursByTaskId = new Map<string, number>();
+    let totalHours = 0;
+    let qcHours = 0;
+    hours.forEach((h: any) => {
+      const taskId = h.taskId || h.task_id;
+      const task = taskId ? taskMap.get(taskId) : null;
+      const code = (h.chargeCode || h.charge_code || task?.chargeCode || task?.charge_code || 'EX').trim() || 'EX';
+      const hrs = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
+      if (hrs <= 0) return;
+      totalHours += hrs;
+      if (isQCChargeCode(code)) {
+        qcHours += hrs;
+        qcHoursByTaskId.set(taskId, (qcHoursByTaskId.get(taskId) || 0) + hrs);
+      }
+    });
+    const chargeCodes = effectiveTaskOrder;
+    const hoursPerCode = effectiveTaskOrder.map((name) => {
+      const id = taskNameToId.get(name);
+      return id ? (qcHoursByTaskId.get(id) || 0) : 0;
+    });
+    const qcPercentOverall = totalHours > 0 ? Math.round((qcHours / totalHours) * 100) : 0;
+    return {
+      tasks: chargeCodes,
+      categories: ['Hours'],
+      data: chargeCodes.length > 0 ? chargeCodes.map((_, i) => [hoursPerCode[i] ?? 0]) : [],
+      qcPercent: chargeCodes.map(() => qcPercentOverall),
+      poorQualityPercent: chargeCodes.map(() => 0),
+      project: chargeCodes.map(() => ''),
+      totalHours,
+      qcHours,
+      qcPercentOverall,
+    };
+  }
+
   const byCode = new Map<string, number>();
   let totalHours = 0;
   let qcHours = 0;
 
-  // Use same charge code logic as labor breakdown: hour entry first, then task, then EX
   hours.forEach((h: any) => {
     const taskId = h.taskId || h.task_id;
     const task = taskId ? taskMap.get(taskId) : null;
@@ -3316,7 +3377,6 @@ export function buildQualityHours(data: Partial<SampleData>) {
     byCode.set(code, (byCode.get(code) || 0) + hrs);
   });
 
-  // Fallback: when no hours data, derive from tasks by charge code
   if (byCode.size === 0) {
     const taskActualHours = buildTaskActualHoursMap(hours);
     tasks.forEach((t: any) => {
@@ -3404,21 +3464,43 @@ export function buildNonExecuteHours(data: Partial<SampleData>) {
 
   const nonExecutePercent = totalHours > 0 ? Math.round(((tpwHoursTotal + nonBillableHours) / totalHours) * 100) : 0;
 
+  // TPW Comparison: TPW vs Execute vs Non-Execute
+  const tpwComparison = [
+    { name: 'TPW', value: Math.round(tpwHoursTotal), color: '#8B5CF6' },
+    { name: 'Execute', value: Math.round(billableHours), color: '#40E0D0' },
+    { name: 'Non-Execute', value: Math.round(nonBillableHours), color: '#F59E0B' }
+  ];
+
+  // Other Breakdown: TPW hours broken down by charge code (more specific)
+  const tpwByChargeCode = new Map<string, number>();
+  const TPW_COLORS = ['#8B5CF6', '#A78BFA', '#C4B5FD', '#7C3AED', '#6D28D9', '#5B21B6', '#4C1D95', '#6B7280'];
+  tpwHours.forEach((h: any) => {
+    const code = (h.chargeCode || h.charge_code || (h.description || h.desc || 'TPW').toString()).trim() || 'TPW';
+    const hrs = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
+    if (hrs > 0) tpwByChargeCode.set(code, (tpwByChargeCode.get(code) || 0) + hrs);
+  });
+  const otherBreakdownEntries = [...tpwByChargeCode.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name], i) => ({
+      name: name.length > 24 ? name.slice(0, 22) + '…' : name,
+      value: Math.round(tpwByChargeCode.get(name)!),
+      color: TPW_COLORS[i % TPW_COLORS.length],
+    }));
+  const otherBreakdown = otherBreakdownEntries.length > 0
+    ? otherBreakdownEntries
+    : (nonBillableHours > 0 ? [
+        { name: 'Admin', value: Math.round(nonBillableHours * 0.4), color: '#8B5CF6' },
+        { name: 'Training', value: Math.round(nonBillableHours * 0.25), color: '#10B981' },
+        { name: 'Meetings', value: Math.round(nonBillableHours * 0.20), color: '#F59E0B' },
+        { name: 'Other', value: Math.round(nonBillableHours * 0.15), color: '#6B7280' }
+      ] : []);
+
   return {
     total: Math.round(tpwHoursTotal + nonBillableHours),
     fte: +((tpwHoursTotal + nonBillableHours) / 2080).toFixed(2),
     percent: nonExecutePercent,
-    tpwComparison: [
-      { name: 'TPW', value: Math.round(tpwHoursTotal), color: '#8B5CF6' },
-      { name: 'Execute', value: Math.round(billableHours), color: '#40E0D0' },
-      { name: 'Non-Execute', value: Math.round(nonBillableHours), color: '#F59E0B' }
-    ],
-    otherBreakdown: nonBillableHours > 0 ? [
-      { name: 'Admin', value: Math.round(nonBillableHours * 0.4), color: '#8B5CF6' },
-      { name: 'Training', value: Math.round(nonBillableHours * 0.25), color: '#10B981' },
-      { name: 'Meetings', value: Math.round(nonBillableHours * 0.20), color: '#F59E0B' },
-      { name: 'Other', value: Math.round(nonBillableHours * 0.15), color: '#6B7280' }
-    ] : []
+    tpwComparison,
+    otherBreakdown,
   };
 }
 
@@ -4887,9 +4969,11 @@ export function transformData(rawData: Partial<SampleData>, options?: TransformD
     transformed.projectsEfficiencyMetrics = buildProjectsEfficiencyMetrics(adjustedData);
   }
 
-  // Build quality hours data
+  // Build quality hours data (same task order as Task Hours Efficiency when available)
   if (adjustedData.tasks?.length || adjustedData.hours?.length) {
-    transformed.qualityHours = buildQualityHours(adjustedData);
+    transformed.qualityHours = buildQualityHours(adjustedData, {
+      taskOrder: transformed.taskHoursEfficiency?.tasks,
+    });
   }
 
   // Build non-execute hours data

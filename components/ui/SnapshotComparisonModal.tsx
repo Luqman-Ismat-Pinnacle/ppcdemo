@@ -48,6 +48,16 @@ export default function SnapshotComparisonModal({
   const currentContainerRef = useRef<HTMLDivElement | null>(null);
   const snapshotContainerRef = useRef<HTMLDivElement | null>(null);
   const modalContentRef = useRef<HTMLDivElement | null>(null);
+  const currentTpwRef = useRef<HTMLDivElement | null>(null);
+  const currentOtherRef = useRef<HTMLDivElement | null>(null);
+  const snapshotTpwRef = useRef<HTMLDivElement | null>(null);
+  const snapshotOtherRef = useRef<HTMLDivElement | null>(null);
+  const multiChartRefs = useRef<any[]>([]);
+
+  const isMultiChart = useMemo(() => {
+    if (!currentData || typeof currentData !== 'object' || Array.isArray(currentData)) return false;
+    return 'tpw' in currentData && 'other' in currentData;
+  }, [currentData]);
 
   // Use full data.visualSnapshots (not filteredData) so list isn't affected by hierarchy filter
   const snapshots = useMemo((): SnapshotItem[] => {
@@ -69,13 +79,42 @@ export default function SnapshotComparisonModal({
   );
 
   const resizeCharts = useCallback(() => {
-    currentChartRef.current?.resize?.();
-    snapshotChartRef.current?.resize?.();
+    if (multiChartRefs.current.length) {
+      multiChartRefs.current.forEach((ch) => ch?.resize?.());
+    } else {
+      currentChartRef.current?.resize?.();
+      snapshotChartRef.current?.resize?.();
+    }
   }, []);
+
+  const multiData = isMultiChart ? (currentData as { tpw: EChartsOption; other: EChartsOption }) : null;
 
   // Render current (left) chart – use useLayoutEffect so container ref is set before we init chart
   useLayoutEffect(() => {
-    if (!isOpen || visualType !== 'chart' || !onRenderChart || currentData == null) return;
+    if (!isOpen || visualType !== 'chart' || !onRenderChart) return;
+    if (isMultiChart && multiData?.tpw != null && multiData?.other != null) {
+      const tpwEl = currentTpwRef.current;
+      const otherEl = currentOtherRef.current;
+      if (!tpwEl || !otherEl) return;
+      const chartTpw = onRenderChart(tpwEl, multiData.tpw);
+      const chartOther = onRenderChart(otherEl, multiData.other);
+      multiChartRefs.current = [chartTpw, chartOther, null, null];
+      const roTpw = new ResizeObserver(() => requestAnimationFrame(() => chartTpw?.resize?.()));
+      const roOther = new ResizeObserver(() => requestAnimationFrame(() => chartOther?.resize?.()));
+      roTpw.observe(tpwEl);
+      roOther.observe(otherEl);
+      requestAnimationFrame(() => { chartTpw?.resize?.(); chartOther?.resize?.(); });
+      const t2 = setTimeout(() => { chartTpw?.resize?.(); chartOther?.resize?.(); }, 150);
+      return () => {
+        clearTimeout(t2);
+        roTpw.disconnect();
+        roOther.disconnect();
+        if (chartTpw?.dispose) chartTpw.dispose();
+        if (chartOther?.dispose) chartOther.dispose();
+        multiChartRefs.current = [];
+      };
+    }
+    if (currentData == null) return;
     const container = currentContainerRef.current;
     if (!container) return;
     const chart = onRenderChart(container, currentData as EChartsOption);
@@ -84,7 +123,6 @@ export default function SnapshotComparisonModal({
       requestAnimationFrame(() => chart?.resize?.());
     });
     ro.observe(container);
-    // Initial resize after layout settles (containers may have 0 size on first paint)
     const t1 = requestAnimationFrame(() => chart?.resize?.());
     const t2 = setTimeout(() => chart?.resize?.(), 150);
     return () => {
@@ -94,11 +132,39 @@ export default function SnapshotComparisonModal({
       if (chart?.dispose) chart.dispose();
       currentChartRef.current = null;
     };
-  }, [isOpen, visualType, currentData, onRenderChart]);
+  }, [isOpen, visualType, currentData, onRenderChart, isMultiChart, multiData]);
 
   // Render snapshot (right) chart when one is selected
   useEffect(() => {
-    if (!isOpen || visualType !== 'chart' || !onRenderChart || !selectedSnapshot?.data) {
+    if (!isOpen || visualType !== 'chart' || !onRenderChart) return;
+    if (isMultiChart && selectedSnapshot?.data && typeof selectedSnapshot.data === 'object' && 'tpw' in selectedSnapshot.data && 'other' in selectedSnapshot.data) {
+      const snap = selectedSnapshot.data as { tpw: EChartsOption; other: EChartsOption };
+      const tpwEl = snapshotTpwRef.current;
+      const otherEl = snapshotOtherRef.current;
+      if (!tpwEl || !otherEl) return;
+      const chartTpw = onRenderChart(tpwEl, snap.tpw);
+      const chartOther = onRenderChart(otherEl, snap.other);
+      multiChartRefs.current[2] = chartTpw;
+      multiChartRefs.current[3] = chartOther;
+      const roTpw = new ResizeObserver(() => requestAnimationFrame(() => chartTpw?.resize?.()));
+      const roOther = new ResizeObserver(() => requestAnimationFrame(() => chartOther?.resize?.()));
+      roTpw.observe(tpwEl);
+      roOther.observe(otherEl);
+      requestAnimationFrame(() => { chartTpw?.resize?.(); chartOther?.resize?.(); });
+      const t2 = setTimeout(() => { chartTpw?.resize?.(); chartOther?.resize?.(); }, 100);
+      return () => {
+        clearTimeout(t2);
+        roTpw.disconnect();
+        roOther.disconnect();
+        if (chartTpw?.dispose) chartTpw.dispose();
+        if (chartOther?.dispose) chartOther.dispose();
+        if (multiChartRefs.current.length >= 4) {
+          multiChartRefs.current[2] = null;
+          multiChartRefs.current[3] = null;
+        }
+      };
+    }
+    if (!selectedSnapshot?.data) {
       if (snapshotChartRef.current?.dispose) snapshotChartRef.current.dispose();
       snapshotChartRef.current = null;
       return;
@@ -121,7 +187,7 @@ export default function SnapshotComparisonModal({
       if (chart?.dispose) chart.dispose();
       snapshotChartRef.current = null;
     };
-  }, [isOpen, visualType, selectedSnapshot, onRenderChart]);
+  }, [isOpen, visualType, selectedSnapshot, onRenderChart, isMultiChart]);
 
   // Resize charts when modal opens or window resizes
   useEffect(() => {
@@ -454,9 +520,20 @@ export default function SnapshotComparisonModal({
                 Current
               </h3>
             </div>
-            <div style={{ flex: 1, minHeight: 0, minWidth: 0, padding: '1rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, padding: '1rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: isMultiChart ? '0.5rem' : 0 }}>
               {visualType === 'chart' ? (
-                currentData != null ? (
+                isMultiChart && multiData?.tpw != null && multiData?.other != null ? (
+                  <>
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>TPW Comparison</div>
+                      <div ref={(el) => { currentTpwRef.current = el; }} style={{ flex: 1, minHeight: 140 }} />
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>Other Breakdown</div>
+                      <div ref={(el) => { currentOtherRef.current = el; }} style={{ flex: 1, minHeight: 140 }} />
+                    </div>
+                  </>
+                ) : currentData != null ? (
                   <div
                     ref={(el) => { currentContainerRef.current = el; }}
                     style={{ width: '100%', height: '100%', flex: 1, minHeight: 200 }}
@@ -503,6 +580,17 @@ export default function SnapshotComparisonModal({
               {!selectedSnapshot ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                   Select a snapshot to compare
+                </div>
+              ) : visualType === 'chart' && isMultiChart && selectedSnapshot?.data && typeof selectedSnapshot.data === 'object' && 'tpw' in selectedSnapshot.data && 'other' in selectedSnapshot.data ? (
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>TPW Comparison</div>
+                    <div ref={(el) => { snapshotTpwRef.current = el; }} style={{ flex: 1, minHeight: 140 }} />
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>Other Breakdown</div>
+                    <div ref={(el) => { snapshotOtherRef.current = el; }} style={{ flex: 1, minHeight: 140 }} />
+                  </div>
                 </div>
               ) : visualType === 'chart' ? (
                 <div

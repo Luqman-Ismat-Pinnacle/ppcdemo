@@ -28,7 +28,7 @@ interface BudgetVarianceChartProps {
 
 export default function BudgetVarianceChart({
   data,
-  height = '300px',
+  height = '420px',
   onBarClick,
   activeFilters = [],
   enableExport = true,
@@ -85,12 +85,20 @@ export default function BudgetVarianceChart({
                 </div>` : ''}`;
       },
     },
-    grid: { left: 50, right: 30, top: 15, bottom: 55, containLabel: true },
+    grid: { left: 50, right: 30, top: 20, bottom: 70, containLabel: true },
     xAxis: {
       type: 'category',
       data: categories,
       axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      axisLabel: { color: 'var(--text-secondary)', fontSize: 11, rotate: 45 },
+      axisLabel: {
+        color: 'var(--text-secondary)',
+        fontSize: 9,
+        rotate: 45,
+        width: 56,
+        overflow: 'truncate',
+        ellipsis: '…',
+        interval: 0,
+      },
     },
     yAxis: {
       type: 'value',

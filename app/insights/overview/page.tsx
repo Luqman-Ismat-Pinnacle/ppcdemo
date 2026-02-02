@@ -478,6 +478,7 @@ export default function OverviewPage() {
         {/* Budget Variance Bridge - Full Width */}
         <ChartCard
           gridClass="grid-full"
+          style={{ minHeight: 420 }}
           title={
             <EnhancedTooltip
               content={{
@@ -495,14 +496,16 @@ export default function OverviewPage() {
             </EnhancedTooltip>
           }
         >
-          <BudgetVarianceChart
-            data={filteredBudgetVariance}
-            height="100%"
-            isLoading={dataLoading}
-            isEmpty={!filteredBudgetVariance?.length}
-            onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
-            activeFilters={projectFilterValues}
-          />
+          <div style={{ minHeight: 380 }}>
+            <BudgetVarianceChart
+              data={filteredBudgetVariance}
+              height={380}
+              isLoading={dataLoading}
+              isEmpty={!filteredBudgetVariance?.length}
+              onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
+              activeFilters={projectFilterValues}
+            />
+          </div>
         </ChartCard>
 
         {/* Count/Metrics Analysis Table */}
