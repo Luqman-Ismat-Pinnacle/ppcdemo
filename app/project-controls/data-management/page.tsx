@@ -1154,13 +1154,13 @@ export default function DataManagementPage() {
         { key: 'percentComplete', header: '% Complete', type: 'number', editable: true },
         // Hours
         { key: 'baselineHours', header: 'BL Hrs', type: 'number', editable: true },
-        { key: 'actualHours', header: 'Act Hrs', type: 'number', editable: true },
-        { key: 'remainingHours', header: 'Rem Hrs', type: 'number', editable: false, autoCalculated: false, tooltip: 'From MPP parser / stored value (not calculated)' },
+        { key: 'actualHours', header: 'Act Hrs', type: 'number', editable: false, autoCalculated: false, tooltip: 'Sum of matched hours entries' },
+        { key: 'remainingHours', header: 'Rem Hrs', type: 'number', editable: false, autoCalculated: false, tooltip: 'From MPP parser (not calculated)' },
         { key: 'projectedRemainingHours', header: 'Proj Rem Hrs', type: 'number', editable: true },
         // Cost
         { key: 'baselineCost', header: 'BL Cost', type: 'number', editable: true },
-        { key: 'actualCost', header: 'Act Cost', type: 'number', editable: true },
-        { key: 'remainingCost', header: 'Rem Cost', type: 'number', editable: false, autoCalculated: true },
+        { key: 'actualCost', header: 'Act Cost', type: 'number', editable: false, autoCalculated: false, tooltip: 'Sum of actual_cost from matched hours entries' },
+        { key: 'remainingCost', header: 'Rem Cost', type: 'number', editable: false, autoCalculated: false, tooltip: 'From stored value (not calculated)' },
         { key: 'baselineQty', header: 'BL Qty', type: 'number', editable: true },
         { key: 'actualQty', header: 'Act Qty', type: 'number', editable: true },
         { key: 'completedQty', header: 'Comp Qty', type: 'number', editable: true },

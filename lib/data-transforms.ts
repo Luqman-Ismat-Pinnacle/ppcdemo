@@ -877,8 +877,9 @@ const applyTaskProgress = (task: any, context: TaskProgressContext) => {
   const normalizedPercent = clampPercent(percentComplete);
   const earnedHours = baselineHours * (normalizedPercent / 100);
   const taskEfficiency = actualHours > 0 ? clampPercent((earnedHours / actualHours) * 100) : null;
-  // Use MPP parser remainingHours directly - no calculation fallback
-  const remainingHours = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0;
+  // Use MPP parser remainingHours only - no calculation fallback
+  const rawRemaining = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
+  const remainingHours = rawRemaining != null ? Number(rawRemaining) || 0 : null;
 
   return {
     ...task,
@@ -920,8 +921,9 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
-    // Use MPP parser remainingHours directly - no calculation fallback
-    const remainingHours = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0;
+    // Use MPP parser remainingHours only - no calculation fallback
+    const taskRemaining = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
+    const remainingHours = taskRemaining != null ? Number(taskRemaining) || 0 : null;
 
     return {
       ...task,
@@ -950,8 +952,9 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
-    // Use MPP parser remainingHours directly for subTasks - no calculation fallback
-    const subRemainingHours = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0;
+    // Use MPP parser remainingHours only - no calculation fallback
+    const subRemaining = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
+    const subRemainingHours = subRemaining != null ? Number(subRemaining) || 0 : null;
 
     return {
       ...task,
@@ -2287,7 +2290,8 @@ const buildTaskActualHoursMap = (hours: any[]): Map<string, number> => {
   return map;
 };
 
-/** Sum of actual_cost from hour_entries per task (for WBS/task actualCost). Use enriched hours so task_id is set. */
+/** Sum of actual_cost from hour_entries per task (for WBS/task actualCost). Use enriched hours so task_id is set.
+ * Only uses actual_cost from hours entries - no fallback calculation. */
 const buildTaskActualCostMap = (hours: any[]): Map<string, number> => {
   const map = new Map<string, number>();
   hours.forEach((h: any) => {
@@ -2296,7 +2300,6 @@ const buildTaskActualCostMap = (hours: any[]): Map<string, number> => {
     const cost = Number(
       h.actualCost ?? h.actual_cost
       ?? h.reportedStandardCostAmt ?? h.reported_standard_cost_amt
-      ?? 0
     ) || 0;
     if (cost > 0) map.set(taskId, (map.get(taskId) || 0) + cost);
   });

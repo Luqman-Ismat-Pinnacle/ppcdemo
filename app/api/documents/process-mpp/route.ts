@@ -125,41 +125,133 @@ export async function POST(req: NextRequest) {
     // We can call the sync logic directly or via internal API
     // Direct database calls are better for reliability here
     
-    // Save Units
+    // Save Units (convert to snake_case)
     if (convertedData.units && convertedData.units.length > 0) {
-        const { error } = await supabase.from('units').upsert(convertedData.units, { onConflict: 'id' });
+        const unitsForDb = convertedData.units.map((u: Record<string, unknown>) => toSupabaseFormat(u));
+        const { error } = await supabase.from('units').upsert(unitsForDb, { onConflict: 'id' });
         if (error) console.error('Error saving units:', error);
     }
     
-    // Save Projects (Update existing project with new data?)
-    // Actually project already exists, we might update fields
-    // But convertedData.project might be a list of 1
-    
-    // Save Phases
+    // Save Phases (convert to snake_case)
     if (convertedData.phases && convertedData.phases.length > 0) {
-        const { error } = await supabase.from('phases').upsert(convertedData.phases, { onConflict: 'id' });
+        const phasesForDb = convertedData.phases.map((p: Record<string, unknown>) => toSupabaseFormat(p));
+        const { error } = await supabase.from('phases').upsert(phasesForDb, { onConflict: 'id' });
         if (error) console.error('Error saving phases:', error);
     }
     
     // Save Tasks (convert to snake_case so remaining_hours etc. are written correctly)
-    if (convertedData.tasks && convertedData.tasks.length > 0) {
-        const tasksForDb = convertedData.tasks.map((t: Record<string, unknown>) => {
-          const row = toSupabaseFormat(t);
-          delete (row as any).employee_id; // tasks table has assigned_resource_id only
-          return row;
-        });
+    const tasksForDb = (convertedData.tasks || []).map((t: Record<string, unknown>) => {
+      const row = toSupabaseFormat(t);
+      delete (row as any).employee_id; // tasks table has assigned_resource_id only
+      return row;
+    });
+    if (tasksForDb.length > 0) {
         const { error } = await supabase.from('tasks').upsert(tasksForDb, { onConflict: 'id' });
         if (error) console.error('Error saving tasks:', error);
+    }
+
+    // 6. Match hours entries to MPP tasks/units
+    // Fetch unassigned hours for this project
+    const { data: projectHours } = await supabase
+      .from('hour_entries')
+      .select('*')
+      .eq('project_id', projectId);
+
+    const unassignedHours = (projectHours || []).filter((h: any) => !h.task_id);
+    
+    // Build lookup maps for matching
+    const tasksByName = new Map<string, any>();
+    const unitsByName = new Map<string, any>();
+    
+    // Normalize function for name matching
+    const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
+    
+    // Index tasks by (phase_name, task_name)
+    (convertedData.tasks || []).forEach((task: any) => {
+      const phaseName = task.phaseName || '';
+      const taskName = task.name || task.taskName || '';
+      const key = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
+      if (!tasksByName.has(key)) tasksByName.set(key, task);
+      // Also index by task name alone for looser matching
+      const nameOnlyKey = normalizeName(taskName);
+      if (nameOnlyKey && !tasksByName.has(nameOnlyKey)) tasksByName.set(nameOnlyKey, task);
+    });
+    
+    // Index units by name
+    (convertedData.units || []).forEach((unit: any) => {
+      const unitName = unit.name || '';
+      const key = normalizeName(unitName);
+      if (key && !unitsByName.has(key)) unitsByName.set(key, unit);
+    });
+
+    // Match hours entries
+    let tasksMatched = 0;
+    let unitsMatched = 0;
+    const hoursToUpdate: { id: string; task_id: string }[] = [];
+    
+    unassignedHours.forEach((h: any) => {
+      const workdayPhase = normalizeName(h.workday_phase || '');
+      const workdayTask = normalizeName(h.workday_task || '');
+      
+      // Try task match first (phase + task name)
+      const phaseTaskKey = `${workdayPhase}|${workdayTask}`;
+      let matchedTask = tasksByName.get(phaseTaskKey);
+      
+      // If no match, try task name only
+      if (!matchedTask && workdayTask) {
+        matchedTask = tasksByName.get(workdayTask);
+      }
+      
+      if (matchedTask) {
+        hoursToUpdate.push({ id: h.id, task_id: matchedTask.id || matchedTask.taskId });
+        tasksMatched++;
+        return;
+      }
+      
+      // Try unit match (workday_phase often maps to unit name)
+      if (workdayPhase) {
+        const matchedUnit = unitsByName.get(workdayPhase);
+        if (matchedUnit) {
+          // For units, we still assign to task_id field but note in logs
+          // Alternatively, if there's a unit_id field, use that
+          hoursToUpdate.push({ id: h.id, task_id: matchedUnit.id || matchedUnit.unitId });
+          unitsMatched++;
+        }
+      }
+    });
+    
+    // Update matched hours
+    if (hoursToUpdate.length > 0) {
+      for (const update of hoursToUpdate) {
+        await supabase.from('hour_entries').update({ task_id: update.task_id }).eq('id', update.id);
+      }
+    }
+    
+    // Build result logs
+    const logs = [
+      { type: 'info', message: `Parsed ${mppData.summary?.total_tasks || mppData.tasks?.length || 0} items from MPP` },
+      { type: 'success', message: `Imported: ${convertedData.units?.length || 0} units, ${convertedData.phases?.length || 0} phases, ${convertedData.tasks?.length || 0} tasks` },
+    ];
+    
+    if (unassignedHours.length > 0) {
+      logs.push({ type: 'info', message: `Found ${unassignedHours.length} unassigned hours entries for this project` });
+      if (tasksMatched > 0) {
+        logs.push({ type: 'success', message: `Matched ${tasksMatched} hours entries to tasks` });
+      }
+      if (unitsMatched > 0) {
+        logs.push({ type: 'success', message: `Matched ${unitsMatched} hours entries to units` });
+      }
+      const stillUnmatched = unassignedHours.length - tasksMatched - unitsMatched;
+      if (stillUnmatched > 0) {
+        logs.push({ type: 'warning', message: `${stillUnmatched} hours entries could not be matched` });
+      }
     }
     
     return NextResponse.json({ 
         success: true, 
         message: 'Imported successfully',
-        tasks: convertedData.tasks || [], // So frontend can merge remainingHours from MPP into context
-        logs: [
-            { type: 'info', message: `Parsed ${mppData.summary.total_tasks} tasks` },
-            { type: 'success', message: `Imported ${convertedData.units?.length || 0} units and ${convertedData.phases?.length || 0} phases` }
-        ]
+        tasks: convertedData.tasks || [],
+        logs
     });
 
   } catch (error: any) {

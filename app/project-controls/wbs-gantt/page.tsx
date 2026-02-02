@@ -334,15 +334,12 @@ export default function WBSGanttPage() {
     const getRemainingHours = (item: any) => {
       // Use MPP parser / DB value only - no calculation fallback
       const v = item.remainingHours ?? item.projectedRemainingHours ?? item.remaining_hours;
-      return v != null ? v : 0;
+      return v != null ? Number(v) : null;
     };
 
     const getRemainingCost = (item: any) => {
-      if (item.remainingCost != null) return item.remainingCost;
-      if (item.baselineCost != null && item.actualCost != null) {
-        return Math.max(0, (item.baselineCost || 0) - (item.actualCost || 0));
-      }
-      return null;
+      // Use stored value only - no calculation fallback
+      return item.remainingCost != null ? Number(item.remainingCost) : null;
     };
 
     const getSortValue = (item: any, key: string) => {
@@ -1297,11 +1294,11 @@ export default function WBSGanttPage() {
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.actualHours ? Number(row.actualHours).toFixed(2) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{(() => {
                       const remHrs = (row as any).remainingHours ?? row.projectedRemainingHours ?? (row as any).remaining_hours;
-                      return remHrs != null ? Number(remHrs).toFixed(2) : '0.00';
+                      return remHrs != null ? Number(remHrs).toFixed(2) : '-';
                     })()}</td>
-                    <td className="number" style={{ fontSize: '0.65rem' }}>{formatCurrency(row.baselineCost || 0)}</td>
-                    <td className="number" style={{ fontSize: '0.65rem' }}>{formatCurrency(row.actualCost || 0)}</td>
-                    <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{formatCurrency(row.remainingCost ?? Math.max(0, (row.baselineCost || 0) - (row.actualCost || 0)))}</td>
+                    <td className="number" style={{ fontSize: '0.65rem' }}>{row.baselineCost != null ? formatCurrency(row.baselineCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.65rem' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{row.remainingCost != null ? formatCurrency(row.remainingCost) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     <td>
                       <div

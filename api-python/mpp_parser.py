@@ -86,9 +86,11 @@ class ProjectParser:
                     if r: res_names.append(str(r.getName() or ""))
             assigned_resource = ", ".join(filter(None, res_names))
 
-            # Calculation logic for Remaining Hours
+            # Extract work values directly from MPP file - no calculation
             total_work = self._to_float(task.getWork().getDuration()) if task.getWork() else 0.0
             actual_work = self._to_float(task.getActualWork().getDuration()) if task.getActualWork() else 0.0
+            remaining_work = self._to_float(task.getRemainingWork().getDuration()) if task.getRemainingWork() else None
+            baseline_work = self._to_float(task.getBaselineWork().getDuration()) if task.getBaselineWork() else 0.0
 
             node = {
                 'id': uid,
@@ -99,10 +101,10 @@ class ProjectParser:
                 'startDate': self._to_iso(task.getStart()),
                 'endDate': self._to_iso(task.getFinish()),
                 'percentComplete': self._to_float(task.getPercentageComplete()),
-                'baselineHours': self._to_float(task.getBaselineWork().getDuration()) if task.getBaselineWork() else 0.0,
+                'baselineHours': baseline_work,
                 'actualHours': actual_work,
                 'projectedHours': total_work,
-                'remainingHours': max(0, total_work - actual_work),
+                'remainingHours': remaining_work,  # Direct from MPP file, not calculated
                 'assignedResource': assigned_resource,
                 'isCritical': bool(task.getCritical()),
                 'totalSlack': self._to_float(task.getTotalSlack().getDuration()) if task.getTotalSlack() else 0.0,
