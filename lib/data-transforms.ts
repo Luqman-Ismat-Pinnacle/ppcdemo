@@ -1045,6 +1045,12 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
  */
 export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
   // Memoize hierarchy maps and WBS structure for performance (include phase/unit/task so MPP changes rebuild)
+  // Also include sum of actualCost/actualHours/remainingHours so WBS rebuilds when these values change
+  const tasks = data.tasks || [];
+  const taskActualCostSum = tasks.reduce((sum: number, t: any) => sum + (t.actualCost || t.actual_cost || 0), 0);
+  const taskActualHoursSum = tasks.reduce((sum: number, t: any) => sum + (t.actualHours || t.actual_hours || 0), 0);
+  const taskRemainingHoursSum = tasks.reduce((sum: number, t: any) => sum + (t.remainingHours || t.remaining_hours || 0), 0);
+  
   const dataKey = JSON.stringify({
     portfolioCount: data.portfolios?.length || 0,
     customerCount: data.customers?.length || 0,
@@ -1052,7 +1058,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     projectCount: data.projects?.length || 0,
     phaseCount: data.phases?.length || 0,
     unitCount: data.units?.length || 0,
-    taskCount: data.tasks?.length || 0,
+    taskCount: tasks.length,
+    taskActualCostSum: Math.round(taskActualCostSum * 100) / 100,
+    taskActualHoursSum: Math.round(taskActualHoursSum * 100) / 100,
+    taskRemainingHoursSum: Math.round(taskRemainingHoursSum * 100) / 100,
   });
 
   return memoize('buildWBSData', () => {
@@ -1556,6 +1565,25 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             siteProjectsDeduped.forEach((project: any, prIdx: number) => {
               siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
             });
+            // Rollup site values from children
+            if (siteItem.children && siteItem.children.length > 0) {
+              let siteBaselineHrs = 0, siteActualHrs = 0, siteRemainingHrs = 0;
+              let siteBaselineCst = 0, siteActualCst = 0, siteRemainingCst = 0;
+              siteItem.children.forEach((child: any) => {
+                siteBaselineHrs += child.baselineHours || 0;
+                siteActualHrs += child.actualHours || 0;
+                siteRemainingHrs += child.remainingHours || 0;
+                siteBaselineCst += child.baselineCost || 0;
+                siteActualCst += child.actualCost || 0;
+                siteRemainingCst += child.remainingCost || 0;
+              });
+              siteItem.baselineHours = siteBaselineHrs;
+              siteItem.actualHours = siteActualHrs;
+              siteItem.remainingHours = siteRemainingHrs || undefined;
+              siteItem.baselineCost = siteBaselineCst;
+              siteItem.actualCost = siteActualCst;
+              siteItem.remainingCost = siteRemainingCst || undefined;
+            }
             customerItem.children?.push(siteItem);
             sIdx++;
           });
@@ -1584,6 +1612,25 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             siteProjects.forEach((project: any, prIdx: number) => {
               siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
             });
+            // Rollup site values from children
+            if (siteItem.children && siteItem.children.length > 0) {
+              let siteBaselineHrs = 0, siteActualHrs = 0, siteRemainingHrs = 0;
+              let siteBaselineCst = 0, siteActualCst = 0, siteRemainingCst = 0;
+              siteItem.children.forEach((child: any) => {
+                siteBaselineHrs += child.baselineHours || 0;
+                siteActualHrs += child.actualHours || 0;
+                siteRemainingHrs += child.remainingHours || 0;
+                siteBaselineCst += child.baselineCost || 0;
+                siteActualCst += child.actualCost || 0;
+                siteRemainingCst += child.remainingCost || 0;
+              });
+              siteItem.baselineHours = siteBaselineHrs;
+              siteItem.actualHours = siteActualHrs;
+              siteItem.remainingHours = siteRemainingHrs || undefined;
+              siteItem.baselineCost = siteBaselineCst;
+              siteItem.actualCost = siteActualCst;
+              siteItem.remainingCost = siteRemainingCst || undefined;
+            }
             customerItem.children?.push(siteItem);
           });
         }
@@ -1594,6 +1641,26 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         customerProjectsFiltered.forEach((project: any, prIdx: number) => {
           customerItem.children?.push(buildProjectNode(project, `${customerWbs}.${numSites + prIdx + 1}`));
         });
+
+        // Rollup customer values from children (sites and direct projects)
+        if (customerItem.children && customerItem.children.length > 0) {
+          let custBaselineHrs = 0, custActualHrs = 0, custRemainingHrs = 0;
+          let custBaselineCst = 0, custActualCst = 0, custRemainingCst = 0;
+          customerItem.children.forEach((child: any) => {
+            custBaselineHrs += child.baselineHours || 0;
+            custActualHrs += child.actualHours || 0;
+            custRemainingHrs += child.remainingHours || 0;
+            custBaselineCst += child.baselineCost || 0;
+            custActualCst += child.actualCost || 0;
+            custRemainingCst += child.remainingCost || 0;
+          });
+          customerItem.baselineHours = custBaselineHrs;
+          customerItem.actualHours = custActualHrs;
+          customerItem.remainingHours = custRemainingHrs || undefined;
+          customerItem.baselineCost = custBaselineCst;
+          customerItem.actualCost = custActualCst;
+          customerItem.remainingCost = custRemainingCst || undefined;
+        }
 
         portfolioItem.children?.push(customerItem);
       });
@@ -1609,6 +1676,26 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       portfolioProjects.forEach((project: any, prIdx: number) => {
         portfolioItem.children?.push(buildProjectNode(project, `${portfolioWbs}.${allPortfolioCustomers.length + prIdx + 1}`));
       });
+
+      // Rollup portfolio values from children (customers and direct projects)
+      if (portfolioItem.children && portfolioItem.children.length > 0) {
+        let portBaselineHrs = 0, portActualHrs = 0, portRemainingHrs = 0;
+        let portBaselineCst = 0, portActualCst = 0, portRemainingCst = 0;
+        portfolioItem.children.forEach((child: any) => {
+          portBaselineHrs += child.baselineHours || 0;
+          portActualHrs += child.actualHours || 0;
+          portRemainingHrs += child.remainingHours || 0;
+          portBaselineCst += child.baselineCost || 0;
+          portActualCst += child.actualCost || 0;
+          portRemainingCst += child.remainingCost || 0;
+        });
+        portfolioItem.baselineHours = portBaselineHrs;
+        portfolioItem.actualHours = portActualHrs;
+        portfolioItem.remainingHours = portRemainingHrs || undefined;
+        portfolioItem.baselineCost = portBaselineCst;
+        portfolioItem.actualCost = portActualCst;
+        portfolioItem.remainingCost = portRemainingCst || undefined;
+      }
 
       items.push(portfolioItem);
       wbsCounter++;
