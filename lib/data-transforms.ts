@@ -2586,12 +2586,13 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
   // Build hours by employee Map for O(1) lookups instead of filtering
   const hoursByEmployee = new Map<string, any[]>();
   hours.forEach((h: any) => {
-    const empId = h.employeeId || h.employee_id;
-    if (empId) {
-      if (!hoursByEmployee.has(empId)) {
-        hoursByEmployee.set(empId, []);
+    const empId = h.employeeId ?? h.employee_id;
+    if (empId != null && empId !== '') {
+      const key = String(empId);
+      if (!hoursByEmployee.has(key)) {
+        hoursByEmployee.set(key, []);
       }
-      hoursByEmployee.get(empId)!.push(h);
+      hoursByEmployee.get(key)!.push(h);
     }
   });
 
@@ -2638,8 +2639,8 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
 
     const weeklyHours = new Array(rawWeeks.length).fill(0);
 
-    // Use Map lookup instead of filter - O(1) instead of O(n)
-    const empHours = hoursByEmployee.get(empId) || [];
+    // Use Map lookup - match by id or employeeId (stringified) so DB employee_id aligns with either
+    const empHours = (hoursByEmployee.get(String(emp.id ?? '')) || hoursByEmployee.get(String(emp.employeeId ?? '')) || []) as any[];
     empHours.forEach((h: any) => {
       const hourDateNorm = normalizeDateString(h.date || h.entry_date);
       const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;

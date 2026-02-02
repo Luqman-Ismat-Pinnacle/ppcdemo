@@ -1084,22 +1084,22 @@ export default function WBSGanttPage() {
         </div>
       )}
 
-      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }} key={`wbs-gantt-${(wbsDataForTable?.items?.length ?? 0)}-${(wbsDataForTable?.items as any[])?.[0]?.id ?? ''}`}>
         <div
           className="chart-card-body no-padding"
           style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}
           ref={containerRef}
           onScroll={handleScroll}
         >
-          {/* SVG Overlay for Arrows */}
+          {/* SVG Overlay for Arrows - size set in useEffect from totalRowsHeight */}
           <svg
             ref={svgRef}
             style={{
               position: 'absolute',
               top: 0,
               left: 0,
-              width: '10000px',
-              height: '10000px',
+              width: '1px',
+              height: '1px',
               pointerEvents: 'none',
               zIndex: 5
             }}

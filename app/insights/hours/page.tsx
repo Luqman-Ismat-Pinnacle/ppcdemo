@@ -443,27 +443,37 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Metrics row - key numbers at a glance */}
-      <div className="metrics-row-compact" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="metric-card" style={{ minWidth: 120 }}>
-          <div className="metric-label">Total Hours</div>
-          <div className="metric-value">
-            {data?.taskHoursEfficiency?.actualWorked?.length
-              ? data.taskHoursEfficiency.actualWorked.reduce((a: number, b: number) => a + b, 0).toLocaleString()
-              : '—'}
+      {/* Scorecards - full row, single row */}
+      <div style={{ width: '100%', marginBottom: '1.5rem' }}>
+        <div
+          className="metrics-row-compact"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '1rem',
+            width: '100%',
+          }}
+        >
+          <div className="metric-card" style={{ minWidth: 120 }}>
+            <div className="metric-label">Total Hours</div>
+            <div className="metric-value">
+              {data?.taskHoursEfficiency?.actualWorked?.length
+                ? data.taskHoursEfficiency.actualWorked.reduce((a: number, b: number) => a + b, 0).toLocaleString()
+                : '—'}
+            </div>
           </div>
-        </div>
-        <div className="metric-card accent-lime" style={{ minWidth: 120 }}>
-          <div className="metric-label">Efficiency</div>
-          <div className="metric-value">{overallEfficiency !== null ? `${overallEfficiency}%` : '—'}</div>
-        </div>
-        <div className="metric-card" style={{ minWidth: 120 }}>
-          <div className="metric-label">Quality Hours</div>
-          <div className="metric-value">{qualityHoursPercent !== null ? `${qualityHoursPercent}%` : '—'}</div>
-        </div>
-        <div className="metric-card accent-orange" style={{ minWidth: 120 }}>
-          <div className="metric-label">Non-Execute</div>
-          <div className="metric-value">{nonExecutePercent !== null ? `${nonExecutePercent}%` : '—'}</div>
+          <div className="metric-card accent-lime" style={{ minWidth: 120 }}>
+            <div className="metric-label">Efficiency</div>
+            <div className="metric-value">{overallEfficiency !== null ? `${overallEfficiency}%` : '—'}</div>
+          </div>
+          <div className="metric-card" style={{ minWidth: 120 }}>
+            <div className="metric-label">Quality Hours</div>
+            <div className="metric-value">{qualityHoursPercent !== null ? `${qualityHoursPercent}%` : '—'}</div>
+          </div>
+          <div className="metric-card accent-orange" style={{ minWidth: 120 }}>
+            <div className="metric-label">Non-Execute</div>
+            <div className="metric-value">{nonExecutePercent !== null ? `${nonExecutePercent}%` : '—'}</div>
+          </div>
         </div>
       </div>
 
@@ -488,19 +498,15 @@ export default function HoursPage() {
         </div>
       </ChartCard>
 
-      {/* Row 2: Quality Hours + Non-Execute (2-col, no empty space) */}
-        <ChartCard gridClass="grid-half" title={
+      {/* Quality Hours by Charge Code - full row */}
+        <ChartCard gridClass="grid-full" title={
           <EnhancedTooltip
             placement="right"
             content={{
               title: 'Quality Hours by Charge Code',
-              description: 'Breakdown of quality control hours by charge code, showing productive, rework, and idle time.',
-              calculation: 'Quality Hours % = (QC Hours / Total Hours) × 100\n\nWhere:\n- QC Hours = Hours logged with QC-related charge codes\n- Total Hours = Sum of all hours in the period',
-              details: [
-                'Shows distribution of quality hours across charge codes',
-                'Higher percentages indicate more time spent on quality activities',
-                'Includes productive, rework, and idle QC hours',
-              ],
+              description: 'Breakdown of quality control hours by charge code (same tasks as Task Hours Efficiency).',
+              calculation: 'Quality Hours % = (QC Hours / Total Hours) × 100',
+              details: ['Same task/charge code order as Task Hours Efficiency', 'Shows QC hours per task; zero when no QC logged'],
             }}
           >
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'help' }}>
@@ -511,25 +517,22 @@ export default function HoursPage() {
           <div style={{ padding: '16px', minHeight: 340, overflow: 'auto' }}>
             <QualityHoursChart
               data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+              taskOrder={data?.taskHoursEfficiency?.tasks}
               height={320}
               onBarClick={handleBarClick}
               activeFilters={activeFilters}
             />
           </div>
         </ChartCard>
-        <ChartCard gridClass="grid-half" title={
+
+      {/* Non-Execute Hours - full row with both pies and Compare */}
+        <ChartCard gridClass="grid-full" title={
           <EnhancedTooltip
             placement="right"
             content={{
               title: 'Non-Execute Hours',
-              description: 'Hours spent on non-execution activities such as overhead, TPW (The Pinnacle Way), and other indirect work.',
-              calculation: 'Non-Execute % = (Non-Execute Hours / Total Hours) × 100\n\nWhere:\n- Non-Execute Hours = Hours with overhead/TPW charge codes\n- Total Hours = Sum of all logged hours',
-              details: [
-                'Includes overhead project hours',
-                'TPW (The Pinnacle Way) methodology hours',
-                'Other indirect/non-billable activities',
-                'Lower percentages indicate more time on direct execution',
-              ],
+              description: 'TPW (The Pinnacle Way) vs Execute vs Non-Execute; and TPW charge code breakdown. Use Compare to save/compare snapshots.',
+              details: ['TPW Comparison: TPW, Execute, Non-Execute shares', 'Other Breakdown: TPW hours by charge code', 'Compare opens snapshot comparison with both pies'],
             }}
           >
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, cursor: 'help' }}>
@@ -538,29 +541,17 @@ export default function HoursPage() {
           </EnhancedTooltip>
         }>
           <NonExecuteCompareButton onOpen={() => setIsNonExecuteCompareOpen(true)} />
-          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', minHeight: 320 }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
-              <div style={{ width: '100%', height: '300px', minHeight: '300px' }}>
-                <NonExecutePieChart 
-                  data={data?.nonExecuteHours?.tpwComparison || []} 
-                  height={300}
-                  showLabels={true}
-                  visualId="non-execute-tpw"
-                  enableCompare={false}
-                />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', padding: '1rem', minHeight: 340 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>TPW Comparison (Hours)</div>
+              <div style={{ flex: 1, minHeight: 280 }}>
+                <NonExecutePieChart data={data?.nonExecuteHours?.tpwComparison || []} height={280} showLabels={true} visualId="non-execute-tpw" enableCompare={false} />
               </div>
             </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>Other Breakdown</div>
-              <div style={{ width: '100%', height: '300px', minHeight: '300px' }}>
-                <NonExecutePieChart 
-                  data={data?.nonExecuteHours?.otherBreakdown || []} 
-                  height={300}
-                  showLabels={true}
-                  visualId="non-execute-other"
-                  enableCompare={false}
-                />
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>TPW by Charge Code (Other Breakdown)</div>
+              <div style={{ flex: 1, minHeight: 280 }}>
+                <NonExecutePieChart data={data?.nonExecuteHours?.otherBreakdown || []} height={280} showLabels={true} visualId="non-execute-other" enableCompare={false} />
               </div>
             </div>
           </div>
