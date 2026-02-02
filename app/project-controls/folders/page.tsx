@@ -861,9 +861,37 @@ export default function DocumentsPage() {
       
       addLog('info', `[Matching] Found ${hoursWithWorkday.length} unassigned hours entries`);
       
+      // Log sample hours entries for debugging
+      const sampleHours = hoursWithWorkday.slice(0, 5);
+      addLog('info', `[Matching] Sample hours entries:`);
+      sampleHours.forEach((h: any, i: number) => {
+        addLog('info', `  ${i + 1}. project_id="${h.project_id}", description="${(h.description || '').substring(0, 80)}..."`);
+      });
+      
+      // Get unique project_ids from hours
+      const hoursProjectIds = new Set(hoursWithWorkday.map((h: any) => h.project_id).filter(Boolean));
+      addLog('info', `[Matching] Hours entries have ${hoursProjectIds.size} unique project_ids: ${Array.from(hoursProjectIds).slice(0, 5).join(', ')}${hoursProjectIds.size > 5 ? '...' : ''}`);
+      
       // Fetch tasks and units
       const { data: tasks } = await supabase.from('tasks').select('id, project_id, name');
       const { data: units } = await supabase.from('units').select('id, project_id, name');
+      
+      addLog('info', `[Matching] Found ${tasks?.length || 0} tasks and ${units?.length || 0} units in database`);
+      
+      // Get unique project_ids from tasks
+      const tasksProjectIds = new Set((tasks || []).map((t: any) => t.project_id).filter(Boolean));
+      addLog('info', `[Matching] Tasks have ${tasksProjectIds.size} unique project_ids: ${Array.from(tasksProjectIds).slice(0, 5).join(', ')}${tasksProjectIds.size > 5 ? '...' : ''}`);
+      
+      // Log sample tasks for debugging
+      const sampleTasks = (tasks || []).slice(0, 5);
+      addLog('info', `[Matching] Sample tasks:`);
+      sampleTasks.forEach((t: any, i: number) => {
+        addLog('info', `  ${i + 1}. project_id="${t.project_id}", name="${t.name}"`);
+      });
+      
+      // Check for project_id overlap
+      const overlappingProjects = Array.from(hoursProjectIds).filter(id => tasksProjectIds.has(id));
+      addLog('info', `[Matching] Overlapping project_ids between hours and tasks: ${overlappingProjects.length} (${overlappingProjects.slice(0, 3).join(', ')}${overlappingProjects.length > 3 ? '...' : ''})`);
       
       // Group tasks by project_id for efficient matching
       const tasksByProject = new Map<string, any[]>();
@@ -889,15 +917,32 @@ export default function DocumentsPage() {
       // Match hours: check if task name is contained in hour description
       let tasksMatched = 0;
       let unitsMatched = 0;
+      let noProjectId = 0;
+      let noDescription = 0;
+      let noTasksForProject = 0;
       const hoursToUpdate: { id: string; task_id: string }[] = [];
+      const unmatchedSamples: string[] = [];
       
       for (const h of hoursWithWorkday) {
-        if (!h.project_id) continue;
+        if (!h.project_id) {
+          noProjectId++;
+          continue;
+        }
         const description = normalize(h.description || '');
-        if (!description) continue;
+        if (!description) {
+          noDescription++;
+          continue;
+        }
         
         // Get tasks for this project
         const projectTasks = tasksByProject.get(h.project_id) || [];
+        if (projectTasks.length === 0) {
+          noTasksForProject++;
+          if (unmatchedSamples.length < 3) {
+            unmatchedSamples.push(`No tasks for project "${h.project_id}": desc="${description.substring(0, 50)}..."`);
+          }
+          continue;
+        }
         
         // Check if any task name is contained in the description
         let matched = false;
@@ -920,9 +965,23 @@ export default function DocumentsPage() {
           if (unitName && description.includes(unitName)) {
             hoursToUpdate.push({ id: h.id, task_id: unit.id });
             unitsMatched++;
+            matched = true;
             break;
           }
         }
+        
+        // Log unmatched sample
+        if (!matched && unmatchedSamples.length < 5) {
+          const taskNames = projectTasks.slice(0, 3).map((t: any) => `"${t.name}"`).join(', ');
+          unmatchedSamples.push(`desc="${description.substring(0, 60)}..." vs tasks: ${taskNames}${projectTasks.length > 3 ? '...' : ''}`);
+        }
+      }
+      
+      // Log detailed breakdown
+      addLog('info', `[Matching] Breakdown: noProjectId=${noProjectId}, noDescription=${noDescription}, noTasksForProject=${noTasksForProject}`);
+      if (unmatchedSamples.length > 0) {
+        addLog('info', `[Matching] Sample unmatched comparisons:`);
+        unmatchedSamples.forEach((s, i) => addLog('info', `  ${i + 1}. ${s}`));
       }
       
       // Update hour_entries with matched task_id
