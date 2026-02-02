@@ -144,25 +144,20 @@ export default function MilestonesPage() {
         />
       </div>
 
-      {/* Top Row: Charts and Scoreboard */}
+      {/* Row 1: Milestone Status + Scoreboard (no empty space) */}
       <div className="dashboard-grid">
         {/* Milestone Status Pie */}
-        <ChartCard title="Milestone Status" gridClass="grid-quarter">
+        <ChartCard title="Milestone Status" gridClass="grid-half">
             <MilestoneStatusPie
               data={data.milestoneStatusPie}
-              height="240px"
+              height="260px"
               onSliceClick={(params) => handleFilterClick('status', params.name, params.name)}
               activeFilters={statusFilterValues}
             />
         </ChartCard>
 
-        {/* Plan vs Forecast vs Actual */}
-        <ChartCard title="Plan vs Forecast vs Actual" gridClass="grid-full">
-          <PlanForecastActualChart data={data.planVsForecastVsActual} height="100%" />
-        </ChartCard>
-
         {/* Scoreboard */}
-        <div className="chart-card grid-quarter">
+        <div className="chart-card grid-half">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title">Scoreboard</h3>
           </div>
@@ -218,7 +213,12 @@ export default function MilestonesPage() {
           </div>
         </div>
 
-        {/* Bottom: Milestones Table */}
+        {/* Row 2: Plan vs Forecast vs Actual */}
+        <ChartCard title="Plan vs Forecast vs Actual" gridClass="grid-full">
+          <PlanForecastActualChart data={data.planVsForecastVsActual} height="100%" />
+        </ChartCard>
+
+        {/* Row 3: Milestones Table */}
         <ChartCard title="Detailed Milestones" gridClass="grid-full" noPadding>
           <TableCompareExport
             visualId="detailed-milestones"

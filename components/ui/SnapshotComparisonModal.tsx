@@ -433,7 +433,7 @@ export default function SnapshotComparisonModal({
           </button>
         </div>
 
-        {/* Content – side‑by‑side; fills remaining space */}
+        {/* Content – side‑by‑side; fills remaining space, no overflow */}
         <div
           style={{
             flex: 1,
@@ -443,22 +443,23 @@ export default function SnapshotComparisonModal({
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '1rem',
+            alignContent: 'stretch',
           }}
         >
           {/* Left: Current */}
-          <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <div style={headerStyle}>
+          <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
+            <div style={{ ...headerStyle, flexShrink: 0 }}>
               <h3 className="chart-card-title" style={{ margin: 0, fontSize: '0.9375rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--pinnacle-teal)' }} />
                 Current
               </h3>
             </div>
-            <div style={{ flex: 1, minHeight: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, padding: '1rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {visualType === 'chart' ? (
                 currentData != null ? (
                   <div
                     ref={(el) => { currentContainerRef.current = el; }}
-                    style={{ width: '100%', flex: 1, minHeight: 0 }}
+                    style={{ width: '100%', height: '100%', flex: 1, minHeight: 200 }}
                   />
                 ) : (
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
@@ -474,8 +475,8 @@ export default function SnapshotComparisonModal({
           </div>
 
           {/* Right: Snapshot */}
-          <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <div style={headerStyle}>
+          <div style={{ ...cardStyle, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0 }}>
+            <div style={{ ...headerStyle, flexShrink: 0 }}>
               <h3 className="chart-card-title" style={{ margin: 0, fontSize: '0.9375rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--pinnacle-orange)' }} />
                 {selectedSnapshot ? selectedSnapshot.name : 'Snapshot'}
@@ -498,7 +499,7 @@ export default function SnapshotComparisonModal({
                 </button>
               )}
             </div>
-            <div style={{ flex: 1, minHeight: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, padding: '1rem', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {!selectedSnapshot ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                   Select a snapshot to compare
@@ -506,7 +507,7 @@ export default function SnapshotComparisonModal({
               ) : visualType === 'chart' ? (
                 <div
                   ref={(el) => { snapshotContainerRef.current = el; }}
-                  style={{ width: '100%', flex: 1, minHeight: 0 }}
+                  style={{ width: '100%', height: '100%', flex: 1, minHeight: 200 }}
                 />
               ) : (
                 <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>

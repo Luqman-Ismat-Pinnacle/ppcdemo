@@ -617,7 +617,7 @@ export default function OverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedCountMetrics.slice(0, 15).map((item, idx) => (
+                {sortedCountMetrics.map((item, idx) => (
                   <tr key={idx}>
                     <td>{item.project}</td>
                     <td>{item.task}</td>
@@ -734,7 +734,7 @@ export default function OverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedProjectMetrics.slice(0, 15).map((project, idx) => (
+                {sortedProjectMetrics.map((project, idx) => (
                   <tr key={idx}>
                     <td>{project.project}</td>
                     <td className="number">{formatPercent(project.efficiency)}</td>

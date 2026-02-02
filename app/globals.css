@@ -1169,8 +1169,10 @@ body {
 }
 
 /* Insights pages: large containers (override inline styles), consistent spacing */
-.insights-page .page-panel {
+.insights-page {
   padding: 1.5rem 1.25rem 2.5rem;
+  min-height: 0;
+  overflow: auto;
 }
 
 .insights-page .page-header {
@@ -1183,26 +1185,36 @@ body {
 }
 
 .insights-page .chart-card {
-  min-height: 450px;
+  min-height: 0;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
+/* Small cards (e.g. grid-quarter) stay compact; full-width charts get room to breathe */
+.insights-page .chart-card.grid-quarter .chart-card-body {
+  min-height: 200px;
+}
+
 .insights-page .chart-card-body {
-  min-height: 380px;
   padding: 1.5rem 1.75rem;
   flex: 1;
-  overflow: visible;
+  min-height: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
+}
+
+.insights-page .chart-card.grid-full .chart-card-body {
+  min-height: 320px;
 }
 
 .insights-page .chart-card-body.no-padding {
   padding: 0;
   overflow: auto;
-  max-height: 650px;
+  max-height: 65vh;
+  min-height: 200px;
 }
 
 .insights-page .chart-card-header {

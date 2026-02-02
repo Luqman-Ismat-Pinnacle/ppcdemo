@@ -401,8 +401,8 @@ export default function HoursPage() {
         </div>
       </div>
 
-      {/* Row 1: Task Efficiency (Full Width - Expanded) */}
-      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '720px' }} title={
+      {/* Row 1: Task Efficiency (Full Width) */}
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem' }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
             <path d="M12 20V10M18 20V4M6 20v-4"></path>
@@ -411,10 +411,10 @@ export default function HoursPage() {
           {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
         </h3>
       }>
-        <div style={{ padding: '16px', height: '620px', minHeight: '620px', overflowY: 'auto' }}>
+        <div style={{ padding: '16px', flex: 1, minHeight: 380, overflow: 'auto' }}>
           <TaskHoursEfficiencyChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height={580}
+            height={380}
             onBarClick={handleBarClick}
             activeFilters={activeFilters}
           />
@@ -443,10 +443,10 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ padding: '16px', height: '480px', minHeight: '480px', overflowY: 'auto' }}>
+          <div style={{ padding: '16px', minHeight: 340, overflow: 'auto' }}>
             <QualityHoursChart
               data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
-              height={440}
+              height={320}
               onBarClick={handleBarClick}
               activeFilters={activeFilters}
             />
@@ -474,7 +474,7 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', height: '380px', minHeight: '380px' }}>
+          <div style={{ display: 'flex', gap: '1rem', padding: '1rem', minHeight: 320 }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textAlign: 'center' }}>TPW Comparison</div>
               <div style={{ width: '100%', height: '300px', minHeight: '300px' }}>
@@ -501,8 +501,8 @@ export default function HoursPage() {
         </ChartCard>
       </div>
 
-      {/* Hours Variance Waterfall - Full Width, taller */}
-      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem', minHeight: '720px' }} title={
+      {/* Hours Variance Waterfall - Full Width */}
+      <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem' }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
             <rect x="4" y="14" width="4" height="6" rx="1"></rect>
@@ -512,10 +512,10 @@ export default function HoursPage() {
           Hours Variance Waterfall
         </h3>
       }>
-        <div style={{ padding: '16px', height: '620px' }}>
+        <div style={{ padding: '16px', minHeight: 400 }}>
           <HoursWaterfallChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-            height="580px"
+            height={380}
           />
         </div>
       </ChartCard>
@@ -523,7 +523,7 @@ export default function HoursPage() {
       {/* Labor Hours Distribution */}
       <ChartCard
         gridClass="grid-full"
-        style={{ marginBottom: '1rem', minHeight: '720px' }}
+        style={{ marginBottom: '1rem' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -557,11 +557,11 @@ export default function HoursPage() {
           </div>
         }
       >
-        <div style={{ padding: '16px', height: '660px', minHeight: '660px', overflow: 'hidden' }}>
+        <div style={{ padding: '16px', minHeight: 400, overflow: 'auto' }}>
           <LaborBreakdownChart
             months={currentStackedData.months}
             dataByCategory={currentStackedData.dataByCategory}
-            height={620}
+            height={380}
             onBarClick={handleBarClick}
             activeFilters={activeFilters}
           />
@@ -572,7 +572,7 @@ export default function HoursPage() {
       <ChartCard
         gridClass="grid-full"
         noPadding
-        style={{ marginBottom: '1rem', minHeight: '600px' }}
+        style={{ marginBottom: '1rem' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -776,7 +776,7 @@ export default function HoursPage() {
       <ChartCard
         gridClass="grid-full"
         noPadding
-        style={{ marginBottom: '1rem', minHeight: '400px' }}
+        style={{ marginBottom: '1rem' }}
         title={
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
