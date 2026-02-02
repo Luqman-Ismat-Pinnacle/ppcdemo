@@ -356,14 +356,159 @@ function unifiedSyncStream(
         }
       }
 
+      // 4. Match hours entries to tasks
+      let tasksMatched = 0;
+      let unitsMatched = 0;
+      try {
+        pushLine(controller, { type: 'step', step: 'matching', status: 'started' });
+        logAndPush('Starting hours-to-tasks matching...');
+        
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        
+        // Fetch unassigned hours
+        const { data: unassignedHours } = await supabase
+          .from('hour_entries')
+          .select('id, project_id, workday_phase, workday_task')
+          .is('task_id', null);
+        
+        if (unassignedHours && unassignedHours.length > 0) {
+          // Fetch all tasks and units
+          const { data: tasks } = await supabase.from('tasks').select('id, project_id, phase_id, name, phase_name');
+          const { data: units } = await supabase.from('units').select('id, project_id, name');
+          const { data: phases } = await supabase.from('phases').select('id, project_id, name');
+          
+          // Build lookup maps
+          const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
+          
+          // Index tasks by (project_id, phase_name, task_name)
+          const tasksByKey = new Map<string, any>();
+          (tasks || []).forEach((task: any) => {
+            const phaseName = task.phase_name || '';
+            const taskName = task.name || '';
+            // Full key: project + phase + task
+            const fullKey = `${task.project_id}|${normalizeName(phaseName)}|${normalizeName(taskName)}`;
+            if (!tasksByKey.has(fullKey)) tasksByKey.set(fullKey, task);
+            // Phase + task key (no project)
+            const phaseTaskKey = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
+            if (!tasksByKey.has(phaseTaskKey)) tasksByKey.set(phaseTaskKey, task);
+            // Task name only
+            const nameOnlyKey = normalizeName(taskName);
+            if (nameOnlyKey && !tasksByKey.has(nameOnlyKey)) tasksByKey.set(nameOnlyKey, task);
+          });
+          
+          // Index units by (project_id, name)
+          const unitsByKey = new Map<string, any>();
+          (units || []).forEach((unit: any) => {
+            const unitName = unit.name || '';
+            const fullKey = `${unit.project_id}|${normalizeName(unitName)}`;
+            if (!unitsByKey.has(fullKey)) unitsByKey.set(fullKey, unit);
+            const nameKey = normalizeName(unitName);
+            if (nameKey && !unitsByKey.has(nameKey)) unitsByKey.set(nameKey, unit);
+          });
+          
+          // Match hours
+          const hoursToUpdate: { id: string; task_id: string }[] = [];
+          
+          for (const h of unassignedHours) {
+            const workdayPhase = normalizeName(h.workday_phase || '');
+            const workdayTask = normalizeName(h.workday_task || '');
+            
+            // Try task match: project + phase + task
+            let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
+            // Try phase + task
+            if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
+            // Try task name only
+            if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
+            
+            if (matched) {
+              hoursToUpdate.push({ id: h.id, task_id: matched.id });
+              tasksMatched++;
+              continue;
+            }
+            
+            // Try unit match: project + phase name
+            if (workdayPhase) {
+              let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
+              if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
+              if (unitMatch) {
+                hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
+                unitsMatched++;
+              }
+            }
+          }
+          
+          // Update in batches
+          const BATCH_SIZE = 100;
+          for (let i = 0; i < hoursToUpdate.length; i += BATCH_SIZE) {
+            const batch = hoursToUpdate.slice(i, i + BATCH_SIZE);
+            for (const update of batch) {
+              await supabase.from('hour_entries').update({ task_id: update.task_id }).eq('id', update.id);
+            }
+          }
+          
+          const stillUnmatched = unassignedHours.length - tasksMatched - unitsMatched;
+          logAndPush(`Matching complete: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
+          pushLine(controller, { type: 'step', step: 'matching', status: 'done', tasksMatched, unitsMatched, stillUnmatched });
+        } else {
+          logAndPush('No unassigned hours entries to match');
+          pushLine(controller, { type: 'step', step: 'matching', status: 'done', tasksMatched: 0, unitsMatched: 0, stillUnmatched: 0 });
+        }
+        
+        // 5. Aggregate actual_cost and actual_hours from hours to tasks
+        pushLine(controller, { type: 'step', step: 'aggregation', status: 'started' });
+        logAndPush('Aggregating actual hours and cost to tasks...');
+        
+        // Get all hours with task_id and aggregate
+        const { data: allMatchedHours } = await supabase
+          .from('hour_entries')
+          .select('task_id, hours, actual_cost, reported_standard_cost_amt')
+          .not('task_id', 'is', null);
+        
+        if (allMatchedHours && allMatchedHours.length > 0) {
+          const taskAggregates = new Map<string, { actualHours: number; actualCost: number }>();
+          
+          for (const h of allMatchedHours) {
+            const existing = taskAggregates.get(h.task_id) || { actualHours: 0, actualCost: 0 };
+            const hours = Number(h.hours) || 0;
+            const cost = Number(h.actual_cost ?? h.reported_standard_cost_amt) || 0;
+            taskAggregates.set(h.task_id, {
+              actualHours: existing.actualHours + hours,
+              actualCost: existing.actualCost + cost,
+            });
+          }
+          
+          // Update tasks with aggregated values
+          let tasksUpdated = 0;
+          for (const [taskId, agg] of taskAggregates) {
+            const { error } = await supabase
+              .from('tasks')
+              .update({ actual_hours: agg.actualHours, actual_cost: agg.actualCost })
+              .eq('id', taskId);
+            if (!error) tasksUpdated++;
+          }
+          
+          logAndPush(`Aggregation complete: updated ${tasksUpdated} tasks with actual hours/cost`);
+          pushLine(controller, { type: 'step', step: 'aggregation', status: 'done', tasksUpdated });
+        } else {
+          logAndPush('No matched hours to aggregate');
+          pushLine(controller, { type: 'step', step: 'aggregation', status: 'done', tasksUpdated: 0 });
+        }
+      } catch (matchErr: any) {
+        const msg = matchErr?.message ?? String(matchErr);
+        logAndPush(`Hours-to-tasks matching/aggregation failed: ${msg}`);
+        pushLine(controller, { type: 'error', error: `Matching/Aggregation: ${msg}` });
+      }
+
       // Build final summary
       const syncSummary = {
         employees: empOk ? 'success' : 'failed',
         hierarchy: projOk ? 'success' : 'failed', 
         hours: hoursChunksOk > 0 ? `${hoursChunksOk}/${totalChunks} succeeded` : 'all failed',
         totalHours,
+        matching: { tasksMatched, unitsMatched },
       };
-      logs.push(`Summary: Employees=${syncSummary.employees}, Hierarchy=${syncSummary.hierarchy}, Hours=${syncSummary.hours} (${totalHours} entries)`);
+      logs.push(`Summary: Employees=${syncSummary.employees}, Hierarchy=${syncSummary.hierarchy}, Hours=${syncSummary.hours} (${totalHours} entries), Matched=${tasksMatched} tasks + ${unitsMatched} units`);
 
       // Consider sync successful if:
       // - employees + projects succeeded, OR
