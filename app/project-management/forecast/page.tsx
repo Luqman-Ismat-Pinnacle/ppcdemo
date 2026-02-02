@@ -15,7 +15,7 @@
  * @module app/project-management/forecast/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/lib/data-context';
 import ForecastChart from '@/components/charts/ForecastChart';
 import TrendChart from '@/components/charts/TrendChart';
@@ -42,6 +42,42 @@ import {
   createDecisionLogEntry,
 } from '@/lib/forecasting-engine';
 
+const FOREGROUND_LOG_KEY = 'ppc-forecast-logs';
+const ENGINE_LOG_KEY = 'ppc-engine-logs';
+
+const defaultEngineLog: EngineLogEntry[] = [
+  {
+    timestamp: new Date().toISOString(),
+    type: 'simulation',
+    message: 'Engine initialized with default parameters',
+    params: { optimismFactor: 1.0, riskBuffer: 0.1 }
+  }
+];
+
+function loadForecastLogs(): ForecastLogEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(FOREGROUND_LOG_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadEngineLog(): EngineLogEntry[] {
+  if (typeof window === 'undefined') return defaultEngineLog;
+  try {
+    const raw = localStorage.getItem(ENGINE_LOG_KEY);
+    if (!raw) return defaultEngineLog;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : defaultEngineLog;
+  } catch {
+    return defaultEngineLog;
+  }
+}
+
 export default function ForecastPage() {
   const { filteredData } = useData();
   const data = filteredData;
@@ -49,17 +85,37 @@ export default function ForecastPage() {
   // Engine Parameters - using defaults from the engine
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
 
-  // Engine Log
-  const [engineLog, setEngineLog] = useState<EngineLogEntry[]>([
-    {
-      timestamp: new Date().toISOString(),
-      type: 'simulation',
-      message: 'Engine initialized with default parameters',
-      params: { optimismFactor: 1.0, riskBuffer: 0.1 }
+  // Engine Log - load from localStorage on mount, save on change (after hydration)
+  const [engineLog, setEngineLog] = useState<EngineLogEntry[]>(defaultEngineLog);
+  const engineLogHydratedRef = useRef(false);
+  useEffect(() => {
+    setEngineLog(loadEngineLog());
+    engineLogHydratedRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!engineLogHydratedRef.current || typeof window === 'undefined' || engineLog.length === 0) return;
+    try {
+      localStorage.setItem(ENGINE_LOG_KEY, JSON.stringify(engineLog));
+    } catch (e) {
+      console.warn('Could not save engine log to localStorage', e);
     }
-  ]);
+  }, [engineLog]);
 
   const [forecastLogs, setForecastLogs] = useState<ForecastLogEntry[]>([]);
+  const forecastLogsHydratedRef = useRef(false);
+  useEffect(() => {
+    setForecastLogs(loadForecastLogs());
+    forecastLogsHydratedRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!forecastLogsHydratedRef.current || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(FOREGROUND_LOG_KEY, JSON.stringify(forecastLogs));
+    } catch (e) {
+      console.warn('Could not save forecast logs to localStorage', e);
+    }
+  }, [forecastLogs]);
+
   const [newLogType, setNewLogType] = useState<'risk' | 'action' | 'decision'>('risk');
   const [newLogMessage, setNewLogMessage] = useState('');
 
@@ -449,53 +505,55 @@ export default function ForecastPage() {
         </div>
       )}
 
-      {/* Metrics row + action buttons in one row to remove empty gap */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap', flexShrink: 0, marginBottom: '1.5rem' }}>
-        <div className="metrics-row-compact forecast-metrics" style={{ flex: '1 1 auto', minWidth: 0, gap: '1rem' }}>
-        {/* P10 Cost */}
-        <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
-          <div className="metric-label" style={{ color: '#10B981', fontSize: '0.85rem' }}>P10 Cost (Best)</div>
-          <div className="metric-value" style={{ color: '#10B981', fontSize: '1.25rem' }}>
-            {forecastResult ? formatCurrency(forecastResult.monteCarloCost.p10) : '—'}
+      {/* Scorecards: full-width row (entire row) */}
+      <div style={{ width: '100%', flexShrink: 0, marginBottom: '1.5rem' }}>
+        <div
+          className="metrics-row-compact forecast-metrics"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+            gap: '1rem',
+            width: '100%',
+          }}
+        >
+          <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
+            <div className="metric-label" style={{ color: '#10B981', fontSize: '0.85rem' }}>P10 Cost (Best)</div>
+            <div className="metric-value" style={{ color: '#10B981', fontSize: '1.25rem' }}>
+              {forecastResult ? formatCurrency(forecastResult.monteCarloCost.p10) : '—'}
+            </div>
+          </div>
+          <div className="metric-card accent-teal forecast-metric-card" style={{ padding: '1rem 1.25rem' }}>
+            <div className="metric-label" style={{ fontSize: '0.85rem' }}>P50 Cost (Likely)</div>
+            <div className="metric-value" style={{ fontSize: '1.25rem' }}>
+              {forecastResult ? formatCurrency(forecastResult.monteCarloCost.p50) : '—'}
+            </div>
+          </div>
+          <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
+            <div className="metric-label" style={{ color: '#EF4444', fontSize: '0.85rem' }}>P90 Cost (Worst)</div>
+            <div className="metric-value" style={{ color: '#EF4444', fontSize: '1.25rem' }}>
+              {forecastResult ? formatCurrency(forecastResult.monteCarloCost.p90) : '—'}
+            </div>
+          </div>
+          <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
+            <div className="metric-label" style={{ fontSize: '0.85rem' }}>TCPI to BAC</div>
+            <div className="metric-value" style={{ fontSize: '1.25rem', color: forecastResult && forecastResult.tcpi.toBac > 1.1 ? '#EF4444' : forecastResult && forecastResult.tcpi.toBac < 0.9 ? '#10B981' : 'var(--pinnacle-teal)' }}>
+              {forecastResult ? forecastResult.tcpi.toBac.toFixed(2) : '—'}
+            </div>
+          </div>
+          <div className="metric-card accent-lime forecast-metric-card" style={{ padding: '1rem 1.25rem' }}>
+            <div className="metric-label" style={{ fontSize: '0.85rem' }}>Est. Completion</div>
+            <div className="metric-value" style={{ fontSize: '1.1rem' }}>
+              {forecastResult?.completionDateEstimate || '—'}
+            </div>
+          </div>
+          <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
+            <div className="metric-label" style={{ fontSize: '0.85rem' }}>P50 Duration</div>
+            <div className="metric-value" style={{ fontSize: '1.25rem' }}>
+              {forecastResult ? `${Math.round(forecastResult.monteCarloDuration.p50)} days` : '—'}
+            </div>
           </div>
         </div>
-        {/* P50 Cost */}
-        <div className="metric-card accent-teal forecast-metric-card" style={{ padding: '1rem 1.25rem' }}>
-          <div className="metric-label" style={{ fontSize: '0.85rem' }}>P50 Cost (Likely)</div>
-          <div className="metric-value" style={{ fontSize: '1.25rem' }}>
-            {forecastResult ? formatCurrency(forecastResult.monteCarloCost.p50) : '—'}
-          </div>
-        </div>
-        {/* P90 Cost */}
-        <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
-          <div className="metric-label" style={{ color: '#EF4444', fontSize: '0.85rem' }}>P90 Cost (Worst)</div>
-          <div className="metric-value" style={{ color: '#EF4444', fontSize: '1.25rem' }}>
-            {forecastResult ? formatCurrency(forecastResult.monteCarloCost.p90) : '—'}
-          </div>
-        </div>
-        {/* TCPI to BAC */}
-        <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
-          <div className="metric-label" style={{ fontSize: '0.85rem' }}>TCPI to BAC</div>
-          <div className="metric-value" style={{ fontSize: '1.25rem', color: forecastResult && forecastResult.tcpi.toBac > 1.1 ? '#EF4444' : forecastResult && forecastResult.tcpi.toBac < 0.9 ? '#10B981' : 'var(--pinnacle-teal)' }}>
-            {forecastResult ? forecastResult.tcpi.toBac.toFixed(2) : '—'}
-          </div>
-        </div>
-        {/* Completion Date */}
-        <div className="metric-card accent-lime forecast-metric-card" style={{ padding: '1rem 1.25rem' }}>
-          <div className="metric-label" style={{ fontSize: '0.85rem' }}>Est. Completion</div>
-          <div className="metric-value" style={{ fontSize: '1.1rem' }}>
-            {forecastResult?.completionDateEstimate || '—'}
-          </div>
-        </div>
-        {/* Duration P50 */}
-        <div className="metric-card forecast-metric-card" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', padding: '1rem 1.25rem' }}>
-          <div className="metric-label" style={{ fontSize: '0.85rem' }}>P50 Duration</div>
-          <div className="metric-value" style={{ fontSize: '1.25rem' }}>
-            {forecastResult ? `${Math.round(forecastResult.monteCarloDuration.p50)} days` : '—'}
-          </div>
-        </div>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, alignItems: 'center', marginTop: '1rem' }}>
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setIsParamsOpen(!isParamsOpen)}
@@ -526,10 +584,10 @@ export default function ForecastPage() {
         </div>
       </div>
 
-      {/* Main Content Grid */}
+      {/* Main Content Grid - charts span full width */}
       <div className="dashboard-grid forecast-grid" style={{ flex: 1, minHeight: 0 }}>
-        {/* IEAC Comparison */}
-        <div className="chart-card grid-third" style={{ display: 'flex', flexDirection: 'column', minHeight: 280 }}>
+        {/* IEAC Comparison - full width */}
+        <div className="chart-card grid-full" style={{ display: 'flex', flexDirection: 'column', minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
             <h3 className="chart-card-title">IEAC Methods Comparison</h3>
           </div>
@@ -589,35 +647,36 @@ export default function ForecastPage() {
           </div>
         </div>
 
-        {/* Forecast Charts */}
-        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: 280 }}>
+        {/* Budget Forecast - full width */}
+        <div className="chart-card grid-full forecast-chart-card" style={{ minHeight: 320 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}><h3 className="chart-card-title">Budget Forecast</h3></div>
-          <div className="chart-card-body" style={{ minHeight: 240, padding: '1.5rem' }}>
-            <ForecastChart data={data.forecast} height={240} isBudget={true} />
+          <div className="chart-card-body" style={{ minHeight: 280, padding: '1.5rem' }}>
+            <ForecastChart data={data.forecast} height={280} isBudget={true} />
           </div>
         </div>
-        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: 280 }}>
+        {/* Hours Forecast - full width */}
+        <div className="chart-card grid-full forecast-chart-card" style={{ minHeight: 320 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}><h3 className="chart-card-title">Hours Forecast</h3></div>
-          <div className="chart-card-body" style={{ minHeight: 240, padding: '1.5rem' }}>
-            <ForecastChart data={data.forecast} height={240} isBudget={false} />
+          <div className="chart-card-body" style={{ minHeight: 280, padding: '1.5rem' }}>
+            <ForecastChart data={data.forecast} height={280} isBudget={false} />
           </div>
         </div>
 
-        {/* Trend + Scenario: same row to fill empty space */}
-        <div className="chart-card grid-half forecast-chart-card" style={{ minHeight: 280 }}>
+        {/* CPI Trend - full width */}
+        <div className="chart-card grid-full forecast-chart-card" style={{ minHeight: 320 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title">CPI Trend</h3>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: projectState.cpi >= 1 ? '#10B981' : '#EF4444' }}>
               Current: {projectState.cpi.toFixed(2)}
             </span>
           </div>
-          <div className="chart-card-body" style={{ minHeight: 220, padding: '1.5rem' }}>
-            <TrendChart data={cpiTrend} dates={trendDates} title="CPI" color="var(--pinnacle-teal)" height={220} />
+          <div className="chart-card-body" style={{ minHeight: 260, padding: '1.5rem' }}>
+            <TrendChart data={cpiTrend} dates={trendDates} title="CPI" color="var(--pinnacle-teal)" height={260} />
           </div>
         </div>
 
-        {/* Scenario Comparison - next to CPI Trend to remove empty half */}
-        <div className="chart-card grid-half" style={{ minHeight: 280 }}>
+        {/* Scenario Comparison - full width */}
+        <div className="chart-card grid-full" style={{ minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title">Scenario Comparison</h3>
           </div>

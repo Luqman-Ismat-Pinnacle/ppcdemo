@@ -2,15 +2,15 @@
 
 /**
  * @fileoverview QC Dashboard Page for PPC V3 Insights.
- * 
+ *
  * Provides quality control analytics with:
  * - QC transaction volume by gate (Initial, Mid, Final, Post-Validation)
  * - QC status by project (pass/fail/unprocessed stacked bars)
  * - QC performance scatter plot (hours vs pass rate vs volume)
  * - QC by name and role table
- * 
+ *
  * Supports interactive filtering and cross-chart highlighting.
- * 
+ *
  * @module app/insights/qc-dashboard/page
  */
 
@@ -96,93 +96,83 @@ export default function QCDashboardPage() {
         />
       </div>
 
-      {/* Row 1: QC by Gate + QC by Project (2-col, no empty space) */}
+      {/* Top Row: Three Charts */}
       <div className="dashboard-grid">
-        <ChartCard title="QC Transaction by QC Gate" gridClass="grid-half">
-          <div style={{ minHeight: 280 }}>
-            <QCTransactionBarChart
-              data={qcByGate}
-              height={260}
-              showLabels={true}
-              isLoading={dataLoading}
-              onBarClick={(params) => handleBarClick(params, 'gate')}
-              activeFilters={allFilterValues}
-            />
-          </div>
-        </ChartCard>
-        <ChartCard title="QC Transaction by Project" gridClass="grid-half">
-          <div style={{ minHeight: 280 }}>
-            <QCTransactionBarChart
-              data={(projectFilterValues.length > 0
-                ? data.qcTransactionByProject.filter((p: any) => projectFilterValues.includes(p.projectId))
-                : data.qcTransactionByProject
-              ).map((p: any) => ({
-                gate: p.projectId,
-                count: p.unprocessed + p.pass + p.fail,
-                project: p.projectId,
-              }))}
-              height={260}
-              showLabels={true}
-              onBarClick={(params) => handleBarClick(params, 'project')}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="QC Transaction by QC Gate" gridClass="grid-full">
+          <QCTransactionBarChart
+            data={qcByGate}
+            height="220px"
+            showLabels={true}
+            isLoading={dataLoading}
+            onBarClick={(params) => handleBarClick(params, 'gate')}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
 
-        {/* Row 2: Pass/Fail Distribution full width (many categories) */}
+        <ChartCard title="QC Transaction by Project" gridClass="grid-full">
+          <QCTransactionBarChart
+            data={(projectFilterValues.length > 0
+              ? data.qcTransactionByProject.filter((p: any) => projectFilterValues.includes(p.projectId))
+              : data.qcTransactionByProject
+            ).map((p: any) => ({
+              gate: p.projectId,
+              count: p.unprocessed + p.pass + p.fail,
+              project: p.projectId,
+            }))}
+            height="220px"
+            showLabels={true}
+            onBarClick={(params) => handleBarClick(params, 'project')}
+            activeFilters={allFilterValues}
+          />
+        </ChartCard>
+
         <ChartCard title="QC Pass/Fail Distribution" gridClass="grid-full">
-          <div style={{ minHeight: 280 }}>
-            <QCStackedBarChart
-              data={(gateFilterValues.length > 0
-                ? data.qcByGateStatus.filter((g: any) => gateFilterValues.includes(g.gate))
-                : data.qcByGateStatus
-              ).map((g: any) => ({
-                projectId: g.gate,
-                customer: '',
-                site: '',
-                unprocessed: g.unprocessed,
-                pass: g.pass,
-                fail: g.fail,
-                portfolio: g.portfolio || '',
-              }))}
-              height={260}
-              onBarClick={(params) => handleBarClick(params, 'gate')}
-              activeFilters={allFilterValues}
-            />
-          </div>
+          <QCStackedBarChart
+            data={(gateFilterValues.length > 0
+              ? data.qcByGateStatus.filter((g: any) => gateFilterValues.includes(g.gate))
+              : data.qcByGateStatus
+            ).map((g: any) => ({
+              projectId: g.gate,
+              customer: '',
+              site: '',
+              unprocessed: g.unprocessed,
+              pass: g.pass,
+              fail: g.fail,
+              portfolio: g.portfolio || '',
+            }))}
+            height="220px"
+            onBarClick={(params) => handleBarClick(params, 'gate')}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
 
-        {/* Row 3: Analyst Performance + Subproject (2-col) */}
-        <ChartCard title="Analyst Performance: Records vs Pass Rate" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCScatterChart
-              data={data.qcByNameAndRole}
-              labelField="name"
-              height={280}
-              onPointClick={handleScatterClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="Analyst Performance: Records vs Pass Rate" gridClass="grid-full">
+          <QCScatterChart
+            data={data.qcByNameAndRole}
+            labelField="name"
+            height="280px"
+            onPointClick={handleScatterClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
-        <ChartCard title="Subproject Quality Analysis" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCScatterChart
-              data={data.qcBySubproject.map((s) => ({
-                name: s.name,
-                role: 'Subproject',
-                records: s.records,
-                passRate: s.passRate,
-                hours: 10,
-                openCount: 0,
-                closedCount: s.records,
-                passCount: Math.round((s.passRate / 100) * s.records),
-              }))}
-              labelField="name"
-              height={280}
-              onPointClick={handleScatterClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+
+        <ChartCard title="Subproject Quality Analysis" gridClass="grid-full">
+          <QCScatterChart
+            data={data.qcBySubproject.map((s) => ({
+              name: s.name,
+              role: 'Subproject',
+              records: s.records,
+              passRate: s.passRate,
+              hours: 10,
+              openCount: 0,
+              closedCount: s.records,
+              passCount: Math.round((s.passRate / 100) * s.records),
+            }))}
+            labelField="name"
+            height="280px"
+            onPointClick={handleScatterClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
       </div>
 
@@ -245,177 +235,165 @@ export default function QCDashboardPage() {
         </ChartCard>
       </div>
 
-      {/* Execute Hours: 2-col then 1 full (by project can have long names) */}
+      {/* Execute Hours Section */}
       <div className="dashboard-grid">
-        <ChartCard title="Execute Hours Since Last QC Check" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCHoursBarChart
-              data={data.executeHoursSinceLastQC.map((item) => ({
-                name: item.employeeName,
-                value: item.hours,
-              }))}
-              xAxisLabel="Execute Hours Since Last QC Check"
-              yAxisLabel="Employee Name Workday"
-              height={280}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="Execute Hours Since Last QC Check" gridClass="grid-full">
+          <QCHoursBarChart
+            data={data.executeHoursSinceLastQC.map((item) => ({
+              name: item.employeeName,
+              value: item.hours,
+            }))}
+            xAxisLabel="Execute Hours Since Last QC Check"
+            yAxisLabel="Employee Name Workday"
+            height="280px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
-        <ChartCard title="EX Hours to QC Check Ratio" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCHoursBarChart
-              data={data.exHoursToQCRatio.map((item) => ({
-                name: item.employeeName,
-                value: item.ratio,
-              }))}
-              xAxisLabel="EX Hours to QC Check Ratio"
-              yAxisLabel="Employee Name Workday"
-              height={280}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+
+        <ChartCard title="EX Hours to QC Check Ratio" gridClass="grid-full">
+          <QCHoursBarChart
+            data={data.exHoursToQCRatio.map((item) => ({
+              name: item.employeeName,
+              value: item.ratio,
+            }))}
+            xAxisLabel="EX Hours to QC Check Ratio"
+            yAxisLabel="Employee Name Workday"
+            height="280px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
+      </div>
+
+      {/* Execute Hours by Project */}
+      <div className="dashboard-grid">
         <ChartCard title="Execute Hours Since Last QC Check by Project" gridClass="grid-full">
-          <div style={{ minHeight: 280 }}>
-            <QCHoursBarChart
-              data={data.executeHoursSinceLastQCByProject.map((item) => ({
-                name: item.projectName,
-                value: item.hours,
-              }))}
-              xAxisLabel="Execute Hours Since Last QC Check"
-              yAxisLabel="Project ID"
-              height={260}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+          <QCHoursBarChart
+            data={data.executeHoursSinceLastQCByProject.map((item) => ({
+              name: item.projectName,
+              value: item.hours,
+            }))}
+            xAxisLabel="Execute Hours Since Last QC Check"
+            yAxisLabel="Project ID"
+            height="260px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
       </div>
 
-      {/* QC Hours: 2-col + 1 full */}
+      {/* QC Hours Section */}
       <div className="dashboard-grid">
-        <ChartCard title="QC Hours Since Last QC Check" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCHoursBarChart
-              data={data.qcHoursSinceLastQC.map((item) => ({
-                name: item.employeeName,
-                value: item.hours,
-              }))}
-              xAxisLabel="QC Hours Since Last QC Check"
-              yAxisLabel="Employee Name Workday"
-              height={280}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="QC Hours Since Last QC Check" gridClass="grid-full">
+          <QCHoursBarChart
+            data={data.qcHoursSinceLastQC.map((item) => ({
+              name: item.employeeName,
+              value: item.hours,
+            }))}
+            xAxisLabel="QC Hours Since Last QC Check"
+            yAxisLabel="Employee Name Workday"
+            height="280px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
-        <ChartCard title="QC Hours to QC Check Ratio" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCHoursBarChart
-              data={data.qcHoursToQCRatio.map((item) => ({
-                name: item.employeeName,
-                value: item.ratio,
-              }))}
-              xAxisLabel="QC Hours to QC Check Ratio"
-              yAxisLabel="Employee Name Workday"
-              height={280}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+
+        <ChartCard title="QC Hours to QC Check Ratio" gridClass="grid-full">
+          <QCHoursBarChart
+            data={data.qcHoursToQCRatio.map((item) => ({
+              name: item.employeeName,
+              value: item.ratio,
+            }))}
+            xAxisLabel="QC Hours to QC Check Ratio"
+            yAxisLabel="Employee Name Workday"
+            height="280px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
+      </div>
+
+      {/* QC Hours by Project and Subproject */}
+      <div className="dashboard-grid">
         <ChartCard title="QC Hours Since Last QC Check by Project and Sub Project" gridClass="grid-full">
-          <div style={{ minHeight: 280 }}>
-            <QCHoursBarChart
-              data={data.qcHoursSinceLastQCByProject.map((item) => ({
-                name: `${item.projectName}${item.subprojectName ? ' - ' + item.subprojectName : ''}`,
-                value: item.hours,
-              }))}
-              xAxisLabel="QC Hours Since Last QC Check"
-              yAxisLabel="Project ID"
-              height={260}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+          <QCHoursBarChart
+            data={data.qcHoursSinceLastQCByProject.map((item) => ({
+              name: `${item.projectName}${item.subprojectName ? ' - ' + item.subprojectName : ''}`,
+              value: item.hours,
+            }))}
+            xAxisLabel="QC Hours Since Last QC Check"
+            yAxisLabel="Project ID"
+            height="260px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
       </div>
 
-      {/* QC by Task: 2-col */}
+      {/* QC by Task Section */}
       <div className="dashboard-grid">
-        <ChartCard title="QC pass and QC Fail by Task" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCPassFailStackedChart
-              data={data.qcPassFailByTask}
-              height={280}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="QC pass and QC Fail by Task" gridClass="grid-full">
+          <QCPassFailStackedChart
+            data={data.qcPassFailByTask}
+            height="280px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
-        <ChartCard title="QC Feedback by Task" gridClass="grid-half">
-          <div style={{ minHeight: 300 }}>
-            <QCFeedbackTimeBarChart
-              data={data.qcFeedbackTimeByTask}
-              height={280}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+
+        <ChartCard title="QC Feedback by Task" gridClass="grid-full">
+          <QCFeedbackTimeBarChart
+            data={data.qcFeedbackTimeByTask}
+            height="280px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
       </div>
 
-      {/* Monthly QC: 2-col */}
+      {/* Monthly QC Metrics */}
       <div className="dashboard-grid">
-        <ChartCard title="QC Pass Rate Per Month" gridClass="grid-half">
-          <div style={{ minHeight: 280 }}>
-            <QCPassRateLineChart
-              data={data.qcPassRatePerMonth}
-              height={260}
-              onPointClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="QC Pass Rate Per Month" gridClass="grid-full">
+          <QCPassRateLineChart
+            data={data.qcPassRatePerMonth}
+            height="260px"
+            onPointClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
-        <ChartCard title="QC Outcomes" gridClass="grid-half">
-          <div style={{ minHeight: 280 }}>
-            <QCOutcomesStackedChart
-              data={data.qcOutcomesByMonth}
-              height={260}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+
+        <ChartCard title="QC Outcomes" gridClass="grid-full">
+          <QCOutcomesStackedChart
+            data={data.qcOutcomesByMonth}
+            height="260px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
       </div>
 
-      {/* Feedback Time: 2-col */}
+      {/* QC Feedback Time by Month */}
       <div className="dashboard-grid">
-        <ChartCard title="QC Feedback Time" gridClass="grid-half">
-          <div style={{ minHeight: 280 }}>
-            <QCFeedbackTimeMonthlyChart
-              data={data.qcFeedbackTimeByMonth}
-              height={260}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+        <ChartCard title="QC Feedback Time" gridClass="grid-full">
+          <QCFeedbackTimeMonthlyChart
+            data={data.qcFeedbackTimeByMonth}
+            height="260px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
-        <ChartCard title="Kickoff Feedback Time" gridClass="grid-half">
-          <div style={{ minHeight: 280 }}>
-            <QCFeedbackTimeMonthlyChart
-              data={data.kickoffFeedbackTimeByMonth}
-              title="Kickoff Feedback Time"
-              height={260}
-              onBarClick={handleBarClick}
-              activeFilters={allFilterValues}
-            />
-          </div>
+
+        <ChartCard title="Kickoff Feedback Time" gridClass="grid-full">
+          <QCFeedbackTimeMonthlyChart
+            data={data.kickoffFeedbackTimeByMonth}
+            title="Kickoff Feedback Time"
+            height="260px"
+            onBarClick={handleBarClick}
+            activeFilters={allFilterValues}
+          />
         </ChartCard>
       </div>
-
     </div>
   );
 }
