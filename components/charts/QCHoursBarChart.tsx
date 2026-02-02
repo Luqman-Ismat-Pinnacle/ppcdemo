@@ -21,6 +21,10 @@ interface QCHoursBarChartProps {
   showLabels?: boolean;
   onBarClick?: (params: { name: string; dataIndex: number }) => void;
   activeFilters?: string[];
+  /** Visual title for export/fullscreen mode */
+  visualTitle?: string;
+  /** Visual ID for snapshot comparison */
+  visualId?: string;
 }
 
 export default function QCHoursBarChart({
@@ -31,6 +35,8 @@ export default function QCHoursBarChart({
   showLabels = true,
   onBarClick,
   activeFilters = [],
+  visualTitle = 'QC Hours',
+  visualId = 'qc-hours-bar',
 }: QCHoursBarChartProps) {
   // Return empty chart if no data
   if (!data || data.length === 0) {
@@ -125,8 +131,10 @@ export default function QCHoursBarChart({
       option={option}
       height={height}
       enableCompare
-      visualId="qc-hours-bar"
-      visualTitle="Chart"
+      enableExport
+      enableFullscreen
+      visualId={visualId}
+      visualTitle={visualTitle}
       isEmpty={data.length === 0}
       onChartReady={(chart) => {
         if (onBarClick) {

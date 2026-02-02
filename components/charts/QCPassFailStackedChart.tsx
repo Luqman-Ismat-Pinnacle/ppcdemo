@@ -137,8 +137,12 @@ export default function QCPassFailStackedChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="qc-pass-fail-stacked"
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      visualTitle="QC Pass/Fail by Task"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

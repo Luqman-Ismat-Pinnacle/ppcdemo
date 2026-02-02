@@ -2576,6 +2576,10 @@ function normId(value: unknown): string {
 /**
  * Build resource heatmap data from hours and employees.
  * When allHoursForWeekRange is provided, the week list is built from it so all dates show; values still use data.hours (filtered).
+ * 
+ * Always generates a valid heatmap when employees exist:
+ * - If hours exist: uses hours dates for week range
+ * - If no hours: generates 12 weeks from current date with 0% utilization
  */
 export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allHoursForWeekRange?: any[] }): ResourceHeatmap {
   const hours = data.hours || [];
@@ -2584,8 +2588,20 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
     ? options.allHoursForWeekRange
     : hours;
 
-  // If no employees, return empty
+  // Log for debugging
+  if (typeof window !== 'undefined') {
+    console.log('[buildResourceHeatmap] Input:', {
+      employeesCount: employees.length,
+      hoursCount: hours.length,
+      hoursForWeekListCount: hoursForWeekList.length,
+    });
+  }
+
+  // If no employees, return empty but with valid structure
   if (employees.length === 0) {
+    if (typeof window !== 'undefined') {
+      console.log('[buildResourceHeatmap] No employees, returning empty');
+    }
     return { resources: [], weeks: [], data: [] };
   }
 

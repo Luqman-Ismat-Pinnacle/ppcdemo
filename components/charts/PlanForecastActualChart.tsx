@@ -126,6 +126,6 @@ export default function PlanForecastActualChart({
     ],
   };
 
-  return <ChartWrapper option={option} height={height} enableCompare visualId="plan-forecast-actual" visualTitle="Plan vs Forecast vs Actual" />;
+  return <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="plan-forecast-actual" visualTitle="Plan vs Forecast vs Actual" />;
 }
 

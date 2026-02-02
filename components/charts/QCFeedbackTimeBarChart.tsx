@@ -113,8 +113,12 @@ export default function QCFeedbackTimeBarChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="qc-feedback-time"
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      visualTitle="QC Feedback Time by Task"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

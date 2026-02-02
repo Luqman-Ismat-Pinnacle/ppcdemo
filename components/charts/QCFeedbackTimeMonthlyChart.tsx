@@ -119,8 +119,12 @@ export default function QCFeedbackTimeMonthlyChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="qc-feedback-time-monthly"
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      visualTitle={title || 'QC Feedback Time by Month'}
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

@@ -121,28 +121,89 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Helper to call Edge Function
-async function callEdgeFunction(url: string, key: string, functionName: string, body: any) {
+// Helper to call Edge Function with retry logic
+async function callEdgeFunction(
+  url: string,
+  key: string,
+  functionName: string,
+  body: any,
+  options?: { retries?: number; timeoutMs?: number }
+): Promise<{ success: boolean; error?: string; summary?: any; stats?: any; logs?: string[] }> {
+  const { retries = 2, timeoutMs = 120000 } = options || {};
   const edgeFunctionUrl = `${url}/functions/v1/${functionName}`;
-  console.log(`[Workday Sync] Calling ${functionName}`);
+  
+  let lastError = '';
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      console.log(`[Workday Sync] Calling ${functionName}${attempt > 0 ? ` (retry ${attempt})` : ''}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      const edgeResponse = await fetch(edgeFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+          'apikey': key,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
 
-  const edgeResponse = await fetch(edgeFunctionUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'apikey': key,
-    },
-    body: JSON.stringify(body),
-  });
+      if (!edgeResponse.ok) {
+        const errorText = await edgeResponse.text().catch(() => 'Failed to read error response');
+        lastError = `HTTP ${edgeResponse.status}: ${errorText.substring(0, 300)}`;
+        console.error(`[Workday Sync] ${functionName} error (attempt ${attempt + 1}):`, lastError);
+        
+        // Don't retry on 4xx errors (client errors)
+        if (edgeResponse.status >= 400 && edgeResponse.status < 500) {
+          return { success: false, error: lastError };
+        }
+        
+        // Retry on 5xx errors
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // Exponential backoff
+          continue;
+        }
+        return { success: false, error: lastError };
+      }
 
-  if (!edgeResponse.ok) {
-    const errorText = await edgeResponse.text();
-    console.error(`Edge Function ${functionName} error:`, edgeResponse.status, errorText);
-    return { success: false, error: `Error ${edgeResponse.status}: ${errorText.substring(0, 200)}` };
+      const responseText = await edgeResponse.text();
+      
+      // Handle empty responses
+      if (!responseText || responseText.trim() === '') {
+        console.warn(`[Workday Sync] ${functionName} returned empty response`);
+        return { success: true, summary: { synced: 0 }, stats: { hours: 0 }, logs: ['Empty response from server'] };
+      }
+      
+      try {
+        const data = JSON.parse(responseText);
+        console.log(`[Workday Sync] ${functionName} succeeded:`, data.summary || data.stats || 'no summary');
+        return data;
+      } catch (parseError) {
+        console.error(`[Workday Sync] ${functionName} JSON parse error:`, parseError, 'Response:', responseText.substring(0, 200));
+        return { success: false, error: `Invalid JSON response: ${responseText.substring(0, 100)}` };
+      }
+    } catch (fetchError: any) {
+      if (fetchError.name === 'AbortError') {
+        lastError = `Request timed out after ${timeoutMs / 1000}s`;
+      } else {
+        lastError = fetchError.message || 'Network error';
+      }
+      console.error(`[Workday Sync] ${functionName} fetch error (attempt ${attempt + 1}):`, lastError);
+      
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+    }
   }
-
-  return await edgeResponse.json();
+  
+  return { success: false, error: lastError || 'Unknown error after retries' };
 }
 
 /** Push one NDJSON line to the stream (constant stream = stable, not one big pull). */
@@ -153,6 +214,12 @@ function pushLine(controller: ReadableStreamDefaultController<Uint8Array>, obj: 
 /**
  * Unified sync as a constant stream: employees -> projects -> hours (chunked by date).
  * Returns NDJSON stream: one JSON object per line. Mapping stays the same; only fetching is chunked.
+ * 
+ * Improved error handling:
+ * - Each step has its own try/catch so failures don't stop subsequent steps
+ * - Hours chunks continue even if some fail
+ * - Detailed logging for each step with error context
+ * - Retry logic for transient failures
  */
 function unifiedSyncStream(
   supabaseUrl: string,
@@ -166,78 +233,141 @@ function unifiedSyncStream(
       let projOk = false;
       let hoursChunksOk = 0;
       let hoursChunksFail = 0;
+      let totalHours = 0;
+      const failedChunks: string[] = [];
 
+      const logAndPush = (msg: string) => {
+        logs.push(msg);
+        console.log(`[Workday Sync] ${msg}`);
+      };
+
+      // 1. Employees - try/catch to not stop sync if this fails
       try {
-        // 1. Employees
         pushLine(controller, { type: 'step', step: 'employees', status: 'started' });
-        const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {});
+        logAndPush('Starting employees sync...');
+        
+        const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {}, { retries: 2, timeoutMs: 60000 });
         pushLine(controller, { type: 'step', step: 'employees', status: 'done', result: empRes });
+        
         if (!empRes.success) {
-          logs.push(`Error in employees sync: ${empRes.error}`);
+          logAndPush(`Employees sync failed: ${empRes.error || 'Unknown error'}`);
+          pushLine(controller, { type: 'error', error: `Employees: ${empRes.error}` });
         } else {
           empOk = true;
-          logs.push(`Synced ${empRes.summary?.synced ?? 0} employees.`);
+          const count = empRes.summary?.synced ?? empRes.summary?.total ?? 0;
+          logAndPush(`Synced ${count} employees successfully.`);
         }
-
-        // 2. Projects (hierarchy)
-        pushLine(controller, { type: 'step', step: 'projects', status: 'started' });
-        const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
-        pushLine(controller, { type: 'step', step: 'projects', status: 'done', result: projRes });
-        if (!projRes.success) {
-          logs.push(`Error in hierarchy sync: ${projRes.error}`);
-        } else {
-          projOk = true;
-          logs.push(`Synced: ${projRes.summary?.portfolios ?? 0} Portfolios, ${projRes.summary?.customers ?? 0} Customers, ${projRes.summary?.sites ?? 0} Sites, ${projRes.summary?.projects ?? 0} Projects.`);
-        }
-
-        // 3. Hours in date windows (constant stream: one window at a time, no big pull)
-        const end = new Date();
-        const start = new Date();
-        start.setDate(start.getDate() - hoursDaysBack);
-        const totalChunks = Math.ceil(hoursDaysBack / WINDOW_DAYS);
-        let totalHours = 0;
-
-        pushLine(controller, { type: 'step', step: 'hours', status: 'started', totalChunks });
-        for (let i = 0; i < totalChunks; i++) {
-          const chunkStart = new Date(start);
-          chunkStart.setDate(start.getDate() + i * WINDOW_DAYS);
-          const chunkEnd = new Date(chunkStart);
-          chunkEnd.setDate(chunkEnd.getDate() + WINDOW_DAYS - 1);
-          if (chunkEnd > end) chunkEnd.setTime(end.getTime());
-          const startStr = chunkStart.toISOString().split('T')[0];
-          const endStr = chunkEnd.toISOString().split('T')[0];
-
-          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk', chunk: i + 1, totalChunks, startDate: startStr, endDate: endStr });
-          try {
-            const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', { startDate: startStr, endDate: endStr });
-            totalHours += hoursRes.stats?.hours ?? 0;
-            pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
-            if (hoursRes.success) {
-              hoursChunksOk++;
-            } else {
-              hoursChunksFail++;
-              logs.push(`Hour window ${startStr}–${endStr} failed: ${hoursRes.error || 'unknown'}`);
-            }
-          } catch (chunkErr: any) {
-            hoursChunksFail++;
-            const msg = chunkErr?.message ?? String(chunkErr);
-            logs.push(`Hour window ${startStr}–${endStr} error: ${msg}`);
-            pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: null });
-          }
-        }
-        pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
-        logs.push(`Synced ${totalHours} hour entries (${hoursChunksOk}/${totalChunks} windows succeeded).`);
-        if (hoursChunksFail > 0) {
-          logs.push(`Note: ${hoursChunksFail} of ${totalChunks} hour windows had issues. Data from successful windows was saved.`);
-        }
-      } catch (err: any) {
-        logs.push(err?.message ?? String(err));
-        pushLine(controller, { type: 'error', error: err?.message ?? String(err) });
+      } catch (empError: any) {
+        const msg = empError?.message ?? String(empError);
+        logAndPush(`Employees sync exception: ${msg}`);
+        pushLine(controller, { type: 'error', error: `Employees exception: ${msg}` });
       }
 
-      // Consider sync successful if employees + projects + at least one hours chunk succeeded (partial success = success so UI doesn't show red when Supabase wrote data)
-      const success = empOk && projOk && hoursChunksOk > 0;
-      pushLine(controller, { type: 'done', success, logs });
+      // 2. Projects (hierarchy) - try/catch to not stop sync if this fails
+      try {
+        pushLine(controller, { type: 'step', step: 'projects', status: 'started' });
+        logAndPush('Starting hierarchy sync (portfolios, customers, sites, projects)...');
+        
+        const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {}, { retries: 2, timeoutMs: 90000 });
+        pushLine(controller, { type: 'step', step: 'projects', status: 'done', result: projRes });
+        
+        if (!projRes.success) {
+          logAndPush(`Hierarchy sync failed: ${projRes.error || 'Unknown error'}`);
+          pushLine(controller, { type: 'error', error: `Hierarchy: ${projRes.error}` });
+        } else {
+          projOk = true;
+          logAndPush(`Synced hierarchy: ${projRes.summary?.portfolios ?? 0} portfolios, ${projRes.summary?.customers ?? 0} customers, ${projRes.summary?.sites ?? 0} sites, ${projRes.summary?.projects ?? 0} projects.`);
+        }
+      } catch (projError: any) {
+        const msg = projError?.message ?? String(projError);
+        logAndPush(`Hierarchy sync exception: ${msg}`);
+        pushLine(controller, { type: 'error', error: `Hierarchy exception: ${msg}` });
+      }
+
+      // 3. Hours in date windows - each chunk is independent, failures don't stop others
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - hoursDaysBack);
+      const totalChunks = Math.ceil(hoursDaysBack / WINDOW_DAYS);
+
+      logAndPush(`Starting hours sync: ${totalChunks} chunks over ${hoursDaysBack} days (${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]})`);
+      pushLine(controller, { type: 'step', step: 'hours', status: 'started', totalChunks });
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkStart = new Date(start);
+        chunkStart.setDate(start.getDate() + i * WINDOW_DAYS);
+        const chunkEnd = new Date(chunkStart);
+        chunkEnd.setDate(chunkEnd.getDate() + WINDOW_DAYS - 1);
+        if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+        const startStr = chunkStart.toISOString().split('T')[0];
+        const endStr = chunkEnd.toISOString().split('T')[0];
+
+        pushLine(controller, { type: 'step', step: 'hours', status: 'chunk', chunk: i + 1, totalChunks, startDate: startStr, endDate: endStr });
+        
+        try {
+          const hoursRes = await callEdgeFunction(
+            supabaseUrl, 
+            supabaseServiceKey, 
+            'workday-hours', 
+            { startDate: startStr, endDate: endStr },
+            { retries: 1, timeoutMs: 90000 } // Longer timeout for hours
+          );
+          
+          const chunkHours = hoursRes.stats?.hours ?? hoursRes.summary?.synced ?? 0;
+          totalHours += chunkHours;
+          
+          if (hoursRes.success) {
+            hoursChunksOk++;
+            pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats, success: true });
+          } else {
+            hoursChunksFail++;
+            const errorMsg = hoursRes.error || 'Unknown error';
+            failedChunks.push(`${startStr} to ${endStr}: ${errorMsg}`);
+            logAndPush(`Hours chunk ${i + 1}/${totalChunks} (${startStr}–${endStr}) failed: ${errorMsg}`);
+            pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: null, success: false, error: errorMsg });
+            pushLine(controller, { type: 'error', error: `Hours ${startStr}–${endStr}: ${errorMsg}` });
+          }
+        } catch (chunkErr: any) {
+          hoursChunksFail++;
+          const msg = chunkErr?.message ?? String(chunkErr);
+          failedChunks.push(`${startStr} to ${endStr}: ${msg}`);
+          logAndPush(`Hours chunk ${i + 1}/${totalChunks} (${startStr}–${endStr}) exception: ${msg}`);
+          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: null, success: false, error: msg });
+          pushLine(controller, { type: 'error', error: `Hours ${startStr}–${endStr}: ${msg}` });
+        }
+        
+        // Small delay between chunks to not overwhelm the server
+        if (i < totalChunks - 1) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+      
+      pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
+      logAndPush(`Hours sync complete: ${totalHours} entries from ${hoursChunksOk}/${totalChunks} successful chunks.`);
+      
+      if (hoursChunksFail > 0) {
+        logAndPush(`${hoursChunksFail} hour window(s) had issues. Data from successful windows was saved.`);
+        if (failedChunks.length > 0 && failedChunks.length <= 5) {
+          logs.push(`Failed periods: ${failedChunks.join('; ')}`);
+        } else if (failedChunks.length > 5) {
+          logs.push(`Failed periods (showing first 5): ${failedChunks.slice(0, 5).join('; ')} (and ${failedChunks.length - 5} more)`);
+        }
+      }
+
+      // Build final summary
+      const syncSummary = {
+        employees: empOk ? 'success' : 'failed',
+        hierarchy: projOk ? 'success' : 'failed', 
+        hours: hoursChunksOk > 0 ? `${hoursChunksOk}/${totalChunks} succeeded` : 'all failed',
+        totalHours,
+      };
+      logs.push(`Summary: Employees=${syncSummary.employees}, Hierarchy=${syncSummary.hierarchy}, Hours=${syncSummary.hours} (${totalHours} entries)`);
+
+      // Consider sync successful if:
+      // - employees + projects succeeded, OR
+      // - at least one hours chunk succeeded (partial success = success so UI doesn't show red when Supabase wrote data)
+      const success = (empOk && projOk) || hoursChunksOk > 0;
+      pushLine(controller, { type: 'done', success, logs, summary: syncSummary, totalHours });
       controller.close();
     }
   });

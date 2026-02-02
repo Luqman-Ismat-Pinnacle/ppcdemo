@@ -42,35 +42,6 @@ export default function MilestoneStatusPie({
     animation: true,
     animationDuration: 600,
     animationEasing: 'cubicOut',
-    graphic: [
-      {
-        type: 'text',
-        left: pieCenter[0],
-        top: pieCenter[1],
-        style: {
-          text: total > 0 ? String(total) : '—',
-          fontSize: 28,
-          fontWeight: 700,
-          fill: 'var(--text-primary)',
-          textAlign: 'center',
-          textVerticalAlign: 'middle',
-        },
-        z: 100,
-      },
-      {
-        type: 'text',
-        left: pieCenter[0],
-        top: '56%',
-        style: {
-          text: 'Total',
-          fontSize: 11,
-          fill: 'var(--text-muted)',
-          textAlign: 'center',
-          textVerticalAlign: 'middle',
-        },
-        z: 100,
-      },
-    ],
     tooltip: {
       trigger: 'item',
       confine: true,

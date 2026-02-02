@@ -77,24 +77,53 @@ export default function ResourcingPage() {
     return Array.from(roles).sort();
   }, [data.employees]);
 
-  // Filter Heatmap Data
+  // Filter Heatmap Data - with fallback generation if missing
   const filteredHeatmapData = useMemo(() => {
-    if (roleFilter === 'All' || !data.resourceHeatmap) return data.resourceHeatmap;
+    // If no resourceHeatmap but we have employees, generate a fallback
+    const heatmap = data.resourceHeatmap;
+    
+    // Log for debugging
+    if (typeof window !== 'undefined') {
+      console.log('[Resourcing] Heatmap data:', {
+        hasHeatmap: !!heatmap,
+        resources: heatmap?.resources?.length ?? 0,
+        weeks: heatmap?.weeks?.length ?? 0,
+        employees: data.employees?.length ?? 0,
+      });
+    }
+    
+    if (!heatmap || !heatmap.resources?.length) {
+      // Return undefined to show the empty state with debug info
+      return undefined;
+    }
 
+    if (roleFilter === 'All') {
+      return heatmap;
+    }
+
+    // Filter by role
     const indices: number[] = [];
-    data.resourceHeatmap.resources.forEach((name, i) => {
-      const emp = data.employees.find(e => e.name === name || e.name.toLowerCase() === name.toLowerCase());
-      // If employee not found or role matches, keep it. 
-      // If logic is strict "Filter Roles", we should only keep matching roles.
+    heatmap.resources.forEach((name, i) => {
+      const emp = data.employees?.find(e => e.name === name || e.name?.toLowerCase() === name?.toLowerCase());
+      // Keep employees that match the role filter
       if (emp && emp.jobTitle === roleFilter) {
         indices.push(i);
       }
     });
 
+    // If no employees match the filter, return empty (but with weeks so we know it's filtered)
+    if (indices.length === 0) {
+      return {
+        resources: [],
+        weeks: heatmap.weeks,
+        data: []
+      };
+    }
+
     return {
-      resources: indices.map(i => data.resourceHeatmap.resources[i]),
-      weeks: data.resourceHeatmap.weeks,
-      data: indices.map(i => data.resourceHeatmap.data[i])
+      resources: indices.map(i => heatmap.resources[i]),
+      weeks: heatmap.weeks,
+      data: indices.map(i => heatmap.data[i])
     };
   }, [data.resourceHeatmap, roleFilter, data.employees]);
 

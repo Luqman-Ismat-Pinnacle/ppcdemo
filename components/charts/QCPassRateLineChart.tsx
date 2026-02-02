@@ -118,8 +118,12 @@ export default function QCPassRateLineChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="qc-pass-rate-line"
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      visualTitle="QC Pass Rate Trend"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onPointClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

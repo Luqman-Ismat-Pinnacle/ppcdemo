@@ -137,8 +137,12 @@ export default function QCOutcomesStackedChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="qc-outcomes-stacked"
-      visualTitle="Chart" isEmpty={data.length === 0} onChartReady={(chart) => {
+      visualTitle="QC Outcomes by Month"
+      isEmpty={data.length === 0}
+      onChartReady={(chart) => {
         if (onBarClick) {
           chart.off('click');
           chart.on('click', (params: any) => {

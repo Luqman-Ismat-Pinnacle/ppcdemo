@@ -133,8 +133,10 @@ export default function QCScatterChart({
       option={option}
       height={height}
       enableCompare
+      enableExport
+      enableFullscreen
       visualId="qc-scatter"
-      visualTitle="Chart"
+      visualTitle="QC Auditor Performance"
       isEmpty={data.length === 0}
       onChartReady={(chart) => {
         if (onPointClick) {

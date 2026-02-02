@@ -9,37 +9,69 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 /** Humanize technical log messages into user-friendly English */
 function humanizeLogLine(line: string): string {
-  const raw = line.replace(/^\[\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\]\s*/i, '').trim();
-  // Workday sync
+  // Remove timestamp and emoji prefixes
+  const raw = line
+    .replace(/^\[\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\]\s*/i, '')
+    .replace(/^[❌⚠️✓]\s*/, '')
+    .trim();
+  
+  // Already humanized messages (from the new format) - return as-is
+  if (raw.startsWith('Starting Workday sync')) return raw;
+  if (raw.startsWith('Connecting to Workday')) return raw;
+  if (raw.startsWith('Syncing employees')) return 'Fetching employees…';
+  if (raw.startsWith('Syncing hierarchy')) return 'Fetching projects and hierarchy…';
+  if (raw.startsWith('Syncing hours')) return 'Fetching hours data…';
+  if (raw.startsWith('Processing hours:')) {
+    const m = raw.match(/Processing hours: ([^ ]+) to ([^ ]+) \((\d+)\/(\d+)\)/);
+    if (m) {
+      const fmt = (s: string) => { try { const d = new Date(s.trim()); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return s; } };
+      return `Syncing ${fmt(m[1])} – ${fmt(m[2])} (${m[3]}/${m[4]})`;
+    }
+    return raw;
+  }
+  if (raw.startsWith('Processed ') && raw.includes('hour entries')) return raw;
+  if (raw.startsWith('Hours chunk failed')) return raw.replace('Hours chunk failed:', 'Period failed:');
+  if (raw.startsWith('Employees sync complete')) return 'Employees updated';
+  if (raw.startsWith('Hierarchy sync complete')) return 'Hierarchy updated';
+  if (raw.startsWith('Hours:') && raw.includes('total entries')) return raw;
+  if (raw.startsWith('All data synced')) return 'All data synced successfully';
+  if (raw.startsWith('Sync completed with issues')) return raw;
+  if (raw.startsWith('Sync failed')) return raw;
+  if (raw.startsWith('Summary:')) return raw.replace('Summary:', 'Final:');
+  
+  // Legacy format handling
   if (raw.includes('Step: unified started')) return 'Starting full data sync…';
   if (raw.includes('Step: unified done')) return 'Data sync completed';
   if (raw.includes('Step: employees started')) return 'Fetching employees…';
-  if (raw.includes('Step: hierarchy started')) return 'Fetching projects and hierarchy…';
-  if (raw.includes('Step: hours started')) return 'Fetching hours and costs…';
+  if (raw.includes('Step: employees done')) return 'Employees updated';
+  if (raw.includes('Step: projects started')) return 'Fetching hierarchy…';
+  if (raw.includes('Step: projects done')) return 'Hierarchy updated';
+  if (raw.includes('Step: hours started')) return 'Fetching hours…';
+  if (raw.includes('Step: hours done')) return 'Hours sync complete';
   if (raw.includes('Hours chunk ') && raw.includes(' done')) {
     const m = raw.match(/Hours chunk (\d+)\/(\d+)/);
-    if (m) return `Finished syncing period ${m[1]} of ${m[2]}`;
+    if (m) return `Finished period ${m[1]} of ${m[2]}`;
   }
   if (raw.includes('Hours chunk ') && raw.includes('–')) {
     const m = raw.match(/Hours chunk (\d+)\/(\d+)\s*\(([^–]+)–([^)]+)\)/);
     if (m) {
-      const fmt = (s: string) => { try { const d = new Date(s.trim()); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return s; } };
-      return `Syncing hours for ${fmt(m[3])} – ${fmt(m[4])} (${m[1]} of ${m[2]})`;
+      const fmt = (s: string) => { try { const d = new Date(s.trim()); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return s; } };
+      return `Syncing ${fmt(m[3])} – ${fmt(m[4])} (${m[1]}/${m[2]})`;
     }
   }
-  if (raw.startsWith('--- Step 1:')) return 'Step 1: Fetching employees and portfolios';
-  if (raw.startsWith('--- Step 2:')) return 'Step 2: Fetching projects, customers, and sites';
-  if (raw.startsWith('--- Step 3:')) return 'Step 3: Fetching hours and cost data';
-  if (raw.startsWith('--- Step 4:')) return 'Step 4: Ledger sync skipped (not required)';
-  if (/^Synced \d+ employees?\.?$/i.test(raw)) return raw.replace(/^Synced (\d+) employees?\.?$/i, 'Updated $1 employee records');
+  if (/^Synced \d+ employees?\.?$/i.test(raw)) return raw.replace(/^Synced (\d+) employees?\.?$/i, 'Updated $1 employees');
   if (/^Synced: .+ Portfolios/.test(raw)) return raw.replace(/Synced:/, 'Updated:').replace(/Portfolios/g, 'portfolios').replace(/Customers/g, 'customers').replace(/Sites/g, 'sites').replace(/Projects/g, 'projects');
-  if (/^Synced \d+ hour entries/.test(raw)) return raw.replace(/^Synced (\d+) hour entries/, 'Imported $1 hour entries');
-  if (raw.includes('No labor transactions') || raw.includes('No new hour data')) return 'No new hour data in the selected date range';
+  if (/^Synced \d+ hour entries/.test(raw)) return raw.replace(/^Synced (\d+) hour entries/, 'Imported $1 hours');
+  if (/employees successfully/i.test(raw)) return raw;
+  if (/hierarchy:/i.test(raw)) return raw;
+  if (raw.includes('No labor transactions') || raw.includes('No new hour data')) return 'No new hour data found';
   if (raw.includes('Error in')) return raw.replace(/Error in (\w+) sync:/, 'Could not sync $1:');
-  if (raw.includes('Full Sync Completed Successfully')) return 'Sync completed successfully';
+  if (raw.includes('sync failed:') || raw.includes('sync exception:')) return raw;
+  if (raw.includes('Full Sync Completed Successfully')) return 'Sync complete';
   if (raw.includes('Sync Failed') || raw.includes('Sync Aborted')) return raw;
-  if (raw.includes('Requesting Unified Sync')) return 'Connecting to Workday…';
-  if (raw.includes('Starting Full Workday Sync')) return raw.replace('Starting Full Workday Sync (', 'Starting sync (').replace(' method)...', ' method)');
+  if (raw.includes('Requesting Unified Sync')) return 'Connecting…';
+  if (raw.includes('Starting Full Workday Sync')) return 'Starting sync…';
+  
   // CPM / Schedule
   if (raw.includes('Engine Initialized')) return 'Schedule analysis started';
   if (raw.includes('> Loading ') && raw.includes(' tasks')) return raw.replace('> Loading ', 'Loaded ').replace('...', '');
@@ -51,9 +83,10 @@ function humanizeLogLine(line: string): string {
   if (raw.includes('• Average Float:')) return raw.replace('• Average Float: ', 'Average float: ').replace(' days', ' days');
   if (raw.includes('dangling logic') || raw.includes('open ends')) return raw.replace('! WARNING: ', 'Note: ').replace(' tasks have open ends (dangling logic)', ' tasks may have missing dependency links');
   if (raw.includes('Unlinked:')) return raw.replace('  - Unlinked:', '  • Missing link:');
-  if (raw.includes('NOTE: Using project dates')) return 'Using project dates for duration (no dependency links)';
+  if (raw.includes('NOTE: Using project dates')) return 'Using project dates for duration';
   if (raw.includes('Ledger sync disabled')) return 'Ledger sync skipped';
-  if (raw.includes('Hours sync includes cost data')) return 'Hour entries include cost data for schedules';
+  if (raw.includes('Hours sync includes cost data')) return 'Hours include cost data';
+  
   return raw;
 }
 import { useData } from '@/lib/data-context';
@@ -130,50 +163,116 @@ export default function StatusAndLogsDropdown() {
     setWorkdayLogs([]);
 
     const logEntries: string[] = [];
-    const pushLog = (msg: string) => {
-      const entry = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    const errorCount = { employees: false, hierarchy: false, hours: 0, hoursTotal: 0 };
+    
+    const pushLog = (msg: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
+      const time = new Date().toLocaleTimeString();
+      const prefix = type === 'error' ? '❌' : type === 'warning' ? '⚠️' : type === 'success' ? '✓' : '';
+      const entry = `[${time}] ${prefix} ${msg}`.trim();
       logEntries.push(entry);
-      setWorkdayLogs(prev => [entry, ...prev].slice(0, 50));
+      setWorkdayLogs(prev => [entry, ...prev].slice(0, 100)); // Increased log limit
     };
-    pushLog('Starting sync (streaming)…');
+    
+    pushLog('Starting Workday sync…', 'info');
     setSyncProgress(null);
 
     try {
-      pushLog('Connecting to Workday…');
-      const { success } = await runWorkdaySyncStream({
+      pushLog('Connecting to Workday API…', 'info');
+      const { success, summary } = await runWorkdaySyncStream({
         syncType: 'unified',
+        hoursDaysBack: 365,
+        timeoutMs: 600000, // 10 minute timeout
         onEvent: (ev) => {
           if (ev.type === 'step') {
             if (ev.status === 'started') {
-              pushLog(`Step: ${ev.step} started`);
-              setSyncProgress({ current: 0, total: ev.totalChunks || 1, step: ev.step });
+              const stepLabel = ev.step === 'employees' ? 'employees' : ev.step === 'projects' ? 'hierarchy' : 'hours';
+              pushLog(`Syncing ${stepLabel}…`, 'info');
+              if (ev.step === 'hours' && ev.totalChunks) {
+                errorCount.hoursTotal = ev.totalChunks;
+                setSyncProgress({ current: 0, total: ev.totalChunks, step: ev.step });
+              }
             }
-            if (ev.status === 'chunk') {
-              pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} (${ev.startDate}–${ev.endDate})`);
-              setSyncProgress({ current: ev.chunk || 0, total: ev.totalChunks || 1, step: 'hours' });
+            if (ev.status === 'chunk' && ev.chunk && ev.totalChunks) {
+              pushLog(`Processing hours: ${ev.startDate} to ${ev.endDate} (${ev.chunk}/${ev.totalChunks})`, 'info');
+              setSyncProgress({ current: ev.chunk, total: ev.totalChunks, step: 'hours' });
             }
             if (ev.status === 'chunk_done') {
-              pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} done`);
+              if (ev.success === false && ev.error) {
+                errorCount.hours++;
+                pushLog(`Hours chunk failed: ${ev.error}`, 'error');
+              } else if (ev.stats?.hours != null) {
+                pushLog(`Processed ${ev.stats.hours} hour entries`, 'success');
+              }
             }
             if (ev.status === 'done') {
-              pushLog(`Step: ${ev.step} done`);
-              if (ev.step === 'hours') setSyncProgress(null);
+              const stepLabel = ev.step === 'employees' ? 'Employees' : ev.step === 'projects' ? 'Hierarchy' : 'Hours';
+              if (ev.step === 'hours') {
+                setSyncProgress(null);
+                if (ev.totalHours != null) {
+                  pushLog(`${stepLabel}: ${ev.totalHours} total entries synced`, 'success');
+                }
+              } else {
+                pushLog(`${stepLabel} sync complete`, 'success');
+              }
             }
           }
-          if (ev.type === 'error') pushLog(`Error: ${ev.error}`);
-          if (ev.type === 'done' && ev.logs) ev.logs.forEach((l: string) => pushLog(l));
+          if (ev.type === 'error') {
+            pushLog(ev.error, 'error');
+            // Track which step had the error
+            if (ev.error.toLowerCase().includes('employee')) errorCount.employees = true;
+            if (ev.error.toLowerCase().includes('hierarch') || ev.error.toLowerCase().includes('project')) errorCount.hierarchy = true;
+          }
+          if (ev.type === 'done') {
+            if (ev.logs) {
+              ev.logs.forEach((l: string) => {
+                if (l.toLowerCase().includes('error') || l.toLowerCase().includes('fail')) {
+                  pushLog(l, 'error');
+                } else if (l.toLowerCase().includes('success') || l.toLowerCase().includes('synced')) {
+                  pushLog(l, 'success');
+                } else {
+                  pushLog(l, 'info');
+                }
+              });
+            }
+            if (ev.summary) {
+              pushLog(`Summary: ${JSON.stringify(ev.summary)}`, 'info');
+            }
+          }
         },
       });
+      
       setSyncProgress(null);
-      setWorkdayStatus(success ? 'success' : 'error');
-      setWorkdayMessage(success ? 'Sync Complete' : 'Sync Failed');
-      pushLog(success ? 'Sync completed successfully' : 'Sync failed');
+      
+      // Determine final status based on what succeeded/failed
+      const hasPartialSuccess = errorCount.hours > 0 && errorCount.hours < errorCount.hoursTotal;
+      const hasFullSuccess = success && !errorCount.employees && !errorCount.hierarchy && errorCount.hours === 0;
+      
+      if (hasFullSuccess) {
+        setWorkdayStatus('success');
+        setWorkdayMessage('Sync Complete');
+        pushLog('All data synced successfully', 'success');
+      } else if (hasPartialSuccess || success) {
+        setWorkdayStatus('success'); // Still show success if partial
+        const issues: string[] = [];
+        if (errorCount.employees) issues.push('employees');
+        if (errorCount.hierarchy) issues.push('hierarchy');
+        if (errorCount.hours > 0) issues.push(`${errorCount.hours}/${errorCount.hoursTotal} hour chunks`);
+        setWorkdayMessage(`Partial sync (${issues.join(', ')} had issues)`);
+        pushLog(`Sync completed with issues: ${issues.join(', ')}`, 'warning');
+      } else {
+        setWorkdayStatus('error');
+        setWorkdayMessage('Sync Failed');
+        pushLog('Sync failed - check errors above', 'error');
+      }
+      
       addEngineLog('Workday', logEntries);
       await refreshData();
     } catch (err: any) {
+      setSyncProgress(null);
       setWorkdayStatus('error');
-      setWorkdayMessage('Sync Failed');
-      pushLog(`Sync stopped: ${err.message}`);
+      const errorMsg = err?.message || 'Unknown error';
+      setWorkdayMessage(`Sync Failed: ${errorMsg.substring(0, 50)}`);
+      pushLog(`Sync stopped unexpectedly: ${errorMsg}`, 'error');
       addEngineLog('Workday', logEntries);
     } finally {
       setWorkdaySyncing(false);

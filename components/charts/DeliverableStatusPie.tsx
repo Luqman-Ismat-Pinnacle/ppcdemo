@@ -45,35 +45,6 @@ export default function DeliverableStatusPie({
       bottom: 0,
       textStyle: { color: 'var(--text-secondary)', fontSize: 10 },
     } : undefined,
-    graphic: !title ? [
-      {
-        type: 'text',
-        left: centerX,
-        top: centerY,
-        style: {
-          text: total > 0 ? String(total) : '—',
-          fontSize: 22,
-          fontWeight: 700,
-          fill: 'var(--text-primary)',
-          textAlign: 'center',
-          textVerticalAlign: 'middle',
-        },
-        z: 100,
-      },
-      {
-        type: 'text',
-        left: centerX,
-        top: '54%',
-        style: {
-          text: 'Total',
-          fontSize: 10,
-          fill: 'var(--text-muted)',
-          textAlign: 'center',
-          textVerticalAlign: 'middle',
-        },
-        z: 100,
-      },
-    ] : undefined,
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {

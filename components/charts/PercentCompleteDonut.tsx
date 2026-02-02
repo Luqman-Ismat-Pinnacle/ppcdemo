@@ -55,24 +55,6 @@ export default function PercentCompleteDonut({
         ],
       },
     ],
-    graphic: [
-      {
-        type: 'text',
-        left: '50%',
-        top: '50%',
-        style: {
-          text: `${clampedPercent.toFixed(0)}%\n${label}`,
-          fontSize: 18,
-          fontWeight: 700,
-          fontFamily: 'var(--font-mono)',
-          fill: 'var(--text-primary)',
-          lineHeight: 20,
-          textAlign: 'center',
-          textVerticalAlign: 'middle',
-        },
-        z: 100,
-      },
-    ],
   };
 
   return <ChartWrapper option={option} height={height} enableCompare visualId="percent-complete-donut" visualTitle="Percent Complete" />;
