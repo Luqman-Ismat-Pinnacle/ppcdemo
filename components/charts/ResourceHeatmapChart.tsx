@@ -59,7 +59,7 @@ const UNASSIGNED_COLORS = {
 
 interface ResourceHeatmapChartProps {
   /** Heatmap data with resources, weeks, and utilization values */
-  data: ResourceHeatmap;
+  data?: ResourceHeatmap | null;
   /** Optional employee data for role grouping */
   employees?: Employee[];
   /** Chart height - defaults to 100% for full container */
@@ -167,13 +167,16 @@ export default function ResourceHeatmapChart({
    * Process heatmap data based on view type and display mode
    */
   const processedData = useMemo(() => {
-    if (!data || !data.resources || !data.weeks || !data.data || data.resources.length === 0) {
+    const safe = data && Array.isArray(data.resources) && Array.isArray(data.weeks) && Array.isArray(data.data)
+      ? data
+      : { resources: [] as string[], weeks: [] as string[], data: [] as number[][] };
+    if (safe.resources.length === 0) {
       return { resources: [], weeks: [], data: [] };
     }
 
-    const { periods, aggregatedData } = aggregateByTimeRange(data.weeks, data.data);
+    const { periods, aggregatedData } = aggregateByTimeRange(safe.weeks, safe.data);
     const aggregatedBaseData = {
-      resources: data.resources,
+      resources: safe.resources,
       weeks: periods,
       data: aggregatedData
     };
@@ -634,7 +637,33 @@ export default function ResourceHeatmapChart({
       )}
 
       <div style={{ flex: 1, minHeight: 0 }}>
-        <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-heatmap" visualTitle="Resource Heatmap" />
+        {filteredData.resources.length === 0 || filteredData.weeks.length === 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              minHeight: 280,
+              padding: 24,
+              background: 'var(--bg-tertiary)',
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-muted)',
+              textAlign: 'center',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: '0.95rem' }}>
+              No heatmap data. Sync Workday (employees + hours) or ensure employees and hour entries are loaded.
+            </p>
+            <p style={{ margin: '8px 0 0', fontSize: '0.8rem', opacity: 0.8 }}>
+              Heatmap shows utilization per employee per week (40h = 100%).
+            </p>
+          </div>
+        ) : (
+          <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-heatmap" visualTitle="Resource Heatmap" />
+        )}
       </div>
     </div>
   );

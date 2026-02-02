@@ -2583,15 +2583,14 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
     return { resources: [], weeks: [], data: [] };
   }
 
-  // Build hours by employee Map for O(1) lookups instead of filtering
+  // Build hours by employee Map - use string keys so DB number/string ID mismatch doesn't break lookup
   const hoursByEmployee = new Map<string, any[]>();
   hours.forEach((h: any) => {
-    const empId = h.employeeId || h.employee_id;
-    if (empId) {
-      if (!hoursByEmployee.has(empId)) {
-        hoursByEmployee.set(empId, []);
-      }
-      hoursByEmployee.get(empId)!.push(h);
+    const empId = h.employeeId ?? h.employee_id;
+    if (empId != null && empId !== '') {
+      const key = String(empId).trim();
+      if (!hoursByEmployee.has(key)) hoursByEmployee.set(key, []);
+      hoursByEmployee.get(key)!.push(h);
     }
   });
 
@@ -2632,14 +2631,16 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
   const TARGET_HOURS_PER_WEEK = 40;
 
   employees.forEach((emp: any) => {
-    const empId = emp.id || emp.employeeId;
-    const name = emp.name || empId;
-    resources.push(name);
+    const name = emp.name || emp.id || emp.employeeId || '';
+    resources.push(name || 'Unknown');
 
     const weeklyHours = new Array(rawWeeks.length).fill(0);
 
-    // Use Map lookup instead of filter - O(1) instead of O(n)
-    const empHours = hoursByEmployee.get(empId) || [];
+    // Look up by both id and employeeId (stringified) - DB may use either column for the same value
+    const empHours =
+      hoursByEmployee.get(String(emp.id ?? '').trim()) ||
+      hoursByEmployee.get(String(emp.employeeId ?? '').trim()) ||
+      [];
     empHours.forEach((h: any) => {
       const hourDateNorm = normalizeDateString(h.date || h.entry_date);
       const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;
