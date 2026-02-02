@@ -356,7 +356,7 @@ export default function BoardsPage() {
   const projects = useMemo(() => filteredData.projects || [], [filteredData.projects]);
 
   return (
-    <div className="page-panel full-height-page">
+    <div className="page-panel full-height-page project-management-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Boards</h1>

@@ -308,7 +308,7 @@ export default function QCLogPage() {
   };
 
   return (
-    <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: 'calc(100vh - 100px)', overflow: 'hidden' }}>
+    <div className="page-panel full-height-page project-management-page" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0, overflow: 'auto' }}>
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
@@ -367,10 +367,10 @@ export default function QCLogPage() {
         </div>
       </div>
 
-      {/* Summary Stats */}
+      {/* Summary Stats - responsive: fill row, wrap on narrow screens */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(8, 1fr)', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
         gap: '12px',
         flexShrink: 0
       }}>
@@ -404,9 +404,9 @@ export default function QCLogPage() {
         ))}
       </div>
 
-      {/* QC Tasks Table */}
-      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '14px 20px' }}>
+      {/* QC Tasks Table - scrollable when many rows */}
+      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 280, minWidth: 0 }}>
+        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '14px 20px', flexShrink: 0 }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
               <path d="M9 11l3 3L22 4"></path>
@@ -433,8 +433,8 @@ export default function QCLogPage() {
             Click any cell to edit
           </span>
         </div>
-        <div className="chart-card-body no-padding" style={{ flex: 1, overflow: 'auto' }}>
-          <table style={{ 
+        <div className="chart-card-body no-padding" style={{ flex: 1, minHeight: 0, overflow: 'auto', maxHeight: '65vh' }}>
+          <table className="data-table" style={{ 
             width: '100%', 
             borderCollapse: 'collapse',
             fontSize: '0.85rem'

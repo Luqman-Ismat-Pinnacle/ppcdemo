@@ -440,7 +440,7 @@ export default function BacklogPage() {
   };
 
   return (
-    <div className="page-panel full-height-page">
+    <div className="page-panel full-height-page project-management-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Backlog</h1>

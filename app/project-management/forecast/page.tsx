@@ -302,7 +302,7 @@ export default function ForecastPage() {
   const paramKeys = Object.keys(PARAM_LABELS) as (keyof Omit<EngineParams, 'iterations'>)[];
 
   return (
-    <div className="page-panel forecast-page" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 100px)', overflow: 'auto', minHeight: 0 }}>
+    <div className="page-panel forecast-page project-management-page" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'auto' }}>
       {/* Header: title only */}
       <div className="page-header" style={{ flexShrink: 0, marginBottom: '1rem' }}>
         <h1 className="page-title">Forecasting & Scenario Analysis</h1>
@@ -529,7 +529,7 @@ export default function ForecastPage() {
       {/* Main Content Grid */}
       <div className="dashboard-grid forecast-grid" style={{ flex: 1, minHeight: 0 }}>
         {/* IEAC Comparison */}
-        <div className="chart-card grid-third" style={{ display: 'flex', flexDirection: 'column', minHeight: '380px' }}>
+        <div className="chart-card grid-third" style={{ display: 'flex', flexDirection: 'column', minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
             <h3 className="chart-card-title">IEAC Methods Comparison</h3>
           </div>
@@ -590,38 +590,38 @@ export default function ForecastPage() {
         </div>
 
         {/* Forecast Charts */}
-        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: '380px' }}>
+        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}><h3 className="chart-card-title">Budget Forecast</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '280px', padding: '1.5rem' }}>
-            <ForecastChart data={data.forecast} height="260px" isBudget={true} />
+          <div className="chart-card-body" style={{ minHeight: 240, padding: '1.5rem' }}>
+            <ForecastChart data={data.forecast} height={240} isBudget={true} />
           </div>
         </div>
-        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: '380px' }}>
+        <div className="chart-card grid-third forecast-chart-card" style={{ minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}><h3 className="chart-card-title">Hours Forecast</h3></div>
-          <div className="chart-card-body" style={{ minHeight: '280px', padding: '1.5rem' }}>
-            <ForecastChart data={data.forecast} height="260px" isBudget={false} />
+          <div className="chart-card-body" style={{ minHeight: 240, padding: '1.5rem' }}>
+            <ForecastChart data={data.forecast} height={240} isBudget={false} />
           </div>
         </div>
 
         {/* Trend + Scenario: same row to fill empty space */}
-        <div className="chart-card grid-half forecast-chart-card" style={{ minHeight: '380px' }}>
+        <div className="chart-card grid-half forecast-chart-card" style={{ minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title">CPI Trend</h3>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: projectState.cpi >= 1 ? '#10B981' : '#EF4444' }}>
               Current: {projectState.cpi.toFixed(2)}
             </span>
           </div>
-          <div className="chart-card-body" style={{ minHeight: '280px', padding: '1.5rem' }}>
-            <TrendChart data={cpiTrend} dates={trendDates} title="CPI" color="var(--pinnacle-teal)" height="240px" />
+          <div className="chart-card-body" style={{ minHeight: 220, padding: '1.5rem' }}>
+            <TrendChart data={cpiTrend} dates={trendDates} title="CPI" color="var(--pinnacle-teal)" height={220} />
           </div>
         </div>
 
         {/* Scenario Comparison - next to CPI Trend to remove empty half */}
-        <div className="chart-card grid-half" style={{ minHeight: '380px' }}>
+        <div className="chart-card grid-half" style={{ minHeight: 280 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title">Scenario Comparison</h3>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '320px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '65vh', overflow: 'auto' }}>
             <table className="data-table forecast-scenario-table">
               <thead>
                 <tr>
@@ -679,7 +679,7 @@ export default function ForecastPage() {
         </div>
 
         {/* Forecast Logs (Risks, Actions, Decisions) - full width */}
-        <div className="chart-card grid-full" style={{ position: 'relative', zIndex: 1, minHeight: '400px' }}>
+        <div className="chart-card grid-full" style={{ position: 'relative', zIndex: 1, minHeight: 320 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -762,7 +762,7 @@ export default function ForecastPage() {
               </span>
             </div>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '440px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '65vh', overflow: 'auto' }}>
             <div className="forecast-log-entries" style={{ padding: '16px 20px' }}>
               {forecastLogs.length === 0 ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.95rem' }}>
@@ -809,7 +809,7 @@ export default function ForecastPage() {
         </div>
 
         {/* Engine Log - full width to use space */}
-        <div className="chart-card grid-full" style={{ minHeight: '320px' }}>
+        <div className="chart-card grid-full" style={{ minHeight: 260 }}>
           <div className="chart-card-header forecast-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
             <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
@@ -821,7 +821,7 @@ export default function ForecastPage() {
               {engineLog.length} entries
             </span>
           </div>
-          <div className="chart-card-body no-padding" style={{ maxHeight: '280px', overflow: 'auto' }}>
+          <div className="chart-card-body no-padding" style={{ maxHeight: '65vh', overflow: 'auto' }}>
             <div className="forecast-log-entries" style={{ padding: '16px 20px' }}>
               {engineLog.map((entry, i) => (
                 <div key={i} className="forecast-log-entry" style={{ 
@@ -868,9 +868,9 @@ export default function ForecastPage() {
           padding: 1.5rem;
         }
         .forecast-grid {
-          gap: 2rem;
-          row-gap: 2rem;
-          grid-auto-rows: minmax(360px, auto);
+          gap: 1.5rem;
+          row-gap: 1.5rem;
+          grid-auto-rows: minmax(260px, auto);
         }
         .forecast-grid > .chart-card {
           position: relative;

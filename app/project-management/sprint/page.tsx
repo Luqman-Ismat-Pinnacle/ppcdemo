@@ -26,7 +26,7 @@ export default function SprintPlanningPage() {
   const [mainView, setMainView] = useState<MainView>('boards');
 
   return (
-    <div className="page-panel full-height-page">
+    <div className="page-panel full-height-page project-management-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Sprint Planning</h1>
