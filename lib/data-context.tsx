@@ -481,82 +481,104 @@ export function DataProvider({ children }: DataProviderProps) {
         });
       }
 
-      // Step 2: Filter customers by valid portfolio IDs + name (path[1])
+      // Step 2: Filter customers by valid portfolio IDs + name (path[1]) — support camelCase and snake_case
       if (filtered.customers) {
         const validPortfolioIds = new Set(
           filtered.portfolios?.map((p: any) => p.id || p.portfolioId) || []
         );
         filtered.customers = filtered.customers.filter((c: any) => {
-          // If portfolio filter is active, customer must belong to valid portfolio
-          if (path[0] && validPortfolioIds.size > 0 && !validPortfolioIds.has(c.portfolioId)) {
+          const cPortfolioId = c.portfolioId ?? c.portfolio_id;
+          if (path[0] && validPortfolioIds.size > 0 && !validPortfolioIds.has(cPortfolioId)) {
             return false;
           }
-          // If customer filter is active, must match name
           if (path[1] && c.name !== path[1]) return false;
           return true;
         });
       }
 
-      // Step 3: Filter sites by valid customer IDs + name (path[2])
+      // Step 3: Filter sites by valid customer IDs + name (path[2]) — support camelCase and snake_case
       if (filtered.sites) {
         const validCustomerIds = new Set(
           filtered.customers?.map((c: any) => c.id || c.customerId) || []
         );
         filtered.sites = filtered.sites.filter((s: any) => {
-          // If portfolio or customer filter is active, site must belong to valid customer
-          if ((path[0] || path[1]) && validCustomerIds.size > 0 && !validCustomerIds.has(s.customerId)) {
+          const sCustomerId = s.customerId ?? s.customer_id;
+          if ((path[0] || path[1]) && validCustomerIds.size > 0 && !validCustomerIds.has(sCustomerId)) {
             return false;
           }
-          // If site filter is active, must match name
           if (path[2] && s.name !== path[2]) return false;
           return true;
         });
       }
 
-      // Step 4: Filter projects by valid site IDs + name (path[3])
+      // Step 4: Filter projects by valid site IDs + name (path[3]) — support camelCase and snake_case
       if (filtered.projects) {
         const validSiteIds = new Set(
           filtered.sites?.map((s: any) => s.id || s.siteId) || []
         );
         filtered.projects = filtered.projects.filter((p: any) => {
-          // If any upstream filter is active, project must belong to valid site
-          if ((path[0] || path[1] || path[2]) && validSiteIds.size > 0 && !validSiteIds.has(p.siteId)) {
+          const pSiteId = p.siteId ?? p.site_id;
+          if ((path[0] || path[1] || path[2]) && validSiteIds.size > 0 && !validSiteIds.has(pSiteId)) {
             return false;
           }
-          // If project filter is active, must match name
           if (path[3] && p.name !== path[3]) return false;
           return true;
         });
       }
 
+      // Valid project IDs for scope-based filtering (used by snapshots, change control, projectHealth, projectLog, projectDocuments, costTransactions)
+      const validProjectIds = new Set(
+        filtered.projects?.map((p: any) => p.id || p.projectId) || []
+      );
+
       // Filter snapshots and change-control rows by valid project IDs
-      if (filtered.snapshots || filtered.changeRequests || filtered.changeImpacts) {
-        const validProjectIds = new Set(
-          filtered.projects?.map((p: any) => p.id || p.projectId) || []
-        );
-        if (filtered.snapshots) {
-          filtered.snapshots = filtered.snapshots.filter((snap: any) => {
-            if (snap.scope === 'all') return true;
-            if (snap.scope === 'project' && snap.scopeId && validProjectIds.has(snap.scopeId)) return true;
-            // For other scopes, check if scopeId matches filtered hierarchy
-            if (hierarchyFilter) {
-              if (snap.scope === 'site' && snap.scopeId === hierarchyFilter.path?.[2]) return true;
-              if (snap.scope === 'customer' && snap.scopeId === hierarchyFilter.path?.[1]) return true;
-              if (snap.scope === 'portfolio' && snap.scopeId === hierarchyFilter.path?.[0]) return true;
-            }
-            return false;
-          });
-        }
-        if (filtered.changeRequests) {
-          filtered.changeRequests = filtered.changeRequests.filter((cr: any) => {
-            return validProjectIds.has(cr.projectId);
-          });
-        }
-        if (filtered.changeImpacts) {
-          filtered.changeImpacts = filtered.changeImpacts.filter((impact: any) => {
-            return validProjectIds.has(impact.projectId);
-          });
-        }
+      if (filtered.snapshots) {
+        filtered.snapshots = filtered.snapshots.filter((snap: any) => {
+          if (snap.scope === 'all') return true;
+          if (snap.scope === 'project' && snap.scopeId && validProjectIds.has(snap.scopeId)) return true;
+          if (hierarchyFilter) {
+            if (snap.scope === 'site' && snap.scopeId === hierarchyFilter.path?.[2]) return true;
+            if (snap.scope === 'customer' && snap.scopeId === hierarchyFilter.path?.[1]) return true;
+            if (snap.scope === 'portfolio' && snap.scopeId === hierarchyFilter.path?.[0]) return true;
+          }
+          return false;
+        });
+      }
+      if (filtered.changeRequests) {
+        filtered.changeRequests = filtered.changeRequests.filter((cr: any) => {
+          return validProjectIds.has(cr.projectId);
+        });
+      }
+      if (filtered.changeImpacts) {
+        filtered.changeImpacts = filtered.changeImpacts.filter((impact: any) => {
+          return validProjectIds.has(impact.projectId);
+        });
+      }
+
+      // Filter projectHealth, projectLog, projectDocuments, costTransactions by valid project IDs so all pages respect hierarchy
+      if (filtered.projectHealth && validProjectIds.size > 0) {
+        filtered.projectHealth = filtered.projectHealth.filter((h: any) => {
+          const pid = h.projectId ?? h.project_id;
+          return pid && validProjectIds.has(pid);
+        });
+      }
+      if (filtered.projectLog && validProjectIds.size > 0) {
+        filtered.projectLog = filtered.projectLog.filter((l: any) => {
+          const pid = l.projectId ?? l.project_id;
+          return pid && validProjectIds.has(pid);
+        });
+      }
+      if (filtered.projectDocuments && validProjectIds.size > 0) {
+        filtered.projectDocuments = filtered.projectDocuments.filter((d: any) => {
+          const pid = d.projectId ?? d.project_id;
+          return pid && validProjectIds.has(pid);
+        });
+      }
+      if (filtered.costTransactions && validProjectIds.size > 0) {
+        filtered.costTransactions = filtered.costTransactions.filter((t: any) => {
+          const pid = t.projectId ?? t.project_id;
+          return !pid || validProjectIds.has(pid);
+        });
       }
 
       // Step 5: Filter units by valid project IDs + name (path[4] = unit)

@@ -186,9 +186,9 @@ export default function HierarchyFilter() {
     if (!data.customers) return [];
     let list = data.customers as any[];
 
-    // Filter by portfolio if selected
+    // Filter by portfolio if selected (support both camelCase and snake_case)
     if (selectedPortfolioId) {
-      list = list.filter(c => c.portfolioId === selectedPortfolioId);
+      list = list.filter(c => (c.portfolioId ?? c.portfolio_id) === selectedPortfolioId);
     }
 
     return list.map(c => ({ id: c.id || c.customerId, name: c.name }));
@@ -198,14 +198,16 @@ export default function HierarchyFilter() {
     if (!data.sites) return [];
     let list = data.sites as any[];
 
-    // Filter by customer if selected
+    // Filter by customer if selected (support both camelCase and snake_case)
     if (selectedCustomerId) {
-      list = list.filter(s => s.customerId === selectedCustomerId);
+      list = list.filter(s => (s.customerId ?? s.customer_id) === selectedCustomerId);
     }
     // Else if portfolio selected, filter by customers in that portfolio
     else if (selectedPortfolioId) {
-      const validCustIds = new Set((data.customers as any[]).filter(c => c.portfolioId === selectedPortfolioId).map(c => c.id || c.customerId));
-      list = list.filter(s => validCustIds.has(s.customerId));
+      const validCustIds = new Set(
+        (data.customers as any[]).filter(c => (c.portfolioId ?? c.portfolio_id) === selectedPortfolioId).map(c => c.id || c.customerId)
+      );
+      list = list.filter(s => validCustIds.has(s.customerId ?? s.customer_id));
     }
 
     return list.map(s => ({ id: s.id || s.siteId, name: s.name }));
@@ -215,16 +217,24 @@ export default function HierarchyFilter() {
     if (!data.projects) return [];
     let list = data.projects as any[];
 
+    const siteIdKey = (p: any) => p.siteId ?? p.site_id;
+    const customerIdKey = (s: any) => s.customerId ?? s.customer_id;
+
     if (selectedSiteId) {
-      list = list.filter(p => p.siteId === selectedSiteId);
+      list = list.filter(p => siteIdKey(p) === selectedSiteId);
     } else if (selectedCustomerId) {
-      const validSiteIds = new Set((data.sites as any[]).filter(s => s.customerId === selectedCustomerId).map(s => s.id || s.siteId));
-      list = list.filter(p => validSiteIds.has(p.siteId));
+      const validSiteIds = new Set(
+        (data.sites as any[]).filter(s => customerIdKey(s) === selectedCustomerId).map(s => s.id || s.siteId)
+      );
+      list = list.filter(p => validSiteIds.has(siteIdKey(p)));
     } else if (selectedPortfolioId) {
-      // Cascade: Portfolio -> Customer -> Site -> Project
-      const validCustIds = new Set((data.customers as any[]).filter(c => c.portfolioId === selectedPortfolioId).map(c => c.id || c.customerId));
-      const validSiteIds = new Set((data.sites as any[]).filter(s => validCustIds.has(s.customerId)).map(s => s.id || s.siteId));
-      list = list.filter(p => validSiteIds.has(p.siteId));
+      const validCustIds = new Set(
+        (data.customers as any[]).filter(c => (c.portfolioId ?? c.portfolio_id) === selectedPortfolioId).map(c => c.id || c.customerId)
+      );
+      const validSiteIds = new Set(
+        (data.sites as any[]).filter(s => validCustIds.has(customerIdKey(s))).map(s => s.id || s.siteId)
+      );
+      list = list.filter(p => validSiteIds.has(siteIdKey(p)));
     }
 
     return list.map(p => ({ id: p.id || p.projectId, name: p.name }));
@@ -282,15 +292,15 @@ export default function HierarchyFilter() {
     }
     if (newPr && !newS) {
       const pr = (data.projects as any[]).find(x => (x.id || x.projectId) === newPr);
-      if (pr) newS = pr.siteId;
+      if (pr) newS = pr.siteId ?? pr.site_id ?? '';
     }
     if (newS && !newC) {
       const s = (data.sites as any[]).find(x => (x.id || x.siteId) === newS);
-      if (s) newC = s.customerId;
+      if (s) newC = s.customerId ?? s.customer_id ?? '';
     }
     if (newC && !newP) {
       const c = (data.customers as any[]).find(x => (x.id || x.customerId) === newC);
-      if (c) newP = c.portfolioId;
+      if (c) newP = c.portfolioId ?? c.portfolio_id ?? '';
     }
     return { p: newP, c: newC, s: newS, pr: newPr, u: newU, ph: newPh };
   };
