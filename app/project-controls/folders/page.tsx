@@ -411,7 +411,7 @@ export default function DocumentsPage() {
       formData.append('file', fileData, file.fileName);
 
       // Call the Python MPP parser service
-      let MPP_PARSER_URL = process.env.NEXT_PUBLIC_MPP_PARSER_URL || 'http://localhost:5001';
+      let MPP_PARSER_URL = process.env.NEXT_PUBLIC_MPP_PARSER_URL || 'https://ppcdemo-production.up.railway.app';
 
       // Ensure protocol is present
       if (MPP_PARSER_URL !== 'http://localhost:5001' && !MPP_PARSER_URL.startsWith('http')) {

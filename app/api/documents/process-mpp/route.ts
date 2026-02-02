@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { convertProjectPlanJSON } from '@/lib/data-converter';
 import { toSupabaseFormat } from '@/lib/supabase';
 
-const PYTHON_SERVICE_URL = process.env.MPP_PARSER_URL || 'https://ppc-demo-production.up.railway.app';
+const PYTHON_SERVICE_URL = process.env.MPP_PARSER_URL || 'https://ppcdemo-production.up.railway.app';
 
 export async function POST(req: NextRequest) {
   try {
