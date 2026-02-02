@@ -1,371 +1,319 @@
 'use client';
 
 /**
- * @fileoverview Enhanced Resource Heatmap Chart Component.
+ * @fileoverview Resource Heatmap Chart - Clean Rewrite
  * 
- * Displays resource utilization as a large, interactive heatmap grid with:
- * - View toggle: Assigned vs Unassigned resources
- * - Display mode: By Employee or By Role
- * - Y-axis: Resource names
- * - X-axis: Time periods (days, weeks, months, etc.)
- * - Cell color: Utilization level with consistent Pinnacle branding
- * 
- * Color Coding (consistent across all pages):
- * - Low (< 50%): Dark/muted tones
- * - Optimal (50-80%): Teal shades (#40E0D0 / #1A9B8F)
- * - High (80-100%): Lime (#CDDC39)
- * - Overloaded (> 100%): Orange to Pink (#FF9800 / #E91E63)
- * 
- * Helps identify over/under-allocated resources at a glance with robust metrics.
+ * Displays resource utilization as an interactive heatmap with:
+ * - View: Assigned (utilization) vs Unassigned (available capacity)
+ * - Display: By Employee or By Role
+ * - Time Aggregation: Day, Week, Month, Quarter, Year
+ * - Color scale: Low → Optimal → High → Overloaded
  * 
  * @module components/charts/ResourceHeatmapChart
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import ChartWrapper from './ChartWrapper';
 import type { EChartsOption } from 'echarts';
 import type { ResourceHeatmap, Employee } from '@/types/data';
 
-/** View type: Assigned resources or Unassigned capacity */
+// ============================================================================
+// TYPES
+// ============================================================================
+
 type ViewType = 'assigned' | 'unassigned';
-
-/** Display mode: By individual Employee or by Role grouping */
 type DisplayMode = 'employee' | 'role';
+type TimeAggregation = 'day' | 'week' | 'month' | 'quarter' | 'year';
 
-/** Time range: Day, Week, Month, Quarter, Year */
-type TimeRange = 'day' | 'week' | 'month' | 'quarter' | 'year';
-
-// ============================================================================
-// PINNACLE COLOR CONSTANTS - Consistent across all charts
-// ============================================================================
-
-const ASSIGNED_COLORS = {
-  LOW: 'rgba(26,26,26,0.8)',      // Very low utilization - dark
-  MEDIUM_LOW: '#1A9B8F',           // Building up - darker teal
-  OPTIMAL: '#40E0D0',              // Pinnacle Teal - optimal range
-  HIGH: '#CDDC39',                 // Lime - high utilization
-  OVERLOAD_MILD: '#FF9800',        // Orange - mild overload
-  OVERLOAD_HIGH: '#E91E63',        // Pink - severe overload
-};
-
-const UNASSIGNED_COLORS = {
-  LOW_CAPACITY: 'rgba(26,26,26,0.8)',    // Fully allocated (dark)
-  SOME_CAPACITY: '#1A9B8F',               // Some availability (darker teal)
-  GOOD_CAPACITY: '#40E0D0',               // Good availability (Pinnacle teal)
-  HIGH_CAPACITY: '#CDDC39',               // High availability (lime)
-  VERY_HIGH: '#FF9800',                   // Very high availability (orange)
-  MAX_CAPACITY: '#E91E63',                // Maximum availability (pink)
-};
-
-interface ResourceHeatmapChartProps {
-  /** Heatmap data with resources, weeks, and utilization values */
+interface HeatmapChartProps {
   data?: ResourceHeatmap | null;
-  /** Optional employee data for role grouping */
   employees?: Employee[];
-  /** Chart height - defaults to 100% for full container */
   height?: string | number;
-  /** Show view controls - defaults to true */
   showControls?: boolean;
 }
 
-export default function ResourceHeatmapChart({
-  data,
-  employees = [],
-  height = '100%',
-  showControls = true,
-}: ResourceHeatmapChartProps) {
-  const [viewType, setViewType] = useState<ViewType>('assigned');
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('employee');
-  const [timeRange, setTimeRange] = useState<TimeRange>('week');
-  const [zoomWindow, setZoomWindow] = useState<{ start: number; end: number } | null>(null);
+interface ProcessedData {
+  resources: string[];
+  periods: string[];
+  values: number[][];
+}
 
-  /**
-   * Aggregate or Expand weeks into time periods based on timeRange
-   */
-  const aggregateByTimeRange = (weeks: string[], dataRows: number[][]): { periods: string[]; aggregatedData: number[][] } => {
-    if (weeks.length === 0 || dataRows.length === 0) {
-      return { periods: weeks, aggregatedData: dataRows };
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const COLORS = {
+  LOW: 'rgba(26,26,26,0.8)',       // < 50% - underutilized
+  BUILDING: '#1A9B8F',              // 50-70% - building up  
+  OPTIMAL: '#40E0D0',               // 70-90% - Pinnacle Teal
+  HIGH: '#CDDC39',                  // 90-100% - Lime
+  OVERLOAD: '#FF9800',              // 100-110% - Orange
+  CRITICAL: '#E91E63',              // > 110% - Pink
+} as const;
+
+const COLOR_STOPS = [
+  COLORS.LOW,
+  COLORS.BUILDING,
+  COLORS.OPTIMAL,
+  COLORS.HIGH,
+  COLORS.OVERLOAD,
+  COLORS.CRITICAL,
+];
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/** Parse date string to Date object */
+function parseDate(dateStr: string): Date | null {
+  // Try ISO format first
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d;
+  }
+  // Try "Jan 6" format
+  const currentYear = new Date().getFullYear();
+  const d = new Date(`${dateStr}, ${currentYear}`);
+  if (!isNaN(d.getTime())) return d;
+  return null;
+}
+
+/** Get period key for aggregation */
+function getPeriodKey(date: Date, aggregation: TimeAggregation): string {
+  switch (aggregation) {
+    case 'day':
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    case 'week':
+      // Get Monday of the week
+      const monday = new Date(date);
+      const day = date.getDay();
+      monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
+      return monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    case 'month':
+      return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    case 'quarter':
+      const q = Math.ceil((date.getMonth() + 1) / 3);
+      return `Q${q} '${date.getFullYear().toString().slice(-2)}`;
+    case 'year':
+      return date.getFullYear().toString();
+  }
+}
+
+/** Aggregate values by averaging */
+function aggregateValues(values: number[]): number {
+  const nonZero = values.filter(v => v > 0);
+  if (nonZero.length === 0) return 0;
+  return Math.round(nonZero.reduce((a, b) => a + b, 0) / nonZero.length);
+}
+
+// ============================================================================
+// DATA PROCESSING HOOKS
+// ============================================================================
+
+function useProcessedData(
+  data: ResourceHeatmap | null | undefined,
+  employees: Employee[],
+  displayMode: DisplayMode,
+  aggregation: TimeAggregation,
+  viewType: ViewType
+): ProcessedData {
+  return useMemo(() => {
+    // Default empty state
+    const empty: ProcessedData = { resources: [], periods: [], values: [] };
+    
+    if (!data?.resources?.length || !data?.weeks?.length || !data?.data?.length) {
+      return empty;
     }
 
-    // Handle 'day' view - expand weekly data to daily
-    if (timeRange === 'day') {
-      const dailyPeriods: string[] = [];
-
-      weeks.forEach((week) => {
-        let date = new Date(week);
-        if (isNaN(date.getTime()) && week.includes(',')) date = new Date(week);
-
-        if (!isNaN(date.getTime())) {
-          for (let i = 0; i < 7; i++) {
-            const dayDate = new Date(date);
-            dayDate.setDate(date.getDate() + i);
-            dailyPeriods.push(dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-          }
-        } else {
-          for (let i = 0; i < 7; i++) dailyPeriods.push(`${week}-D${i + 1}`);
-        }
-      });
-
-      const expandedData = dataRows.map(row => {
-        const newRow: number[] = [];
-        row.forEach(val => {
-          for (let i = 0; i < 7; i++) newRow.push(val);
-        });
-        return newRow;
-      });
-
-      return { periods: dailyPeriods, aggregatedData: expandedData };
-    }
-
-    if (timeRange === 'week') {
-      return { periods: weeks, aggregatedData: dataRows };
-    }
-
-    // Group weeks into larger periods
-    const periodMap = new Map<string, number[]>();
+    // Step 1: Parse weeks into period groups based on aggregation
+    const weekDates = data.weeks.map(parseDate);
+    const periodGroups = new Map<string, number[]>(); // periodKey -> weekIndices
     const periodOrder: string[] = [];
 
-    weeks.forEach((week, weekIdx) => {
-      let d: Date;
-      if (week.match(/^\d{4}-\d{2}-\d{2}/)) { d = new Date(week); }
-      else if (week.includes(',')) { d = new Date(week); }
-      else { const currentYear = new Date().getFullYear(); d = new Date(`${week}, ${currentYear}`); }
-
-      if (isNaN(d.getTime())) return;
-
-      let periodKey: string;
-      if (timeRange === 'month') {
-        periodKey = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-      } else if (timeRange === 'quarter') {
-        const quarter = Math.ceil((d.getMonth() + 1) / 3);
-        periodKey = `Q${quarter} '${d.getFullYear().toString().slice(-2)}`;
-      } else {
-        periodKey = d.getFullYear().toString();
-      }
-
-      if (!periodMap.has(periodKey)) {
-        periodMap.set(periodKey, []);
-        periodOrder.push(periodKey);
-      }
-      periodMap.get(periodKey)!.push(weekIdx);
-    });
-
-    if (periodOrder.length === 0) return { periods: weeks, aggregatedData: dataRows };
-
-    const aggregatedData = dataRows.map(row => {
-      return periodOrder.map(period => {
-        const weekIndices = periodMap.get(period)!;
-        const values = weekIndices.map(idx => row[idx] || 0).filter(v => v > 0);
-        return values.length > 0 ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
+    if (aggregation === 'day') {
+      // Expand each week to 7 days
+      data.weeks.forEach((_, weekIdx) => {
+        const date = weekDates[weekIdx];
+        if (!date) return;
+        for (let i = 0; i < 7; i++) {
+          const dayDate = new Date(date);
+          dayDate.setDate(date.getDate() + i);
+          const key = getPeriodKey(dayDate, 'day');
+          if (!periodGroups.has(key)) {
+            periodGroups.set(key, []);
+            periodOrder.push(key);
+          }
+          periodGroups.get(key)!.push(weekIdx);
+        }
       });
-    });
-
-    return { periods: periodOrder, aggregatedData };
-  };
-
-  /**
-   * Process heatmap data based on view type and display mode
-   */
-  const processedData = useMemo(() => {
-    const safe = data && Array.isArray(data.resources) && Array.isArray(data.weeks) && Array.isArray(data.data)
-      ? data
-      : { resources: [] as string[], weeks: [] as string[], data: [] as number[][] };
-    if (safe.resources.length === 0) {
-      return { resources: [], weeks: [], data: [] };
+    } else if (aggregation === 'week') {
+      // Keep weekly data as-is
+      data.weeks.forEach((week, idx) => {
+        const date = weekDates[idx];
+        const key = date ? getPeriodKey(date, 'week') : week;
+        if (!periodGroups.has(key)) {
+          periodGroups.set(key, []);
+          periodOrder.push(key);
+        }
+        periodGroups.get(key)!.push(idx);
+      });
+    } else {
+      // Aggregate to month/quarter/year
+      data.weeks.forEach((_, idx) => {
+        const date = weekDates[idx];
+        if (!date) return;
+        const key = getPeriodKey(date, aggregation);
+        if (!periodGroups.has(key)) {
+          periodGroups.set(key, []);
+          periodOrder.push(key);
+        }
+        periodGroups.get(key)!.push(idx);
+      });
     }
 
-    const { periods, aggregatedData } = aggregateByTimeRange(safe.weeks, safe.data);
-    const aggregatedBaseData = {
-      resources: safe.resources,
-      weeks: periods,
-      data: aggregatedData
-    };
+    if (periodOrder.length === 0) return empty;
+
+    // Step 2: Build resource data based on display mode
+    let resourceNames: string[];
+    let resourceData: number[][];
 
     if (displayMode === 'role' && employees.length > 0) {
-      const roleMap = new Map<string, number[][]>();
-
-      aggregatedBaseData.resources.forEach((resource, resourceIdx) => {
-        const employee = employees.find(e =>
-          e.name === resource ||
-          e.name.toLowerCase() === resource.toLowerCase()
+      // Group by role
+      const roleGroups = new Map<string, number[]>(); // role -> resourceIndices
+      
+      data.resources.forEach((name, idx) => {
+        const emp = employees.find(e => 
+          e.name === name || e.name?.toLowerCase() === name?.toLowerCase()
         );
-        const role = employee?.jobTitle || 'Unassigned';
-
-        if (!roleMap.has(role)) {
-          roleMap.set(role, []);
+        const role = emp?.jobTitle || emp?.role || 'Unassigned';
+        if (!roleGroups.has(role)) {
+          roleGroups.set(role, []);
         }
-        if (aggregatedBaseData.data[resourceIdx]) {
-          roleMap.get(role)!.push(aggregatedBaseData.data[resourceIdx]);
-        }
+        roleGroups.get(role)!.push(idx);
       });
 
-      const roleResources: string[] = [];
-      const roleData: number[][] = [];
-
-      roleMap.forEach((rows, role) => {
-        roleResources.push(role);
-        const avgRow = aggregatedBaseData.weeks.map((_, weekIdx) => {
-          const values = rows.map(r => r[weekIdx] || 0).filter(v => v > 0);
-          return values.length > 0
-            ? Math.round(values.reduce((a, b) => a + b, 0) / values.length)
-            : 0;
+      resourceNames = Array.from(roleGroups.keys()).sort();
+      resourceData = resourceNames.map(role => {
+        const indices = roleGroups.get(role)!;
+        return periodOrder.map(period => {
+          const weekIndices = periodGroups.get(period)!;
+          const values: number[] = [];
+          indices.forEach(resIdx => {
+            weekIndices.forEach(weekIdx => {
+              const val = data.data[resIdx]?.[weekIdx];
+              if (typeof val === 'number' && val > 0) values.push(val);
+            });
+          });
+          return aggregateValues(values);
         });
-        roleData.push(avgRow);
       });
-
-      return {
-        resources: roleResources,
-        weeks: aggregatedBaseData.weeks,
-        data: roleData
-      };
+    } else {
+      // By employee - direct mapping
+      resourceNames = [...data.resources];
+      resourceData = data.data.map(row => {
+        return periodOrder.map(period => {
+          const weekIndices = periodGroups.get(period)!;
+          const values = weekIndices.map(idx => row[idx] || 0);
+          return aggregation === 'day' ? values[0] || 0 : aggregateValues(values);
+        });
+      });
     }
 
-    return aggregatedBaseData;
-  }, [data, displayMode, employees, timeRange]);
-
-  /**
-   * Filter data based on view type (assigned vs unassigned)
-   */
-  const filteredData = useMemo(() => {
+    // Step 3: Apply view type transformation
     if (viewType === 'unassigned') {
-      const filteredResources: string[] = [];
-      const filteredRows: number[][] = [];
-
-      processedData.resources.forEach((resource, idx) => {
-        const row = processedData.data[idx] || [];
-        const avgUtil = row.length > 0 ? row.reduce((a, b) => a + b, 0) / row.length : 0;
-
-        if (avgUtil < 80) {
-          filteredResources.push(resource);
-          filteredRows.push(row.map(v => Math.max(0, 100 - v)));
+      // Filter to resources with < 80% avg utilization, show available capacity
+      const filtered: { name: string; row: number[] }[] = [];
+      
+      resourceNames.forEach((name, idx) => {
+        const row = resourceData[idx];
+        const avg = aggregateValues(row);
+        if (avg < 80) {
+          filtered.push({
+            name,
+            row: row.map(v => Math.max(0, 100 - v))
+          });
         }
       });
 
+      if (filtered.length === 0) {
+        return {
+          resources: ['All resources fully allocated'],
+          periods: periodOrder,
+          values: [periodOrder.map(() => 0)]
+        };
+      }
+
       return {
-        resources: filteredResources.length > 0 ? filteredResources : ['All resources fully allocated'],
-        weeks: processedData.weeks,
-        data: filteredRows.length > 0 ? filteredRows : [processedData.weeks.map(() => 0)]
+        resources: filtered.map(f => f.name),
+        periods: periodOrder,
+        values: filtered.map(f => f.row)
       };
     }
-
-    return processedData;
-  }, [processedData, viewType]);
-
-  const heatmapData = useMemo(() => {
-    const items: number[][] = [];
-    filteredData.data.forEach((row, i) => {
-      row.forEach((val, j) => {
-        items.push([j, i, val]);
-      });
-    });
-    return items;
-  }, [filteredData]);
-
-  const stats = useMemo(() => {
-    const allValues = filteredData.data.flat().filter(v => v > 0);
-    if (allValues.length === 0) return { avg: 0, min: 0, max: 0, overloaded: 0, underutilized: 0, total: 0 };
-
-    const avg = Math.round(allValues.reduce((a, b) => a + b, 0) / allValues.length);
-    const overloaded = allValues.filter(v => v > 100).length;
-    const underutilized = allValues.filter(v => v < 80).length;
 
     return {
-      avg,
-      min: Math.min(...allValues),
-      max: Math.max(...allValues),
-      overloaded,
-      underutilized,
-      total: allValues.length
+      resources: resourceNames,
+      periods: periodOrder,
+      values: resourceData
     };
-  }, [filteredData]);
+  }, [data, employees, displayMode, aggregation, viewType]);
+}
 
-  const handleTodayClick = () => {
-    const today = new Date();
-    let targetIndex = -1;
+// ============================================================================
+// CHART OPTIONS
+// ============================================================================
 
-    if (timeRange === 'day') {
-      const todayStr = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      targetIndex = filteredData.weeks.findIndex(p => p === todayStr);
-    } else if (timeRange === 'week' || timeRange === 'month' || timeRange === 'quarter' || timeRange === 'year') {
-      // Find the period that contains today
-      targetIndex = filteredData.weeks.findIndex((w, idx) => {
-        // This is a naive heuristic for non-day views
-        // In a real app, we'd have exact start/end dates for each period
-        return false; // For now returning false for simple implementation
-      });
+function buildChartOption(
+  processed: ProcessedData,
+  viewType: ViewType,
+  zoomStart: number,
+  zoomEnd: number
+): EChartsOption {
+  // Convert to ECharts heatmap format: [xIdx, yIdx, value]
+  const heatmapData: number[][] = [];
+  processed.values.forEach((row, yIdx) => {
+    row.forEach((val, xIdx) => {
+      heatmapData.push([xIdx, yIdx, val]);
+    });
+  });
 
-      // Special case for week parsing since we know it's likely "Jan 6" format
-      if (timeRange === 'week') {
-        const currentYear = new Date().getFullYear();
-        targetIndex = filteredData.weeks.findIndex(w => {
-          const d = new Date(`${w}, ${currentYear}`);
-          if (isNaN(d.getTime())) return false;
-          const nextWeek = new Date(d);
-          nextWeek.setDate(d.getDate() + 7);
-          return today >= d && today < nextWeek;
-        });
-      }
-    }
-
-    if (targetIndex !== -1) {
-      const total = filteredData.weeks.length;
-      const windowSize = Math.min(20, total);
-      const startPercent = Math.max(0, ((targetIndex - (windowSize / 2)) / total) * 100);
-      const endPercent = Math.min(100, ((targetIndex + (windowSize / 2)) / total) * 100);
-      setZoomWindow({ start: startPercent, end: endPercent });
-
-      // Reset after a bit to allow manual zooming again? 
-      // Or just leave it as is. ECharts will update.
-    }
-  };
-
-  const option: EChartsOption = useMemo(() => ({
+  return {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
       confine: true,
-      formatter: (p: any) => {
-        if (!p || !p.data) return '';
-        const resource = filteredData.resources[p.data[1]] || '';
-        const week = filteredData.weeks[p.data[0]] || '';
-        const value = p.data[2] ?? 0;
+      formatter: (params: any) => {
+        if (!params?.data) return '';
+        const [xIdx, yIdx, value] = params.data;
+        const resource = processed.resources[yIdx] || '';
+        const period = processed.periods[xIdx] || '';
+        
+        const { status, color } = getStatus(value, viewType);
+        const label = viewType === 'unassigned' ? 'Available' : 'Utilization';
 
-        let status = 'Optimal';
-        let statusColor = '#40E0D0';
-        let statusIcon = '●';
-
-        if (viewType === 'unassigned') {
-          if (value > 50) { status = 'High Availability'; statusColor = '#CDDC39'; statusIcon = '◆'; }
-          else if (value > 20) { status = 'Some Availability'; statusColor = '#40E0D0'; statusIcon = '▲'; }
-          else { status = 'Fully Allocated'; statusColor = '#6B7280'; statusIcon = '■'; }
-        } else {
-          if (value > 110) { status = 'Overloaded'; statusColor = '#E91E63'; statusIcon = '▲'; }
-          else if (value > 100) { status = 'At Capacity'; statusColor = '#FF9800'; statusIcon = '●'; }
-          else if (value >= 80) { status = 'Optimal'; statusColor = '#CDDC39'; statusIcon = '●'; }
-          else if (value >= 50) { status = 'Below Target'; statusColor = '#40E0D0'; statusIcon = '○'; }
-          else { status = 'Underutilized'; statusColor = '#1A9B8F'; statusIcon = '▼'; }
-        }
-
-        const label = viewType === 'unassigned' ? 'Available Capacity' : 'Utilization';
-
-        return `<div style="padding:6px 10px;min-width:200px;">
-                  <div style="font-weight:bold;margin-bottom:8px;font-size:13px;border-bottom:1px solid rgba(64,224,208,0.3);padding-bottom:6px;color:#40E0D0">${resource}</div>
-                  <div style="margin-bottom:6px;color:rgba(255,255,255,0.6);font-size:11px">Period: ${week}</div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:8px">
-                    <span style="color:rgba(255,255,255,0.7)">${label}:</span>
-                    <span style="font-weight:bold;font-size:16px;color:#fff">${value}%</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:6px">
-                    <span style="color:rgba(255,255,255,0.7)">Status:</span>
-                    <span style="font-weight:600;color:${statusColor}">${statusIcon} ${status}</span>
-                  </div>
-                </div>`;
+        return `
+          <div style="padding:8px 12px;min-width:180px;">
+            <div style="font-weight:600;color:#40E0D0;border-bottom:1px solid rgba(64,224,208,0.3);padding-bottom:6px;margin-bottom:8px;">
+              ${resource}
+            </div>
+            <div style="color:rgba(255,255,255,0.6);font-size:11px;margin-bottom:8px;">
+              ${period}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="color:rgba(255,255,255,0.7)">${label}:</span>
+              <span style="font-weight:700;font-size:16px;color:#fff">${value}%</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+              <span style="color:rgba(255,255,255,0.7)">Status:</span>
+              <span style="font-weight:600;color:${color}">${status}</span>
+            </div>
+          </div>
+        `;
       },
-      backgroundColor: 'rgba(20, 20, 20, 0.96)',
-      borderColor: 'rgba(64, 224, 208, 0.3)',
+      backgroundColor: 'rgba(20,20,20,0.96)',
+      borderColor: 'rgba(64,224,208,0.3)',
       borderWidth: 1,
       textStyle: { color: '#fff' },
-      extraCssText: 'box-shadow: 0 6px 24px rgba(0,0,0,0.5); border-radius: 10px;'
+      extraCssText: 'box-shadow:0 6px 24px rgba(0,0,0,0.5);border-radius:10px;'
     },
     grid: {
       left: 180,
@@ -376,32 +324,14 @@ export default function ResourceHeatmapChart({
     },
     dataZoom: [
       {
-        type: 'inside',
-        xAxisIndex: 0,
-        start: zoomWindow ? zoomWindow.start : 0,
-        end: zoomWindow ? zoomWindow.end : (filteredData.weeks.length > 20 ? Math.round((20 / filteredData.weeks.length) * 100) : 100),
-        zoomOnMouseWheel: false,
-        moveOnMouseWheel: false,
-        moveOnMouseMove: false
-      },
-      {
-        type: 'inside',
-        yAxisIndex: 0,
-        start: 0,
-        end: filteredData.resources.length > 15 ? Math.round((15 / filteredData.resources.length) * 100) : 100,
-        zoomOnMouseWheel: false,
-        moveOnMouseWheel: true,
-        moveOnMouseMove: false
-      },
-      {
         type: 'slider',
         xAxisIndex: 0,
         bottom: 10,
-        start: zoomWindow ? zoomWindow.start : 0,
-        end: zoomWindow ? zoomWindow.end : (filteredData.weeks.length > 20 ? Math.round((20 / filteredData.weeks.length) * 100) : 100),
+        start: zoomStart,
+        end: zoomEnd,
         height: 20,
-        fillerColor: 'rgba(64, 224, 208, 0.2)',
-        borderColor: 'rgba(64, 224, 208, 0.3)',
+        fillerColor: 'rgba(64,224,208,0.2)',
+        borderColor: 'rgba(64,224,208,0.3)',
         handleStyle: { color: '#40E0D0' }
       },
       {
@@ -410,21 +340,18 @@ export default function ResourceHeatmapChart({
         left: 5,
         width: 16,
         start: 0,
-        end: filteredData.resources.length > 15 ? Math.round((15 / filteredData.resources.length) * 100) : 100,
-        handleSize: '100%',
+        end: processed.resources.length > 15 ? Math.round((15 / processed.resources.length) * 100) : 100,
         showDetail: false,
-        brushSelect: false,
-        fillerColor: 'rgba(64, 224, 208, 0.2)',
-        borderColor: 'rgba(64, 224, 208, 0.3)',
-        handleStyle: {
-          color: '#40E0D0',
-          borderColor: '#40E0D0'
-        }
-      }
+        fillerColor: 'rgba(64,224,208,0.2)',
+        borderColor: 'rgba(64,224,208,0.3)',
+        handleStyle: { color: '#40E0D0' }
+      },
+      { type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: false },
+      { type: 'inside', yAxisIndex: 0, zoomOnMouseWheel: false, moveOnMouseWheel: true }
     ],
     xAxis: {
       type: 'category',
-      data: filteredData.weeks,
+      data: processed.periods,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
       axisLabel: {
         color: 'rgba(255,255,255,0.75)',
@@ -439,7 +366,7 @@ export default function ResourceHeatmapChart({
     },
     yAxis: {
       type: 'category',
-      data: filteredData.resources,
+      data: processed.resources,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
       axisLabel: {
         color: 'rgba(255,255,255,0.85)',
@@ -456,54 +383,110 @@ export default function ResourceHeatmapChart({
       show: false,
       min: 0,
       max: viewType === 'unassigned' ? 100 : 120,
-      calculable: false,
-      inRange: {
-        color: [
-          ASSIGNED_COLORS.LOW,
-          ASSIGNED_COLORS.MEDIUM_LOW,
-          ASSIGNED_COLORS.OPTIMAL,
-          ASSIGNED_COLORS.HIGH,
-          ASSIGNED_COLORS.OVERLOAD_MILD,
-          ASSIGNED_COLORS.OVERLOAD_HIGH
-        ]
-      }
+      inRange: { color: COLOR_STOPS }
     },
-    series: [
-      {
-        type: 'heatmap',
-        data: heatmapData,
-        label: {
-          show: true,
-          formatter: (p: any) => {
-            const val = p.data[2];
-            if (val === 0) return '';
-            return val + '%';
-          },
-          fontSize: 10,
-          fontWeight: 600,
-          color: '#fff',
-          textShadowColor: 'rgba(0,0,0,0.7)',
-          textShadowBlur: 4
-        },
-        itemStyle: {
-          borderColor: 'rgba(10, 10, 10, 0.95)',
-          borderWidth: 3,
-          borderRadius: 4
-        },
-        emphasis: {
-          itemStyle: {
-            borderWidth: 2,
-            borderColor: '#40E0D0',
-            shadowBlur: 16,
-            shadowColor: 'rgba(64, 224, 208, 0.4)'
-          }
-        }
+    series: [{
+      type: 'heatmap',
+      data: heatmapData,
+      label: {
+        show: true,
+        formatter: (p: any) => p.data[2] === 0 ? '' : `${p.data[2]}%`,
+        fontSize: 10,
+        fontWeight: 600,
+        color: '#fff',
+        textShadowColor: 'rgba(0,0,0,0.7)',
+        textShadowBlur: 4
       },
-    ],
-  }), [filteredData, heatmapData, viewType, zoomWindow]);
+      itemStyle: {
+        borderColor: 'rgba(10,10,10,0.95)',
+        borderWidth: 3,
+        borderRadius: 4
+      },
+      emphasis: {
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: '#40E0D0',
+          shadowBlur: 16,
+          shadowColor: 'rgba(64,224,208,0.4)'
+        }
+      }
+    }]
+  };
+}
+
+function getStatus(value: number, viewType: ViewType): { status: string; color: string } {
+  if (viewType === 'unassigned') {
+    if (value > 50) return { status: 'High Availability', color: COLORS.HIGH };
+    if (value > 20) return { status: 'Some Availability', color: COLORS.OPTIMAL };
+    return { status: 'Fully Allocated', color: '#6B7280' };
+  }
+  
+  if (value > 110) return { status: 'Overloaded', color: COLORS.CRITICAL };
+  if (value > 100) return { status: 'At Capacity', color: COLORS.OVERLOAD };
+  if (value >= 80) return { status: 'Optimal', color: COLORS.HIGH };
+  if (value >= 50) return { status: 'Below Target', color: COLORS.OPTIMAL };
+  return { status: 'Underutilized', color: COLORS.BUILDING };
+}
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
+export default function ResourceHeatmapChart({
+  data,
+  employees = [],
+  height = '100%',
+  showControls = true,
+}: HeatmapChartProps) {
+  // State
+  const [viewType, setViewType] = useState<ViewType>('assigned');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('employee');
+  const [aggregation, setAggregation] = useState<TimeAggregation>('week');
+  const [zoomRange, setZoomRange] = useState<{ start: number; end: number } | null>(null);
+
+  // Process data
+  const processed = useProcessedData(data, employees, displayMode, aggregation, viewType);
+
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const allValues = processed.values.flat().filter(v => v > 0);
+    if (allValues.length === 0) return { avg: 0, overloaded: 0, underutilized: 0 };
+    
+    return {
+      avg: Math.round(allValues.reduce((a, b) => a + b, 0) / allValues.length),
+      overloaded: allValues.filter(v => v > 100).length,
+      underutilized: allValues.filter(v => v < 50).length
+    };
+  }, [processed]);
+
+  // Calculate default zoom based on period count
+  const defaultZoom = useMemo(() => {
+    const total = processed.periods.length;
+    const visibleCount = 20;
+    if (total <= visibleCount) return { start: 0, end: 100 };
+    return { start: 0, end: Math.round((visibleCount / total) * 100) };
+  }, [processed.periods.length]);
+
+  const zoom = zoomRange || defaultZoom;
+
+  // Build chart option
+  const option = useMemo(() => 
+    buildChartOption(processed, viewType, zoom.start, zoom.end),
+    [processed, viewType, zoom]
+  );
+
+  // Reset zoom when aggregation changes
+  const handleAggregationChange = useCallback((newAgg: TimeAggregation) => {
+    setAggregation(newAgg);
+    setZoomRange(null);
+  }, []);
+
+  // Empty state
+  const isEmpty = processed.resources.length === 0 || processed.periods.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
+      {/* Controls */}
       {showControls && (
         <div style={{
           display: 'flex',
@@ -513,179 +496,184 @@ export default function ResourceHeatmapChart({
           background: 'var(--bg-tertiary)',
           borderRadius: '10px',
           flexShrink: 0,
-          border: '1px solid rgba(64, 224, 208, 0.1)'
+          border: '1px solid rgba(64,224,208,0.1)',
+          flexWrap: 'wrap',
+          gap: '12px'
         }}>
-          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '4px' }}>
-            <button
-              onClick={() => setViewType('assigned')}
-              style={{
-                padding: '8px 16px',
-                fontSize: '11px',
-                fontWeight: 600,
-                background: viewType === 'assigned' ? 'var(--pinnacle-teal)' : 'transparent',
-                color: viewType === 'assigned' ? '#000' : 'var(--text-secondary)',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Assigned
-            </button>
-            <button
-              onClick={() => setViewType('unassigned')}
-              style={{
-                padding: '8px 16px',
-                fontSize: '11px',
-                fontWeight: 600,
-                background: viewType === 'unassigned' ? 'var(--pinnacle-teal)' : 'transparent',
-                color: viewType === 'unassigned' ? '#000' : 'var(--text-secondary)',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              Unassigned
-            </button>
-          </div>
+          {/* View Toggle */}
+          <ToggleGroup
+            options={[
+              { key: 'assigned', label: 'Assigned' },
+              { key: 'unassigned', label: 'Unassigned' }
+            ]}
+            selected={viewType}
+            onChange={(v) => setViewType(v as ViewType)}
+          />
 
+          {/* Color Legend */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>0%</span>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>0%</span>
             <div style={{
               width: '100px',
               height: '12px',
               borderRadius: '6px',
-              background: `linear-gradient(to right, ${ASSIGNED_COLORS.LOW}, ${ASSIGNED_COLORS.MEDIUM_LOW}, ${ASSIGNED_COLORS.OPTIMAL}, ${ASSIGNED_COLORS.HIGH}, ${ASSIGNED_COLORS.OVERLOAD_MILD}, ${ASSIGNED_COLORS.OVERLOAD_HIGH})`,
+              background: `linear-gradient(to right, ${COLOR_STOPS.join(', ')})`,
               border: '1px solid rgba(255,255,255,0.1)'
             }} />
-            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>120%</span>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>120%</span>
           </div>
 
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avg</div>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: '#40E0D0' }}>{stats.avg}%</div>
-            </div>
-            <button
-              onClick={handleTodayClick}
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '10px', padding: '4px 8px' }}
-            >
-              Today
-            </button>
+          {/* Stats */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Avg</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: '#40E0D0' }}>{stats.avg}%</div>
           </div>
 
-          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '4px' }}>
-            {(['day', 'week', 'month', 'quarter', 'year'] as TimeRange[]).map((range) => (
-              <button
-                key={range}
-                onClick={() => { setTimeRange(range); setZoomWindow(null); }}
-                style={{
-                  padding: '8px 10px',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  background: timeRange === range ? 'var(--pinnacle-teal)' : 'transparent',
-                  color: timeRange === range ? '#000' : 'var(--text-secondary)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  textTransform: 'capitalize'
-                }}
-              >
-                {range}
-              </button>
-            ))}
-          </div>
+          {/* Time Aggregation */}
+          <ToggleGroup
+            options={[
+              { key: 'day', label: 'Day' },
+              { key: 'week', label: 'Week' },
+              { key: 'month', label: 'Month' },
+              { key: 'quarter', label: 'Qtr' },
+              { key: 'year', label: 'Year' }
+            ]}
+            selected={aggregation}
+            onChange={(v) => handleAggregationChange(v as TimeAggregation)}
+          />
 
-          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '4px' }}>
-            <button
-              onClick={() => setDisplayMode('employee')}
-              style={{
-                padding: '8px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                background: displayMode === 'employee' ? 'var(--pinnacle-teal)' : 'transparent',
-                color: displayMode === 'employee' ? '#000' : 'var(--text-secondary)',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              By Employee
-            </button>
-            <button
-              onClick={() => setDisplayMode('role')}
-              style={{
-                padding: '8px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                background: displayMode === 'role' ? 'var(--pinnacle-teal)' : 'transparent',
-                color: displayMode === 'role' ? '#000' : 'var(--text-secondary)',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              By Role
-            </button>
-          </div>
+          {/* Display Mode */}
+          <ToggleGroup
+            options={[
+              { key: 'employee', label: 'By Employee' },
+              { key: 'role', label: 'By Role' }
+            ]}
+            selected={displayMode}
+            onChange={(v) => setDisplayMode(v as DisplayMode)}
+          />
         </div>
       )}
 
+      {/* Chart or Empty State */}
       <div style={{ flex: 1, minHeight: 0 }}>
-        {filteredData.resources.length === 0 || filteredData.weeks.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              minHeight: 280,
-              padding: 24,
-              background: 'var(--bg-tertiary)',
-              borderRadius: 8,
-              border: '1px solid var(--border-color)',
-              color: 'var(--text-muted)',
-              textAlign: 'center',
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}>
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <rect x="7" y="7" width="3" height="3"></rect>
-              <rect x="14" y="7" width="3" height="3"></rect>
-              <rect x="7" y="14" width="3" height="3"></rect>
-              <rect x="14" y="14" width="3" height="3"></rect>
-            </svg>
-            <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>
-              No Resource Heatmap Data
-            </p>
-            <p style={{ margin: '12px 0 0', fontSize: '0.85rem', opacity: 0.8, maxWidth: 400 }}>
-              {filteredData.resources.length === 0 && employees.length === 0 && (
-                'No employees found. Sync Workday data to load employees.'
-              )}
-              {filteredData.resources.length === 0 && employees.length > 0 && displayMode === 'role' && (
-                `No employees match the current role filter. Try switching to "By Employee" view.`
-              )}
-              {filteredData.resources.length === 0 && employees.length > 0 && displayMode === 'employee' && (
-                'Employee data exists but heatmap could not be built. Try refreshing the page.'
-              )}
-              {filteredData.resources.length > 0 && filteredData.weeks.length === 0 && (
-                'No time periods available. Sync hours data or check the date range.'
-              )}
-            </p>
-            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', opacity: 0.6 }}>
-              Debug: {employees.length} employees loaded, data resources: {data?.resources?.length ?? 0}, weeks: {data?.weeks?.length ?? 0}
-            </p>
-          </div>
+        {isEmpty ? (
+          <EmptyState 
+            employees={employees}
+            data={data}
+            displayMode={displayMode}
+          />
         ) : (
-          <ChartWrapper option={option} height={height} enableCompare enableExport enableFullscreen visualId="resource-heatmap" visualTitle="Resource Heatmap" />
+          <ChartWrapper
+            option={option}
+            height={height}
+            enableCompare
+            enableExport
+            enableFullscreen
+            visualId="resource-heatmap"
+            visualTitle="Resource Heatmap"
+          />
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SUB-COMPONENTS
+// ============================================================================
+
+interface ToggleOption {
+  key: string;
+  label: string;
+}
+
+function ToggleGroup({
+  options,
+  selected,
+  onChange
+}: {
+  options: ToggleOption[];
+  selected: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div style={{
+      display: 'flex',
+      gap: '4px',
+      background: 'var(--bg-secondary)',
+      borderRadius: '8px',
+      padding: '4px'
+    }}>
+      {options.map(({ key, label }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          style={{
+            padding: '8px 12px',
+            fontSize: '11px',
+            fontWeight: 600,
+            background: selected === key ? 'var(--pinnacle-teal)' : 'transparent',
+            color: selected === key ? '#000' : 'var(--text-secondary)',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            transition: 'all 0.15s'
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({
+  employees,
+  data,
+  displayMode
+}: {
+  employees: Employee[];
+  data?: ResourceHeatmap | null;
+  displayMode: DisplayMode;
+}) {
+  let message = 'No resource heatmap data available.';
+  
+  if (!employees?.length && (!data?.resources?.length)) {
+    message = 'No employees found. Sync Workday data to load employees.';
+  } else if (data?.resources?.length && !data?.weeks?.length) {
+    message = 'No time periods available. Sync hours data or check the date range.';
+  } else if (employees?.length && displayMode === 'role') {
+    message = 'No employees match the current role filter. Try "By Employee" view.';
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+      minHeight: 280,
+      padding: 24,
+      background: 'var(--bg-tertiary)',
+      borderRadius: 8,
+      border: '1px solid var(--border-color)',
+      color: 'var(--text-muted)',
+      textAlign: 'center'
+    }}>
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}>
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <rect x="7" y="7" width="3" height="3" />
+        <rect x="14" y="7" width="3" height="3" />
+        <rect x="7" y="14" width="3" height="3" />
+        <rect x="14" y="14" width="3" height="3" />
+      </svg>
+      <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>
+        No Heatmap Data
+      </p>
+      <p style={{ margin: '12px 0 0', fontSize: '0.85rem', opacity: 0.8, maxWidth: 400 }}>
+        {message}
+      </p>
     </div>
   );
 }

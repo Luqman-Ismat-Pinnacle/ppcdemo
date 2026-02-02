@@ -877,17 +877,15 @@ const applyTaskProgress = (task: any, context: TaskProgressContext) => {
   const normalizedPercent = clampPercent(percentComplete);
   const earnedHours = baselineHours * (normalizedPercent / 100);
   const taskEfficiency = actualHours > 0 ? clampPercent((earnedHours / actualHours) * 100) : null;
-  // Prefer MPP parser remainingHours; only calculate when not provided
-  const remainingHours =
-    task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ??
-    Math.max(0, baselineHours - actualHours);
+  // Use MPP parser remainingHours directly - no calculation fallback
+  const remainingHours = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0;
 
   return {
     ...task,
     percentComplete: normalizedPercent,
     taskEfficiency,
     actualHours,
-    remainingHours: typeof remainingHours === 'number' ? remainingHours : Math.max(0, baselineHours - actualHours),
+    remainingHours,
   };
 };
 
@@ -922,13 +920,8 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
-    // Prefer MPP parser remainingHours; only calculate when not provided
-    const taskRemaining =
-      task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
-    const remainingHours =
-      taskRemaining != null && typeof taskRemaining === 'number'
-        ? taskRemaining
-        : Math.max(0, adjustedBaselineHours - actualHours);
+    // Use MPP parser remainingHours directly - no calculation fallback
+    const remainingHours = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0;
 
     return {
       ...task,
@@ -957,13 +950,8 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
-    // Prefer MPP parser remainingHours for subTasks too
-    const subRemaining =
-      task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
-    const subRemainingHours =
-      subRemaining != null && typeof subRemaining === 'number'
-        ? subRemaining
-        : Math.max(0, adjustedBaselineHours - actualHours);
+    // Use MPP parser remainingHours directly for subTasks - no calculation fallback
+    const subRemainingHours = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0;
 
     return {
       ...task,
@@ -1240,7 +1228,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               percentComplete: taskPercent,
               baselineHours: taskBaselineHrs,
               actualHours: taskActualHrs,
-              remainingHours: task.remainingHours ?? Math.max(0, taskBaselineHrs - taskActualHrs),
+              remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0,
               baselineCost: taskBaselineCst,
               actualCost: taskActualCst,
               remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
@@ -1351,7 +1339,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             percentComplete: taskPercent,
             baselineHours: taskBaselineHrs,
             actualHours: taskActualHrs,
-            remainingHours: task.remainingHours ?? Math.max(0, taskBaselineHrs - taskActualHrs),
+            remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0,
             baselineCost: taskBaselineCst,
             actualCost: taskActualCst,
             remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
@@ -1420,7 +1408,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           percentComplete: taskPercent,
           baselineHours: taskBaselineHrs,
           actualHours: taskActualHrs,
-          remainingHours: task.remainingHours ?? Math.max(0, taskBaselineHrs - taskActualHrs),
+          remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0,
           baselineCost: taskBaselineCst,
           actualCost: taskActualCst,
           remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
@@ -1745,8 +1733,36 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     if (id) taskMap.set(id, t);
   });
 
-  // Use shared week mapping utility; use hoursForWeekList so week columns show all dates when date filter is applied
-  const dates = hoursForWeekList.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
+  // Gather all relevant dates for week range calculation:
+  // 1. Hour entry dates from hoursForWeekList
+  // 2. Project start/end dates to ensure full timeline coverage
+  // 3. Task start/end dates for more granular coverage
+  const allDates: string[] = [];
+  
+  // Add dates from hours entries
+  hoursForWeekList.forEach((h: any) => {
+    const d = normalizeDateString(h.date || h.entry_date);
+    if (d) allDates.push(d);
+  });
+  
+  // Add project start/end dates to expand the range
+  projects.forEach((p: any) => {
+    const startDate = normalizeDateString(p.startDate || p.start_date || p.baselineStartDate || p.baseline_start_date);
+    const endDate = normalizeDateString(p.endDate || p.end_date || p.baselineEndDate || p.baseline_end_date);
+    if (startDate) allDates.push(startDate);
+    if (endDate) allDates.push(endDate);
+  });
+  
+  // Add task dates to fill in the timeline
+  tasks.forEach((t: any) => {
+    const startDate = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
+    const endDate = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
+    if (startDate) allDates.push(startDate);
+    if (endDate) allDates.push(endDate);
+  });
+  
+  // Filter out nulls and build week mappings
+  const dates = allDates.filter((d): d is string => d != null);
   const { weekMap, weekIndexMap, rawWeeks, formattedWeeks: weeks } = buildWeekMappings(dates);
 
   // Build all aggregations in a single pass through hours (Phase 2.4: Batch Data Processing)
@@ -2721,14 +2737,42 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
     console.debug('[buildResourceHeatmap] employees:', employees.length, 'hours:', hours.length, 'hoursByEmployee keys:', hoursByEmployee.size, 'employees with hours:', matched);
   }
 
-  // Get unique weeks from hours data (use hoursForWeekList so all dates show when date filter is applied), or generate current weeks if no hours
+  // Get unique weeks from multiple date sources for full timeline coverage
   let rawWeeks: string[] = [];
   let weekMap: Map<string, string>;
   let weekIndexMap: Map<string, number>;
 
-  if (hoursForWeekList.length > 0) {
+  // Gather dates from hours, projects, and tasks for comprehensive week range
+  const projects = data.projects || [];
+  const tasks = data.tasks || [];
+  const allDates: string[] = [];
+  
+  // Add dates from hours entries
+  hoursForWeekList.forEach((h: any) => {
+    const d = normalizeDateString(h.date || h.entry_date);
+    if (d) allDates.push(d);
+  });
+  
+  // Add project start/end dates
+  projects.forEach((p: any) => {
+    const startDate = normalizeDateString(p.startDate || p.start_date || p.baselineStartDate || p.baseline_start_date);
+    const endDate = normalizeDateString(p.endDate || p.end_date || p.baselineEndDate || p.baseline_end_date);
+    if (startDate) allDates.push(startDate);
+    if (endDate) allDates.push(endDate);
+  });
+  
+  // Add task start/end dates
+  tasks.forEach((t: any) => {
+    const startDate = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
+    const endDate = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
+    if (startDate) allDates.push(startDate);
+    if (endDate) allDates.push(endDate);
+  });
+  
+  const dates = allDates.filter((d): d is string => d != null);
+
+  if (dates.length > 0) {
     // Use shared week mapping utility; normalize so all date formats map to same weeks
-    const dates = hoursForWeekList.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
     const weekMappings = buildWeekMappings(dates);
     weekMap = weekMappings.weekMap;
     weekIndexMap = weekMappings.weekIndexMap;

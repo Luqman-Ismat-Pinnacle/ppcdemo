@@ -57,6 +57,9 @@ const navigation: NavDropdown[] = [
     label: 'Project Management',
     items: [
       { label: 'Sprint Planning', href: '/project-management/sprint' },
+      { label: 'Iterations', href: '/project-management/sprint/iterations' },
+      { label: 'Capacity', href: '/project-management/sprint/capacity' },
+      { divider: true },
       { label: 'Forecasting', href: '/project-management/forecast' },
       { label: 'QC Log', href: '/project-management/qc-log' },
     ],

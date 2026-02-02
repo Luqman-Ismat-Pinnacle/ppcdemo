@@ -372,8 +372,11 @@ export default function HoursPage() {
   }, [filteredLaborBreakdown, workerTableSort]);
 
   const roleRows = useMemo(() => {
-    return roles.map((role) => {
-      const roleWorkers = data?.laborBreakdown?.byWorker?.filter((w) => w.role === role) || [];
+    // Filter roles by selectedRoles if any are selected
+    const displayRoles = selectedRoles.size > 0 ? roles.filter(r => selectedRoles.has(r)) : roles;
+    return displayRoles.map((role) => {
+      // Use filteredLaborBreakdown to respect employee/charge code filters
+      const roleWorkers = filteredLaborBreakdown.filter((w) => w.role === role);
       const employeeCount = new Set(roleWorkers.map(w => w.name)).size;
       const weeklyTotals = tableWeeks.map((_, weekIdx) => {
         return roleWorkers.reduce((sum, w) => sum + ((w.data || [])[weekIdx] || 0), 0);
@@ -381,7 +384,7 @@ export default function HoursPage() {
       const total = weeklyTotals.reduce((sum, h) => sum + h, 0);
       return { role, employeeCount, weeklyTotals, total };
     });
-  }, [roles, data?.laborBreakdown, tableWeeks]);
+  }, [roles, filteredLaborBreakdown, tableWeeks, selectedRoles]);
 
   const sortedRoleRows = useMemo(() => {
     return sortByState(roleRows, roleTableSort, (row, key) => {
@@ -491,7 +494,7 @@ export default function HoursPage() {
           {overallEfficiency !== null && <strong style={{ marginLeft: '8px', color: 'var(--pinnacle-teal)' }}>{overallEfficiency}%</strong>}
         </h3>
       }>
-        <div style={{ padding: '16px', flex: 1, minHeight: 380, overflow: 'auto' }}>
+        <div style={{ padding: '16px', flex: 1, minHeight: 380, maxHeight: 500, overflowY: 'auto' }}>
           <TaskHoursEfficiencyChart
             data={data?.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
             height={380}
@@ -517,7 +520,7 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <div style={{ padding: '16px', minHeight: 340, overflow: 'auto' }}>
+          <div style={{ padding: '16px', minHeight: 340, maxHeight: 500, overflowY: 'auto' }}>
             <QualityHoursChart
               data={data?.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
               taskOrder={data?.taskHoursEfficiency?.tasks}
@@ -592,29 +595,98 @@ export default function HoursPage() {
               <rect x="14" y="8" width="7" height="13" rx="1"></rect>
             </svg>
             Labor Hours Distribution
+            {(selectedEmployees.size > 0 || selectedRoles.size > 0) && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', marginLeft: '4px' }}>
+                (Filtered)
+              </span>
+            )}
           </h3>
         }
         subtitle={
-          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
-            {stackedViewLabels.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setStackedView(key)}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  background: stackedView === key ? 'var(--pinnacle-teal)' : 'transparent',
-                  color: stackedView === key ? '#000' : 'var(--text-secondary)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-              >
-                {label}
-              </button>
-            ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
+              {stackedViewLabels.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setStackedView(key)}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    background: stackedView === key ? 'var(--pinnacle-teal)' : 'transparent',
+                    color: stackedView === key ? '#000' : 'var(--text-secondary)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value === 'clear') {
+                  setPageFilters((prev) => prev.filter((f) => f.dimension !== 'employee'));
+                } else if (e.target.value) {
+                  const val = e.target.value;
+                  setPageFilters((prev) => {
+                    const exists = prev.some((f) => f.dimension === 'employee' && f.value === val);
+                    if (exists) return prev.filter((f) => !(f.dimension === 'employee' && f.value === val));
+                    return [...prev, { dimension: 'employee', value: val, label: val }];
+                  });
+                }
+              }}
+              style={{
+                padding: '6px 10px',
+                fontSize: '0.7rem',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                minWidth: '140px'
+              }}
+            >
+              <option value="">Employee {selectedEmployees.size > 0 ? `(${selectedEmployees.size})` : ''}</option>
+              <option value="clear">— Clear —</option>
+              {employees.map(emp => (
+                <option key={emp} value={emp}>{selectedEmployees.has(emp) ? '✓ ' : ''}{emp}</option>
+              ))}
+            </select>
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value === 'clear') {
+                  setPageFilters((prev) => prev.filter((f) => f.dimension !== 'role'));
+                } else if (e.target.value) {
+                  const val = e.target.value;
+                  setPageFilters((prev) => {
+                    const exists = prev.some((f) => f.dimension === 'role' && f.value === val);
+                    if (exists) return prev.filter((f) => !(f.dimension === 'role' && f.value === val));
+                    return [...prev, { dimension: 'role', value: val, label: val }];
+                  });
+                }
+              }}
+              style={{
+                padding: '6px 10px',
+                fontSize: '0.7rem',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                minWidth: '120px'
+              }}
+            >
+              <option value="">Role {selectedRoles.size > 0 ? `(${selectedRoles.size})` : ''}</option>
+              <option value="clear">— Clear —</option>
+              {roles.map(role => (
+                <option key={role} value={role}>{selectedRoles.has(role) ? '✓ ' : ''}{role}</option>
+              ))}
+            </select>
           </div>
         }
       >
@@ -848,7 +920,67 @@ export default function HoursPage() {
               <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
             </svg>
             Labor Breakdown by Role
+            {selectedRoles.size > 0 && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', marginLeft: '8px' }}>
+                ({selectedRoles.size} selected)
+              </span>
+            )}
           </h3>
+        }
+        subtitle={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value === 'clear') {
+                  setPageFilters((prev) => prev.filter((f) => f.dimension !== 'role'));
+                } else if (e.target.value) {
+                  const val = e.target.value;
+                  setPageFilters((prev) => {
+                    const exists = prev.some((f) => f.dimension === 'role' && f.value === val);
+                    if (exists) return prev.filter((f) => !(f.dimension === 'role' && f.value === val));
+                    return [...prev, { dimension: 'role', value: val, label: val }];
+                  });
+                }
+              }}
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                minWidth: '160px'
+              }}
+            >
+              <option value="">Filter by Role {selectedRoles.size > 0 ? `(${selectedRoles.size})` : ''}</option>
+              <option value="clear">— Clear All —</option>
+              {roles.map(role => (
+                <option key={role} value={role}>{selectedRoles.has(role) ? '✓ ' : ''}{role}</option>
+              ))}
+            </select>
+            {selectedRoles.size > 0 && (
+              <button
+                onClick={() => setPageFilters((prev) => prev.filter((f) => f.dimension !== 'role'))}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'var(--pinnacle-teal)',
+                  color: '#000',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Clear ({selectedRoles.size}) ✕
+              </button>
+            )}
+          </div>
         }
       >
         <TableCompareExport

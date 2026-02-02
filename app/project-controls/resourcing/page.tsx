@@ -18,6 +18,7 @@ import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import ResourceHeatmapChart from '@/components/charts/ResourceHeatmapChart';
+import ResourceGanttChart from '@/components/charts/ResourceGanttChart';
 import ResourceLevelingChart from '@/components/charts/ResourceLevelingChart';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import {
@@ -128,7 +129,7 @@ export default function ResourcingPage() {
   }, [data.resourceHeatmap, roleFilter, data.employees]);
 
   const [levelingParams, setLevelingParams] = useState<LevelingParams>(DEFAULT_LEVELING_PARAMS);
-  const [suggestionsExpanded, setSuggestionsExpanded] = useState(true);
+  const [suggestionsExpanded, setSuggestionsExpanded] = useState(false);
   const [levelingLog, setLevelingLog] = useState<LevelingLogEntry[]>([
     {
       timestamp: new Date().toISOString(),
@@ -1389,7 +1390,7 @@ export default function ResourcingPage() {
         </div>
       </div>
 
-      {/* Resource Gantt Table - Much Larger */}
+      {/* Resource Gantt Chart - ECharts-based */}
       <div className="chart-card" style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column', minHeight: '600px', overflow: 'hidden' }}>
         <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)' }}>
           <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1401,149 +1402,30 @@ export default function ResourcingPage() {
             </svg>
             Resource Gantt Chart
           </h3>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            {/* Role Filter */}
-            <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                style={{
-                  padding: '0.3rem 0.6rem',
-                  fontSize: '0.68rem',
-                  fontWeight: 600,
-                  background: 'transparent',
-                  color: 'var(--text-secondary)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  maxWidth: '120px'
-                }}
-              >
-                {uniqueRoles.map(role => (
-                  <option key={role} value={role}>{role}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Group By Selector */}
-            <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
-              {(['employee', 'role'] as GanttGroupBy[]).map(groupBy => (
-                <button
-                  key={groupBy}
-                  onClick={() => { setGanttGroupBy(groupBy); setExpandedIds(new Set()); }}
-                  style={{
-                    padding: '0.3rem 0.6rem',
-                    fontSize: '0.68rem',
-                    fontWeight: 600,
-                    background: ganttGroupBy === groupBy ? 'var(--pinnacle-teal)' : 'transparent',
-                    color: ganttGroupBy === groupBy ? '#000' : 'var(--text-secondary)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    textTransform: 'capitalize'
-                  }}
-                >
-                  By {groupBy}
-                </button>
-              ))}
-            </div>
-            {/* Interval Selector */}
-            <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '3px' }}>
-              {(['week', 'month', 'quarter', 'year'] as GanttInterval[]).map(interval => (
-                <button
-                  key={interval}
-                  onClick={() => setGanttInterval(interval)}
-                  style={{
-                    padding: '0.3rem 0.6rem',
-                    fontSize: '0.68rem',
-                    fontWeight: 600,
-                    background: ganttInterval === interval ? 'var(--pinnacle-teal)' : 'transparent',
-                    color: ganttInterval === interval ? '#000' : 'var(--text-secondary)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    textTransform: 'capitalize'
-                  }}
-                >
-                  {interval}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={scrollToToday}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-                padding: '0.3rem 0.6rem',
-                fontSize: '0.68rem',
-                fontWeight: 600,
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12,6 12,12 16,14"></polyline>
-              </svg>
-              Today
-            </button>
-            <button
-              onClick={collapseAll}
-              style={{
-                padding: '0.3rem 0.6rem',
-                fontSize: '0.68rem',
-                fontWeight: 600,
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-            >
-              Collapse All
-            </button>
-            <button
-              onClick={expandAll}
-              style={{
-                padding: '0.3rem 0.6rem',
-                fontSize: '0.68rem',
-                fontWeight: 600,
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'all 0.15s'
-              }}
-            >
-              Expand All
-            </button>
-          </div>
         </div>
         <div
-          className="chart-card-body no-padding"
-          style={{ flex: 1, overflow: 'auto', position: 'relative' }}
-          ref={containerRef}
+          className="chart-card-body"
+          style={{ flex: 1, padding: '1rem', overflow: 'hidden' }}
         >
-          <table
-            className="wbs-table"
-            style={{
-              width: 'max-content',
-              minWidth: '100%',
-              borderCollapse: 'separate',
-              borderSpacing: 0,
-              // Limit width to actual content - prevent empty scroll space
-              maxWidth: `${500 + (dateColumns.length * 40)}px`
-            }}
-          >
+          <ResourceGanttChart
+            tasks={data.tasks ?? []}
+            employees={data.employees ?? []}
+            height="100%"
+            showControls={true}
+          />
+        </div>
+      </div>
+      {/* Removed old table-based Gantt */}
+      {false && (
+        <table
+          className="wbs-table"
+          style={{
+            width: 'max-content',
+            minWidth: '100%',
+            borderCollapse: 'separate',
+            borderSpacing: 0,
+          }}
+        >
             <thead>
               <tr style={{ height: '36px' }}>
                 <th style={{ width: '220px', position: 'sticky', left: 0, zIndex: 20, background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)' }}>
@@ -1722,8 +1604,7 @@ export default function ResourcingPage() {
               })}
             </tbody>
           </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
