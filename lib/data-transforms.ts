@@ -982,17 +982,19 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (phase.actualCost || 0) + phaseCost.actual;
     const nonLaborForecast = phaseCost.forecast;
 
+    // Use stored remainingHours only - no calculation
+    const phaseRemaining = phase.remainingHours ?? phase.remaining_hours;
     return {
       ...phase,
       baselineHours: adjustedBaselineHours,
       baselineCost: adjustedBaselineCost,
       baselineStartDate: shiftDateByDays(phase.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(phase.baselineEndDate, delta.endDays),
-      remainingHours: Math.max(0, adjustedBaselineHours - actualHours),
+      remainingHours: phaseRemaining != null ? Number(phaseRemaining) : null,
       actualCost,
       nonLaborActualCost: phaseCost.actual,
       nonLaborForecastCost: nonLaborForecast,
-      remainingCost: Math.max(0, adjustedBaselineCost - actualCost) + nonLaborForecast,
+      remainingCost: phase.remainingCost != null ? Number(phase.remainingCost) : null,
     };
   });
 
@@ -1008,17 +1010,19 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const actualCost = (project.actualCost || 0) + projectCost.actual;
     const nonLaborForecast = projectCost.forecast;
 
+    // Use stored remainingHours only - no calculation
+    const projRemaining = project.remainingHours ?? project.remaining_hours;
     return {
       ...project,
       baselineHours: adjustedBaselineHours,
       baselineCost: adjustedBaselineCost,
       baselineStartDate: shiftDateByDays(project.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(project.baselineEndDate, delta.endDays),
-      remainingHours: Math.max(0, adjustedBaselineHours - actualHours),
+      remainingHours: projRemaining != null ? Number(projRemaining) : null,
       actualCost,
       nonLaborActualCost: projectCost.actual,
       nonLaborForecastCost: nonLaborForecast,
-      remainingCost: Math.max(0, adjustedBaselineCost - actualCost) + nonLaborForecast,
+      remainingCost: project.remainingCost != null ? Number(project.remainingCost) : null,
     };
   });
 
@@ -1121,10 +1125,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         percentComplete: project.percentComplete ?? project.percent_complete ?? 0,
         baselineHours: projBaselineHrs,
         actualHours: projActualHrs,
-        remainingHours: project.remainingHours ?? Math.max(0, projBaselineHrs - projActualHrs),
+        remainingHours: project.remainingHours ?? project.remaining_hours ?? null,
         baselineCost: projBaselineCst,
         actualCost: projActualCst,
-        remainingCost: project.remainingCost ?? Math.max(0, projBaselineCst - projActualCst),
+        remainingCost: project.remainingCost ?? project.remaining_cost ?? null,
         children: []
       };
 
@@ -1231,10 +1235,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               percentComplete: taskPercent,
               baselineHours: taskBaselineHrs,
               actualHours: taskActualHrs,
-              remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0,
+              remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null,
               baselineCost: taskBaselineCst,
               actualCost: taskActualCst,
-              remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
+              remainingCost: task.remainingCost ?? task.remaining_cost ?? null,
               assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
               is_milestone: task.is_milestone || task.isMilestone || false,
               isCritical: task.is_critical || task.isCritical || false
@@ -1342,10 +1346,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             percentComplete: taskPercent,
             baselineHours: taskBaselineHrs,
             actualHours: taskActualHrs,
-            remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0,
+            remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null,
             baselineCost: taskBaselineCst,
             actualCost: taskActualCst,
-            remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
+            remainingCost: task.remainingCost ?? task.remaining_cost ?? null,
             assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
             is_milestone: task.is_milestone || task.isMilestone || false,
             isCritical: task.is_critical || task.isCritical || false
@@ -1411,10 +1415,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           percentComplete: taskPercent,
           baselineHours: taskBaselineHrs,
           actualHours: taskActualHrs,
-          remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? 0,
+          remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null,
           baselineCost: taskBaselineCst,
           actualCost: taskActualCst,
-          remainingCost: task.remainingCost ?? Math.max(0, taskBaselineCst - taskActualCst),
+          remainingCost: task.remainingCost ?? task.remaining_cost ?? null,
           assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
           is_milestone: task.is_milestone || task.isMilestone || false,
           isCritical: task.is_critical || task.isCritical || false
