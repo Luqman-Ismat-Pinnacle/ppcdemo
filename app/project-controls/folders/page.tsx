@@ -143,26 +143,67 @@ export default function DocumentsPage() {
     if (!supabase) return;
 
     try {
-      const { data, error } = await supabase.storage
+      // Fetch files from storage
+      const { data: storageFiles, error: storageError } = await supabase.storage
         .from(STORAGE_BUCKET)
         .list('mpp', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
 
-      if (error) {
-        console.error('Error loading files:', error);
+      if (storageError) {
+        console.error('Error loading files from storage:', storageError);
         return;
       }
 
-      if (data && data.length > 0) {
-        const files: UploadedFile[] = data
+      // Fetch document metadata from database (has project_id, health_score, etc.)
+      const { data: dbDocs, error: dbError } = await supabase
+        .from('project_documents')
+        .select('id, file_name, file_path, project_id, health_score, parser_result, uploaded_at, file_size')
+        .order('uploaded_at', { ascending: false });
+
+      if (dbError) {
+        console.error('Error loading document metadata:', dbError);
+      }
+
+      // Create a map of storage path -> db document
+      const dbDocMap = new Map<string, any>();
+      (dbDocs || []).forEach((doc: any) => {
+        if (doc.file_path) {
+          dbDocMap.set(doc.file_path, doc);
+        }
+      });
+
+      if (storageFiles && storageFiles.length > 0) {
+        const files: UploadedFile[] = storageFiles
           .filter(f => f.name.toLowerCase().endsWith('.mpp'))
-          .map(f => ({
-            id: f.id || f.name,
-            fileName: f.name,
-            fileSize: f.metadata?.size || 0,
-            uploadedAt: new Date(f.created_at || Date.now()),
-            status: 'uploaded' as const,
-            storagePath: `mpp/${f.name}`,
-          }));
+          .map(f => {
+            const storagePath = `mpp/${f.name}`;
+            const dbDoc = dbDocMap.get(storagePath);
+            
+            // Parse health check from parser_result if available
+            let healthCheck: ProjectHealthAutoResult | undefined;
+            if (dbDoc?.parser_result) {
+              try {
+                const parsed = typeof dbDoc.parser_result === 'string' 
+                  ? JSON.parse(dbDoc.parser_result) 
+                  : dbDoc.parser_result;
+                if (parsed.score !== undefined) {
+                  healthCheck = parsed as ProjectHealthAutoResult;
+                }
+              } catch (e) {
+                console.warn('Failed to parse health check:', e);
+              }
+            }
+            
+            return {
+              id: dbDoc?.id || f.id || f.name,
+              fileName: f.name,
+              fileSize: dbDoc?.file_size || f.metadata?.size || 0,
+              uploadedAt: new Date(dbDoc?.uploaded_at || f.created_at || Date.now()),
+              workdayProjectId: dbDoc?.project_id || undefined,
+              status: dbDoc?.project_id ? 'complete' as const : 'uploaded' as const,
+              storagePath,
+              healthCheck,
+            };
+          });
 
         setUploadedFiles(files);
       }
