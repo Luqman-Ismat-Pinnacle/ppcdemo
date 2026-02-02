@@ -906,6 +906,7 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     milestoneMap: buildMilestoneMap(milestoneList),
     actualHoursMap: buildTaskActualHoursMap(rawData.hours || []),
   };
+  const taskActualCostFromHours = buildTaskActualCostMap(rawData.hours || []);
   const costAggregations = buildCostAggregations(rawData.costTransactions || []);
 
   const tasks = (rawData.tasks || []).map((task: any) => {
@@ -917,7 +918,8 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const adjustedBaselineCost = baseCost + delta.cost;
     const actualHours = task.actualHours || 0;
     const taskCost = costAggregations.byTask.get(taskId) || { actual: 0, forecast: 0 };
-    const actualCost = (task.actualCost || 0) + taskCost.actual;
+    const laborActualFromHours = taskActualCostFromHours.get(taskId) || 0;
+    const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
     // Prefer MPP parser remainingHours; only calculate when not provided
@@ -951,7 +953,8 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const adjustedBaselineCost = baseCost + delta.cost;
     const actualHours = task.actualHours || 0;
     const taskCost = costAggregations.byTask.get(taskId) || { actual: 0, forecast: 0 };
-    const actualCost = (task.actualCost || 0) + taskCost.actual;
+    const laborActualFromHours = taskActualCostFromHours.get(taskId) || 0;
+    const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
     // Prefer MPP parser remainingHours for subTasks too
@@ -2074,6 +2077,18 @@ const buildTaskActualHoursMap = (hours: any[]): Map<string, number> => {
     if (!taskId) return;
     const hoursValue = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
     map.set(taskId, (map.get(taskId) || 0) + hoursValue);
+  });
+  return map;
+};
+
+/** Sum of actual_cost from hour_entries per task (for WBS/task actualCost). Use enriched hours so task_id is set. */
+const buildTaskActualCostMap = (hours: any[]): Map<string, number> => {
+  const map = new Map<string, number>();
+  hours.forEach((h: any) => {
+    const taskId = normalizeTaskId(h);
+    if (!taskId) return;
+    const cost = Number(h.actualCost ?? h.actual_cost ?? 0) || 0;
+    if (cost > 0) map.set(taskId, (map.get(taskId) || 0) + cost);
   });
   return map;
 };

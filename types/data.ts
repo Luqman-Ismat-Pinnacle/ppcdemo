@@ -725,6 +725,8 @@ export interface HourEntry {
   isApproved?: boolean;
   /** Reported standard cost amount from Workday (Reported_Standard_Cost_Amt) for this entry; used when matching Workday task to project task. */
   reportedStandardCostAmt?: number;
+  /** Actual cost from Workday/Supabase (hour_entries.actual_cost); rolled up to task actualCost for WBS Gantt. */
+  actualCost?: number;
   createdAt: string;
   updatedAt: string;
 }
