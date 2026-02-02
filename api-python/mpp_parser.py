@@ -126,7 +126,7 @@ def ui():
     return render_template('index.html')
 
 @app.route('/health')
-def health(): return jsonify(status="ok", version="v13-cpm-ui")
+def health(): return jsonify(status="ok", version="v14-remaining-hours-direct")
 
 @app.route('/parse', methods=['POST'])
 def parse():
