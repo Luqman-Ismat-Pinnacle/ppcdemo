@@ -23,7 +23,7 @@ export interface RunWorkdaySyncStreamOptions {
  * Constant stream = one date window at a time, more stable than pulling everything at once.
  */
 export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions): Promise<{ success: boolean }> {
-  const { syncType = 'unified', hoursDaysBack = 90, onEvent } = options;
+  const { syncType = 'unified', hoursDaysBack = 365, onEvent } = options;
   const res = await fetch('/api/workday', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

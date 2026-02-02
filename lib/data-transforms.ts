@@ -2583,17 +2583,27 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
     return { resources: [], weeks: [], data: [] };
   }
 
-  // Build hours by employee Map for O(1) lookups instead of filtering
+  // Build hours by employee Map for O(1) lookups. Key by both id and employeeId so DB (employee_id) matches employees.id or employees.employeeId.
   const hoursByEmployee = new Map<string, any[]>();
   hours.forEach((h: any) => {
     const empId = h.employeeId ?? h.employee_id;
-    if (empId != null && empId !== '') {
-      const key = String(empId);
-      if (!hoursByEmployee.has(key)) {
-        hoursByEmployee.set(key, []);
-      }
-      hoursByEmployee.get(key)!.push(h);
+    if (empId == null || empId === '') return;
+    const key = String(empId).trim();
+    if (!hoursByEmployee.has(key)) {
+      hoursByEmployee.set(key, []);
     }
+    hoursByEmployee.get(key)!.push(h);
+  });
+  // Name-based fallback: if hours have worker/employee name, index by normalized name so we can match when IDs differ
+  const hoursByEmployeeName = new Map<string, any[]>();
+  hours.forEach((h: any) => {
+    const name = (h.workerName ?? h.worker_name ?? h.employeeName ?? h.employee_name ?? '').toString().trim();
+    if (!name) return;
+    const norm = name.toLowerCase();
+    if (!hoursByEmployeeName.has(norm)) {
+      hoursByEmployeeName.set(norm, []);
+    }
+    hoursByEmployeeName.get(norm)!.push(h);
   });
 
   // Get unique weeks from hours data (use hoursForWeekList so all dates show when date filter is applied), or generate current weeks if no hours
@@ -2633,14 +2643,18 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
   const TARGET_HOURS_PER_WEEK = 40;
 
   employees.forEach((emp: any) => {
-    const empId = emp.id || emp.employeeId;
-    const name = emp.name || empId;
-    resources.push(name);
+    const empId = emp.id ?? emp.employeeId;
+    const name = (emp.name || empId || '').toString().trim();
+    resources.push(name || `Employee ${empId || '?'}`);
 
     const weeklyHours = new Array(rawWeeks.length).fill(0);
 
-    // Use Map lookup - match by id or employeeId (stringified) so DB employee_id aligns with either
-    const empHours = (hoursByEmployee.get(String(emp.id ?? '')) || hoursByEmployee.get(String(emp.employeeId ?? '')) || []) as any[];
+    // Match hours by id, then employeeId, then by employee name (worker_name/workerName) so heatmap works across DB shapes
+    const empHours = (
+      hoursByEmployee.get(String(empId ?? '').trim()) ||
+      hoursByEmployee.get(String(emp.employeeId ?? '').trim()) ||
+      (name ? hoursByEmployeeName.get(name.toLowerCase()) || [] : [])
+    ) as any[];
     empHours.forEach((h: any) => {
       const hourDateNorm = normalizeDateString(h.date || h.entry_date);
       const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;

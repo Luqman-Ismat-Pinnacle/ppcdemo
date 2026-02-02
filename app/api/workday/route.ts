@@ -2,8 +2,8 @@
  * @fileoverview Workday Sync API Route
  *
  * Calls Supabase Edge Functions to sync data.
- * Supports: employees, projects (hierarchy), hours (chunked by date), ledger.
- * With stream: true and syncType: 'unified', returns a constant stream (NDJSON) for stability.
+ * Supports: employees, projects (hierarchy), hours (chunked by date).
+ * General ledger sync removed. With stream: true and syncType: 'unified', returns NDJSON stream.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,14 +12,14 @@ const EDGE_FUNCTIONS = {
   'employees': 'workday-employees',
   'projects': 'workday-projects',
   'hours': 'workday-hours',
-  'ledger': 'workday-ledger-chunked',
   'sync': 'workday-sync'
 } as const;
 
 type SyncType = keyof typeof EDGE_FUNCTIONS;
 
 const WINDOW_DAYS = 30;
-const DEFAULT_HOURS_DAYS_BACK = 90;
+const DEFAULT_HOURS_DAYS_BACK = 365;
+const MAX_HOURS_DAYS_BACK = 730;
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const syncType = body.syncType as SyncType | 'unified';
     const action = body.action;
-    const hoursDaysBack = Math.min(365, Math.max(30, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
+    const hoursDaysBack = Math.min(MAX_HOURS_DAYS_BACK, Math.max(30, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
 
     // Handle get-available-projects action - fetch directly from database
     if (action === 'get-available-projects') {
@@ -212,8 +212,6 @@ function unifiedSyncStream(
         }
         pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
         logs.push(`Synced ${totalHours} hour entries (${totalChunks} date windows).`);
-
-        logs.push('Ledger sync skipped (use individual workday-ledger-chunked if needed).');
       } catch (err: any) {
         success = false;
         logs.push(err?.message ?? String(err));
@@ -286,6 +284,6 @@ export async function GET() {
   return NextResponse.json({
     available: true,
     syncTypes: Object.keys(EDGE_FUNCTIONS),
-    message: 'POST { syncType } to sync data. All syncs use streaming NDJSON for stability. Optional hoursDaysBack (default 90).',
+    message: 'POST { syncType } to sync data. All syncs use streaming NDJSON. Optional hoursDaysBack (default 365, max 730). General ledger removed.',
   });
 }
