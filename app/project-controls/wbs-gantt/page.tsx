@@ -183,7 +183,7 @@ export default function WBSGanttPage() {
           columns.push({
             start: new Date(current),
             end,
-            label: `${current.getMonth() + 1}/${current.getDate()}`
+            label: current.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
           });
           current.setDate(current.getDate() + 7);
         }
@@ -452,6 +452,14 @@ export default function WBSGanttPage() {
     setExpandedIds((prev) => new Set([...prev, ...idsWithChildren]));
   }, [wbsSearchQuery, searchFilteredItems]);
 
+  // Rollup percentComplete from children so rollup bar shows progress (not always 0% red) and grey for incomplete.
+  const getRollupPercentComplete = (item: any): number => {
+    if (!item?.children?.length) return item?.percentComplete ?? 0;
+    const childPcts = (item.children as any[]).map((c: any) => getRollupPercentComplete(c));
+    const sum = childPcts.reduce((a, b) => a + b, 0);
+    return childPcts.length ? Math.round(sum / childPcts.length) : (item.percentComplete ?? 0);
+  };
+
   // Build a single flat list of all WBS nodes (each id appears once), then filter by visibility.
   // This avoids duplication and makes expand/collapse consistent: visibility = root or (parent visible && parent expanded).
   const allRowsWithParent = useMemo(() => {
@@ -465,12 +473,17 @@ export default function WBSGanttPage() {
 
       const hasChildren = !!(item.children && item.children.length > 0);
       const itemType = item.itemType || item.type || 'task';
+      // Rollup rows: use computed percentComplete from children when missing so bar shows progress + grey for incomplete
+      const percentComplete = hasChildren
+        ? (item.percentComplete ?? getRollupPercentComplete(item))
+        : (item.percentComplete ?? 0);
 
       list.push({
         parentId,
         level,
         row: {
           ...item,
+          percentComplete,
           itemType,
           level,
           indentLevel: level - 1,
@@ -1278,8 +1291,8 @@ export default function WBSGanttPage() {
                     </td>
                     <td><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
                     <td style={{ fontSize: '0.65rem' }}>{getEmployeeName(row.assignedResourceId, employees)}</td>
-                    <td style={{ fontSize: '0.65rem' }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) : '-'}</td>
-                    <td style={{ fontSize: '0.65rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }) : '-'}</td>
+                    <td style={{ fontSize: '0.65rem' }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '-'}</td>
+                    <td style={{ fontSize: '0.65rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.daysRequired !== undefined && row.daysRequired !== null ? Number(row.daysRequired).toFixed(2) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.baselineHours ? Number(row.baselineHours).toFixed(2) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.actualHours ? Number(row.actualHours).toFixed(2) : '-'}</td>
@@ -1313,10 +1326,18 @@ export default function WBSGanttPage() {
                     </td>
 
                     {/* Gantt Timeline Cells */}
-                    {/* Gantt Timeline Cells */}
                     {dateColumns.map((col, i) => {
                       const isCurrentPeriod = today >= col.start && today <= col.end;
-                      const cellBg = isCurrentPeriod ? 'rgba(64, 224, 208, 0.05)' : 'transparent';
+                      // Column highlight: match header (teal). Use background + inset border so the full column
+                      // is visible even when the bar in cell 0 overflows; bar has z-index 5, overlay below it.
+                      const cellStyle: React.CSSProperties = {
+                        borderLeft: '1px solid #222',
+                        background: isCurrentPeriod ? 'rgba(64, 224, 208, 0.12)' : 'transparent',
+                        position: 'relative',
+                        padding: 0,
+                        overflow: i === 0 ? 'visible' : 'hidden',
+                        boxShadow: isCurrentPeriod ? 'inset 0 0 0 1px rgba(64, 224, 208, 0.25)' : undefined
+                      };
 
                       // Render the continuous bar container ONLY in the first cell
                       // But we must render the TD for every cell to maintain the grid
@@ -1420,8 +1441,21 @@ export default function WBSGanttPage() {
                       })();
 
                       return (
-                        <td key={i} style={{ borderLeft: '1px solid #222', background: cellBg, position: 'relative', padding: 0, overflow: i === 0 ? 'visible' : 'hidden' }}>
+                        <td key={i} style={cellStyle}>
                           {content}
+                          {/* Column highlight overlay so current column stays visible when bar in cell 0 overflows */}
+                          {isCurrentPeriod && (
+                            <div
+                              aria-hidden
+                              style={{
+                                position: 'absolute',
+                                inset: 0,
+                                background: 'rgba(64, 224, 208, 0.1)',
+                                pointerEvents: 'none',
+                                zIndex: 6
+                              }}
+                            />
+                          )}
                         </td>
                       );
                     })}
