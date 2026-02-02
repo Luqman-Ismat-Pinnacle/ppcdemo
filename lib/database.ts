@@ -205,7 +205,7 @@ async function fetchFromSupabase() {
     supabaseClient!.from('tasks').select('*').order('name'),                // 7
     supabaseClient!.from('qc_tasks').select('*').order('name'),             // 8 - FIXED: was task_dependencies
     supabaseClient!.from('employees').select('*').order('name'),            // 9 - FIXED: was qc_tasks
-    supabaseClient!.from('hour_entries').select('*').order('date'),         // 10 - FIXED: was employees
+    supabaseClient!.from('hour_entries').select('*').order('date').limit(50000),  // 10 - Remove default 1000 limit
     supabaseClient!.from('milestones').select('*').order('planned_date'),   // 11 - FIXED: was hour_entries
     supabaseClient!.from('deliverables').select('*').order('name'),         // 12
     supabaseClient!.from('sprints').select('*').order('start_date'),        // 13

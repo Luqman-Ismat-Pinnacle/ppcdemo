@@ -367,33 +367,37 @@ function unifiedSyncStream(
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         
         // Fetch unassigned hours - try with workday columns, fall back to phase_id
+        // Remove default 1000 limit to get all unassigned hours
         let unassignedHours: any[] = [];
         try {
           const { data } = await supabase
             .from('hour_entries')
             .select('id, project_id, phase_id, workday_phase, workday_task')
-            .is('task_id', null);
+            .is('task_id', null)
+            .limit(50000);
           unassignedHours = data || [];
         } catch (e) {
           // workday columns might not exist
           const { data } = await supabase
             .from('hour_entries')
             .select('id, project_id, phase_id')
-            .is('task_id', null);
+            .is('task_id', null)
+            .limit(50000);
           unassignedHours = data || [];
           logAndPush('workday_phase/workday_task columns not available, using phase_id fallback');
         }
         
         if (unassignedHours && unassignedHours.length > 0) {
           // Fetch all tasks and units
-          const { data: tasks } = await supabase.from('tasks').select('id, project_id, name');
-          const { data: units } = await supabase.from('units').select('id, project_id, name');
+          const { data: tasks } = await supabase.from('tasks').select('id, project_id, name').limit(50000);
+          const { data: units } = await supabase.from('units').select('id, project_id, name').limit(50000);
           
           // Also fetch descriptions from hours for matching
           const { data: hoursWithDesc } = await supabase
             .from('hour_entries')
             .select('id, project_id, description')
-            .is('task_id', null);
+            .is('task_id', null)
+            .limit(50000);
           
           // Group tasks by project_id
           const tasksByProject = new Map<string, any[]>();
@@ -475,11 +479,12 @@ function unifiedSyncStream(
         pushLine(controller, { type: 'step', step: 'aggregation', status: 'started' });
         logAndPush('Aggregating actual hours and cost to tasks...');
         
-        // Get all hours with task_id and aggregate
+        // Get all hours with task_id and aggregate (remove 1000 limit)
         const { data: allMatchedHours } = await supabase
           .from('hour_entries')
           .select('task_id, hours, actual_cost, reported_standard_cost_amt')
-          .not('task_id', 'is', null);
+          .not('task_id', 'is', null)
+          .limit(50000);
         
         if (allMatchedHours && allMatchedHours.length > 0) {
           const taskAggregates = new Map<string, { actualHours: number; actualCost: number }>();
