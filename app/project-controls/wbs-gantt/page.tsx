@@ -718,19 +718,21 @@ export default function WBSGanttPage() {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
 
-  // Update viewport height on mount/resize
+  // Update viewport height when scroll container size changes (mount, resize, layout settle)
   useEffect(() => {
-    if (containerRef.current) {
-      setViewportHeight(containerRef.current.clientHeight);
-    }
-    const handleResize = () => {
-      if (containerRef.current) {
-        setViewportHeight(containerRef.current.clientHeight);
-      }
-    };
+    const el = containerRef.current;
+    if (!el) return;
+    const updateHeight = () => setViewportHeight(el.clientHeight);
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    ro.observe(el);
+    const handleResize = () => updateHeight();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [wbsDataForTable?.items?.length]);
 
   const scrollRafRef = useRef<number | null>(null);
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -1084,7 +1086,7 @@ export default function WBSGanttPage() {
         </div>
       )}
 
-      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }} key={`wbs-gantt-${(wbsDataForTable?.items?.length ?? 0)}-${(wbsDataForTable?.items as any[])?.[0]?.id ?? ''}`}>
+      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '60vh' }} key={`wbs-gantt-${(wbsDataForTable?.items?.length ?? 0)}-${(wbsDataForTable?.items as any[])?.[0]?.id ?? ''}`}>
         <div
           className="chart-card-body no-padding"
           style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}

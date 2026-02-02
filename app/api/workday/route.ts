@@ -208,14 +208,21 @@ function unifiedSyncStream(
           const endStr = chunkEnd.toISOString().split('T')[0];
 
           pushLine(controller, { type: 'step', step: 'hours', status: 'chunk', chunk: i + 1, totalChunks, startDate: startStr, endDate: endStr });
-          const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', { startDate: startStr, endDate: endStr });
-          totalHours += hoursRes.stats?.hours ?? 0;
-          pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
-          if (hoursRes.success) {
-            hoursChunksOk++;
-          } else {
+          try {
+            const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', { startDate: startStr, endDate: endStr });
+            totalHours += hoursRes.stats?.hours ?? 0;
+            pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
+            if (hoursRes.success) {
+              hoursChunksOk++;
+            } else {
+              hoursChunksFail++;
+              logs.push(`Hour window ${startStr}–${endStr} failed: ${hoursRes.error || 'unknown'}`);
+            }
+          } catch (chunkErr: any) {
             hoursChunksFail++;
-            logs.push(`Hour window ${startStr}–${endStr} failed: ${hoursRes.error || 'unknown'}`);
+            const msg = chunkErr?.message ?? String(chunkErr);
+            logs.push(`Hour window ${startStr}–${endStr} error: ${msg}`);
+            pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: null });
           }
         }
         pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
