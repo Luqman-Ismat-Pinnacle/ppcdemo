@@ -36,8 +36,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const syncType = body.syncType as SyncType | 'unified';
     const action = body.action;
-    const records = body.records || [];
-    const stream = body.stream === true;
     const hoursDaysBack = Math.min(365, Math.max(30, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
 
     // Handle get-available-projects action - fetch directly from database
@@ -83,66 +81,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Unified Sync Logic: sequential or stream (constant stream = more stable, no big pull)
+    // Unified Sync Logic: always use stream (constant stream = more stable, no big pull)
     if (syncType === 'unified') {
-      if (stream) {
-        return unifiedSyncStream(supabaseUrl, supabaseServiceKey, hoursDaysBack);
-      }
-      console.log('[Workday Sync] Starting Unified Sync sequence...');
-      const results: any[] = [];
-      const logs: string[] = [];
-      let success = true;
-
-      logs.push('--- Step 1: Syncing Employees & Portfolios ---');
-      const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {});
-      results.push({ step: 'employees', result: empRes });
-      logs.push(...(empRes.logs || []));
-      if (!empRes.success) {
-        success = false;
-        logs.push(`Error in employees sync: ${empRes.error}`);
-      } else {
-        logs.push(`Synced ${empRes.summary?.synced || 0} employees.`);
-      }
-
-      logs.push('--- Step 2: Syncing Hierarchy & Projects ---');
-      const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
-      results.push({ step: 'hierarchy', result: projRes });
-      logs.push(...(projRes.errors || []));
-      if (!projRes.success) {
-        success = false;
-        logs.push(`Error in hierarchy sync: ${projRes.error}`);
-      } else {
-        logs.push(`Synced: ${projRes.summary?.portfolios || 0} Portfolios, ${projRes.summary?.customers || 0} Customers, ${projRes.summary?.sites || 0} Sites, ${projRes.summary?.projects || 0} Projects.`);
-      }
-
-      logs.push('--- Step 3: Syncing Hours & Cost Actuals ---');
-      const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', {});
-      results.push({ step: 'hours', result: hoursRes });
-      logs.push(...(hoursRes.logs || []));
-      if (!hoursRes.success) {
-        success = false;
-        logs.push(`Error in hours sync: ${hoursRes.error}`);
-      } else {
-        const fetched = hoursRes.stats?.fetched ?? 0;
-        if (fetched === 0) {
-          logs.push('No labor transactions in the selected date range. No new hour data to sync.');
-        } else {
-          logs.push(`Synced ${hoursRes.stats?.hours || 0} hour entries with costs.`);
-        }
-      }
-
-      logs.push('--- Step 4: Skipping Ledger Sync (Memory Limit Issues) ---');
-      logs.push('Ledger sync disabled due to worker memory limits.');
-      logs.push('Hours sync includes cost data for WBS Gantt integration.');
-      logs.push('Use individual ledger functions if needed: workday-ledger-stream or workday-ledger-chunked');
-
-      const hoursFetched = results.find((r: any) => r.step === 'hours')?.result?.stats?.fetched ?? -1;
-      return NextResponse.json({
-        success,
-        syncType: 'unified',
-        summary: { totalSteps: 3, results, noNewHours: hoursFetched === 0 },
-        logs
-      });
+      return unifiedSyncStream(supabaseUrl, supabaseServiceKey, hoursDaysBack);
     }
 
     if (!syncType || !EDGE_FUNCTIONS[syncType as keyof typeof EDGE_FUNCTIONS]) {
@@ -155,8 +96,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Hours-only with stream: chunk by date and stream progress (same mapping, constant stream)
-    if (syncType === 'hours' && stream) {
+    // Hours-only: always use stream (chunk by date and stream progress)
+    if (syncType === 'hours') {
       return hoursOnlyStream(supabaseUrl, supabaseServiceKey, hoursDaysBack);
     }
 
@@ -345,6 +286,6 @@ export async function GET() {
   return NextResponse.json({
     available: true,
     syncTypes: Object.keys(EDGE_FUNCTIONS),
-    message: 'POST { syncType, records } to sync data. Use { syncType: "unified", stream: true } for constant NDJSON stream (more stable). Optional hoursDaysBack (default 90).',
+    message: 'POST { syncType } to sync data. All syncs use streaming NDJSON for stability. Optional hoursDaysBack (default 90).',
   });
 }

@@ -78,8 +78,8 @@ export default function StatusAndLogsDropdown() {
   const [workdaySyncing, setWorkdaySyncing] = useState(false);
   const [workdayStatus, setWorkdayStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [workdayMessage, setWorkdayMessage] = useState('');
-  const [syncMethod, setSyncMethod] = useState<'current' | 'stream'>('current');
   const [workdayLogs, setWorkdayLogs] = useState<string[]>([]);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; step: string } | null>(null);
 
   const checkDbConnection = async () => {
     setDbChecking(true);
@@ -135,34 +135,39 @@ export default function StatusAndLogsDropdown() {
       logEntries.push(entry);
       setWorkdayLogs(prev => [entry, ...prev].slice(0, 50));
     };
-    pushLog(`Starting sync (${syncMethod === 'stream' ? 'streaming' : 'standard'} method)…`);
+    pushLog('Starting sync (streaming)…');
+    setSyncProgress(null);
 
     try {
-      if (syncMethod === 'stream') {
-        pushLog('Connecting to Workday…');
-        const { success } = await runWorkdaySyncStream({
-          syncType: 'unified',
-          onEvent: (ev) => {
-            if (ev.type === 'step') {
-              if (ev.status === 'started') pushLog(`Step: ${ev.step} started`);
-              if (ev.status === 'chunk') pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} (${ev.startDate}–${ev.endDate})`);
-              if (ev.status === 'chunk_done') pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} done`);
-              if (ev.status === 'done') pushLog(`Step: ${ev.step} done`);
+      pushLog('Connecting to Workday…');
+      const { success } = await runWorkdaySyncStream({
+        syncType: 'unified',
+        onEvent: (ev) => {
+          if (ev.type === 'step') {
+            if (ev.status === 'started') {
+              pushLog(`Step: ${ev.step} started`);
+              setSyncProgress({ current: 0, total: ev.totalChunks || 1, step: ev.step });
             }
-            if (ev.type === 'error') pushLog(`Error: ${ev.error}`);
-            if (ev.type === 'done' && ev.logs) ev.logs.forEach((l: string) => pushLog(l));
-          },
-        });
-        setWorkdayStatus(success ? 'success' : 'error');
-        setWorkdayMessage(success ? 'Sync Complete' : 'Sync Failed');
-        pushLog(success ? 'Sync completed successfully' : 'Sync failed');
-      } else {
-        pushLog('Connecting to Workday…');
-        const data = await runSyncStep('unified', {}, pushLog);
-        setWorkdayStatus('success');
-        setWorkdayMessage(data?.summary?.noNewHours ? 'No new hour data in date range.' : 'Sync Complete');
-        pushLog('Sync completed successfully');
-      }
+            if (ev.status === 'chunk') {
+              pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} (${ev.startDate}–${ev.endDate})`);
+              setSyncProgress({ current: ev.chunk || 0, total: ev.totalChunks || 1, step: 'hours' });
+            }
+            if (ev.status === 'chunk_done') {
+              pushLog(`Hours chunk ${ev.chunk}/${ev.totalChunks} done`);
+            }
+            if (ev.status === 'done') {
+              pushLog(`Step: ${ev.step} done`);
+              if (ev.step === 'hours') setSyncProgress(null);
+            }
+          }
+          if (ev.type === 'error') pushLog(`Error: ${ev.error}`);
+          if (ev.type === 'done' && ev.logs) ev.logs.forEach((l: string) => pushLog(l));
+        },
+      });
+      setSyncProgress(null);
+      setWorkdayStatus(success ? 'success' : 'error');
+      setWorkdayMessage(success ? 'Sync Complete' : 'Sync Failed');
+      pushLog(success ? 'Sync completed successfully' : 'Sync failed');
       addEngineLog('Workday', logEntries);
       await refreshData();
     } catch (err: any) {
@@ -307,15 +312,24 @@ export default function StatusAndLogsDropdown() {
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: workdaySyncing ? 'var(--pinnacle-teal)' : workdayColor }} />
                     <span style={{ fontSize: '0.8rem' }}>{workdaySyncing ? 'Syncing...' : workdayStatus === 'idle' ? 'Ready' : workdayStatus}</span>
                   </div>
-                  <select
-                    value={syncMethod}
-                    onChange={(e) => setSyncMethod(e.target.value as 'current' | 'stream')}
-                    disabled={workdaySyncing}
-                    style={{ width: '100%', padding: '10px 12px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', marginBottom: '10px', color: 'var(--text-primary)' }}
-                  >
-                    <option value="current">Standard sync</option>
-                    <option value="stream">Streaming sync (recommended)</option>
-                  </select>
+                  {syncProgress && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                        <span>Syncing {syncProgress.step} data</span>
+                        <span>{syncProgress.current} / {syncProgress.total}</span>
+                      </div>
+                      <div style={{ width: '100%', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            width: `${(syncProgress.current / syncProgress.total) * 100}%`,
+                            height: '100%',
+                            background: 'var(--pinnacle-teal)',
+                            transition: 'width 0.3s ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                   <button
                     onClick={handleWorkdaySync}
                     disabled={workdaySyncing}
