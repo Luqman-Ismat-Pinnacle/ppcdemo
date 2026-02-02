@@ -191,7 +191,14 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return toSupabaseFormat(cleaned);
+      const formatted = toSupabaseFormat(cleaned);
+
+      // tasks table has assigned_resource_id, not employee_id - strip employee_id to avoid schema cache error
+      if (tableName === 'tasks' && 'employee_id' in formatted) {
+        delete formatted.employee_id;
+      }
+
+      return formatted;
     });
 
     // Handle Update Operation (partial update without upsert)

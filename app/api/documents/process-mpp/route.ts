@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { convertProjectPlanJSON } from '@/lib/data-converter';
+import { toSupabaseFormat } from '@/lib/supabase';
 
 const PYTHON_SERVICE_URL = process.env.MPP_PARSER_URL || 'https://ppc-demo-production.up.railway.app';
 
@@ -140,9 +141,14 @@ export async function POST(req: NextRequest) {
         if (error) console.error('Error saving phases:', error);
     }
     
-    // Save Tasks
+    // Save Tasks (convert to snake_case so remaining_hours etc. are written correctly)
     if (convertedData.tasks && convertedData.tasks.length > 0) {
-        const { error } = await supabase.from('tasks').upsert(convertedData.tasks, { onConflict: 'id' });
+        const tasksForDb = convertedData.tasks.map((t: Record<string, unknown>) => {
+          const row = toSupabaseFormat(t);
+          delete (row as any).employee_id; // tasks table has assigned_resource_id only
+          return row;
+        });
+        const { error } = await supabase.from('tasks').upsert(tasksForDb, { onConflict: 'id' });
         if (error) console.error('Error saving tasks:', error);
     }
     

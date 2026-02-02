@@ -332,12 +332,9 @@ export default function WBSGanttPage() {
     };
 
     const getRemainingHours = (item: any) => {
-      if (item.remainingHours != null) return item.remainingHours;
-      if (item.projectedRemainingHours != null) return item.projectedRemainingHours;
-      if (item.baselineHours != null && item.actualHours != null) {
-        return Math.max(0, (item.baselineHours || 0) - (item.actualHours || 0));
-      }
-      return null;
+      // Use MPP parser / DB value only - no calculation fallback
+      const v = item.remainingHours ?? item.projectedRemainingHours ?? item.remaining_hours;
+      return v != null ? v : 0;
     };
 
     const getRemainingCost = (item: any) => {
@@ -1299,8 +1296,8 @@ export default function WBSGanttPage() {
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.baselineHours ? Number(row.baselineHours).toFixed(2) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.actualHours ? Number(row.actualHours).toFixed(2) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{(() => {
-                      const remHrs = (row as any).remainingHours ?? row.projectedRemainingHours ?? (row.baselineHours && row.actualHours ? Math.max(0, (row.baselineHours || 0) - (row.actualHours || 0)) : null);
-                      return remHrs !== null ? remHrs.toFixed(2) : '-';
+                      const remHrs = (row as any).remainingHours ?? row.projectedRemainingHours ?? (row as any).remaining_hours;
+                      return remHrs != null ? Number(remHrs).toFixed(2) : '0.00';
                     })()}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{formatCurrency(row.baselineCost || 0)}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{formatCurrency(row.actualCost || 0)}</td>
