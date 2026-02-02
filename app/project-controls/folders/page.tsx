@@ -140,13 +140,19 @@ export default function DocumentsPage() {
   };
 
   const loadStoredFiles = async () => {
-    if (!supabase) return;
+    if (!supabase) {
+      console.log('[loadStoredFiles] No supabase client');
+      return;
+    }
 
     try {
+      console.log('[loadStoredFiles] Fetching files from storage bucket:', STORAGE_BUCKET);
       // Fetch files from storage
       const { data: storageFiles, error: storageError } = await supabase.storage
         .from(STORAGE_BUCKET)
         .list('mpp', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+
+      console.log('[loadStoredFiles] Storage response:', { count: storageFiles?.length, error: storageError });
 
       if (storageError) {
         console.error('Error loading files from storage:', storageError);
@@ -158,6 +164,8 @@ export default function DocumentsPage() {
         .from('project_documents')
         .select('id, file_name, storage_path, project_id, health_score, health_check_json, uploaded_at, file_size')
         .order('uploaded_at', { ascending: false });
+
+      console.log('[loadStoredFiles] DB docs response:', { count: dbDocs?.length, error: dbError });
 
       if (dbError) {
         console.error('Error loading document metadata:', dbError);
@@ -171,9 +179,13 @@ export default function DocumentsPage() {
         }
       });
 
+      console.log('[loadStoredFiles] Storage files:', storageFiles?.map(f => f.name));
+      
       if (storageFiles && storageFiles.length > 0) {
-        const files: UploadedFile[] = storageFiles
-          .filter(f => f.name.toLowerCase().endsWith('.mpp'))
+        const mppFiles = storageFiles.filter(f => f.name.toLowerCase().endsWith('.mpp'));
+        console.log('[loadStoredFiles] MPP files after filter:', mppFiles.length);
+        
+        const files: UploadedFile[] = mppFiles
           .map(f => {
             const storagePath = `mpp/${f.name}`;
             const dbDoc = dbDocMap.get(storagePath);
@@ -215,7 +227,10 @@ export default function DocumentsPage() {
             };
           });
 
+        console.log('[loadStoredFiles] Setting uploadedFiles:', files.length, 'files');
         setUploadedFiles(files);
+      } else {
+        console.log('[loadStoredFiles] No storage files found or empty array');
       }
     } catch (err) {
       console.error('Error loading stored files:', err);
