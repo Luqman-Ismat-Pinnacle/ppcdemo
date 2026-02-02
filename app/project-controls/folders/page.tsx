@@ -189,6 +189,14 @@ export default function DocumentsPage() {
     const fileId = `mpp-${Date.now()}`;
     const storagePath = `mpp/${Date.now()}_${selectedFile.name}`;
 
+    // Collect logs so we can persist them to project_log
+    const logEntries: ProcessingLog[] = [];
+    const pushLog = (type: ProcessingLog['type'], message: string) => {
+      const entry: ProcessingLog = { id: `${Date.now()}-${Math.random()}`, timestamp: new Date(), type, message };
+      logEntries.push(entry);
+      addLog(type, message);
+    };
+
     // Add file to list with uploading status
     const fileRecord: UploadedFile = {
       id: fileId,
@@ -201,8 +209,8 @@ export default function DocumentsPage() {
     };
     setUploadedFiles(prev => [...prev, fileRecord]);
 
-    addLog('info', `[Storage] Uploading ${selectedFile.name} to Supabase...`);
-    addLog('info', `[Project] Linking to Workday project: ${workdayProjectId}`);
+    pushLog('info', `[Storage] Uploading ${selectedFile.name} to Supabase...`);
+    pushLog('info', `[Project] Linking to Workday project: ${workdayProjectId}`);
 
     try {
       // Upload to Supabase Storage
@@ -217,14 +225,14 @@ export default function DocumentsPage() {
         throw new Error(error.message);
       }
 
-      addLog('success', `[Storage] File uploaded: ${data.path}`);
+      pushLog('success', `[Storage] File uploaded: ${data.path}`);
 
       // Update file status
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'uploaded' as const, storagePath: data.path } : f
       ));
 
-      // Also save metadata to project_documents table
+      // Also save metadata to project_documents table (project_id and health_score when available)
       try {
         const docId = `DOC_${Date.now()}`;
         await fetch('/api/data/sync', {
@@ -248,9 +256,30 @@ export default function DocumentsPage() {
             }],
           }),
         });
-        addLog('success', '[Database] Document metadata saved');
+        pushLog('success', '[Database] Document metadata saved');
       } catch (dbErr: any) {
-        addLog('warning', `[Database] Metadata save failed: ${dbErr.message}`);
+        pushLog('warning', `[Database] Metadata save failed: ${dbErr.message}`);
+      }
+
+      // Persist upload logs to project_log so they are saved
+      try {
+        const logRecords = logEntries.map((e, i) => ({
+          id: `LOG_${fileId}_${i}_${Date.now()}`,
+          projectId: workdayProjectId.trim() || null,
+          entryDate: e.timestamp.toISOString(),
+          entryType: e.type,
+          message: e.message,
+          createdBy: 'Upload',
+        }));
+        if (logRecords.length > 0 && workdayProjectId.trim()) {
+          await fetch('/api/data/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataKey: 'projectLog', records: logRecords }),
+          });
+        }
+      } catch (logErr: any) {
+        addLog('warning', `[Database] Log save failed: ${logErr.message}`);
       }
 
       // Reset form
@@ -259,13 +288,33 @@ export default function DocumentsPage() {
       if (fileInputRef.current) fileInputRef.current.value = '';
 
     } catch (error: any) {
-      addLog('error', `[Storage] Upload failed: ${error.message}`);
+      pushLog('error', `[Storage] Upload failed: ${error.message}`);
       // Remove failed file from list
       setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
     } finally {
       setIsUploading(false);
     }
   }, [selectedFile, workdayProjectId, addLog]);
+
+  // Persist process/upload logs to project_log
+  const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
+    if (!projectId || entries.length === 0) return;
+    try {
+      const logRecords = entries.map((e, i) => ({
+        id: `LOG_${Date.now()}_${i}`,
+        projectId,
+        entryDate: e.timestamp.toISOString(),
+        entryType: e.type,
+        message: e.message,
+        createdBy: 'Project Upload',
+      }));
+      await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataKey: 'projectLog', records: logRecords }),
+      });
+    } catch (_) {}
+  }, []);
 
   // Process file with MPXJ Python service and sync to Supabase
   const handleProcess = useCallback(async (fileId: string) => {
@@ -278,9 +327,16 @@ export default function DocumentsPage() {
       f.id === fileId ? { ...f, status: 'processing' as const } : f
     ));
 
+    const logEntries: ProcessingLog[] = [];
+    const pushLog = (type: ProcessingLog['type'], message: string) => {
+      const entry: ProcessingLog = { id: `${Date.now()}-${Math.random()}`, timestamp: new Date(), type, message };
+      logEntries.push(entry);
+      addLog(type, message);
+    };
+
     try {
       // Step 1: Download file from Supabase Storage
-      addLog('info', `[Storage] Downloading ${file.fileName}...`);
+      pushLog('info', `[Storage] Downloading ${file.fileName}...`);
 
       if (!supabase) {
         throw new Error('Supabase not configured');
@@ -294,10 +350,10 @@ export default function DocumentsPage() {
         throw new Error(`Download failed: ${downloadError?.message || 'Unknown error'}`);
       }
 
-      addLog('success', '[Storage] File downloaded');
+      pushLog('success', '[Storage] File downloaded');
 
       // Step 2: Send to MPXJ Python parser
-      addLog('info', '[MPXJ] Parsing MPP file...');
+      pushLog('info', '[MPXJ] Parsing MPP file...');
 
       const formData = new FormData();
       formData.append('file', fileData, file.fileName);
@@ -311,7 +367,7 @@ export default function DocumentsPage() {
       }
 
       console.log('Hitting MPP Parser at:', `${MPP_PARSER_URL}/parse`);
-      addLog('info', `[Network] Service URL: ${MPP_PARSER_URL}/parse`);
+      pushLog('info', `[Network] Service URL: ${MPP_PARSER_URL}/parse`);
 
       const parseResponse = await fetch(`${MPP_PARSER_URL}/parse`, {
         method: 'POST',
@@ -329,7 +385,7 @@ export default function DocumentsPage() {
         throw new Error(parseResult.error || 'Parse failed');
       }
 
-      addLog('success', `[MPXJ] Parsed: ${parseResult.summary?.total_rows || parseResult.summary?.total_tasks || 0} tasks`);
+      pushLog('success', `[MPXJ] Parsed: ${parseResult.summary?.total_rows || parseResult.summary?.total_tasks || 0} tasks`);
       console.log('[DEBUG] MPP Parser result:', {
         success: parseResult.success,
         tasks: parseResult.tasks?.length,
@@ -341,7 +397,7 @@ export default function DocumentsPage() {
       const timestamp = Date.now();
       const projectId = file.workdayProjectId || `PRJ_MPP_${timestamp}`;
       
-      addLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
+      pushLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
       
       // Use our converter to properly categorize by outline_level
       console.log('[DEBUG] About to call convertMppParserOutput with', parseResult.tasks?.length, 'tasks');
@@ -372,19 +428,19 @@ export default function DocumentsPage() {
         });
       }
       
-      addLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
+      pushLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
 
       // Auto project health check
       const healthResult = runProjectHealthAutoCheck(convertedData);
-      addLog(healthResult.issues.length > 0 ? 'warning' : 'success', `[Health] Score: ${healthResult.score}% (${healthResult.passed}/${healthResult.totalChecks})${healthResult.issues.length > 0 ? ` · Issues: ${healthResult.issues.join('; ')}` : ''}`);
+      pushLog(healthResult.issues.length > 0 ? 'warning' : 'success', `[Health] Score: ${healthResult.score}% (${healthResult.passed}/${healthResult.totalChecks})${healthResult.issues.length > 0 ? ` · Issues: ${healthResult.issues.join('; ')}` : ''}`);
 
       // Parser log: names from MPP so we can verify converter output vs Workday
       const phasesList = (convertedData.phases || []).map((p: any) => `"${p.id}: ${(p.name || '').slice(0, 50)}"`).join(', ');
       const unitsList = (convertedData.units || []).map((u: any) => `"${u.id}: ${(u.name || '').slice(0, 40)} (project: ${u.projectId || u.project_id || '-'})"`).join(', ');
       const taskSample = (convertedData.tasks || []).slice(0, 8).map((t: any) => `"${t.id}: ${(t.name || t.taskName || '').slice(0, 30)}"`).join(', ');
-      addLog('info', `[MPP Parser] Phases from file: ${phasesList || 'none'}`);
-      addLog('info', `[MPP Parser] Units from file: ${unitsList || 'none'}`);
-      addLog('info', `[MPP Parser] Tasks from file: ${(convertedData.tasks?.length || 0)} total; sample: ${taskSample || 'none'}`);
+      pushLog('info', `[MPP Parser] Phases from file: ${phasesList || 'none'}`);
+      pushLog('info', `[MPP Parser] Units from file: ${unitsList || 'none'}`);
+      pushLog('info', `[MPP Parser] Tasks from file: ${(convertedData.tasks?.length || 0)} total; sample: ${taskSample || 'none'}`);
 
       // Step 3: Sync to Supabase
       setUploadedFiles(prev => prev.map(f =>
@@ -393,7 +449,7 @@ export default function DocumentsPage() {
 
       const projectName = parseResult.project?.name || file.fileName.replace('.mpp', '');
 
-      addLog('info', `[Hierarchy] Project ID: ${projectId} - ALL phases and tasks will be linked to this project`);
+      pushLog('info', `[Hierarchy] Project ID: ${projectId} - ALL phases and tasks will be linked to this project`);
 
       // Create project
       if (!file.workdayProjectId) {
@@ -414,14 +470,14 @@ export default function DocumentsPage() {
         });
         const projectResult = await projectResponse.json();
         if (!projectResponse.ok || !projectResult.success) {
-          addLog('warning', `[Supabase] Project: ${projectResult.error || 'Failed'}`);
+          pushLog('warning', `[Supabase] Project: ${projectResult.error || 'Failed'}`);
         } else {
-          addLog('success', `[Supabase] Project created: ${projectId}`);
+          pushLog('success', `[Supabase] Project created: ${projectId}`);
         }
       }
 
       // Sync converted data to Supabase using our proper hierarchy
-      addLog('info', '[Supabase] Syncing converted hierarchy data...');
+      pushLog('info', '[Supabase] Syncing converted hierarchy data...');
 
       // Use existing Workday project ID - no need to create new project
       const existingProjectId = file.workdayProjectId;
@@ -429,13 +485,13 @@ export default function DocumentsPage() {
         throw new Error('No Workday project selected - cannot create hierarchy without project');
       }
       
-      addLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
+      pushLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
       // Always apply the file: same structure = update numbers; new structure = replace schedule.
       // (No duplicate skip so updated project plans with revised dates/hours/costs are applied.)
 
       // Update the existing project: has_schedule = true (direct update to avoid name constraint)
-      addLog('info', '[Supabase] Enabling schedule visibility for project...');
+      pushLog('info', '[Supabase] Enabling schedule visibility for project...');
       try {
         const projectUpdateResponse = await fetch('/api/data/sync', {
           method: 'POST',
@@ -452,16 +508,16 @@ export default function DocumentsPage() {
         });
         const projectUpdateResult = await projectUpdateResponse.json();
         if (!projectUpdateResponse.ok || !projectUpdateResult.success) {
-          addLog('warning', `[Supabase] Project update: ${projectUpdateResult.error || 'Failed'}`);
+          pushLog('warning', `[Supabase] Project update: ${projectUpdateResult.error || 'Failed'}`);
         } else {
-          addLog('success', `[Supabase] Project updated: has_schedule=true`);
+          pushLog('success', `[Supabase] Project updated: has_schedule=true`);
         }
       } catch (updateErr: any) {
-        addLog('warning', `[Supabase] Project update error: ${updateErr.message}`);
+        pushLog('warning', `[Supabase] Project update error: ${updateErr.message}`);
       }
 
       // Remove existing phases/units/tasks for this project so only MPP hierarchy remains (no Workday extras)
-      addLog('info', '[Supabase] Removing existing phases/units/tasks for this project...');
+      pushLog('info', '[Supabase] Removing existing phases/units/tasks for this project...');
       for (const key of ['tasks', 'units', 'phases']) {
         try {
           const delRes = await fetch('/api/data/sync', {
@@ -471,12 +527,12 @@ export default function DocumentsPage() {
           });
           const delResult = await delRes.json();
           if (!delRes.ok || !delResult.success) {
-            addLog('warning', `[Supabase] Delete existing ${key}: ${delResult.error || 'Failed'}`);
-          } else {
-            addLog('success', `[Supabase] Cleared existing ${key} for project`);
+            pushLog('warning', `[Supabase] Delete existing ${key}: ${delResult.error || 'Failed'}`);
+        } else {
+            pushLog('success', `[Supabase] Cleared existing ${key} for project`);
           }
         } catch (e: any) {
-          addLog('warning', `[Supabase] Delete ${key} error: ${e.message}`);
+          pushLog('warning', `[Supabase] Delete ${key} error: ${e.message}`);
         }
       }
 
@@ -513,9 +569,9 @@ export default function DocumentsPage() {
         });
         const phaseResult = await phaseResponse.json();
         if (!phaseResponse.ok || !phaseResult.success) {
-          addLog('warning', `[Supabase] Phases: ${phaseResult.error || 'Failed'}`);
+          pushLog('warning', `[Supabase] Phases: ${phaseResult.error || 'Failed'}`);
         } else {
-          addLog('success', `[Supabase] Phases synced: ${convertedData.phases.length}`);
+          pushLog('success', `[Supabase] Phases synced: ${convertedData.phases.length}`);
         }
       }
 
@@ -531,9 +587,9 @@ export default function DocumentsPage() {
         });
         const unitResult = await unitResponse.json();
         if (!unitResponse.ok || !unitResult.success) {
-          addLog('warning', `[Supabase] Units: ${unitResult.error || 'Failed'}`);
+          pushLog('warning', `[Supabase] Units: ${unitResult.error || 'Failed'}`);
         } else {
-          addLog('success', `[Supabase] Units synced: ${convertedData.units.length}`);
+          pushLog('success', `[Supabase] Units synced: ${convertedData.units.length}`);
         }
       }
 
@@ -549,9 +605,9 @@ export default function DocumentsPage() {
         });
         const taskResult = await taskResponse.json();
         if (!taskResponse.ok || !taskResult.success) {
-          addLog('warning', `[Supabase] Tasks: ${taskResult.error || 'Failed'}`);
+          pushLog('warning', `[Supabase] Tasks: ${taskResult.error || 'Failed'}`);
         } else {
-          addLog('success', `[Supabase] Tasks synced: ${convertedData.tasks.length}`);
+          pushLog('success', `[Supabase] Tasks synced: ${convertedData.tasks.length}`);
         }
       }
 
@@ -569,30 +625,50 @@ export default function DocumentsPage() {
         });
         const setCurrentResult = await setCurrentRes.json();
         if (setCurrentRes.ok && setCurrentResult.success) {
-          addLog('success', '[Documents] File marked as current version for this project.');
+          pushLog('success', '[Documents] File marked as current version for this project.');
         } else {
-          addLog('warning', `[Documents] Could not set current version: ${setCurrentResult.error || 'Unknown'}`);
+          pushLog('warning', `[Documents] Could not set current version: ${setCurrentResult.error || 'Unknown'}`);
         }
       } catch (e: any) {
-        addLog('warning', `[Documents] Set current version failed: ${e.message}`);
+        pushLog('warning', `[Documents] Set current version failed: ${e.message}`);
       }
 
+      // Save health score and health_check_json to project_documents
+      try {
+        await fetch('/api/data/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataKey: 'projectDocuments',
+            operation: 'updateDocumentHealth',
+            storagePath: file.storagePath,
+            healthScore: healthResult.score,
+            healthCheckJson: healthResult,
+          }),
+        });
+      } catch (healthErr: any) {
+        pushLog('warning', `[Documents] Health save failed: ${healthErr.message}`);
+      }
+
+      // Persist process logs to project_log
+      await saveLogsToProjectLog(logEntries, existingProjectId);
+
       // Complete the process
-      addLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
+      pushLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'complete' as const, healthCheck: healthResult } : f
       ));
       await refreshData();
 
     } catch (err: any) {
-      addLog('error', `[Process] Error: ${err.message}`);
+      pushLog('error', `[Process] Error: ${err.message}`);
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'error' as const } : f
       ));
     } finally {
       setIsProcessing(false);
     }
-  }, [uploadedFiles, addLog, refreshData]);
+  }, [uploadedFiles, addLog, refreshData, saveLogsToProjectLog]);
 
   // Delete file from Supabase Storage
   const handleDelete = useCallback(async (fileId: string) => {

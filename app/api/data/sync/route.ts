@@ -102,6 +102,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // Update project_document health (by storage_path) after MPXJ health check
+    if (operation === 'updateDocumentHealth' && dataKey === 'projectDocuments' && storagePath != null && storagePath !== '') {
+      const path = String(storagePath).trim();
+      const updates: Record<string, unknown> = {};
+      if (healthScore != null && healthScore !== '') updates.health_score = Number(healthScore);
+      if (healthCheckJson != null) updates.health_check_json = healthCheckJson;
+      if (Object.keys(updates).length === 0) {
+        return NextResponse.json({ success: true });
+      }
+      const { error } = await supabase
+        .from('project_documents')
+        .update(updates)
+        .eq('storage_path', path);
+      if (error) {
+        console.error('Error updating document health:', error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
     if (!Array.isArray(records)) {
       return NextResponse.json(
         { success: false, error: 'Invalid request: records array required' },

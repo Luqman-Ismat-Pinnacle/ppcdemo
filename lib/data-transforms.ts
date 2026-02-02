@@ -1546,7 +1546,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               children: []
             };
 
-            const siteProjectsRaw = maps.projectsBySite.get(siteId) || maps.projectsBySite.get(String(siteId)) || [];
+            // Only include projects for this customer so same-named sites for different customers don't share rollup
+            const siteProjectsRaw = (maps.projectsBySite.get(siteId) || maps.projectsBySite.get(String(siteId)) || []).filter(
+              (p: any) => (p.customerId ?? p.customer_id) === customerId
+            );
             const siteProjects = Array.from(new Map(siteProjectsRaw.map((p: any) => [String(p.id ?? p.projectId), p])).values());
             siteProjects.forEach((project: any, prIdx: number) => {
               siteItem.children?.push(buildProjectNode(project, `${siteWbs}.${prIdx + 1}`));
