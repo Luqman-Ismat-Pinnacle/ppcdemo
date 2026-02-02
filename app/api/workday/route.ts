@@ -162,7 +162,10 @@ function unifiedSyncStream(
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const logs: string[] = [];
-      let success = true;
+      let empOk = false;
+      let projOk = false;
+      let hoursChunksOk = 0;
+      let hoursChunksFail = 0;
 
       try {
         // 1. Employees
@@ -170,9 +173,9 @@ function unifiedSyncStream(
         const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {});
         pushLine(controller, { type: 'step', step: 'employees', status: 'done', result: empRes });
         if (!empRes.success) {
-          success = false;
           logs.push(`Error in employees sync: ${empRes.error}`);
         } else {
+          empOk = true;
           logs.push(`Synced ${empRes.summary?.synced ?? 0} employees.`);
         }
 
@@ -181,9 +184,9 @@ function unifiedSyncStream(
         const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {});
         pushLine(controller, { type: 'step', step: 'projects', status: 'done', result: projRes });
         if (!projRes.success) {
-          success = false;
           logs.push(`Error in hierarchy sync: ${projRes.error}`);
         } else {
+          projOk = true;
           logs.push(`Synced: ${projRes.summary?.portfolios ?? 0} Portfolios, ${projRes.summary?.customers ?? 0} Customers, ${projRes.summary?.sites ?? 0} Sites, ${projRes.summary?.projects ?? 0} Projects.`);
         }
 
@@ -208,16 +211,25 @@ function unifiedSyncStream(
           const hoursRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-hours', { startDate: startStr, endDate: endStr });
           totalHours += hoursRes.stats?.hours ?? 0;
           pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
-          if (!hoursRes.success) success = false;
+          if (hoursRes.success) {
+            hoursChunksOk++;
+          } else {
+            hoursChunksFail++;
+            logs.push(`Hour window ${startStr}–${endStr} failed: ${hoursRes.error || 'unknown'}`);
+          }
         }
         pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });
-        logs.push(`Synced ${totalHours} hour entries (${totalChunks} date windows).`);
+        logs.push(`Synced ${totalHours} hour entries (${hoursChunksOk}/${totalChunks} windows succeeded).`);
+        if (hoursChunksFail > 0) {
+          logs.push(`Note: ${hoursChunksFail} of ${totalChunks} hour windows had issues. Data from successful windows was saved.`);
+        }
       } catch (err: any) {
-        success = false;
         logs.push(err?.message ?? String(err));
         pushLine(controller, { type: 'error', error: err?.message ?? String(err) });
       }
 
+      // Consider sync successful if employees + projects + at least one hours chunk succeeded (partial success = success so UI doesn't show red when Supabase wrote data)
+      const success = empOk && projOk && hoursChunksOk > 0;
       pushLine(controller, { type: 'done', success, logs });
       controller.close();
     }
