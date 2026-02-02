@@ -1155,7 +1155,7 @@ export default function WBSGanttPage() {
                   </EnhancedTooltip>
                 </th>
                 <th style={{ width: '55px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Remaining Hours', description: 'Hours left to complete.', calculation: 'Baseline - Actual' }}>
+                  <EnhancedTooltip content={{ title: 'Remaining Hours', description: 'From MPP file (not calculated).' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Rem Hrs</span>
                   </EnhancedTooltip>
                 </th>
@@ -1165,12 +1165,12 @@ export default function WBSGanttPage() {
                   </EnhancedTooltip>
                 </th>
                 <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Actual Cost', description: 'Cost incurred to date.', calculation: 'Actual Hours × Rate' }}>
+                  <EnhancedTooltip content={{ title: 'Actual Cost', description: 'From matched hours entries.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Act Cost</span>
                   </EnhancedTooltip>
                 </th>
                 <th style={{ width: '75px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Remaining Cost', description: 'Projected cost to finish.', calculation: 'Remaining Hours × Rate' }}>
+                  <EnhancedTooltip content={{ title: 'Remaining Cost', description: 'From stored value (not calculated).' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Rem Cost</span>
                   </EnhancedTooltip>
                 </th>
