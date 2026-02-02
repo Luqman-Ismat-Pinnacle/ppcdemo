@@ -45,6 +45,13 @@ export default function SprintPlanningPage() {
           <button
             key={viewType}
             onClick={() => setMainView(viewType)}
+            title={
+              viewType === 'boards'
+                ? 'Kanban board for all work item types (Epic, Feature, User Story, Task, Bug). Drag cards between status columns.'
+                : viewType === 'backlog'
+                  ? 'Backlog of epics, features, and user stories. Prioritize and assign items to sprints.'
+                  : 'Sprint-specific views: backlog, taskboard, capacity, and kanban for the selected sprint.'
+            }
             style={{
               padding: '0.75rem 1.5rem',
               background: 'none',

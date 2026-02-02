@@ -52,6 +52,30 @@ const QC_STATES = [
   'QC Validation'
 ];
 
+// Tooltips for work item types (agile hierarchy)
+const WORK_ITEM_TYPE_TOOLTIPS: Record<WorkItemType, string> = {
+  'Epic': 'Epic: A large initiative or theme that spans multiple features. Top of the agile hierarchy (Epic → Feature → User Story → Task).',
+  'Feature': 'Feature: A deliverable capability that groups user stories. Belongs to an Epic.',
+  'User Story': 'User Story: User-facing value in one sentence (e.g. "As a user I want…"). Belongs to a Feature; can be assigned to a Sprint.',
+  'Task': 'Task: A concrete work item. Can be linked to a User Story and assigned to a Sprint.',
+  'Bug': 'Bug: A defect or issue to fix. Tracked like a Task with Bug type.'
+};
+
+// Tooltips for column states
+const STATE_TOOLTIPS: Record<string, string> = {
+  'Not Started': 'Work has not begun.',
+  'In Progress': 'Work is actively in progress.',
+  'Roadblock': 'Blocked or waiting on something.',
+  'QC Initial': 'Quality check – initial review.',
+  'QC Kickoff': 'Quality check – kickoff stage.',
+  'QC Mid': 'Quality check – mid-point review.',
+  'QC Final': 'Quality check – final review.',
+  'QC Post-Validation': 'Quality check – post-validation.',
+  'QC Field QC': 'Quality check – field QC.',
+  'QC Validation': 'Quality check – validation.',
+  'Closed': 'Completed and closed.'
+};
+
 // Helper functions
 const getEmployeeName = (resourceId: string, employees: Employee[]): string => {
   const employee = employees.find(e => e.employeeId === resourceId);
@@ -548,6 +572,7 @@ export default function BoardsView() {
             onClick={() => handleCreate('Epic')}
             className="btn btn-primary"
             style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+            title={WORK_ITEM_TYPE_TOOLTIPS['Epic']}
           >
             + Epic
           </button>
@@ -555,6 +580,7 @@ export default function BoardsView() {
             onClick={() => handleCreate('Feature')}
             className="btn btn-primary"
             style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+            title={WORK_ITEM_TYPE_TOOLTIPS['Feature']}
           >
             + Feature
           </button>
@@ -562,6 +588,7 @@ export default function BoardsView() {
             onClick={() => handleCreate('User Story')}
             className="btn btn-primary"
             style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+            title={WORK_ITEM_TYPE_TOOLTIPS['User Story']}
           >
             + User Story
           </button>
@@ -569,6 +596,7 @@ export default function BoardsView() {
             onClick={() => handleCreate('Task')}
             className="btn btn-primary"
             style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+            title={WORK_ITEM_TYPE_TOOLTIPS['Task']}
           >
             + Task
           </button>
@@ -576,6 +604,7 @@ export default function BoardsView() {
             onClick={() => handleCreate('Bug')}
             className="btn btn-primary"
             style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
+            title={WORK_ITEM_TYPE_TOOLTIPS['Bug']}
           >
             + Bug
           </button>
@@ -594,10 +623,10 @@ export default function BoardsView() {
         alignItems: 'center'
       }}>
         {/* Work Item Type Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Show or hide work item types on the board. Hierarchy: Epic → Feature → User Story → Task / Bug.">
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Types:</span>
           {(['Epic', 'Feature', 'User Story', 'Task', 'Bug'] as WorkItemType[]).map(type => (
-            <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+            <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }} title={WORK_ITEM_TYPE_TOOLTIPS[type]}>
               <input
                 type="checkbox"
                 checked={selectedWorkItemTypes.includes(type)}
@@ -621,6 +650,7 @@ export default function BoardsView() {
           placeholder="Search work items..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          title="Search by work item name or ID"
           style={{
             padding: '0.4rem 0.8rem',
             borderRadius: '6px',
@@ -636,6 +666,7 @@ export default function BoardsView() {
         <select
           value={selectedAssignee}
           onChange={(e) => setSelectedAssignee(e.target.value)}
+          title="Filter work items by assigned person"
           style={{
             padding: '0.4rem 0.8rem',
             borderRadius: '6px',
@@ -655,6 +686,7 @@ export default function BoardsView() {
         <select
           value={selectedProject}
           onChange={(e) => setSelectedProject(e.target.value)}
+          title="Filter work items by project"
           style={{
             padding: '0.4rem 0.8rem',
             borderRadius: '6px',
@@ -674,6 +706,7 @@ export default function BoardsView() {
         <select
           value={swimlaneType}
           onChange={(e) => setSwimlaneType(e.target.value as SwimlaneType)}
+          title="Group cards into horizontal lanes (e.g. by assignee, priority, or type)"
           style={{
             padding: '0.4rem 0.8rem',
             borderRadius: '6px',
@@ -691,14 +724,14 @@ export default function BoardsView() {
         </select>
       </div>
 
-      {/* Kanban Board */}
+      {/* Kanban Board - tall so columns have plenty of vertical space */}
       <div style={{ 
         flex: 1, 
         overflowX: 'auto', 
         display: 'flex', 
         gap: '1rem', 
         paddingBottom: '1rem',
-        minHeight: '500px'
+        minHeight: 'calc(100vh - 320px)'
       }}>
         {boardColumns.map((column) => {
           const isOverLimit = column.wipLimit && column.items.length > column.wipLimit;
@@ -736,13 +769,16 @@ export default function BoardsView() {
                 alignItems: 'center'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <h3 style={{ 
-                    fontSize: '0.85rem', 
-                    fontWeight: 700, 
-                    color: 'var(--text-primary)', 
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em'
-                  }}>
+                  <h3
+                    style={{
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      color: 'var(--text-primary)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}
+                    title={STATE_TOOLTIPS[column.state] ?? `Status: ${column.state}`}
+                  >
                     {column.state}
                   </h3>
                   <span style={{ 
@@ -844,18 +880,21 @@ export default function BoardsView() {
                 )}
 
                 {column.items.length === 0 && (
-                  <div style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-muted)',
-                    fontSize: '0.75rem',
-                    fontStyle: 'italic',
-                    border: '2px dashed rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
-                    minHeight: '80px'
-                  }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.75rem',
+                      fontStyle: 'italic',
+                      border: '2px dashed rgba(255,255,255,0.1)',
+                      borderRadius: '8px',
+                      minHeight: '80px'
+                    }}
+                    title="Drag cards here to move them to this status"
+                  >
                     Drop work items here
                   </div>
                 )}
@@ -1002,14 +1041,17 @@ function WorkItemCard({ item, onDragStart, onDragEnd, onEdit, onDelete, employee
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{
-            fontSize: '0.6rem',
-            fontWeight: 'bold',
-            color: getWorkItemTypeColor(item.workItemType),
-            background: `${getWorkItemTypeColor(item.workItemType)}20`,
-            padding: '0.1rem 0.4rem',
-            borderRadius: '4px'
-          }}>
+          <span
+            style={{
+              fontSize: '0.6rem',
+              fontWeight: 'bold',
+              color: getWorkItemTypeColor(item.workItemType),
+              background: `${getWorkItemTypeColor(item.workItemType)}20`,
+              padding: '0.1rem 0.4rem',
+              borderRadius: '4px'
+            }}
+            title={WORK_ITEM_TYPE_TOOLTIPS[item.workItemType]}
+          >
             {item.workItemType}
           </span>
           <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
