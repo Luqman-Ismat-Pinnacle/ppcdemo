@@ -1352,7 +1352,7 @@ export default function ResourcingPage() {
         </div>
         <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
           <ResourceHeatmapChart
-            data={filteredHeatmapData ?? { resources: [], weeks: [], data: [] }}
+            data={data.resourceHeatmap}
             employees={data.employees}
             height="100%"
             showControls={true}
