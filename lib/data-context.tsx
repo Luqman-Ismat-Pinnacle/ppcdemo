@@ -686,6 +686,11 @@ export function DataProvider({ children }: DataProviderProps) {
     // =========================================================================
     // APPLY DATE FILTER
     // =========================================================================
+    // Capture hours before date filter so labor breakdown and resource heatmap can show all week columns (values still use filtered hours)
+    const hoursForWeekRange = dateFilter && dateFilter.type !== 'all' && filtered.hours?.length
+      ? [...filtered.hours]
+      : undefined;
+
     if (dateFilter && dateFilter.type !== 'all') {
       const now = new Date();
       let startDate: Date, endDate: Date;
@@ -756,7 +761,9 @@ export function DataProvider({ children }: DataProviderProps) {
     // from the filtered raw data so hierarchy/date filters apply across the entire website
     const hasActiveFilter = (hierarchyFilter?.path?.length ?? 0) > 0 || (dateFilter && dateFilter.type !== 'all');
     if (hasActiveFilter) {
-      const transformed = transformData(filtered);
+      const transformed = transformData(filtered, {
+        allHoursForWeekRange: hoursForWeekRange,
+      });
       Object.assign(filtered, transformed);
     }
 

@@ -1696,11 +1696,15 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 // ============================================================================
 
 /**
- * Build labor breakdown data from hours entries
+ * Build labor breakdown data from hours entries.
+ * When allHoursForWeekRange is provided (e.g. unfiltered hours), the week list is built from it so all dates show; values still use data.hours (filtered).
  */
-export function buildLaborBreakdown(data: Partial<SampleData>): LaborBreakdown {
+export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHoursForWeekRange?: any[] }): LaborBreakdown {
   const hours = data.hours || [];
   const employees = data.employees || [];
+  const hoursForWeekList = (options?.allHoursForWeekRange && options.allHoursForWeekRange.length > 0)
+    ? options.allHoursForWeekRange
+    : hours;
   const projects = data.projects || [];
   const phases = data.phases || [];
   const tasks = data.tasks || [];
@@ -1735,8 +1739,8 @@ export function buildLaborBreakdown(data: Partial<SampleData>): LaborBreakdown {
     if (id) taskMap.set(id, t);
   });
 
-  // Use shared week mapping utility; normalize dates so ISO/date-only/etc. all map to same weeks
-  const dates = hours.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
+  // Use shared week mapping utility; use hoursForWeekList so week columns show all dates when date filter is applied
+  const dates = hoursForWeekList.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
   const { weekMap, weekIndexMap, rawWeeks, formattedWeeks: weeks } = buildWeekMappings(dates);
 
   // Build all aggregations in a single pass through hours (Phase 2.4: Batch Data Processing)
@@ -2451,11 +2455,15 @@ export const buildCatchUpLog = (data: Partial<SampleData>): CatchUpEntry[] => {
 // ============================================================================
 
 /**
- * Build resource heatmap data from hours and employees
+ * Build resource heatmap data from hours and employees.
+ * When allHoursForWeekRange is provided, the week list is built from it so all dates show; values still use data.hours (filtered).
  */
-export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap {
+export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allHoursForWeekRange?: any[] }): ResourceHeatmap {
   const hours = data.hours || [];
   const employees = data.employees || [];
+  const hoursForWeekList = (options?.allHoursForWeekRange && options.allHoursForWeekRange.length > 0)
+    ? options.allHoursForWeekRange
+    : hours;
 
   // If no employees, return empty
   if (employees.length === 0) {
@@ -2474,14 +2482,14 @@ export function buildResourceHeatmap(data: Partial<SampleData>): ResourceHeatmap
     }
   });
 
-  // Get unique weeks from hours data, or generate current weeks if no hours
+  // Get unique weeks from hours data (use hoursForWeekList so all dates show when date filter is applied), or generate current weeks if no hours
   let rawWeeks: string[] = [];
   let weekMap: Map<string, string>;
   let weekIndexMap: Map<string, number>;
 
-  if (hours.length > 0) {
+  if (hoursForWeekList.length > 0) {
     // Use shared week mapping utility; normalize so all date formats map to same weeks
-    const dates = hours.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
+    const dates = hoursForWeekList.map((h: any) => normalizeDateString(h.date || h.entry_date)).filter((d): d is string => d != null);
     const weekMappings = buildWeekMappings(dates);
     weekMap = weekMappings.weekMap;
     weekIndexMap = weekMappings.weekIndexMap;
@@ -4652,6 +4660,8 @@ export function buildDeliverablesTracker(data: Partial<SampleData>) {
 
 export interface TransformDataOptions {
   onLog?: (engine: string, lines: string[]) => void;
+  /** When set, labor breakdown and resource heatmap use this for week list (all dates) but filtered hours for values. Use when date filter would otherwise collapse to one week. */
+  allHoursForWeekRange?: any[];
 }
 
 /**
@@ -4695,15 +4705,16 @@ export function transformData(rawData: Partial<SampleData>, options?: TransformD
 
   // Build labor breakdown and resource heatmap (with performance monitoring)
   // Resource heatmap should show all employees, even if no hours yet
+  // When allHoursForWeekRange is set (e.g. from date filter), week columns show all dates; values use filtered hours
   if (adjustedData.hours?.length || adjustedData.employees?.length) {
     const laborStartTime = performance.now();
-    transformed.laborBreakdown = buildLaborBreakdown(adjustedData);
+    transformed.laborBreakdown = buildLaborBreakdown(adjustedData, { allHoursForWeekRange: options?.allHoursForWeekRange });
     const laborDuration = performance.now() - laborStartTime;
     if (typeof window !== 'undefined' && (window as any).__DEBUG__) {
       console.debug(`[Performance] buildLaborBreakdown took ${laborDuration.toFixed(2)}ms`);
     }
     const heatmapStartTime = performance.now();
-    transformed.resourceHeatmap = buildResourceHeatmap(adjustedData);
+    transformed.resourceHeatmap = buildResourceHeatmap(adjustedData, { allHoursForWeekRange: options?.allHoursForWeekRange });
     const heatmapDuration = performance.now() - heatmapStartTime;
     if (typeof window !== 'undefined' && (window as any).__DEBUG__) {
       console.debug(`[Performance] buildResourceHeatmap took ${heatmapDuration.toFixed(2)}ms`);
