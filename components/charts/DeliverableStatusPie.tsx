@@ -35,6 +35,8 @@ export default function DeliverableStatusPie({
   enableFullscreen = true,
 }: DeliverableStatusPieProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
+  const centerX = '50%';
+  const centerY = '50%';
   const option: EChartsOption = {
     backgroundColor: 'transparent',
     title: title ? {
@@ -42,15 +44,36 @@ export default function DeliverableStatusPie({
       left: 'center',
       bottom: 0,
       textStyle: { color: 'var(--text-secondary)', fontSize: 10 },
-    } : {
-      text: total > 0 ? String(total) : '—',
-      left: 'center',
-      top: 'middle',
-      textAlign: 'center',
-      textStyle: { fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' },
-      subtext: 'Total',
-      subtextStyle: { fontSize: 10, color: 'var(--text-muted)' },
-    },
+    } : undefined,
+    graphic: !title ? [
+      {
+        type: 'text',
+        left: centerX,
+        top: centerY,
+        style: {
+          text: total > 0 ? String(total) : '—',
+          fontSize: 22,
+          fontWeight: 700,
+          fill: 'var(--text-primary)',
+          textAlign: 'center',
+          textVerticalAlign: 'middle',
+        },
+        z: 100,
+      },
+      {
+        type: 'text',
+        left: centerX,
+        top: '54%',
+        style: {
+          text: 'Total',
+          fontSize: 10,
+          fill: 'var(--text-muted)',
+          textAlign: 'center',
+          textVerticalAlign: 'middle',
+        },
+        z: 100,
+      },
+    ] : undefined,
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {
@@ -78,7 +101,7 @@ export default function DeliverableStatusPie({
       {
         type: 'pie',
         radius: ['45%', '70%'],
-        center: ['50%', '50%'],
+        center: [centerX, centerY],
         emphasis: { scale: true, scaleSize: 5, itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.25)' } },
         label: {
           show: true,

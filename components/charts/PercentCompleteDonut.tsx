@@ -58,8 +58,8 @@ export default function PercentCompleteDonut({
     graphic: [
       {
         type: 'text',
-        left: 'center',
-        top: 'middle',
+        left: '50%',
+        top: '50%',
         style: {
           text: `${clampedPercent.toFixed(0)}%\n${label}`,
           fontSize: 18,
@@ -67,6 +67,8 @@ export default function PercentCompleteDonut({
           fontFamily: 'var(--font-mono)',
           fill: 'var(--text-primary)',
           lineHeight: 20,
+          textAlign: 'center',
+          textVerticalAlign: 'middle',
         },
         z: 100,
       },

@@ -36,20 +36,41 @@ export default function MilestoneStatusPie({
   enableFullscreen = true,
 }: MilestoneStatusPieProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
+  const pieCenter = ['35%', '50%'];
   const option: EChartsOption = {
     backgroundColor: 'transparent',
     animation: true,
     animationDuration: 600,
     animationEasing: 'cubicOut',
-    title: {
-      text: total > 0 ? String(total) : '—',
-      left: '35%',
-      top: 'middle',
-      textAlign: 'center',
-      textStyle: { fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' },
-      subtext: 'Total',
-      subtextStyle: { fontSize: 11, color: 'var(--text-muted)' },
-    },
+    graphic: [
+      {
+        type: 'text',
+        left: pieCenter[0],
+        top: pieCenter[1],
+        style: {
+          text: total > 0 ? String(total) : '—',
+          fontSize: 28,
+          fontWeight: 700,
+          fill: 'var(--text-primary)',
+          textAlign: 'center',
+          textVerticalAlign: 'middle',
+        },
+        z: 100,
+      },
+      {
+        type: 'text',
+        left: pieCenter[0],
+        top: '56%',
+        style: {
+          text: 'Total',
+          fontSize: 11,
+          fill: 'var(--text-muted)',
+          textAlign: 'center',
+          textVerticalAlign: 'middle',
+        },
+        z: 100,
+      },
+    ],
     tooltip: {
       trigger: 'item',
       confine: true,
@@ -70,7 +91,7 @@ export default function MilestoneStatusPie({
       {
         type: 'pie',
         radius: ['50%', '75%'],
-        center: ['35%', '50%'],
+        center: pieCenter,
         avoidLabelOverlap: false,
         label: { show: false },
         labelLine: { show: false },

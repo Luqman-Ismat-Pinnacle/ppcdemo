@@ -401,7 +401,32 @@ export default function HoursPage() {
         </div>
       </div>
 
+      {/* Metrics row - key numbers at a glance */}
+      <div className="metrics-row-compact" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div className="metric-card" style={{ minWidth: 120 }}>
+          <div className="metric-label">Total Hours</div>
+          <div className="metric-value">
+            {data?.taskHoursEfficiency?.actualWorked?.length
+              ? data.taskHoursEfficiency.actualWorked.reduce((a: number, b: number) => a + b, 0).toLocaleString()
+              : '—'}
+          </div>
+        </div>
+        <div className="metric-card accent-lime" style={{ minWidth: 120 }}>
+          <div className="metric-label">Efficiency</div>
+          <div className="metric-value">{overallEfficiency !== null ? `${overallEfficiency}%` : '—'}</div>
+        </div>
+        <div className="metric-card" style={{ minWidth: 120 }}>
+          <div className="metric-label">Quality Hours</div>
+          <div className="metric-value">{qualityHoursPercent !== null ? `${qualityHoursPercent}%` : '—'}</div>
+        </div>
+        <div className="metric-card accent-orange" style={{ minWidth: 120 }}>
+          <div className="metric-label">Non-Execute</div>
+          <div className="metric-value">{nonExecutePercent !== null ? `${nonExecutePercent}%` : '—'}</div>
+        </div>
+      </div>
+
       {/* Row 1: Task Efficiency (Full Width) */}
+      <div className="dashboard-grid">
       <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem' }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -421,10 +446,8 @@ export default function HoursPage() {
         </div>
       </ChartCard>
 
-      {/* Row 2: Quality Hours + Non-Execute */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-        {/* Quality Hours */}
-        <ChartCard title={
+      {/* Row 2: Quality Hours + Non-Execute (2-col, no empty space) */}
+        <ChartCard gridClass="grid-half" title={
           <EnhancedTooltip
             placement="right"
             content={{
@@ -452,9 +475,7 @@ export default function HoursPage() {
             />
           </div>
         </ChartCard>
-
-        {/* Non-Execute Hours */}
-        <ChartCard title={
+        <ChartCard gridClass="grid-half" title={
           <EnhancedTooltip
             placement="right"
             content={{
@@ -502,6 +523,7 @@ export default function HoursPage() {
       </div>
 
       {/* Hours Variance Waterfall - Full Width */}
+      <div className="dashboard-grid">
       <ChartCard gridClass="grid-full" style={{ marginBottom: '1rem' }} title={
         <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
@@ -567,7 +589,9 @@ export default function HoursPage() {
           />
         </div>
       </ChartCard>
+      </div>
 
+      <div className="dashboard-grid">
       {/* Labor Breakdown by Worker */}
       <ChartCard
         gridClass="grid-full"
@@ -771,7 +795,6 @@ export default function HoursPage() {
           </table>
           </TableCompareExport>
       </ChartCard>
-
       {/* Labor Breakdown by Role */}
       <ChartCard
         gridClass="grid-full"
@@ -915,6 +938,7 @@ export default function HoursPage() {
           </table>
           </TableCompareExport>
       </ChartCard>
+      </div>
     </div>
   );
 }
