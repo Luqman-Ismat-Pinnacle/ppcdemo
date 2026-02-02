@@ -119,62 +119,123 @@ serve(async (req) => {
       );
     }
 
-    // Log sample record structure
+    // Log sample record structure - show ALL keys for debugging
     if (records.length > 0) {
-      console.log('[workday-employees] Sample record keys:', Object.keys(records[0]).slice(0, 10));
+      const allKeys = Object.keys(records[0]);
+      console.log('[workday-employees] Sample record ALL keys (' + allKeys.length + '):', allKeys);
+      console.log('[workday-employees] Sample record VALUES:', JSON.stringify(records[0]).substring(0, 1000));
     }
 
     // Map Workday fields to database schema
+    // IMPORTANT: Workday API field names vary - check logs above to see actual field names
     const cleanedRecords: any[] = [];
     const errors: string[] = [];
+    const fieldStats = {
+      hasName: 0,
+      hasEmail: 0,
+      hasJobTitle: 0,
+      hasManagementLevel: 0,
+      hasManager: 0,
+      hasEmployeeType: 0,
+      hasRole: 0,
+      hasDepartment: 0,
+    };
 
     for (let i = 0; i < records.length; i++) {
       const r = records[i];
       try {
         // Get Employee ID - this is required
-        const employeeId = r.Employee_ID || r.employee_id || r.employeeId || r.ID;
+        // Try multiple possible field names
+        const employeeId = r.Employee_ID || r.employee_id || r.employeeId || r.ID || r.Worker_ID || r.worker_id;
         if (!employeeId) {
-          errors.push(`Record ${i}: No Employee_ID`);
+          errors.push(`Record ${i}: No Employee_ID (keys: ${Object.keys(r).join(', ')})`);
           continue;
         }
 
-        // Build name from available fields
-        let name = r.Worker || '';
-        if (!name && r.firstName && r.lastName) {
-          name = `${r.firstName} ${r.lastName}`;
+        // Build name from available fields - try many variations
+        let name = r.Worker || r.Name || r.name || r.Full_Name || r.full_name || '';
+        if (!name && (r.firstName || r.First_Name || r.first_name) && (r.lastName || r.Last_Name || r.last_name)) {
+          const firstName = r.firstName || r.First_Name || r.first_name || '';
+          const lastName = r.lastName || r.Last_Name || r.last_name || '';
+          name = `${firstName} ${lastName}`;
         }
-        if (!name && r.firstName) {
-          name = r.firstName;
+        if (!name && (r.firstName || r.First_Name || r.first_name)) {
+          name = r.firstName || r.First_Name || r.first_name;
         }
         if (!name) {
           name = `Employee ${employeeId}`;
         }
+        if (name && name !== `Employee ${employeeId}`) fieldStats.hasName++;
+
+        // Email - try multiple field names
+        const email = r.Work_Email || r.work_email || r.Email || r.email || 
+                      r.Primary_Work_Email || r.primary_work_email || null;
+        if (email) fieldStats.hasEmail++;
+
+        // Job Title - try multiple field names
+        const jobTitle = r.businessTitle || r.Business_Title || r.business_title ||
+                         r.Default_Job_Title || r.default_job_title || 
+                         r.Job_Profile_Name || r.job_profile_name ||
+                         r.Job_Title || r.job_title || r.Position_Title || null;
+        if (jobTitle) fieldStats.hasJobTitle++;
+
+        // Management Level
+        const managementLevel = r.Management_Level || r.management_level || 
+                                r.ManagementLevel || r.Manager_Level || null;
+        if (managementLevel) fieldStats.hasManagementLevel++;
+
+        // Manager
+        const manager = r.Worker_s_Manager || r.Workers_Manager || r["Worker's Manager"] ||
+                        r.Manager || r.manager || r.Manager_Name || r.manager_name || null;
+        if (manager) fieldStats.hasManager++;
+
+        // Employee Type
+        const employeeType = r.Employee_Type || r.employee_type || r.EmployeeType ||
+                             r.Worker_Type || r.worker_type || null;
+        if (employeeType) fieldStats.hasEmployeeType++;
+
+        // Role/Job Profile
+        const role = r.Job_Profile || r.job_profile || r.JobProfile ||
+                     r.Role || r.role || r.Roles || r.roles || null;
+        if (role) fieldStats.hasRole++;
+
+        // Department/Cost Center
+        const department = r.Cost_Center || r.cost_center || r.CostCenter ||
+                           r.Department || r.department || r.Org_Unit || null;
+        if (department) fieldStats.hasDepartment++;
 
         // Determine active status
+        const activeStatus = r.Active_Status || r.active_status || r.ActiveStatus || r.Status;
+        const terminationDate = r.termination_date || r.Termination_Date || r.TerminationDate;
         const isActive =
-          r.Active_Status === '1' ||
-          r.Active_Status === 1 ||
-          r.Active_Status === true ||
+          activeStatus === '1' ||
+          activeStatus === 1 ||
+          activeStatus === true ||
+          activeStatus === 'Active' ||
+          activeStatus === 'active' ||
           r.is_active === true ||
-          (r.Active_Status !== '0' && r.Active_Status !== 0 && !r.termination_date);
+          (activeStatus !== '0' && activeStatus !== 0 && activeStatus !== 'Inactive' && !terminationDate);
 
         cleanedRecords.push({
           id: employeeId,
           employee_id: employeeId,
           name: name.trim(),
-          email: r.Work_Email || r.work_email || r.email || null,
-          job_title: r.businessTitle || r.Default_Job_Title || r.Job_Profile_Name || r.job_title || null,
-          management_level: r.Management_Level || r.management_level || null,
-          manager: r.Worker_s_Manager || r.manager || null,
-          employee_type: r.Employee_Type || r.employee_type || null,
-          role: r.Job_Profile || r.role || null,
-          department: r.Cost_Center || r.department || null,
+          email: email,
+          job_title: jobTitle,
+          management_level: managementLevel,
+          manager: manager,
+          employee_type: employeeType,
+          role: role,
+          department: department,
           is_active: isActive,
         });
       } catch (mapErr) {
         errors.push(`Record ${i}: ${String(mapErr)}`);
       }
     }
+
+    // Log field statistics to help debug what data is being received
+    console.log('[workday-employees] Field statistics:', JSON.stringify(fieldStats));
 
     console.log('[workday-employees] Mapped', cleanedRecords.length, 'valid records');
     if (errors.length > 0) {

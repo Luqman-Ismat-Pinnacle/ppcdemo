@@ -285,20 +285,22 @@ function unifiedSyncStream(
       }
 
       // 3. Hours in date windows - each chunk is independent, failures don't stop others
+      // Sync BACKWARDS from current date (most recent first) so users get latest data immediately
       const end = new Date();
       const start = new Date();
       start.setDate(start.getDate() - hoursDaysBack);
       const totalChunks = Math.ceil(hoursDaysBack / WINDOW_DAYS);
 
-      logAndPush(`Starting hours sync: ${totalChunks} chunks over ${hoursDaysBack} days (${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]})`);
+      logAndPush(`Starting hours sync (newest to oldest): ${totalChunks} chunks over ${hoursDaysBack} days (${end.toISOString().split('T')[0]} back to ${start.toISOString().split('T')[0]})`);
       pushLine(controller, { type: 'step', step: 'hours', status: 'started', totalChunks });
       
       for (let i = 0; i < totalChunks; i++) {
-        const chunkStart = new Date(start);
-        chunkStart.setDate(start.getDate() + i * WINDOW_DAYS);
-        const chunkEnd = new Date(chunkStart);
-        chunkEnd.setDate(chunkEnd.getDate() + WINDOW_DAYS - 1);
-        if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+        // Work backwards: chunk 0 = most recent, chunk N = oldest
+        const chunkEnd = new Date(end);
+        chunkEnd.setDate(end.getDate() - i * WINDOW_DAYS);
+        const chunkStart = new Date(chunkEnd);
+        chunkStart.setDate(chunkStart.getDate() - WINDOW_DAYS + 1);
+        if (chunkStart < start) chunkStart.setTime(start.getTime());
         const startStr = chunkStart.toISOString().split('T')[0];
         const endStr = chunkEnd.toISOString().split('T')[0];
 
@@ -381,7 +383,9 @@ function unifiedSyncStream(
   });
 }
 
-/** Hours-only sync as NDJSON stream (chunked by date window; mapping unchanged). */
+/** Hours-only sync as NDJSON stream (chunked by date window; mapping unchanged). 
+ * Syncs BACKWARDS from current date (most recent first).
+ */
 function hoursOnlyStream(
   supabaseUrl: string,
   supabaseServiceKey: string,
@@ -398,11 +402,12 @@ function hoursOnlyStream(
       try {
         pushLine(controller, { type: 'step', step: 'hours', status: 'started', totalChunks });
         for (let i = 0; i < totalChunks; i++) {
-          const chunkStart = new Date(start);
-          chunkStart.setDate(start.getDate() + i * WINDOW_DAYS);
-          const chunkEnd = new Date(chunkStart);
-          chunkEnd.setDate(chunkEnd.getDate() + WINDOW_DAYS - 1);
-          if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+          // Work backwards: chunk 0 = most recent, chunk N = oldest
+          const chunkEnd = new Date(end);
+          chunkEnd.setDate(end.getDate() - i * WINDOW_DAYS);
+          const chunkStart = new Date(chunkEnd);
+          chunkStart.setDate(chunkStart.getDate() - WINDOW_DAYS + 1);
+          if (chunkStart < start) chunkStart.setTime(start.getTime());
           const startStr = chunkStart.toISOString().split('T')[0];
           const endStr = chunkEnd.toISOString().split('T')[0];
           pushLine(controller, { type: 'step', step: 'hours', status: 'chunk', chunk: i + 1, totalChunks, startDate: startStr, endDate: endStr });

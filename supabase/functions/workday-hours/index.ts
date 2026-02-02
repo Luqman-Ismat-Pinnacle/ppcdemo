@@ -152,14 +152,16 @@ serve(async (req) => {
                 });
             }
 
-            // 2. Employee
+            // 2. Employee - Track for reference but DO NOT upsert
+            // The full employee data is synced by workday-employees function
+            // We only track employee IDs here for statistics
             if (!employeesToUpsert.has(employeeId)) {
                 employeesToUpsert.set(employeeId, {
                     id: employeeId,
                     employee_id: employeeId,
-                    name: workerName,
-                    is_active: true,
-                    updated_at: new Date().toISOString()
+                    name: workerName
+                    // NOTE: We don't upsert employees here anymore to avoid overwriting
+                    // full employee data (job_title, email, department, etc.) with skeleton data
                 });
             }
 
@@ -277,7 +279,10 @@ serve(async (req) => {
             // Continue even if migration fails - columns might already exist
         }
 
-        await upsertBatch('employees', Array.from(employeesToUpsert.values()));
+        // NOTE: Employees are synced by workday-employees function, not here
+        // We used to upsert skeleton employees here but that was overwriting full employee data
+        // await upsertBatch('employees', Array.from(employeesToUpsert.values()));
+        
         await upsertBatch('hour_entries', Array.from(hoursToUpsert.values()));
 
         // 7. Finish
