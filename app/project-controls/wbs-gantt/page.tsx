@@ -1119,7 +1119,7 @@ export default function WBSGanttPage() {
               maxWidth: `${fixedColsWidth + (dateColumns.length * columnWidth)}px`
             }}
           >
-            <thead>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 50 }}>
               <tr style={{ height: '36px' }}>
                 <th style={{ width: '100px', position: 'sticky', left: 0, top: 0, zIndex: 40, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   WBS Code

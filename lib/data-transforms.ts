@@ -1137,6 +1137,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       let projRollupActualHrs = 0;
       let projRollupBaselineCst = 0;
       let projRollupActualCst = 0;
+      let projRollupRemainingHrs = 0;
+      let projRollupRemainingCst = 0;
       let projRollupPercentComplete = 0;
       let projChildCount = 0;
 
@@ -1172,6 +1174,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         let unitRollupActualHrs = 0;
         let unitRollupBaselineCst = 0;
         let unitRollupActualCst = 0;
+        let unitRollupRemainingHrs = 0;
+        let unitRollupRemainingCst = 0;
         let unitRollupPercentComplete = 0;
         let unitChildCount = 0;
 
@@ -1187,6 +1191,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           let phaseRollupActualHrs = 0;
           let phaseRollupBaselineCst = 0;
           let phaseRollupActualCst = 0;
+          let phaseRollupRemainingHrs = 0;
+          let phaseRollupRemainingCst = 0;
           let phaseRollupPercentComplete = 0;
           let phaseChildCount = 0;
 
@@ -1214,12 +1220,16 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             const taskActualHrs = task.actualHours || task.actual_hours || 0;
             const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
             const taskActualCst = task.actualCost || task.actual_cost || 0;
+            const taskRemainingHrs = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null;
+            const taskRemainingCst = task.remainingCost ?? task.remaining_cost ?? null;
             const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
             phaseRollupBaselineHrs += taskBaselineHrs;
             phaseRollupActualHrs += taskActualHrs;
             phaseRollupBaselineCst += taskBaselineCst;
             phaseRollupActualCst += taskActualCst;
+            if (taskRemainingHrs != null) phaseRollupRemainingHrs += Number(taskRemainingHrs) || 0;
+            if (taskRemainingCst != null) phaseRollupRemainingCst += Number(taskRemainingCst) || 0;
             phaseRollupPercentComplete += taskPercent;
             phaseChildCount++;
 
@@ -1235,10 +1245,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               percentComplete: taskPercent,
               baselineHours: taskBaselineHrs,
               actualHours: taskActualHrs,
-              remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null,
+              remainingHours: taskRemainingHrs,
               baselineCost: taskBaselineCst,
               actualCost: taskActualCst,
-              remainingCost: task.remainingCost ?? task.remaining_cost ?? null,
+              remainingCost: taskRemainingCst,
               assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
               is_milestone: task.is_milestone || task.isMilestone || false,
               isCritical: task.is_critical || task.isCritical || false
@@ -1250,7 +1260,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
             phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
             phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
-            phaseItem.actualCost = phaseItem.actualCost || phaseRollupActualCst;
+            phaseItem.actualCost = phaseRollupActualCst; // Always use rolled up value
+            phaseItem.remainingHours = phaseRollupRemainingHrs || undefined;
+            phaseItem.remainingCost = phaseRollupRemainingCst || undefined;
             phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
           }
 
@@ -1258,6 +1270,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           unitRollupActualHrs += phaseItem.actualHours || 0;
           unitRollupBaselineCst += phaseItem.baselineCost || 0;
           unitRollupActualCst += phaseItem.actualCost || 0;
+          unitRollupRemainingHrs += phaseItem.remainingHours || 0;
+          unitRollupRemainingCst += phaseItem.remainingCost || 0;
           unitRollupPercentComplete += phaseItem.percentComplete || 0;
           unitChildCount++;
 
@@ -1268,7 +1282,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           unitItem.baselineHours = unitItem.baselineHours || unitRollupBaselineHrs;
           unitItem.actualHours = unitItem.actualHours || unitRollupActualHrs;
           unitItem.baselineCost = unitItem.baselineCost || unitRollupBaselineCst;
-          unitItem.actualCost = unitItem.actualCost || unitRollupActualCst;
+          unitItem.actualCost = unitRollupActualCst; // Always use rolled up value
+          unitItem.remainingHours = unitRollupRemainingHrs || undefined;
+          unitItem.remainingCost = unitRollupRemainingCst || undefined;
           unitItem.percentComplete = unitItem.percentComplete || Math.round(unitRollupPercentComplete / unitChildCount);
         }
 
@@ -1276,6 +1292,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projRollupActualHrs += unitItem.actualHours || 0;
         projRollupBaselineCst += unitItem.baselineCost || 0;
         projRollupActualCst += unitItem.actualCost || 0;
+        projRollupRemainingHrs += unitItem.remainingHours || 0;
+        projRollupRemainingCst += unitItem.remainingCost || 0;
         projRollupPercentComplete += unitItem.percentComplete || 0;
         projChildCount++;
 
@@ -1297,6 +1315,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         let phaseRollupActualHrs = 0;
         let phaseRollupBaselineCst = 0;
         let phaseRollupActualCst = 0;
+        let phaseRollupRemainingHrs = 0;
+        let phaseRollupRemainingCst = 0;
+        let phaseRollupPercentComplete = 0;
         let phaseChildCount = 0;
 
         const phaseItem: TransformWBSItem = {
@@ -1325,12 +1346,16 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const taskActualHrs = task.actualHours || task.actual_hours || 0;
           const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
           const taskActualCst = task.actualCost || task.actual_cost || 0;
+          const taskRemainingHrs = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null;
+          const taskRemainingCst = task.remainingCost ?? task.remaining_cost ?? null;
           const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
           phaseRollupBaselineHrs += taskBaselineHrs;
           phaseRollupActualHrs += taskActualHrs;
           phaseRollupBaselineCst += taskBaselineCst;
           phaseRollupActualCst += taskActualCst;
+          if (taskRemainingHrs != null) phaseRollupRemainingHrs += Number(taskRemainingHrs) || 0;
+          if (taskRemainingCst != null) phaseRollupRemainingCst += Number(taskRemainingCst) || 0;
           phaseRollupPercentComplete += taskPercent;
           phaseChildCount++;
 
@@ -1346,10 +1371,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             percentComplete: taskPercent,
             baselineHours: taskBaselineHrs,
             actualHours: taskActualHrs,
-            remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null,
+            remainingHours: taskRemainingHrs,
             baselineCost: taskBaselineCst,
             actualCost: taskActualCst,
-            remainingCost: task.remainingCost ?? task.remaining_cost ?? null,
+            remainingCost: taskRemainingCst,
             assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
             is_milestone: task.is_milestone || task.isMilestone || false,
             isCritical: task.is_critical || task.isCritical || false
@@ -1361,7 +1386,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
           phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
           phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
-          phaseItem.actualCost = phaseItem.actualCost || phaseRollupActualCst;
+          phaseItem.actualCost = phaseRollupActualCst; // Always use rolled up value
+          phaseItem.remainingHours = phaseRollupRemainingHrs || undefined;
+          phaseItem.remainingCost = phaseRollupRemainingCst || undefined;
           phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
         }
 
@@ -1369,6 +1396,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projRollupActualHrs += phaseItem.actualHours || 0;
         projRollupBaselineCst += phaseItem.baselineCost || 0;
         projRollupActualCst += phaseItem.actualCost || 0;
+        projRollupRemainingHrs += phaseItem.remainingHours || 0;
+        projRollupRemainingCst += phaseItem.remainingCost || 0;
         projRollupPercentComplete += phaseItem.percentComplete || 0;
         projChildCount++;
 
@@ -1401,6 +1430,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projRollupActualHrs += taskActualHrs;
         projRollupBaselineCst += taskBaselineCst;
         projRollupActualCst += taskActualCst;
+        const taskRemainingHrs = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null;
+        const taskRemainingCst = task.remainingCost ?? task.remaining_cost ?? null;
+        if (taskRemainingHrs != null) projRollupRemainingHrs += Number(taskRemainingHrs) || 0;
+        if (taskRemainingCst != null) projRollupRemainingCst += Number(taskRemainingCst) || 0;
         projRollupPercentComplete += taskPercent;
         projChildCount++;
 
@@ -1415,10 +1448,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           percentComplete: taskPercent,
           baselineHours: taskBaselineHrs,
           actualHours: taskActualHrs,
-          remainingHours: task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null,
+          remainingHours: taskRemainingHrs,
           baselineCost: taskBaselineCst,
           actualCost: taskActualCst,
-          remainingCost: task.remainingCost ?? task.remaining_cost ?? null,
+          remainingCost: taskRemainingCst,
           assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
           is_milestone: task.is_milestone || task.isMilestone || false,
           isCritical: task.is_critical || task.isCritical || false
@@ -1432,7 +1465,9 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projectItem.baselineHours = projectItem.baselineHours || projRollupBaselineHrs;
         projectItem.actualHours = projectItem.actualHours || projRollupActualHrs;
         projectItem.baselineCost = projectItem.baselineCost || projRollupBaselineCst;
-        projectItem.actualCost = projectItem.actualCost || projRollupActualCst;
+        projectItem.actualCost = projRollupActualCst; // Always use rolled up value
+        projectItem.remainingHours = projRollupRemainingHrs || undefined;
+        projectItem.remainingCost = projRollupRemainingCst || undefined;
         projectItem.percentComplete = projectItem.percentComplete || Math.round(projRollupPercentComplete / projChildCount);
       }
 
