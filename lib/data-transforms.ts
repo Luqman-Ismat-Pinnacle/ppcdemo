@@ -2171,6 +2171,19 @@ function resolveHourEntriesToTasks(
       }
     }
 
+    // 8) Description-based matching: check if any task name is contained in hour description
+    const description = (h.description ?? '').toString().trim().toLowerCase();
+    if (description && projectId) {
+      const projectTasksForDesc = projectTasks.filter((x) => x.projectId === String(projectId));
+      for (const task of projectTasksForDesc) {
+        const taskNameLower = (task.taskName ?? '').toString().trim().toLowerCase();
+        if (taskNameLower && description.includes(taskNameLower)) {
+          trackMatch(hourId, task.taskId, 'description-contains');
+          return { ...h, taskId: task.taskId, task_id: task.taskId };
+        }
+      }
+    }
+
     trackUnmatched(h);
     return h;
   });

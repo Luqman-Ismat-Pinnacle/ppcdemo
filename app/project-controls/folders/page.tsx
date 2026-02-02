@@ -861,88 +861,66 @@ export default function DocumentsPage() {
       
       addLog('info', `[Matching] Found ${hoursWithWorkday.length} unassigned hours entries`);
       
-      // Fetch tasks, phases, and units
-      const { data: tasks } = await supabase.from('tasks').select('id, project_id, phase_id, name, phase_name');
-      const { data: phases } = await supabase.from('phases').select('id, project_id, name');
+      // Fetch tasks and units
+      const { data: tasks } = await supabase.from('tasks').select('id, project_id, name');
       const { data: units } = await supabase.from('units').select('id, project_id, name');
       
-      // Build lookup maps
-      const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
-      
-      // Index tasks by various keys
-      const tasksByKey = new Map<string, any>();
-      const tasksByPhaseId = new Map<string, any[]>(); // phase_id -> tasks
+      // Group tasks by project_id for efficient matching
+      const tasksByProject = new Map<string, any[]>();
       (tasks || []).forEach((task: any) => {
-        const phaseName = task.phase_name || '';
-        const taskName = task.name || '';
-        // Full key: project + phase + task
-        const fullKey = `${task.project_id}|${normalizeName(phaseName)}|${normalizeName(taskName)}`;
-        if (!tasksByKey.has(fullKey)) tasksByKey.set(fullKey, task);
-        // Phase + task key
-        const phaseTaskKey = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
-        if (!tasksByKey.has(phaseTaskKey)) tasksByKey.set(phaseTaskKey, task);
-        // Task name only
-        const nameOnlyKey = normalizeName(taskName);
-        if (nameOnlyKey && !tasksByKey.has(nameOnlyKey)) tasksByKey.set(nameOnlyKey, task);
-        // By phase_id
-        if (task.phase_id) {
-          const existing = tasksByPhaseId.get(task.phase_id) || [];
-          existing.push(task);
-          tasksByPhaseId.set(task.phase_id, existing);
-        }
+        if (!task.project_id || !task.name) return;
+        const existing = tasksByProject.get(task.project_id) || [];
+        existing.push(task);
+        tasksByProject.set(task.project_id, existing);
       });
       
-      // Index units
-      const unitsByKey = new Map<string, any>();
+      // Group units by project_id
+      const unitsByProject = new Map<string, any[]>();
       (units || []).forEach((unit: any) => {
-        const unitName = unit.name || '';
-        const fullKey = `${unit.project_id}|${normalizeName(unitName)}`;
-        if (!unitsByKey.has(fullKey)) unitsByKey.set(fullKey, unit);
-        const nameKey = normalizeName(unitName);
-        if (nameKey && !unitsByKey.has(nameKey)) unitsByKey.set(nameKey, unit);
+        if (!unit.project_id || !unit.name) return;
+        const existing = unitsByProject.get(unit.project_id) || [];
+        existing.push(unit);
+        unitsByProject.set(unit.project_id, existing);
       });
       
-      // Match hours
+      // Normalize for matching: lowercase and trim
+      const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
+      
+      // Match hours: check if task name is contained in hour description
       let tasksMatched = 0;
       let unitsMatched = 0;
-      let phaseIdMatched = 0;
       const hoursToUpdate: { id: string; task_id: string }[] = [];
       
       for (const h of hoursWithWorkday) {
-        const workdayPhase = normalizeName((h as any).workday_phase || '');
-        const workdayTask = normalizeName((h as any).workday_task || '');
+        if (!h.project_id) continue;
+        const description = normalize(h.description || '');
+        if (!description) continue;
         
-        // Try workday phase+task matching first
-        if (workdayPhase || workdayTask) {
-          let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
-          if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
-          if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
-          
-          if (matched) {
-            hoursToUpdate.push({ id: h.id, task_id: matched.id });
+        // Get tasks for this project
+        const projectTasks = tasksByProject.get(h.project_id) || [];
+        
+        // Check if any task name is contained in the description
+        let matched = false;
+        for (const task of projectTasks) {
+          const taskName = normalize(task.name);
+          if (taskName && description.includes(taskName)) {
+            hoursToUpdate.push({ id: h.id, task_id: task.id });
             tasksMatched++;
-            continue;
-          }
-          
-          // Try unit match by workday_phase
-          if (workdayPhase) {
-            let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
-            if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
-            if (unitMatch) {
-              hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
-              unitsMatched++;
-              continue;
-            }
+            matched = true;
+            break; // Take first match
           }
         }
         
-        // Fallback: match by phase_id if hour has one
-        if (h.phase_id) {
-          const phaseTasks = tasksByPhaseId.get(h.phase_id);
-          if (phaseTasks && phaseTasks.length === 1) {
-            // Only match if there's exactly one task in the phase
-            hoursToUpdate.push({ id: h.id, task_id: phaseTasks[0].id });
-            phaseIdMatched++;
+        if (matched) continue;
+        
+        // Fallback: check units
+        const projectUnits = unitsByProject.get(h.project_id) || [];
+        for (const unit of projectUnits) {
+          const unitName = normalize(unit.name);
+          if (unitName && description.includes(unitName)) {
+            hoursToUpdate.push({ id: h.id, task_id: unit.id });
+            unitsMatched++;
+            break;
           }
         }
       }
@@ -952,9 +930,9 @@ export default function DocumentsPage() {
         await supabase.from('hour_entries').update({ task_id: update.task_id }).eq('id', update.id);
       }
       
-      const totalMatched = tasksMatched + unitsMatched + phaseIdMatched;
+      const totalMatched = tasksMatched + unitsMatched;
       const stillUnmatched = hoursWithWorkday.length - totalMatched;
-      addLog('success', `[Matching] Matched: ${tasksMatched} by name, ${phaseIdMatched} by phase_id, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
+      addLog('success', `[Matching] Matched: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched (by checking if task name is in description)`);
       
       // Aggregate actual hours and cost to tasks
       addLog('info', '[Aggregation] Aggregating actual hours and cost to tasks...');
