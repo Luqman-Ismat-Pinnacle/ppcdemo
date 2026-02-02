@@ -1,20 +1,13 @@
 'use client';
 
 /**
- * @fileoverview User Context for PPC V3
- * 
- * Provides user authentication state management across the application.
+ * User Context for PPC V3
  * Integrates with Auth0 for authentication.
- * 
- * @module lib/user-context
  */
 
 import React, { createContext, useContext, ReactNode } from 'react';
+import { useUser as useAuth0User } from '@auth0/nextjs-auth0/client';
 
-
-/**
- * User information structure
- */
 export interface UserInfo {
   name: string;
   email: string;
@@ -22,9 +15,6 @@ export interface UserInfo {
   initials: string;
 }
 
-/**
- * User context value structure
- */
 interface UserContextValue {
   user: UserInfo | null;
   login: () => void;
@@ -35,32 +25,34 @@ interface UserContextValue {
 
 const UserContext = createContext<UserContextValue | null>(null);
 
-/**
- * Helper function to get initials from name
- */
 function getInitials(name: string): string {
+  if (!name) return '?';
   return name
     .split(' ')
-    .map(part => part[0])
+    .map((part) => part[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
 }
 
+function mapAuth0User(auth0User: { name?: string | null; email?: string | null } | null | undefined): UserInfo | null {
+  if (!auth0User) return null;
+  const name = auth0User.name ?? auth0User.email ?? 'User';
+  return {
+    name,
+    email: auth0User.email ?? '',
+    role: 'User',
+    initials: getInitials(name),
+  };
+}
+
 /**
- * UserProvider component that wraps the application
- * Provides user state and authentication functions
- * Integrates with Auth0 for authentication
+ * Adapter that uses Auth0 and provides our UserContext.
+ * Must be a child of Auth0Provider (UserProvider from @auth0/nextjs-auth0).
  */
 export function UserProvider({ children }: { children: ReactNode }) {
-  // Bypass Auth0 for development/demo
-  const user: UserInfo = {
-    name: 'Demo User',
-    email: 'demo@pinnacle.com',
-    role: 'Admin',
-    initials: 'DU'
-  };
-  const isLoading = false;
+  const { user: auth0User, isLoading } = useAuth0User();
+  const user = mapAuth0User(auth0User);
 
   const login = () => {
     window.location.href = '/api/auth/login';
@@ -75,19 +67,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     isLoggedIn: !!user,
-    isLoading
+    isLoading,
   };
 
-  return (
-    <UserContext.Provider value={value}>
-      {children}
-    </UserContext.Provider>
-  );
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
 }
 
-/**
- * Hook to access user context
- */
 export function useUser() {
   const context = useContext(UserContext);
   if (!context) {

@@ -22,6 +22,8 @@ import { DataProvider } from '@/lib/data-context';
 import { LogsProvider } from '@/lib/logs-context';
 import { UserProvider } from '@/lib/user-context';
 import Auth0Provider from '@/components/providers/Auth0Provider';
+import AuthGuard from '@/components/auth/AuthGuard';
+import InactivityLogout from '@/components/auth/InactivityLogout';
 import Header from '@/components/layout/Header';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
@@ -86,21 +88,25 @@ export default function RootLayout({
         </div>
         <ErrorBoundary>
           <Auth0Provider>
-            <LogsProvider>
-              <ThemeProvider>
-                <UserProvider>
-                  <DataProvider>
-                  <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
-                    <Header />
-                    <main className="main-content">
-                      {children}
-                    </main>
-                    <HelpButton />
-                  </div>
-                  </DataProvider>
-                </UserProvider>
-              </ThemeProvider>
-            </LogsProvider>
+            <AuthGuard>
+              <InactivityLogout>
+                <LogsProvider>
+                  <ThemeProvider>
+                    <UserProvider>
+                      <DataProvider>
+                        <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
+                          <Header />
+                          <main className="main-content">
+                            {children}
+                          </main>
+                          <HelpButton />
+                        </div>
+                      </DataProvider>
+                    </UserProvider>
+                  </ThemeProvider>
+                </LogsProvider>
+              </InactivityLogout>
+            </AuthGuard>
           </Auth0Provider>
         </ErrorBoundary>
       </body>

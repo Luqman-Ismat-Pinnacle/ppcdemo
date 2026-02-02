@@ -18,7 +18,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { useTheme } from '@/lib/theme-context';
 import { useUser } from '@/lib/user-context';
@@ -37,8 +36,6 @@ import StatusAndLogsDropdown from './StatusAndLogsDropdown';
  * @returns {JSX.Element | null} The header element, or null on login page
  */
 export default function Header() {
-  const router = useRouter();
-  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -182,13 +179,7 @@ export default function Header() {
   const handleLogout = () => {
     setProfileOpen(false);
     userLogout();
-    router.push('/login');
   };
-
-  // Don't render header on login page - after all hooks
-  if (pathname === '/login') {
-    return null;
-  }
 
   return (
     <header className="app-header" style={{
