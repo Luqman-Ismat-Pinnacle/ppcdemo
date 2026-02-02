@@ -772,6 +772,139 @@ export default function DocumentsPage() {
     addLog('success', '[Complete] File deleted');
   }, [uploadedFiles, addLog, refreshData]);
 
+  // Match hours entries to tasks and aggregate actual cost
+  const [isMatching, setIsMatching] = useState(false);
+  const handleMatchHours = useCallback(async () => {
+    setIsMatching(true);
+    addLog('info', '[Matching] Starting hours-to-tasks matching...');
+    
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      
+      // Fetch unassigned hours
+      const { data: unassignedHours, error: hoursError } = await supabase
+        .from('hour_entries')
+        .select('id, project_id, workday_phase, workday_task')
+        .is('task_id', null);
+      
+      if (hoursError) throw new Error(`Failed to fetch hours: ${hoursError.message}`);
+      
+      if (!unassignedHours || unassignedHours.length === 0) {
+        addLog('info', '[Matching] No unassigned hours entries found');
+        setIsMatching(false);
+        return;
+      }
+      
+      addLog('info', `[Matching] Found ${unassignedHours.length} unassigned hours entries`);
+      
+      // Fetch tasks and units
+      const { data: tasks } = await supabase.from('tasks').select('id, project_id, phase_id, name, phase_name');
+      const { data: units } = await supabase.from('units').select('id, project_id, name');
+      
+      // Build lookup maps
+      const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
+      
+      const tasksByKey = new Map<string, any>();
+      (tasks || []).forEach((task: any) => {
+        const phaseName = task.phase_name || '';
+        const taskName = task.name || '';
+        const fullKey = `${task.project_id}|${normalizeName(phaseName)}|${normalizeName(taskName)}`;
+        if (!tasksByKey.has(fullKey)) tasksByKey.set(fullKey, task);
+        const phaseTaskKey = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
+        if (!tasksByKey.has(phaseTaskKey)) tasksByKey.set(phaseTaskKey, task);
+        const nameOnlyKey = normalizeName(taskName);
+        if (nameOnlyKey && !tasksByKey.has(nameOnlyKey)) tasksByKey.set(nameOnlyKey, task);
+      });
+      
+      const unitsByKey = new Map<string, any>();
+      (units || []).forEach((unit: any) => {
+        const unitName = unit.name || '';
+        const fullKey = `${unit.project_id}|${normalizeName(unitName)}`;
+        if (!unitsByKey.has(fullKey)) unitsByKey.set(fullKey, unit);
+        const nameKey = normalizeName(unitName);
+        if (nameKey && !unitsByKey.has(nameKey)) unitsByKey.set(nameKey, unit);
+      });
+      
+      // Match hours
+      let tasksMatched = 0;
+      let unitsMatched = 0;
+      const hoursToUpdate: { id: string; task_id: string }[] = [];
+      
+      for (const h of unassignedHours) {
+        const workdayPhase = normalizeName(h.workday_phase || '');
+        const workdayTask = normalizeName(h.workday_task || '');
+        
+        let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
+        if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
+        if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
+        
+        if (matched) {
+          hoursToUpdate.push({ id: h.id, task_id: matched.id });
+          tasksMatched++;
+          continue;
+        }
+        
+        if (workdayPhase) {
+          let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
+          if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
+          if (unitMatch) {
+            hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
+            unitsMatched++;
+          }
+        }
+      }
+      
+      // Update hour_entries with matched task_id
+      for (const update of hoursToUpdate) {
+        await supabase.from('hour_entries').update({ task_id: update.task_id }).eq('id', update.id);
+      }
+      
+      const stillUnmatched = unassignedHours.length - tasksMatched - unitsMatched;
+      addLog('success', `[Matching] Matched: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
+      
+      // Aggregate actual hours and cost to tasks
+      addLog('info', '[Aggregation] Aggregating actual hours and cost to tasks...');
+      
+      const { data: allMatchedHours } = await supabase
+        .from('hour_entries')
+        .select('task_id, hours, actual_cost, reported_standard_cost_amt')
+        .not('task_id', 'is', null);
+      
+      if (allMatchedHours && allMatchedHours.length > 0) {
+        const taskAggregates = new Map<string, { actualHours: number; actualCost: number }>();
+        
+        for (const h of allMatchedHours) {
+          const existing = taskAggregates.get(h.task_id) || { actualHours: 0, actualCost: 0 };
+          const hours = Number(h.hours) || 0;
+          const cost = Number(h.actual_cost ?? h.reported_standard_cost_amt) || 0;
+          taskAggregates.set(h.task_id, {
+            actualHours: existing.actualHours + hours,
+            actualCost: existing.actualCost + cost,
+          });
+        }
+        
+        let tasksUpdated = 0;
+        for (const [taskId, agg] of taskAggregates) {
+          const { error } = await supabase
+            .from('tasks')
+            .update({ actual_hours: agg.actualHours, actual_cost: agg.actualCost })
+            .eq('id', taskId);
+          if (!error) tasksUpdated++;
+        }
+        
+        addLog('success', `[Aggregation] Updated ${tasksUpdated} tasks with actual hours/cost`);
+      }
+      
+      await refreshData();
+      addLog('success', '[Complete] Hours matching and aggregation complete');
+      
+    } catch (err: any) {
+      addLog('error', `[Matching] Error: ${err.message}`);
+    } finally {
+      setIsMatching(false);
+    }
+  }, [addLog, refreshData]);
+
   return (
     <div className="page-panel">
       <div className="page-header">
@@ -993,6 +1126,22 @@ export default function DocumentsPage() {
                             {file.status === 'processing' ? 'Processing...' :
                               file.status === 'syncing' ? 'Syncing...' :
                                 file.status === 'complete' ? 'Re-run MPXJ' : 'Run MPXJ'}
+                          </button>
+                          <button
+                            onClick={handleMatchHours}
+                            disabled={isMatching || file.status !== 'complete'}
+                            title="Match hours entries to tasks and aggregate actual cost"
+                            style={{
+                              padding: '0.25rem 0.75rem',
+                              backgroundColor: file.status === 'complete' ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                              color: file.status === 'complete' ? '#fff' : 'var(--text-muted)',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              cursor: file.status === 'complete' ? 'pointer' : 'not-allowed',
+                            }}
+                          >
+                            {isMatching ? 'Matching...' : 'Match Hours'}
                           </button>
                           <button
                             onClick={() => handleDelete(file.id)}
