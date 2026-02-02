@@ -847,14 +847,15 @@ export default function DocumentsPage() {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
-      // Fetch unassigned hours - remove default 1000 limit
-      const { data: unassignedHours, error: hoursError } = await supabase
+      // Fetch unassigned hours - remove default 1000 limit, use range(0, 49999) for up to 50k rows
+      const { data: unassignedHours, error: hoursError, count: hoursCount } = await supabase
         .from('hour_entries')
-        .select('id, project_id, phase_id, description')
+        .select('id, project_id, phase_id, description', { count: 'exact' })
         .is('task_id', null)
-        .limit(50000);
+        .range(0, 49999);
       
       if (hoursError) throw new Error(`Failed to fetch hours: ${hoursError.message}`);
+      addLog('info', `[Matching] Database reports ${hoursCount ?? 'unknown'} total unassigned hours`);
       
       // Try to get workday columns if they exist
       let hoursWithWorkday = unassignedHours;
@@ -863,7 +864,7 @@ export default function DocumentsPage() {
           .from('hour_entries')
           .select('id, project_id, phase_id, workday_phase, workday_task, description')
           .is('task_id', null)
-          .limit(50000);
+          .range(0, 49999);
         if (hoursWd) hoursWithWorkday = hoursWd;
       } catch (e) {
         // workday columns might not exist, use fallback
@@ -1017,7 +1018,7 @@ export default function DocumentsPage() {
         .from('hour_entries')
         .select('task_id, hours, actual_cost, reported_standard_cost_amt')
         .not('task_id', 'is', null)
-        .limit(50000);
+        .range(0, 49999);
       
       if (allMatchedHours && allMatchedHours.length > 0) {
         const taskAggregates = new Map<string, { actualHours: number; actualCost: number }>();

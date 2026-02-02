@@ -205,7 +205,7 @@ async function fetchFromSupabase() {
     supabaseClient!.from('tasks').select('*').order('name'),                // 7
     supabaseClient!.from('qc_tasks').select('*').order('name'),             // 8 - FIXED: was task_dependencies
     supabaseClient!.from('employees').select('*').order('name'),            // 9 - FIXED: was qc_tasks
-    supabaseClient!.from('hour_entries').select('*').order('date').limit(50000),  // 10 - Remove default 1000 limit
+    supabaseClient!.from('hour_entries').select('*', { count: 'exact' }).order('date').range(0, 49999),  // 10 - Remove default 1000 limit
     supabaseClient!.from('milestones').select('*').order('planned_date'),   // 11 - FIXED: was hour_entries
     supabaseClient!.from('deliverables').select('*').order('name'),         // 12
     supabaseClient!.from('sprints').select('*').order('start_date'),        // 13
@@ -270,7 +270,11 @@ async function fetchFromSupabase() {
     tasks: convertArrayToCamelCase(tasks.data || []),
     qctasks: convertArrayToCamelCase(qcTasks.data || []),
     employees: convertArrayToCamelCase(employees.data || []),
-    hours: convertArrayToCamelCase(hourEntries.data || []),
+    hours: (() => {
+      const hours = convertArrayToCamelCase(hourEntries.data || []);
+      console.log(`[Database] Fetched ${hours.length} hour entries (count: ${(hourEntries as any).count || 'N/A'})`);
+      return hours;
+    })(),
     milestones: convertArrayToCamelCase(milestones.data || []),
     deliverables: convertArrayToCamelCase(deliverables.data || []),
     sprints: convertArrayToCamelCase(sprints.data || []),
