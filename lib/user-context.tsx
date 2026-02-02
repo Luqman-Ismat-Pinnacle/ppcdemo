@@ -2,7 +2,8 @@
 
 /**
  * User Context for PPC V3
- * Integrates with Auth0 for authentication.
+ * Integrates with Auth0 when enabled; bypass uses demo user.
+ * Set NEXT_PUBLIC_AUTH_DISABLED=true to skip Auth0 login.
  */
 
 import React, { createContext, useContext, ReactNode } from 'react';
@@ -25,6 +26,9 @@ interface UserContextValue {
 
 const UserContext = createContext<UserContextValue | null>(null);
 
+// Bypass Auth0 when NEXT_PUBLIC_AUTH_DISABLED is true, or when unset (default bypass for now)
+const AUTH_BYPASS = typeof process === 'undefined' || process.env.NEXT_PUBLIC_AUTH_DISABLED !== 'false';
+
 function getInitials(name: string): string {
   if (!name) return '?';
   return name
@@ -46,28 +50,36 @@ function mapAuth0User(auth0User: { name?: string | null; email?: string | null }
   };
 }
 
+const DEMO_USER: UserInfo = {
+  name: 'Demo User',
+  email: 'demo@pinnacle.com',
+  role: 'Admin',
+  initials: 'DU',
+};
+
 /**
- * Adapter that uses Auth0 and provides our UserContext.
- * Must be a child of Auth0Provider (UserProvider from @auth0/nextjs-auth0).
+ * UserProvider: when AUTH_BYPASS (NEXT_PUBLIC_AUTH_DISABLED=true), uses demo user; otherwise Auth0.
  */
 export function UserProvider({ children }: { children: ReactNode }) {
   const { user: auth0User, isLoading } = useAuth0User();
-  const user = mapAuth0User(auth0User);
+  const user = AUTH_BYPASS ? DEMO_USER : mapAuth0User(auth0User);
 
   const login = () => {
+    if (AUTH_BYPASS) return;
     window.location.href = '/api/auth/login';
   };
 
   const logout = () => {
+    if (AUTH_BYPASS) return;
     window.location.href = '/api/auth/logout';
   };
 
   const value: UserContextValue = {
-    user,
+    user: AUTH_BYPASS ? DEMO_USER : user,
     login,
     logout,
-    isLoggedIn: !!user,
-    isLoading,
+    isLoggedIn: AUTH_BYPASS ? true : !!user,
+    isLoading: AUTH_BYPASS ? false : isLoading,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

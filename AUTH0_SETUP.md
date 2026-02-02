@@ -42,7 +42,15 @@ AUTH0_CLIENT_SECRET=your-client-secret
 
 Use `http://localhost:3000` in the Auth0 **Allowed Callback URLs** and **Allowed Logout URLs** as well.
 
-## Behavior
+## Auth bypass (no login)
+
+To run the app **without** Auth0 login (e.g. while fixing callback URLs or for local dev):
+
+- **Default:** Auth is currently **bypassed** – no login required, demo user is used.
+- To **enable** Auth0 login: set `NEXT_PUBLIC_AUTH_DISABLED=false` in Vercel (or `.env.local`).
+- To keep bypass: leave the variable unset or set `NEXT_PUBLIC_AUTH_DISABLED=true`.
+
+## Behavior when Auth0 is enabled
 
 - Unauthenticated users are redirected to Auth0 login.
 - After 1 hour of inactivity, users are logged out and sent back to the login page.
