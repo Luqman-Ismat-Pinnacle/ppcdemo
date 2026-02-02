@@ -1083,7 +1083,7 @@ export default function WBSGanttPage() {
       <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '60vh' }} key={`wbs-gantt-${(wbsDataForTable?.items?.length ?? 0)}-${(wbsDataForTable?.items as any[])?.[0]?.id ?? ''}`}>
         <div
           className="chart-card-body no-padding"
-          style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}
+          style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'scroll', position: 'relative' }}
           ref={containerRef}
           onScroll={handleScroll}
         >
@@ -1119,82 +1119,82 @@ export default function WBSGanttPage() {
               maxWidth: `${fixedColsWidth + (dateColumns.length * columnWidth)}px`
             }}
           >
-            <thead style={{ position: 'sticky', top: 0, zIndex: 50 }}>
+            <thead>
               <tr style={{ height: '36px' }}>
-                <th style={{ width: '100px', position: 'sticky', left: 0, top: 0, zIndex: 40, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '100px', position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   WBS Code
                 </th>
-                <th style={{ width: '450px', minWidth: '450px', position: 'sticky', left: '100px', top: 0, zIndex: 40, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600 }}>
+                <th style={{ width: '450px', minWidth: '450px', position: 'sticky', left: '100px', top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600 }}>
                   Name
                 </th>
-                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   Type
                 </th>
-                <th style={{ width: '100px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '100px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   Resource
                 </th>
-                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   Start
                 </th>
-                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   End
                 </th>
-                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Days Required', description: 'Estimated working days to complete.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Days</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Baseline Hours', description: 'Original budgeted hours.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>BL Hrs</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Actual Hours', description: 'Hours logged to date.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Act Hrs</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '55px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '55px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Remaining Hours', description: 'From MPP file (not calculated).' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Rem Hrs</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Baseline Cost', description: 'Original budgeted cost.', calculation: 'Baseline Hours × Rate' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>BL Cost</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Actual Cost', description: 'From matched hours entries.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Act Cost</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '75px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '75px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Remaining Cost', description: 'From stored value (not calculated).' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Rem Cost</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Efficiency %', description: 'Work rate efficiency.', calculation: 'Earned / Spent' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Eff%</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Progress', description: 'Percentage complete.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Prog</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '80px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   <EnhancedTooltip content={{ title: 'Predecessors', description: 'Tasks that must finish before this one starts.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Pred</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, color: '#ff6b6b', whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, color: '#ff6b6b', whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Total Float', description: 'Days task can delay without delaying project.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>TF</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '30px', position: 'sticky', top: 0, zIndex: 30, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                <th style={{ width: '30px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }}>
                   <EnhancedTooltip content={{ title: 'Critical Path', description: 'Tasks driving the project end date.' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>CP</span>
                   </EnhancedTooltip>
@@ -1214,7 +1214,7 @@ export default function WBSGanttPage() {
                       fontWeight: 600,
                       position: 'sticky',
                       top: 0,
-                      zIndex: 30
+                      zIndex: 90
                     }}>
                       {col.label}
                     </th>
