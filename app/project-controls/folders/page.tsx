@@ -225,17 +225,18 @@ export default function DocumentsPage() {
         throw new Error(error.message);
       }
 
-      pushLog('success', `[Storage] File uploaded: ${data.path}`);
+      const savedStoragePath = data.path ?? storagePath;
+      pushLog('success', `[Storage] File uploaded: ${savedStoragePath}`);
 
-      // Update file status
+      // Update file status (use path returned by Supabase so it matches DB for setCurrentMpp/updateDocumentHealth)
       setUploadedFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'uploaded' as const, storagePath: data.path } : f
+        f.id === fileId ? { ...f, status: 'uploaded' as const, storagePath: savedStoragePath } : f
       ));
 
-      // Also save metadata to project_documents table (project_id and health_score when available)
+      // Also save metadata to project_documents (use data.path so setCurrentMpp/updateDocumentHealth find the row)
       try {
         const docId = `DOC_${Date.now()}`;
-        await fetch('/api/data/sync', {
+        const docRes = await fetch('/api/data/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -249,19 +250,24 @@ export default function DocumentsPage() {
               fileType: 'mpp',
               fileSize: selectedFile.size,
               documentType: 'MPP',
-              storagePath: storagePath,
+              storagePath: savedStoragePath,
               storageBucket: STORAGE_BUCKET,
               uploadedAt: new Date().toISOString(),
               isActive: true,
             }],
           }),
         });
-        pushLog('success', '[Database] Document metadata saved');
+        const docResult = await docRes.json();
+        if (docRes.ok && docResult.success) {
+          pushLog('success', '[Database] Document metadata saved (project_id and storage_path)');
+        } else {
+          pushLog('warning', `[Database] Document save failed: ${docResult.error || 'Unknown'}`);
+        }
       } catch (dbErr: any) {
         pushLog('warning', `[Database] Metadata save failed: ${dbErr.message}`);
       }
 
-      // Persist upload logs to project_log so they are saved
+      // Persist upload logs to project_log (project_id can be null if FK fails; table allows it after migration)
       try {
         const logRecords = logEntries.map((e, i) => ({
           id: `LOG_${fileId}_${i}_${Date.now()}`,
@@ -271,15 +277,21 @@ export default function DocumentsPage() {
           message: e.message,
           createdBy: 'Upload',
         }));
-        if (logRecords.length > 0 && workdayProjectId.trim()) {
-          await fetch('/api/data/sync', {
+        if (logRecords.length > 0) {
+          const logRes = await fetch('/api/data/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dataKey: 'projectLog', records: logRecords }),
           });
+          const logResult = await logRes.json();
+          if (logRes.ok && logResult.success) {
+            pushLog('success', `[Database] ${logRecords.length} log entries saved to project_log`);
+          } else {
+            pushLog('warning', `[Database] Log save failed: ${logResult.error || 'Unknown'}`);
+          }
         }
       } catch (logErr: any) {
-        addLog('warning', `[Database] Log save failed: ${logErr.message}`);
+        pushLog('warning', `[Database] Log save failed: ${logErr.message}`);
       }
 
       // Reset form
@@ -296,24 +308,30 @@ export default function DocumentsPage() {
     }
   }, [selectedFile, workdayProjectId, addLog]);
 
-  // Persist process/upload logs to project_log
+  // Persist process/upload logs to project_log (parser logs)
   const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
-    if (!projectId || entries.length === 0) return;
+    if (entries.length === 0) return;
     try {
       const logRecords = entries.map((e, i) => ({
-        id: `LOG_${Date.now()}_${i}`,
-        projectId,
+        id: `LOG_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 9)}`,
+        projectId: projectId || null,
         entryDate: e.timestamp.toISOString(),
         entryType: e.type,
         message: e.message,
         createdBy: 'Project Upload',
       }));
-      await fetch('/api/data/sync', {
+      const res = await fetch('/api/data/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataKey: 'projectLog', records: logRecords }),
       });
-    } catch (_) {}
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        console.error('[project_log] Save failed:', result.error);
+      }
+    } catch (err) {
+      console.error('[project_log] Save error:', err);
+    }
   }, []);
 
   // Process file with MPXJ Python service and sync to Supabase
@@ -633,9 +651,9 @@ export default function DocumentsPage() {
         pushLog('warning', `[Documents] Set current version failed: ${e.message}`);
       }
 
-      // Save health score and health_check_json to project_documents
+      // Save health score and health_check_json to project_documents (by storage_path)
       try {
-        await fetch('/api/data/sync', {
+        const healthRes = await fetch('/api/data/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -643,9 +661,20 @@ export default function DocumentsPage() {
             operation: 'updateDocumentHealth',
             storagePath: file.storagePath,
             healthScore: healthResult.score,
-            healthCheckJson: healthResult,
+            healthCheckJson: {
+              score: healthResult.score,
+              passed: healthResult.passed,
+              totalChecks: healthResult.totalChecks,
+              issues: healthResult.issues,
+            },
           }),
         });
+        const healthResultJson = await healthRes.json();
+        if (healthRes.ok && healthResultJson.success) {
+          pushLog('success', '[Documents] Health score and parser result saved to project_documents.');
+        } else {
+          pushLog('warning', `[Documents] Health save failed: ${healthResultJson.error || 'Unknown'}`);
+        }
       } catch (healthErr: any) {
         pushLog('warning', `[Documents] Health save failed: ${healthErr.message}`);
       }

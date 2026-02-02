@@ -2181,7 +2181,11 @@ const buildTaskActualCostMap = (hours: any[]): Map<string, number> => {
   hours.forEach((h: any) => {
     const taskId = normalizeTaskId(h);
     if (!taskId) return;
-    const cost = Number(h.actualCost ?? h.actual_cost ?? 0) || 0;
+    const cost = Number(
+      h.actualCost ?? h.actual_cost
+      ?? h.reportedStandardCostAmt ?? h.reported_standard_cost_amt
+      ?? 0
+    ) || 0;
     if (cost > 0) map.set(taskId, (map.get(taskId) || 0) + cost);
   });
   return map;

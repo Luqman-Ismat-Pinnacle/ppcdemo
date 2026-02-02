@@ -160,23 +160,9 @@ function convertArrayToCamelCase<T>(arr: any[]): T[] {
 }
 
 async function fetchFromSupabase() {
-  // Load hierarchy_nodes if available (new consolidated table), otherwise fall back to separate tables
-  let hierarchyNodes: { data: any[] | null } = { data: null };
-  let workItems: { data: any[] | null } = { data: null };
-
-  try {
-    const hierarchyResult = await supabaseClient!.from('hierarchy_nodes').select('*').order('name');
-    hierarchyNodes = { data: hierarchyResult.data || null };
-  } catch {
-    hierarchyNodes = { data: null };
-  }
-
-  try {
-    const workItemsResult = await supabaseClient!.from('work_items').select('*').order('name');
-    workItems = { data: workItemsResult.data || null };
-  } catch {
-    workItems = { data: null };
-  }
+  // Legacy tables hierarchy_nodes and work_items are no longer loaded (dropped in migration 20260201000000)
+  const hierarchyNodes = { data: null as any[] | null };
+  const workItems = { data: null as any[] | null };
 
   // IMPORTANT: The destructuring order MUST match the Promise.all query order!
   const [
@@ -239,10 +225,8 @@ async function fetchFromSupabase() {
     supabaseClient!.from('visual_snapshots').select('*').order('snapshot_date', { ascending: false }), // 27
   ]);
 
-  // Use hierarchy_nodes if available, otherwise use separate tables (backward compatibility)
-  // DISABLED: We are using separate tables now.
-  const hasHierarchyNodes = false; // hierarchyNodes?.data && hierarchyNodes.data.length > 0;
-  const hasWorkItems = workItems?.data && workItems.data.length > 0;
+  const hasHierarchyNodes = false;
+  const hasWorkItems = false;
 
   // Extract hierarchy levels from hierarchy_nodes if available
   let extractedPortfolios = portfolios.data || [];
