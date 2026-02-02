@@ -156,7 +156,7 @@ export default function DocumentsPage() {
       // Fetch document metadata from database (has project_id, health_score, etc.)
       const { data: dbDocs, error: dbError } = await supabase
         .from('project_documents')
-        .select('id, file_name, file_path, project_id, health_score, parser_result, uploaded_at, file_size')
+        .select('id, file_name, storage_path, project_id, health_score, health_check_json, uploaded_at, file_size')
         .order('uploaded_at', { ascending: false });
 
       if (dbError) {
@@ -166,8 +166,8 @@ export default function DocumentsPage() {
       // Create a map of storage path -> db document
       const dbDocMap = new Map<string, any>();
       (dbDocs || []).forEach((doc: any) => {
-        if (doc.file_path) {
-          dbDocMap.set(doc.file_path, doc);
+        if (doc.storage_path) {
+          dbDocMap.set(doc.storage_path, doc);
         }
       });
 
@@ -178,19 +178,29 @@ export default function DocumentsPage() {
             const storagePath = `mpp/${f.name}`;
             const dbDoc = dbDocMap.get(storagePath);
             
-            // Parse health check from parser_result if available
+            // Parse health check from health_check_json if available
             let healthCheck: ProjectHealthAutoResult | undefined;
-            if (dbDoc?.parser_result) {
+            if (dbDoc?.health_check_json) {
               try {
-                const parsed = typeof dbDoc.parser_result === 'string' 
-                  ? JSON.parse(dbDoc.parser_result) 
-                  : dbDoc.parser_result;
+                const parsed = typeof dbDoc.health_check_json === 'string' 
+                  ? JSON.parse(dbDoc.health_check_json) 
+                  : dbDoc.health_check_json;
                 if (parsed.score !== undefined) {
                   healthCheck = parsed as ProjectHealthAutoResult;
                 }
               } catch (e) {
                 console.warn('Failed to parse health check:', e);
               }
+            } else if (dbDoc?.health_score !== null && dbDoc?.health_score !== undefined) {
+              // If we have health_score but not full JSON, create a minimal result
+              healthCheck = {
+                score: dbDoc.health_score,
+                passed: 0,
+                failed: 0,
+                totalChecks: 0,
+                issues: [],
+                results: []
+              };
             }
             
             return {
@@ -822,41 +832,67 @@ export default function DocumentsPage() {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
-      // Fetch unassigned hours
+      // Fetch unassigned hours - use phase_id as fallback if workday columns don't exist
       const { data: unassignedHours, error: hoursError } = await supabase
         .from('hour_entries')
-        .select('id, project_id, workday_phase, workday_task')
+        .select('id, project_id, phase_id, description')
         .is('task_id', null);
       
       if (hoursError) throw new Error(`Failed to fetch hours: ${hoursError.message}`);
       
-      if (!unassignedHours || unassignedHours.length === 0) {
+      // Try to get workday columns if they exist
+      let hoursWithWorkday = unassignedHours;
+      try {
+        const { data: hoursWd } = await supabase
+          .from('hour_entries')
+          .select('id, project_id, phase_id, workday_phase, workday_task, description')
+          .is('task_id', null);
+        if (hoursWd) hoursWithWorkday = hoursWd;
+      } catch (e) {
+        // workday columns might not exist, use fallback
+        addLog('info', '[Matching] workday_phase/workday_task columns not available, using phase_id fallback');
+      }
+      
+      if (!hoursWithWorkday || hoursWithWorkday.length === 0) {
         addLog('info', '[Matching] No unassigned hours entries found');
         setIsMatching(false);
         return;
       }
       
-      addLog('info', `[Matching] Found ${unassignedHours.length} unassigned hours entries`);
+      addLog('info', `[Matching] Found ${hoursWithWorkday.length} unassigned hours entries`);
       
-      // Fetch tasks and units
+      // Fetch tasks, phases, and units
       const { data: tasks } = await supabase.from('tasks').select('id, project_id, phase_id, name, phase_name');
+      const { data: phases } = await supabase.from('phases').select('id, project_id, name');
       const { data: units } = await supabase.from('units').select('id, project_id, name');
       
       // Build lookup maps
       const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
       
+      // Index tasks by various keys
       const tasksByKey = new Map<string, any>();
+      const tasksByPhaseId = new Map<string, any[]>(); // phase_id -> tasks
       (tasks || []).forEach((task: any) => {
         const phaseName = task.phase_name || '';
         const taskName = task.name || '';
+        // Full key: project + phase + task
         const fullKey = `${task.project_id}|${normalizeName(phaseName)}|${normalizeName(taskName)}`;
         if (!tasksByKey.has(fullKey)) tasksByKey.set(fullKey, task);
+        // Phase + task key
         const phaseTaskKey = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
         if (!tasksByKey.has(phaseTaskKey)) tasksByKey.set(phaseTaskKey, task);
+        // Task name only
         const nameOnlyKey = normalizeName(taskName);
         if (nameOnlyKey && !tasksByKey.has(nameOnlyKey)) tasksByKey.set(nameOnlyKey, task);
+        // By phase_id
+        if (task.phase_id) {
+          const existing = tasksByPhaseId.get(task.phase_id) || [];
+          existing.push(task);
+          tasksByPhaseId.set(task.phase_id, existing);
+        }
       });
       
+      // Index units
       const unitsByKey = new Map<string, any>();
       (units || []).forEach((unit: any) => {
         const unitName = unit.name || '';
@@ -869,28 +905,44 @@ export default function DocumentsPage() {
       // Match hours
       let tasksMatched = 0;
       let unitsMatched = 0;
+      let phaseIdMatched = 0;
       const hoursToUpdate: { id: string; task_id: string }[] = [];
       
-      for (const h of unassignedHours) {
-        const workdayPhase = normalizeName(h.workday_phase || '');
-        const workdayTask = normalizeName(h.workday_task || '');
+      for (const h of hoursWithWorkday) {
+        const workdayPhase = normalizeName((h as any).workday_phase || '');
+        const workdayTask = normalizeName((h as any).workday_task || '');
         
-        let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
-        if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
-        if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
-        
-        if (matched) {
-          hoursToUpdate.push({ id: h.id, task_id: matched.id });
-          tasksMatched++;
-          continue;
+        // Try workday phase+task matching first
+        if (workdayPhase || workdayTask) {
+          let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
+          if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
+          if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
+          
+          if (matched) {
+            hoursToUpdate.push({ id: h.id, task_id: matched.id });
+            tasksMatched++;
+            continue;
+          }
+          
+          // Try unit match by workday_phase
+          if (workdayPhase) {
+            let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
+            if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
+            if (unitMatch) {
+              hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
+              unitsMatched++;
+              continue;
+            }
+          }
         }
         
-        if (workdayPhase) {
-          let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
-          if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
-          if (unitMatch) {
-            hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
-            unitsMatched++;
+        // Fallback: match by phase_id if hour has one
+        if (h.phase_id) {
+          const phaseTasks = tasksByPhaseId.get(h.phase_id);
+          if (phaseTasks && phaseTasks.length === 1) {
+            // Only match if there's exactly one task in the phase
+            hoursToUpdate.push({ id: h.id, task_id: phaseTasks[0].id });
+            phaseIdMatched++;
           }
         }
       }
@@ -900,8 +952,9 @@ export default function DocumentsPage() {
         await supabase.from('hour_entries').update({ task_id: update.task_id }).eq('id', update.id);
       }
       
-      const stillUnmatched = unassignedHours.length - tasksMatched - unitsMatched;
-      addLog('success', `[Matching] Matched: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
+      const totalMatched = tasksMatched + unitsMatched + phaseIdMatched;
+      const stillUnmatched = hoursWithWorkday.length - totalMatched;
+      addLog('success', `[Matching] Matched: ${tasksMatched} by name, ${phaseIdMatched} by phase_id, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
       
       // Aggregate actual hours and cost to tasks
       addLog('info', '[Aggregation] Aggregating actual hours and cost to tasks...');

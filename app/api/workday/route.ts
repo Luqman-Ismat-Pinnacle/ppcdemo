@@ -366,23 +366,35 @@ function unifiedSyncStream(
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         
-        // Fetch unassigned hours
-        const { data: unassignedHours } = await supabase
-          .from('hour_entries')
-          .select('id, project_id, workday_phase, workday_task')
-          .is('task_id', null);
+        // Fetch unassigned hours - try with workday columns, fall back to phase_id
+        let unassignedHours: any[] = [];
+        try {
+          const { data } = await supabase
+            .from('hour_entries')
+            .select('id, project_id, phase_id, workday_phase, workday_task')
+            .is('task_id', null);
+          unassignedHours = data || [];
+        } catch (e) {
+          // workday columns might not exist
+          const { data } = await supabase
+            .from('hour_entries')
+            .select('id, project_id, phase_id')
+            .is('task_id', null);
+          unassignedHours = data || [];
+          logAndPush('workday_phase/workday_task columns not available, using phase_id fallback');
+        }
         
         if (unassignedHours && unassignedHours.length > 0) {
           // Fetch all tasks and units
           const { data: tasks } = await supabase.from('tasks').select('id, project_id, phase_id, name, phase_name');
           const { data: units } = await supabase.from('units').select('id, project_id, name');
-          const { data: phases } = await supabase.from('phases').select('id, project_id, name');
           
           // Build lookup maps
           const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
           
-          // Index tasks by (project_id, phase_name, task_name)
+          // Index tasks by various keys
           const tasksByKey = new Map<string, any>();
+          const tasksByPhaseId = new Map<string, any[]>(); // phase_id -> tasks
           (tasks || []).forEach((task: any) => {
             const phaseName = task.phase_name || '';
             const taskName = task.name || '';
@@ -395,6 +407,12 @@ function unifiedSyncStream(
             // Task name only
             const nameOnlyKey = normalizeName(taskName);
             if (nameOnlyKey && !tasksByKey.has(nameOnlyKey)) tasksByKey.set(nameOnlyKey, task);
+            // By phase_id for fallback matching
+            if (task.phase_id) {
+              const existing = tasksByPhaseId.get(task.phase_id) || [];
+              existing.push(task);
+              tasksByPhaseId.set(task.phase_id, existing);
+            }
           });
           
           // Index units by (project_id, name)
@@ -409,31 +427,42 @@ function unifiedSyncStream(
           
           // Match hours
           const hoursToUpdate: { id: string; task_id: string }[] = [];
+          let phaseIdMatched = 0;
           
           for (const h of unassignedHours) {
             const workdayPhase = normalizeName(h.workday_phase || '');
             const workdayTask = normalizeName(h.workday_task || '');
             
-            // Try task match: project + phase + task
-            let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
-            // Try phase + task
-            if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
-            // Try task name only
-            if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
-            
-            if (matched) {
-              hoursToUpdate.push({ id: h.id, task_id: matched.id });
-              tasksMatched++;
-              continue;
+            // Try workday phase+task matching first
+            if (workdayPhase || workdayTask) {
+              let matched = tasksByKey.get(`${h.project_id}|${workdayPhase}|${workdayTask}`);
+              if (!matched) matched = tasksByKey.get(`${workdayPhase}|${workdayTask}`);
+              if (!matched && workdayTask) matched = tasksByKey.get(workdayTask);
+              
+              if (matched) {
+                hoursToUpdate.push({ id: h.id, task_id: matched.id });
+                tasksMatched++;
+                continue;
+              }
+              
+              // Try unit match by workday_phase
+              if (workdayPhase) {
+                let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
+                if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
+                if (unitMatch) {
+                  hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
+                  unitsMatched++;
+                  continue;
+                }
+              }
             }
             
-            // Try unit match: project + phase name
-            if (workdayPhase) {
-              let unitMatch = unitsByKey.get(`${h.project_id}|${workdayPhase}`);
-              if (!unitMatch) unitMatch = unitsByKey.get(workdayPhase);
-              if (unitMatch) {
-                hoursToUpdate.push({ id: h.id, task_id: unitMatch.id });
-                unitsMatched++;
+            // Fallback: match by phase_id if hour has one
+            if (h.phase_id) {
+              const phaseTasks = tasksByPhaseId.get(h.phase_id);
+              if (phaseTasks && phaseTasks.length === 1) {
+                hoursToUpdate.push({ id: h.id, task_id: phaseTasks[0].id });
+                phaseIdMatched++;
               }
             }
           }
@@ -447,9 +476,10 @@ function unifiedSyncStream(
             }
           }
           
-          const stillUnmatched = unassignedHours.length - tasksMatched - unitsMatched;
-          logAndPush(`Matching complete: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
-          pushLine(controller, { type: 'step', step: 'matching', status: 'done', tasksMatched, unitsMatched, stillUnmatched });
+          const totalMatched = tasksMatched + unitsMatched + phaseIdMatched;
+          const stillUnmatched = unassignedHours.length - totalMatched;
+          logAndPush(`Matching complete: ${tasksMatched} by name, ${phaseIdMatched} by phase_id, ${unitsMatched} to units, ${stillUnmatched} unmatched`);
+          pushLine(controller, { type: 'step', step: 'matching', status: 'done', tasksMatched, phaseIdMatched, unitsMatched, stillUnmatched });
         } else {
           logAndPush('No unassigned hours entries to match');
           pushLine(controller, { type: 'step', step: 'matching', status: 'done', tasksMatched: 0, unitsMatched: 0, stillUnmatched: 0 });
