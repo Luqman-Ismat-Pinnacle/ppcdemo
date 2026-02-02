@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
         success: true, 
         message: 'Imported successfully',
+        tasks: convertedData.tasks || [], // So frontend can merge remainingHours from MPP into context
         logs: [
             { type: 'info', message: `Parsed ${mppData.summary.total_tasks} tasks` },
             { type: 'success', message: `Imported ${convertedData.units?.length || 0} units and ${convertedData.phases?.length || 0} phases` }

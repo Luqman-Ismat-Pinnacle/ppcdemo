@@ -1155,7 +1155,7 @@ export default function DataManagementPage() {
         // Hours
         { key: 'baselineHours', header: 'BL Hrs', type: 'number', editable: true },
         { key: 'actualHours', header: 'Act Hrs', type: 'number', editable: true },
-        { key: 'remainingHours', header: 'Rem Hrs', type: 'number', editable: false, autoCalculated: true },
+        { key: 'remainingHours', header: 'Rem Hrs', type: 'number', editable: false, autoCalculated: false, tooltip: 'From MPP parser / stored value (not calculated)' },
         { key: 'projectedRemainingHours', header: 'Proj Rem Hrs', type: 'number', editable: true },
         // Cost
         { key: 'baselineCost', header: 'BL Cost', type: 'number', editable: true },
@@ -2998,7 +2998,21 @@ export default function DataManagementPage() {
                               message: log.message,
                             });
                           });
-                          await refreshData();
+                          const fresh = await refreshData();
+                          // Merge MPP tasks (remainingHours from parser) into context so Data Management and WBS show parser values
+                          if (result.tasks && Array.isArray(result.tasks) && result.tasks.length > 0) {
+                            const existingTasks = (fresh?.tasks || data?.tasks || []) as any[];
+                            const mergedTasks = existingTasks.map((t: any) => {
+                              const mpp = result.tasks.find((m: any) => (m.id || m.taskId) === (t.id || t.taskId));
+                              if (!mpp) return t;
+                              return {
+                                ...t,
+                                remainingHours: mpp.remainingHours ?? t.remainingHours ?? t.remaining_hours,
+                                projectedRemainingHours: mpp.projectedRemainingHours ?? mpp.projectedHours ?? t.projectedRemainingHours ?? t.projected_remaining_hours,
+                              };
+                            });
+                            updateData({ tasks: mergedTasks });
+                          }
                           setUploadStatus({ type: 'success', message: 'MPP file processed successfully' });
                         } else {
                           addToImportLog({ type: 'error', entity: 'MPP', action: 'skip', message: result.error || 'Processing failed' });

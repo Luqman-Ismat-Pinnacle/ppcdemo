@@ -135,7 +135,7 @@ interface DataContextType {
   setDateFilter: (filter: DateFilter | null) => void;
   updateData: (updates: Partial<SampleData>) => void;
   resetData: () => void;
-  refreshData: () => Promise<void>;
+  refreshData: () => Promise<Partial<SampleData> | undefined>;
   saveVisualSnapshot: (snapshot: any) => Promise<boolean>;
 }
 
@@ -276,7 +276,7 @@ export function DataProvider({ children }: DataProviderProps) {
   /**
    * Refresh data from database
    */
-  const refreshData = async () => {
+  const refreshData = async (): Promise<Partial<SampleData> | undefined> => {
     setIsLoading(true);
     try {
       const response = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
@@ -284,13 +284,13 @@ export function DataProvider({ children }: DataProviderProps) {
 
       if (result.error || !result.data) {
         logger.debug('No data available to refresh');
-        return;
+        return undefined;
       }
 
       const dbData = result.data;
       if (!dbData) {
         logger.debug('No data returned from refresh');
-        return;
+        return undefined;
       }
 
       const mergedData: Partial<SampleData> = {};
@@ -314,11 +314,14 @@ export function DataProvider({ children }: DataProviderProps) {
           const length = Array.isArray(value) ? value.length : (value ? 1 : 0);
           return `${length} ${k}`;
         }).join(', '));
+        return mergedData;
       } else {
         logger.debug('No data to merge after refresh');
+        return undefined;
       }
     } catch (err) {
       logger.error('Error refreshing data from database', err);
+      return undefined;
     } finally {
       setIsLoading(false);
     }
