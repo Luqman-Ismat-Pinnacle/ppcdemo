@@ -1909,13 +1909,25 @@ function namesMatch(a: string, b: string, relaxed: boolean): boolean {
   return false;
 }
 
+export interface HoursMappingStats {
+  totalHours: number;
+  matchedHours: number;
+  unmatchedHours: number;
+  tasksWithHours: number;
+  tasksWithoutHours: number;
+  totalTasks: number;
+  matchedHoursByMethod: Record<string, number>;
+  sampleMatches: { hourId: string; taskId: string; taskName: string; method: string }[];
+  unmatchedSample: { hourId: string; projectId: string; workdayPhase: string; workdayTask: string }[];
+}
+
 /**
  * Resolve hour entries to MPP tasks by matching (project_id, workday_phase, workday_task)
  * to (task.project_id, phase.name, task.name). Project ID is set by the user when they
  * select the project during MPP upload, so mismatch should not occur. Matching uses
  * increasingly relaxed name comparison so phase/task names align even with punctuation
  * or wording differences.
- * Returns a new hours array with taskId/task_id set where a match was found.
+ * Returns a new hours array with taskId/task_id set where a match was found, plus mapping statistics.
  *
  * Why matching might still not work (reasons 3 and 4 in detail):
  *
@@ -1939,13 +1951,29 @@ function resolveHourEntriesToTasks(
   hours: any[],
   tasks: any[],
   phases: any[]
-): any[] {
-  if (!hours?.length || !tasks?.length) return hours ?? [];
+): { hours: any[]; stats: HoursMappingStats } {
+  const stats: HoursMappingStats = {
+    totalHours: hours?.length ?? 0,
+    matchedHours: 0,
+    unmatchedHours: 0,
+    tasksWithHours: 0,
+    tasksWithoutHours: 0,
+    totalTasks: tasks?.length ?? 0,
+    matchedHoursByMethod: {},
+    sampleMatches: [],
+    unmatchedSample: [],
+  };
 
+  if (!hours?.length || !tasks?.length) return { hours: hours ?? [], stats };
   const validTaskIds = new Set<string>();
+  const taskIdToName = new Map<string, string>();
   tasks.forEach((t: any) => {
     const id = t.id ?? t.taskId;
-    if (id != null) validTaskIds.add(String(id));
+    const name = t.name ?? t.taskName ?? t.task_name ?? '';
+    if (id != null) {
+      validTaskIds.add(String(id));
+      taskIdToName.set(String(id), name);
+    }
   });
 
   const phaseIdToName = new Map<string, string>();
@@ -1979,42 +2007,91 @@ function resolveHourEntriesToTasks(
   });
 
   const projectTasks = taskListByProject.filter((x) => x.projectId);
+  const tasksWithHoursSet = new Set<string>();
+  
+  const trackMatch = (hourId: string, taskId: string, method: string) => {
+    stats.matchedHours++;
+    stats.matchedHoursByMethod[method] = (stats.matchedHoursByMethod[method] || 0) + 1;
+    tasksWithHoursSet.add(taskId);
+    if (stats.sampleMatches.length < 10) {
+      stats.sampleMatches.push({ 
+        hourId, 
+        taskId, 
+        taskName: taskIdToName.get(taskId) || taskId,
+        method 
+      });
+    }
+  };
 
-  return hours.map((h: any) => {
+  const trackUnmatched = (h: any) => {
+    stats.unmatchedHours++;
+    if (stats.unmatchedSample.length < 10) {
+      stats.unmatchedSample.push({
+        hourId: h.id ?? h.entryId ?? h.entry_id ?? 'unknown',
+        projectId: h.projectId ?? h.project_id ?? '',
+        workdayPhase: h.workdayPhase ?? h.workday_phase ?? '',
+        workdayTask: h.workdayTask ?? h.workday_task ?? '',
+      });
+    }
+  };
+
+  const enrichedHours = hours.map((h: any) => {
+    const hourId = h.id ?? h.entryId ?? h.entry_id ?? '';
     const existingTaskId = h.taskId ?? h.task_id;
-    if (existingTaskId && validTaskIds.has(String(existingTaskId))) return h;
+    if (existingTaskId && validTaskIds.has(String(existingTaskId))) {
+      trackMatch(hourId, String(existingTaskId), 'existing');
+      return h;
+    }
 
     const projectId = h.projectId ?? h.project_id;
     const workdayPhase = (h.workdayPhase ?? h.workday_phase ?? '').toString().trim();
     const workdayTask = (h.workdayTask ?? h.workday_task ?? '').toString().trim();
     const hourPhaseId = h.phaseId ?? h.phase_id;
 
-    if (!projectId) return h;
+    if (!projectId) {
+      trackUnmatched(h);
+      return h;
+    }
 
     // If hour has phaseId but no taskId, try to match to single task in that phase for this project
     if (hourPhaseId && !existingTaskId) {
       const inPhase = projectTasks.filter(
         (x) => x.projectId === String(projectId) && x.phaseId === String(hourPhaseId)
       );
-      if (inPhase.length === 1) return { ...h, taskId: inPhase[0].taskId, task_id: inPhase[0].taskId };
+      if (inPhase.length === 1) {
+        trackMatch(hourId, inPhase[0].taskId, 'phaseId-single');
+        return { ...h, taskId: inPhase[0].taskId, task_id: inPhase[0].taskId };
+      }
     }
 
-    if (!workdayPhase && !workdayTask) return h;
+    if (!workdayPhase && !workdayTask) {
+      trackUnmatched(h);
+      return h;
+    }
 
     // 1) Exact normalized key
     let key = `${String(projectId)}|${normalizeNameForMatch(workdayPhase)}|${normalizeNameForMatch(workdayTask)}`;
     let matchedTaskId = exactKeys.get(key);
-    if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+    if (matchedTaskId) {
+      trackMatch(hourId, matchedTaskId, 'exact');
+      return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+    }
 
     // 2) Relaxed key (strip punctuation, collapse separators)
     key = `${String(projectId)}|${normalizeNameRelaxed(workdayPhase)}|${normalizeNameRelaxed(workdayTask)}`;
     matchedTaskId = relaxedKeys.get(key);
-    if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+    if (matchedTaskId) {
+      trackMatch(hourId, matchedTaskId, 'relaxed');
+      return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+    }
 
     // 3) Aggressive key (strip Phase/Task prefixes, normalize numbers)
     key = `${String(projectId)}|${normalizeNameAggressive(workdayPhase)}|${normalizeNameAggressive(workdayTask)}`;
     matchedTaskId = aggressiveKeys.get(key);
-    if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+    if (matchedTaskId) {
+      trackMatch(hourId, matchedTaskId, 'aggressive');
+      return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+    }
 
     // 4) Phase + task name match (relaxed or contains)
     let found = projectTasks.find(
@@ -2023,14 +2100,20 @@ function resolveHourEntriesToTasks(
         namesMatch(workdayPhase, x.phaseName, true) &&
         namesMatch(workdayTask, x.taskName, true)
     );
-    if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+    if (found) {
+      trackMatch(hourId, found.taskId, 'contains');
+      return { ...h, taskId: found.taskId, task_id: found.taskId };
+    }
 
     // 5) Phase-only: workdayTask empty but workdayPhase set — match first task in matching phase
     if (!workdayTask && workdayPhase) {
       found = projectTasks.find(
         (x) => x.projectId === String(projectId) && namesMatch(workdayPhase, x.phaseName, true)
       );
-      if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+      if (found) {
+        trackMatch(hourId, found.taskId, 'phase-only');
+        return { ...h, taskId: found.taskId, task_id: found.taskId };
+      }
     }
 
     // 6) Task-only: workdayPhase empty but workdayTask set — match first task with matching task name
@@ -2038,7 +2121,10 @@ function resolveHourEntriesToTasks(
       found = projectTasks.find(
         (x) => x.projectId === String(projectId) && namesMatch(workdayTask, x.taskName, true)
       );
-      if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+      if (found) {
+        trackMatch(hourId, found.taskId, 'task-only');
+        return { ...h, taskId: found.taskId, task_id: found.taskId };
+      }
     }
 
     // 7) Token-overlap fallback: best candidate where phase and task token overlap are both high
@@ -2056,11 +2142,21 @@ function resolveHourEntriesToTasks(
           best = c;
         }
       }
-      if (bestScore >= 0.6) return { ...h, taskId: best.taskId, task_id: best.taskId };
+      if (bestScore >= 0.6) {
+        trackMatch(hourId, best.taskId, 'token-overlap');
+        return { ...h, taskId: best.taskId, task_id: best.taskId };
+      }
     }
 
+    trackUnmatched(h);
     return h;
   });
+
+  // Calculate tasks with/without hours
+  stats.tasksWithHours = tasksWithHoursSet.size;
+  stats.tasksWithoutHours = stats.totalTasks - stats.tasksWithHours;
+
+  return { hours: enrichedHours, stats };
 }
 
 const WEEK_DAYS = 7;
@@ -4899,7 +4995,7 @@ export function transformData(rawData: Partial<SampleData>, options?: TransformD
   const transformed: Partial<SampleData> = { ...rawData };
 
   // Resolve Workday hours to MPP tasks by (project_id, workday_phase, workday_task) so actuals roll up correctly
-  const enrichedHours = resolveHourEntriesToTasks(
+  const { hours: enrichedHours, stats: mappingStats } = resolveHourEntriesToTasks(
     rawData.hours ?? [],
     rawData.tasks ?? [],
     rawData.phases ?? []
@@ -4910,12 +5006,44 @@ export function transformData(rawData: Partial<SampleData>, options?: TransformD
 
   const hoursCount = rawData.hours?.length ?? 0;
   const tasksCount = adjustedData.tasks?.length ?? 0;
+  
+  // Build detailed actuals log lines including hours-to-tasks mapping statistics
   const actualsLines = [
     `[${new Date().toISOString()}] Actuals / progress`,
     `> Hour entries: ${hoursCount}`,
-    `> Tasks with progress applied: ${tasksCount}`,
-    `> buildTaskActualHoursMap from ${hoursCount} entries; applyProgressToList on ${tasksCount} tasks`,
+    `> Tasks: ${tasksCount}`,
+    ``,
+    `Hours-to-Tasks Mapping:`,
+    `  Matched: ${mappingStats.matchedHours} (${hoursCount > 0 ? ((mappingStats.matchedHours / hoursCount) * 100).toFixed(1) : 0}%)`,
+    `  Unmatched: ${mappingStats.unmatchedHours}`,
+    `  Tasks with hours: ${mappingStats.tasksWithHours}`,
+    `  Tasks without hours: ${mappingStats.tasksWithoutHours}`,
   ];
+  
+  // Add breakdown by matching method
+  if (Object.keys(mappingStats.matchedHoursByMethod).length > 0) {
+    actualsLines.push(`  Match methods:`);
+    for (const [method, count] of Object.entries(mappingStats.matchedHoursByMethod)) {
+      actualsLines.push(`    - ${method}: ${count}`);
+    }
+  }
+  
+  // Add sample matches
+  if (mappingStats.sampleMatches.length > 0) {
+    actualsLines.push(`  Sample matches (${Math.min(5, mappingStats.sampleMatches.length)} of ${mappingStats.matchedHours}):`);
+    mappingStats.sampleMatches.slice(0, 5).forEach(m => {
+      actualsLines.push(`    - "${m.taskName.substring(0, 40)}${m.taskName.length > 40 ? '...' : ''}" (${m.method})`);
+    });
+  }
+  
+  // Add sample unmatched if any
+  if (mappingStats.unmatchedSample.length > 0) {
+    actualsLines.push(`  Sample unmatched hours (${Math.min(5, mappingStats.unmatchedSample.length)} of ${mappingStats.unmatchedHours}):`);
+    mappingStats.unmatchedSample.slice(0, 5).forEach(u => {
+      actualsLines.push(`    - Project: ${u.projectId || 'none'}, Phase: "${u.workdayPhase || 'none'}", Task: "${u.workdayTask || 'none'}"`);
+    });
+  }
+  
   options?.onLog?.('Actuals', actualsLines);
 
   transformed.changeControlSummary = changeControlSummary;

@@ -7,10 +7,43 @@
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
+import { useLogs } from '@/lib/logs-context';
 import { createClient } from '@supabase/supabase-js';
 import { convertMppParserOutput } from '@/lib/data-converter';
-import { runProjectHealthAutoCheck, type ProjectHealthAutoResult } from '@/lib/project-health-auto-check';
+import { runProjectHealthAutoCheck, type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
+
+// Health check recommendations based on check name
+const healthRecommendations: Record<string, { description: string; fix: string }> = {
+  'All Tasks Have Predecessors/Successors': {
+    description: 'Tasks without logic links (predecessors or successors) can cause scheduling inaccuracies and prevent accurate critical path analysis.',
+    fix: 'Open the MPP file in MS Project and add predecessor/successor relationships to all tasks. Use Finish-to-Start (FS) relationships as the default.'
+  },
+  'No Orphaned Tasks': {
+    description: 'Orphaned tasks are disconnected from the schedule network, making it impossible to calculate their impact on the project timeline.',
+    fix: 'Review all tasks and ensure they are connected to at least one other task via a predecessor or successor link.'
+  },
+  'Resources Assigned to Execution Tasks': {
+    description: 'Execution tasks without resource assignments cannot be tracked for utilization or cost, affecting project forecasting accuracy.',
+    fix: 'Assign appropriate resources to all execution-level tasks in MS Project. Use generic resources if specific names are not yet known.'
+  },
+  'Planned Effort Entered': {
+    description: 'Tasks without planned hours/effort cannot be used for earned value calculations or resource loading analysis.',
+    fix: 'Enter baseline hours (work) for all tasks. This should represent the estimated effort to complete each task.'
+  },
+  'Duration Reasonable': {
+    description: 'Tasks without duration prevent proper timeline visualization and critical path calculation.',
+    fix: 'Set appropriate durations for all tasks based on the planned work and resource availability.'
+  },
+  'No Tasks >100 hrs with Count = 1': {
+    description: 'Large tasks (>100 hours) with a count of 1 are difficult to track progress accurately and may indicate tasks that should be broken down further.',
+    fix: 'Break down large tasks into smaller, more manageable subtasks (ideally 40-80 hours each) or increase the count if the task represents multiple units of work.'
+  },
+  'Non-Execution ≤ 25% of Execution Hours': {
+    description: 'When non-execution work (meetings, admin, etc.) exceeds 25% of execution work, it may indicate an inefficient project structure.',
+    fix: 'Review non-execution tasks and consider if they can be reduced, consolidated, or handled outside the project scope.'
+  },
+};
 
 interface ProcessingLog {
   id: string;
@@ -39,6 +72,7 @@ const STORAGE_BUCKET = 'project-documents';
 
 export default function DocumentsPage() {
   const { refreshData, filteredData } = useData();
+  const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Split projects by plan status (has_schedule / hasSchedule) for the plan-status container
@@ -687,6 +721,11 @@ export default function DocumentsPage() {
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'complete' as const, healthCheck: healthResult } : f
       ));
+      
+      // Save logs to System Health dropdown
+      const logLines = logEntries.map(e => `[${e.timestamp.toLocaleTimeString()}] ${e.type.toUpperCase()}: ${e.message}`);
+      addEngineLog('ProjectPlan', logLines, { executionTimeMs: Date.now() - Date.parse(logEntries[0]?.timestamp.toISOString() || new Date().toISOString()) });
+      
       await refreshData();
 
     } catch (err: any) {
@@ -981,30 +1020,128 @@ export default function DocumentsPage() {
               const file = uploadedFiles.find((f) => f.id === expandedHealthFileId);
               const h = file?.healthCheck;
               if (!file || !h) return null;
+              const failedChecks = h.results.filter(r => !r.passed);
               return (
-                <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <strong>Project Health: {file.fileName}</strong>
+                <div style={{ marginTop: '1rem', padding: '1.25rem', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <strong style={{ fontSize: '1rem' }}>Project Health Analysis: {file.fileName}</strong>
                     <button onClick={() => setExpandedHealthFileId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.2rem' }}>×</button>
                   </div>
-                  <div style={{ fontSize: '0.9rem', marginBottom: '12px' }}>
-                    Score: <strong style={{ color: h.score >= 80 ? '#10B981' : h.score >= 50 ? '#F59E0B' : '#EF4444' }}>{h.score}%</strong> ({h.passed}/{h.totalChecks} checks passed)
+                  
+                  {/* Score Summary */}
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '1.5rem', 
+                    padding: '1rem', 
+                    background: h.score >= 80 ? 'rgba(16,185,129,0.1)' : h.score >= 50 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                    borderRadius: '6px',
+                    marginBottom: '1.25rem',
+                    border: `1px solid ${h.score >= 80 ? 'rgba(16,185,129,0.3)' : h.score >= 50 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`
+                  }}>
+                    <div style={{ 
+                      fontSize: '2.5rem', 
+                      fontWeight: 700, 
+                      color: h.score >= 80 ? '#10B981' : h.score >= 50 ? '#F59E0B' : '#EF4444' 
+                    }}>
+                      {h.score}%
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                        {h.score >= 80 ? 'Good Health' : h.score >= 50 ? 'Needs Improvement' : 'Critical Issues'}
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        {h.passed} of {h.totalChecks} checks passed
+                      </div>
+                    </div>
                   </div>
-                  {h.issues.length > 0 && (
-                    <div style={{ marginBottom: '12px', fontSize: '0.8rem' }}>
-                      <div style={{ fontWeight: 600, marginBottom: '6px', color: '#F59E0B' }}>Flagged:</div>
-                      <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>{h.issues.map((i, idx) => <li key={idx}>{i}</li>)}</ul>
+
+                  {/* All Checks Status */}
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                      All Checks
+                    </div>
+                    <div style={{ display: 'grid', gap: '6px' }}>
+                      {h.results.map((r, idx) => (
+                        <div key={idx} style={{ 
+                          display: 'flex', 
+                          alignItems: 'flex-start', 
+                          gap: '10px', 
+                          padding: '8px 12px',
+                          background: r.passed ? 'rgba(16,185,129,0.05)' : 'rgba(239,68,68,0.05)',
+                          borderRadius: '4px',
+                          borderLeft: `3px solid ${r.passed ? '#10B981' : '#EF4444'}`
+                        }}>
+                          <span style={{ fontSize: '1rem', flexShrink: 0 }}>{r.passed ? '✓' : '✗'}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)' }}>{r.checkName}</div>
+                            {r.message && <div style={{ fontSize: '0.8rem', color: r.passed ? 'var(--text-muted)' : '#F59E0B', marginTop: '2px' }}>{r.message}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recommendations Section - Only show if there are failed checks */}
+                  {failedChecks.length > 0 && (
+                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#F59E0B', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 16v-4M12 8h.01" />
+                        </svg>
+                        Recommendations to Improve Health Score
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {failedChecks.map((check, idx) => {
+                          const rec = healthRecommendations[check.checkName];
+                          if (!rec) return null;
+                          return (
+                            <div key={idx} style={{ 
+                              padding: '12px 14px', 
+                              background: 'var(--bg-secondary)', 
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)'
+                            }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                                {check.checkName}
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                                {rec.description}
+                              </div>
+                              <div style={{ 
+                                fontSize: '0.8rem', 
+                                color: 'var(--pinnacle-teal)', 
+                                padding: '8px 10px', 
+                                background: 'rgba(64,224,208,0.08)', 
+                                borderRadius: '4px',
+                                borderLeft: '3px solid var(--pinnacle-teal)'
+                              }}>
+                                <strong>How to fix:</strong> {rec.fix}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {h.results.map((r, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span>{r.passed ? '✓' : '✗'}</span>
-                        <span>{r.checkName}</span>
-                        {r.message && <span style={{ color: r.passed ? 'var(--text-muted)' : '#F59E0B' }}>— {r.message}</span>}
+                  
+                  {/* Success message when all checks pass */}
+                  {failedChecks.length === 0 && (
+                    <div style={{ 
+                      padding: '1rem', 
+                      background: 'rgba(16,185,129,0.08)', 
+                      borderRadius: '6px', 
+                      border: '1px solid rgba(16,185,129,0.2)',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>🎉</div>
+                      <div style={{ fontWeight: 600, color: '#10B981', fontSize: '0.9rem' }}>All health checks passed!</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                        This project plan follows best practices and is ready for execution tracking.
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}

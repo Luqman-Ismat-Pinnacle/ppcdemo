@@ -289,9 +289,18 @@ export default function StatusAndLogsDropdown() {
 
   const getDbColor = (s: ConnectionStatus) => s === 'connected' ? 'var(--pinnacle-teal)' : s === 'degraded' ? 'var(--pinnacle-orange)' : 'var(--color-error)';
   const workdayColor = workdayStatus === 'success' ? 'var(--pinnacle-teal)' : workdayStatus === 'error' ? 'var(--color-error)' : 'var(--text-muted)';
+  // Collapse/expand state for each log section
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (key: string) => setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
+
   const engineLogsByEngine = useMemo(() => {
-    const order = ['CPM', 'Actuals', 'Workday'];
-    const engineLabels: Record<string, string> = { CPM: 'Schedule Analysis', Actuals: 'Actuals', Workday: 'Workday Sync' };
+    const order = ['CPM', 'Actuals', 'Workday', 'ProjectPlan'];
+    const engineLabels: Record<string, string> = { 
+      CPM: 'Schedule Analysis', 
+      Actuals: 'Actuals', 
+      Workday: 'Workday Sync',
+      ProjectPlan: 'Project Plan Import',
+    };
     const map = new Map<string, typeof engineLogs>();
     engineLogs.forEach(entry => {
       const name = entry.engine || 'Other';
@@ -501,60 +510,129 @@ export default function StatusAndLogsDropdown() {
                     </button>
                   )}
                 </div>
-                {engineLogsByEngine.map(({ engine, label, entries }) => (
-                  <section key={engine}>
-                    <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pinnacle-teal)' }} />
-                      {label}
-                    </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {entries.slice(0, 12).map(entry => (
-                        <div key={entry.id} style={{
-                          padding: '10px 12px',
-                          background: 'var(--bg-tertiary)',
-                          borderRadius: 'var(--radius-sm)',
-                          borderLeft: '3px solid var(--pinnacle-teal)',
-                          fontSize: '0.8rem',
-                          lineHeight: 1.5,
-                          color: 'var(--text-primary)',
-                        }}>
-                          <div style={{ marginBottom: '6px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                            {formatLogTime(entry.createdAt)}
-                          </div>
-                          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' }}>
-                            {entry.lines.map((l, i) => humanizeLogLine(l)).join('\n')}
-                          </div>
+                {engineLogsByEngine.map(({ engine, label, entries }) => {
+                  const isCollapsed = collapsedSections[engine] ?? false;
+                  return (
+                    <section key={engine}>
+                      <button
+                        onClick={() => toggleSection(engine)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          width: '100%',
+                          background: 'none',
+                          border: 'none',
+                          padding: '4px 0',
+                          marginBottom: '8px',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <svg
+                          viewBox="0 0 12 12"
+                          width="10"
+                          height="10"
+                          style={{
+                            transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.15s ease',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <path d="M2.5 4.5L6 8L9.5 4.5" stroke="var(--pinnacle-teal)" strokeWidth="1.5" fill="none" />
+                        </svg>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pinnacle-teal)', flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)' }}>
+                          {label}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+                        </span>
+                      </button>
+                      {!isCollapsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {entries.slice(0, 12).map(entry => (
+                            <div key={entry.id} style={{
+                              padding: '10px 12px',
+                              background: 'var(--bg-tertiary)',
+                              borderRadius: 'var(--radius-sm)',
+                              borderLeft: '3px solid var(--pinnacle-teal)',
+                              fontSize: '0.8rem',
+                              lineHeight: 1.5,
+                              color: 'var(--text-primary)',
+                            }}>
+                              <div style={{ marginBottom: '6px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                {formatLogTime(entry.createdAt)}
+                              </div>
+                              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'inherit' }}>
+                                {entry.lines.map((l, i) => humanizeLogLine(l)).join('\n')}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </section>
-                ))}
+                      )}
+                    </section>
+                  );
+                })}
                 <section>
-                  <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pinnacle-lime)' }} />
-                    Data changes
-                  </h4>
-                  {changeLogs.length === 0 ? (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
-                      No recent changes
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {changeLogs.slice(0, 12).map(entry => (
-                        <div key={entry.id} style={{
-                          padding: '10px 12px',
-                          background: 'var(--bg-tertiary)',
-                          borderRadius: 'var(--radius-sm)',
-                          borderLeft: '3px solid var(--pinnacle-lime)',
-                          fontSize: '0.8rem',
-                        }}>
-                          <div style={{ color: 'var(--text-primary)' }}>{entry.description}</div>
-                          <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-                            {entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}
+                  <button
+                    onClick={() => toggleSection('dataChanges')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      width: '100%',
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px 0',
+                      marginBottom: '8px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 12 12"
+                      width="10"
+                      height="10"
+                      style={{
+                        transform: collapsedSections['dataChanges'] ? 'rotate(-90deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.15s ease',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <path d="M2.5 4.5L6 8L9.5 4.5" stroke="var(--pinnacle-lime)" strokeWidth="1.5" fill="none" />
+                    </svg>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pinnacle-lime)', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-lime)' }}>
+                      Data changes
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                      {changeLogs.length} {changeLogs.length === 1 ? 'entry' : 'entries'}
+                    </span>
+                  </button>
+                  {!collapsedSections['dataChanges'] && (
+                    changeLogs.length === 0 ? (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                        No recent changes
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {changeLogs.slice(0, 12).map(entry => (
+                          <div key={entry.id} style={{
+                            padding: '10px 12px',
+                            background: 'var(--bg-tertiary)',
+                            borderRadius: 'var(--radius-sm)',
+                            borderLeft: '3px solid var(--pinnacle-lime)',
+                            fontSize: '0.8rem',
+                          }}>
+                            <div style={{ color: 'var(--text-primary)' }}>{entry.description}</div>
+                            <div style={{ marginTop: '4px', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                              {entry.user} · {entry.entityType} · {formatLogTime(entry.timestamp)}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )
                   )}
                 </section>
               </div>
