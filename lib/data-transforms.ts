@@ -1870,6 +1870,35 @@ const normalizeNameRelaxed = (s: string): string =>
     .replace(/\s+/g, ' ')
     .replace(/^\s+|\s+$/g, '');
 
+// Aggressive: strip common prefixes (Phase 1 -, Task -, etc.) and normalize numbers (01 -> 1)
+function normalizeNameAggressive(s: string): string {
+  let out = (s ?? '').toString().trim().toLowerCase();
+  out = out.replace(/^(phase\s*\d*|task\s*\d*|step\s*\d*)[\s\-_:.]*/i, '');
+  out = out.replace(/[\s_\-.,;:()]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Normalize leading zeros in number-like segments (e.g. "01" -> "1")
+  out = out.replace(/\b0+(\d+)\b/g, '$1');
+  return out;
+}
+
+// Tokenize for similarity: split on non-alphanumeric, lowercase, filter empty
+function tokenize(s: string): Set<string> {
+  const normalized = (s ?? '').toString().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
+  return new Set(normalized.split(/\s+/).filter(Boolean));
+}
+
+// Token overlap score: share / min(size(a), size(b)); 1 = full match
+function tokenOverlapScore(a: string, b: string): number {
+  const ta = tokenize(a);
+  const tb = tokenize(b);
+  if (ta.size === 0 && tb.size === 0) return 1;
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let shared = 0;
+  for (const t of ta) {
+    if (tb.has(t)) shared++;
+  }
+  return shared / Math.min(ta.size, tb.size);
+}
+
 // Check if two normalized strings match: exact, or one contains the other (for truncated names)
 function namesMatch(a: string, b: string, relaxed: boolean): boolean {
   const na = relaxed ? normalizeNameRelaxed(a) : normalizeNameForMatch(a);
@@ -1913,6 +1942,12 @@ function resolveHourEntriesToTasks(
 ): any[] {
   if (!hours?.length || !tasks?.length) return hours ?? [];
 
+  const validTaskIds = new Set<string>();
+  tasks.forEach((t: any) => {
+    const id = t.id ?? t.taskId;
+    if (id != null) validTaskIds.add(String(id));
+  });
+
   const phaseIdToName = new Map<string, string>();
   (phases ?? []).forEach((p: any) => {
     const id = p.id ?? p.phaseId ?? p.phase_id;
@@ -1920,14 +1955,15 @@ function resolveHourEntriesToTasks(
     if (id != null) phaseIdToName.set(String(id), name);
   });
 
-  // Build lookup: for each task we store (projectId, phaseName, taskName) -> taskId with multiple key variants (exact + relaxed)
+  // Build lookup: (projectId, phaseName, taskName) -> taskId with exact, relaxed, and aggressive keys
   const exactKeys = new Map<string, string>();
   const relaxedKeys = new Map<string, string>();
-  const taskListByProject: { projectId: string; phaseName: string; taskName: string; taskId: string }[] = [];
+  const aggressiveKeys = new Map<string, string>();
+  const taskListByProject: { projectId: string; phaseName: string; taskName: string; taskId: string; phaseId: string }[] = [];
 
   tasks.forEach((t: any) => {
     const projectId = t.projectId ?? t.project_id;
-    const phaseId = t.phaseId ?? t.phase_id;
+    const phaseId = t.phaseId ?? t.phase_id ?? '';
     const taskName = (t.name ?? t.taskName ?? t.task_name ?? '').toString().trim();
     const phaseName = phaseId ? (phaseIdToName.get(String(phaseId)) ?? '') : '';
     const taskId = String(t.id ?? t.taskId ?? '');
@@ -1935,38 +1971,93 @@ function resolveHourEntriesToTasks(
 
     const exactKey = `${String(projectId)}|${normalizeNameForMatch(phaseName)}|${normalizeNameForMatch(taskName)}`;
     const relaxedKey = `${String(projectId)}|${normalizeNameRelaxed(phaseName)}|${normalizeNameRelaxed(taskName)}`;
+    const aggressiveKey = `${String(projectId)}|${normalizeNameAggressive(phaseName)}|${normalizeNameAggressive(taskName)}`;
     if (!exactKeys.has(exactKey)) exactKeys.set(exactKey, taskId);
     if (!relaxedKeys.has(relaxedKey)) relaxedKeys.set(relaxedKey, taskId);
-    taskListByProject.push({ projectId: String(projectId), phaseName, taskName, taskId });
+    if (!aggressiveKeys.has(aggressiveKey)) aggressiveKeys.set(aggressiveKey, taskId);
+    taskListByProject.push({ projectId: String(projectId), phaseName, taskName, taskId, phaseId: String(phaseId) });
   });
+
+  const projectTasks = taskListByProject.filter((x) => x.projectId);
 
   return hours.map((h: any) => {
     const existingTaskId = h.taskId ?? h.task_id;
-    if (existingTaskId) return h;
+    if (existingTaskId && validTaskIds.has(String(existingTaskId))) return h;
 
     const projectId = h.projectId ?? h.project_id;
     const workdayPhase = (h.workdayPhase ?? h.workday_phase ?? '').toString().trim();
     const workdayTask = (h.workdayTask ?? h.workday_task ?? '').toString().trim();
-    if (!projectId || (!workdayPhase && !workdayTask)) return h;
+    const hourPhaseId = h.phaseId ?? h.phase_id;
 
-    // Try exact normalized key first
+    if (!projectId) return h;
+
+    // If hour has phaseId but no taskId, try to match to single task in that phase for this project
+    if (hourPhaseId && !existingTaskId) {
+      const inPhase = projectTasks.filter(
+        (x) => x.projectId === String(projectId) && x.phaseId === String(hourPhaseId)
+      );
+      if (inPhase.length === 1) return { ...h, taskId: inPhase[0].taskId, task_id: inPhase[0].taskId };
+    }
+
+    if (!workdayPhase && !workdayTask) return h;
+
+    // 1) Exact normalized key
     let key = `${String(projectId)}|${normalizeNameForMatch(workdayPhase)}|${normalizeNameForMatch(workdayTask)}`;
     let matchedTaskId = exactKeys.get(key);
     if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
 
-    // Try relaxed key (strip punctuation, collapse separators)
+    // 2) Relaxed key (strip punctuation, collapse separators)
     key = `${String(projectId)}|${normalizeNameRelaxed(workdayPhase)}|${normalizeNameRelaxed(workdayTask)}`;
     matchedTaskId = relaxedKeys.get(key);
     if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
 
-    // Fallback: find first task in same project where phase and task names match (relaxed or contains)
-    const found = taskListByProject.find(
+    // 3) Aggressive key (strip Phase/Task prefixes, normalize numbers)
+    key = `${String(projectId)}|${normalizeNameAggressive(workdayPhase)}|${normalizeNameAggressive(workdayTask)}`;
+    matchedTaskId = aggressiveKeys.get(key);
+    if (matchedTaskId) return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
+
+    // 4) Phase + task name match (relaxed or contains)
+    let found = projectTasks.find(
       (x) =>
         x.projectId === String(projectId) &&
         namesMatch(workdayPhase, x.phaseName, true) &&
         namesMatch(workdayTask, x.taskName, true)
     );
     if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+
+    // 5) Phase-only: workdayTask empty but workdayPhase set — match first task in matching phase
+    if (!workdayTask && workdayPhase) {
+      found = projectTasks.find(
+        (x) => x.projectId === String(projectId) && namesMatch(workdayPhase, x.phaseName, true)
+      );
+      if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+    }
+
+    // 6) Task-only: workdayPhase empty but workdayTask set — match first task with matching task name
+    if (!workdayPhase && workdayTask) {
+      found = projectTasks.find(
+        (x) => x.projectId === String(projectId) && namesMatch(workdayTask, x.taskName, true)
+      );
+      if (found) return { ...h, taskId: found.taskId, task_id: found.taskId };
+    }
+
+    // 7) Token-overlap fallback: best candidate where phase and task token overlap are both high
+    const candidates = projectTasks.filter((x) => x.projectId === String(projectId));
+    if (candidates.length > 0) {
+      const phaseScore = (x: typeof candidates[0]) => tokenOverlapScore(workdayPhase, x.phaseName);
+      const taskScore = (x: typeof candidates[0]) => tokenOverlapScore(workdayTask, x.taskName);
+      let best = candidates[0];
+      let bestScore = (phaseScore(best) + taskScore(best)) / 2;
+      for (let i = 1; i < candidates.length; i++) {
+        const c = candidates[i];
+        const score = (phaseScore(c) + taskScore(c)) / 2;
+        if (score > bestScore) {
+          bestScore = score;
+          best = c;
+        }
+      }
+      if (bestScore >= 0.6) return { ...h, taskId: best.taskId, task_id: best.taskId };
+    }
 
     return h;
   });
