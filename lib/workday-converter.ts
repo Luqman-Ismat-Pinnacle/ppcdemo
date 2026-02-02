@@ -52,6 +52,13 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
         return `${prefix}-${slug}`;
     };
 
+    // Site identity must be customer-scoped: same site name under different customers = different site records.
+    const generateSiteId = (custName: string | null, siteName: string | null) => {
+        if (!siteName) return null;
+        const key = [custName, siteName].filter(Boolean).join(' ') || siteName;
+        return generateId('STE', key);
+    };
+
     entries.forEach((entry: any, index: number) => {
         // -------------------------------------------------------------------------
         // 1. EXTRACT RAW FIELDS
@@ -98,9 +105,9 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
         const customerName = rawCustomerName || "Unknown Customer";
         const customerId = generateId('CST', customerName);
 
-        // Site
+        // Site — customer-scoped so same site name under different customers stays distinct
         const siteName = rawSiteName || "Unknown Site";
-        const siteId = generateId('STE', siteName);
+        const siteId = generateSiteId(customerName, siteName) ?? generateId('STE', siteName);
 
         // -------------------------------------------------------------------------
         // 3. BUILD OBJECTS

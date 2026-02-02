@@ -65,7 +65,15 @@ serve(async (req) => {
 
         const generateId = (prefix: string, name: string) => {
             const slug = name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 30);
-            return `${prefix}-${slug}`; // CHANGED to standard format "PRF-XYZ"
+            return `${prefix}-${slug}`;
+        };
+
+        // Site identity must be customer-scoped: same site name under different customers = different site records.
+        // Otherwise "Fort McMurray" under Syncrude and Suncor would share one site and overwrite customer_id.
+        const generateSiteId = (custName: string | null, siteName: string | null) => {
+            if (!siteName) return null;
+            const key = [custName, siteName].filter(Boolean).join(' ') || siteName;
+            return generateId('STE', key);
         };
 
         for (const r of masterRecords) {
@@ -106,11 +114,11 @@ serve(async (req) => {
                 }
             }
 
-            // Site (STE-)
+            // Site (STE-) — customer-scoped so same site name under different customers stays distinct
             let siteId = null;
             if (siteName) {
-                siteId = generateId('STE', siteName);
-                if (!sitesToUpsert.has(siteId)) {
+                siteId = generateSiteId(custName || null, siteName);
+                if (siteId && !sitesToUpsert.has(siteId)) {
                     sitesToUpsert.set(siteId, {
                         id: siteId,
                         site_id: siteId,
@@ -143,7 +151,7 @@ serve(async (req) => {
             
             if (projectId && projectName) {
                 const custId = custName ? generateId('CST', custName) : null;
-                const siteId = siteName ? generateId('STE', siteName) : null;
+                const siteId = generateSiteId(custName || null, siteName || null);
                 
                 if (!projectsToUpsert.has(projectId)) {
                     projectsToUpsert.set(projectId, {
