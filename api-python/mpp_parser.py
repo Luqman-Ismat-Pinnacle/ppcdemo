@@ -41,6 +41,16 @@ class ProjectParser:
         except:
             return 0.0
 
+    def _to_cost(self, val):
+        """Extract numeric cost from MPXJ (Double or cost object). Returns 0.0 if missing."""
+        if val is None: return 0.0
+        try:
+            if hasattr(val, 'doubleValue'): return float(val.doubleValue())
+            if hasattr(val, 'getAmount'): return float(val.getAmount())
+            return float(val)
+        except:
+            return 0.0
+
     def parse_file(self, path):
         # 1. Read the file
         project = self.reader.read(path)
@@ -92,6 +102,23 @@ class ProjectParser:
             remaining_work = self._to_float(task.getRemainingWork().getDuration()) if task.getRemainingWork() else None
             baseline_work = self._to_float(task.getBaselineWork().getDuration()) if task.getBaselineWork() else 0.0
 
+            # Extract cost values directly from MPP file (baseline cost, actual cost, remaining cost)
+            baseline_cost = 0.0
+            actual_cost = 0.0
+            remaining_cost = None
+            try:
+                bc = task.getBaselineCost()
+                if bc is not None:
+                    baseline_cost = self._to_cost(bc)
+                ac = task.getActualCost()
+                if ac is not None:
+                    actual_cost = self._to_cost(ac)
+                rc = task.getRemainingCost()
+                if rc is not None:
+                    remaining_cost = self._to_cost(rc)
+            except Exception:
+                pass  # MPXJ may not expose cost in some versions or file types
+
             node = {
                 'id': uid,
                 'name': name,
@@ -105,6 +132,9 @@ class ProjectParser:
                 'actualHours': actual_work,
                 'projectedHours': total_work,
                 'remainingHours': remaining_work,  # Direct from MPP file, not calculated
+                'baselineCost': baseline_cost,
+                'actualCost': actual_cost,
+                'remainingCost': remaining_cost,  # Direct from MPP file
                 'assignedResource': assigned_resource,
                 'isCritical': bool(task.getCritical()),
                 'totalSlack': self._to_float(task.getTotalSlack().getDuration()) if task.getTotalSlack() else 0.0,
@@ -126,7 +156,7 @@ def ui():
     return render_template('index.html')
 
 @app.route('/health')
-def health(): return jsonify(status="ok", version="v14-remaining-hours-direct")
+def health(): return jsonify(status="ok", version="v15-baseline-remaining-cost")
 
 @app.route('/parse', methods=['POST'])
 def parse():

@@ -18,10 +18,20 @@ import type { Task, ChangeLogEntry, Employee, UserStory, Sprint, Epic, Feature }
 import WorkItemModal from './components/WorkItemModal';
 import SprintModal from './components/SprintModal';
 
-// Helper functions
+// Helper functions - resolve by id or employeeId so assignment from Sprint Board is found
 const getEmployeeName = (resourceId: string, employees: Employee[]): string => {
-  const employee = employees.find(e => e.employeeId === resourceId);
+  if (!resourceId) return 'Unassigned';
+  const employee = employees.find(e => (e.id || e.employeeId) === resourceId || e.name === resourceId);
   return employee?.name || resourceId;
+};
+
+/** Resolve column label (employee name or ID) to employee ID for persistence and WBS/Resourcing */
+const getEmployeeIdFromName = (nameOrId: string, employees: Employee[]): string | null => {
+  if (!nameOrId || nameOrId === 'Unassigned') return null;
+  const byName = employees.find(e => e.name === nameOrId || (e.name && e.name.trim() === nameOrId.trim()));
+  if (byName) return byName.id || byName.employeeId || null;
+  const byId = employees.find(e => (e.id || e.employeeId) === nameOrId);
+  return byId ? (byId.id || byId.employeeId || null) : null;
 };
 
 const getInitials = (name: string): string => {
@@ -140,9 +150,11 @@ export default function SprintView() {
         case 'status':
           groupKey = task.status || 'Not Started';
           break;
-        case 'resource':
-          groupKey = task.resourceId ? getEmployeeName(task.resourceId, employees) : 'Unassigned';
+        case 'resource': {
+          const rid = task.assignedResourceId ?? task.employeeId ?? task.resourceId;
+          groupKey = rid ? getEmployeeName(rid, employees) : 'Unassigned';
           break;
+        }
         case 'project':
           groupKey = task.projectId || 'No Project';
           break;
@@ -318,16 +330,22 @@ export default function SprintView() {
 
     let fieldToUpdate: keyof Task = 'status';
     let oldValue = '';
-    
+    let valueToSet: string | null = targetColumn;
+
     switch (view) {
       case 'status':
         fieldToUpdate = 'status';
         oldValue = draggedTask.status || 'Not Started';
         break;
-      case 'resource':
+      case 'resource': {
         fieldToUpdate = 'resourceId';
-        oldValue = draggedTask.resourceId || 'Unassigned';
+        const currentId = draggedTask.assignedResourceId ?? draggedTask.employeeId ?? draggedTask.resourceId;
+        oldValue = currentId ? getEmployeeName(currentId, data.employees || []) : 'Unassigned';
+        // Resolve column label (employee name) to ID so WBS/Resourcing and DB use the same field
+        const employeeId = getEmployeeIdFromName(targetColumn, data.employees || []);
+        valueToSet = employeeId ?? null;
         break;
+      }
       case 'project':
         fieldToUpdate = 'projectId';
         oldValue = draggedTask.projectId || 'No Project';
@@ -342,18 +360,41 @@ export default function SprintView() {
         break;
     }
 
-    if (oldValue === targetColumn) return;
+    const isSameValue = view === 'resource'
+      ? (getEmployeeIdFromName(targetColumn, data.employees || []) === (draggedTask.assignedResourceId ?? draggedTask.employeeId ?? draggedTask.resourceId))
+      : (oldValue === (valueToSet ?? targetColumn));
+    if (isSameValue) return;
 
     const updatedTasks = data.tasks.map(task => {
       if (getTaskIdentifier(task) && getTaskIdentifier(task) === getTaskIdentifier(draggedTask)) {
-        return { ...task, [fieldToUpdate]: targetColumn, updatedAt: new Date().toISOString() };
+        const base = { ...task, updatedAt: new Date().toISOString() };
+        if (view === 'resource') {
+          // Set all assignment fields so WBS Gantt, Resourcing, and DB see the assignment
+          return {
+            ...base,
+            resourceId: valueToSet ?? undefined,
+            employeeId: valueToSet ?? undefined,
+            assignedResourceId: valueToSet ?? undefined,
+          };
+        }
+        return { ...base, [fieldToUpdate]: valueToSet ?? targetColumn };
       }
       return task;
     });
 
-    addChangeLogEntry(draggedTask, fieldToUpdate, oldValue, targetColumn);
+    addChangeLogEntry(draggedTask, fieldToUpdate, oldValue, valueToSet ?? targetColumn);
     updateData({ tasks: updatedTasks });
     setDraggedTask(null);
+
+    // Persist the updated task so changes survive refresh (Supabase if configured)
+    const updatedTask = updatedTasks.find(t => getTaskIdentifier(t) === getTaskIdentifier(draggedTask));
+    if (updatedTask) {
+      fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataKey: 'tasks', records: [updatedTask] }),
+      }).catch(() => { /* ignore if Supabase not configured */ });
+    }
   };
 
   // Handle task edit save (deprecated - using handleSaveWorkItem instead)
