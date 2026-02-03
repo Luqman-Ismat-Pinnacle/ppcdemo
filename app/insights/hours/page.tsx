@@ -74,13 +74,13 @@ function NonExecuteCompareButton({ onOpen }: { onOpen: () => void }) {
 }
 
 /**
- * Format week date to readable label
+ * Format week date to readable label (includes year for labor breakdown tables/charts)
  */
 function formatWeekLabel(dateStr: string): string {
   try {
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return dateStr;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return dateStr;
   }

@@ -75,13 +75,23 @@ export default function DocumentsPage() {
   const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Split projects by plan status (has_schedule / hasSchedule) for the plan-status container
+  // Split projects by plan status: has_schedule flag OR has at least one document in project_documents
   const { projectsWithPlan, projectsWithoutPlan } = useMemo(() => {
     const projects = filteredData?.projects || [];
-    const withPlan = projects.filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
-    const withoutPlan = projects.filter((p: any) => !(p.has_schedule === true || p.hasSchedule === true));
+    const docs = filteredData?.projectDocuments || [];
+    const projectIdsWithDoc = new Set(
+      docs.map((d: any) => d.project_id ?? d.projectId).filter(Boolean)
+    );
+    const withPlan = projects.filter((p: any) => {
+      const id = p.id ?? p.projectId;
+      return p.has_schedule === true || p.hasSchedule === true || (id != null && projectIdsWithDoc.has(String(id)));
+    });
+    const withoutPlan = projects.filter((p: any) => {
+      const id = p.id ?? p.projectId;
+      return !(p.has_schedule === true || p.hasSchedule === true || (id != null && projectIdsWithDoc.has(String(id))));
+    });
     return { projectsWithPlan: withPlan, projectsWithoutPlan: withoutPlan };
-  }, [filteredData?.projects]);
+  }, [filteredData?.projects, filteredData?.projectDocuments]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);

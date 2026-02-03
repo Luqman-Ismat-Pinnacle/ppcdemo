@@ -371,6 +371,18 @@ button {
 }
 
 /* WBS Table Styling */
+.wbs-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  background: var(--bg-secondary);
+  box-shadow: 0 1px 0 var(--border-color);
+}
+
+.wbs-table thead th {
+  background: var(--bg-secondary);
+}
+
 .wbs-table th,
 .wbs-table td {
   padding: 0 8px;

@@ -249,8 +249,9 @@ export function DataProvider({ children }: DataProviderProps) {
   }, []);
 
   /**
-   * Update data - called by Data Management page after edits
-   * Automatically applies transformations to build computed views
+   * Update data - called by Data Management, Sprint Board, etc.
+   * Re-runs transformData so computed views (wbsData, resourceHeatmap, resourceGantt) are rebuilt.
+   * WBS Gantt and Resourcing page stay in sync with any changes (e.g. from Sprint Board).
    */
   const updateData = (updates: Partial<SampleData>) => {
     setData((prev) => {

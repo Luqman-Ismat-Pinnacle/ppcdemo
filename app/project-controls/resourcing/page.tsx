@@ -57,8 +57,20 @@ interface LevelingSuggestion {
 
 export default function ResourcingPage() {
   const router = useRouter();
-  const { filteredData } = useData();
-  const data = filteredData;
+  const { filteredData, data: fullData } = useData();
+  // Use fullData fallback when filtered heatmap/gantt are empty so charts still show data
+  const data = useMemo(() => {
+    const filtered = filteredData || {};
+    const full = fullData || {};
+    return {
+      ...filtered,
+      resourceHeatmap: (filtered.resourceHeatmap?.resources?.length ? filtered.resourceHeatmap : full.resourceHeatmap) ?? filtered.resourceHeatmap,
+      resourceGantt: (filtered.resourceGantt?.items?.length ? filtered.resourceGantt : full.resourceGantt) ?? filtered.resourceGantt,
+      // Keep tasks/employees from filtered but fallback to full if empty so Gantt has data
+      tasks: (filtered.tasks?.length ? filtered.tasks : full.tasks) ?? filtered.tasks ?? [],
+      employees: (filtered.employees?.length ? filtered.employees : full.employees) ?? filtered.employees ?? [],
+    };
+  }, [filteredData, fullData]);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [ganttInterval, setGanttInterval] = useState<GanttInterval>('week');
