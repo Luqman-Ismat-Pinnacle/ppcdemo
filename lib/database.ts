@@ -75,6 +75,33 @@ export async function fetchAllData() {
   return null;
 }
 
+/** Supabase enforces max 1000 rows per request. Fetch in pages and concatenate. */
+const PAGE_SIZE = 1000;
+const MAX_HOUR_ENTRIES = 100000;
+
+async function fetchAllHourEntries(): Promise<any[]> {
+  if (!supabaseClient) return [];
+  const all: any[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabaseClient
+      .from('hour_entries')
+      .select('*')
+      .order('date')
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) {
+      console.error('[Database] hour_entries pagination error:', error);
+      break;
+    }
+    const page = data || [];
+    all.push(...page);
+    if (page.length < PAGE_SIZE || all.length >= MAX_HOUR_ENTRIES) break;
+    offset += PAGE_SIZE;
+  }
+  console.log(`[Database] Fetched ${all.length} hour entries (paginated)`);
+  return all;
+}
+
 // ============================================================================
 // POSTGRESQL CONNECTION CODE (COMMENTED OUT - FOR FUTURE USE)
 // ============================================================================
@@ -165,6 +192,8 @@ async function fetchFromSupabase() {
   const workItems = { data: null as any[] | null };
 
   // IMPORTANT: The destructuring order MUST match the Promise.all query order!
+  const hourEntriesPromise = fetchAllHourEntries();
+
   const [
     portfolios,        // 0: portfolios
     customers,         // 1: customers
@@ -176,8 +205,7 @@ async function fetchFromSupabase() {
     tasks,             // 7: tasks
     qcTasks,           // 8: qc_tasks
     employees,         // 9: employees
-    hourEntries,       // 10: hour_entries
-    milestones,        // 11: milestones
+    milestones,        // 10: milestones
     deliverables,      // 12: deliverables
     sprints,           // 13: sprints
     sprintTasks,       // 14: sprint_tasks
@@ -204,9 +232,8 @@ async function fetchFromSupabase() {
     supabaseClient!.from('phases').select('*').order('name'),               // 6
     supabaseClient!.from('tasks').select('*').order('name'),                // 7
     supabaseClient!.from('qc_tasks').select('*').order('name'),             // 8 - FIXED: was task_dependencies
-    supabaseClient!.from('employees').select('*').order('name'),            // 9 - FIXED: was qc_tasks
-    supabaseClient!.from('hour_entries').select('*', { count: 'exact' }).order('date').range(0, 49999),  // 10 - Remove default 1000 limit
-    supabaseClient!.from('milestones').select('*').order('planned_date'),   // 11 - FIXED: was hour_entries
+    supabaseClient!.from('employees').select('*').order('name'),            // 9
+    supabaseClient!.from('milestones').select('*').order('planned_date'),   // 10
     supabaseClient!.from('deliverables').select('*').order('name'),         // 12
     supabaseClient!.from('sprints').select('*').order('start_date'),        // 13
     supabaseClient!.from('sprint_tasks').select('*'),                       // 14
@@ -222,8 +249,11 @@ async function fetchFromSupabase() {
     supabaseClient!.from('project_documents').select('*').order('uploaded_at', { ascending: false }), // 24
     supabaseClient!.from('task_dependencies').select('*'),                  // 25 - Moved to end
     supabaseClient!.from('task_quantity_entries').select('*').order('date'), // 26
-    supabaseClient!.from('visual_snapshots').select('*').order('snapshot_date', { ascending: false }), // 27
+    supabaseClient!.from('visual_snapshots').select('*').order('snapshot_date', { ascending: false }), // 26
   ]);
+
+  const hourEntriesData = await hourEntriesPromise;
+  const hourEntries = { data: hourEntriesData };
 
   const hasHierarchyNodes = false;
   const hasWorkItems = false;
@@ -270,11 +300,7 @@ async function fetchFromSupabase() {
     tasks: convertArrayToCamelCase(tasks.data || []),
     qctasks: convertArrayToCamelCase(qcTasks.data || []),
     employees: convertArrayToCamelCase(employees.data || []),
-    hours: (() => {
-      const hours = convertArrayToCamelCase(hourEntries.data || []);
-      console.log(`[Database] Fetched ${hours.length} hour entries (count: ${(hourEntries as any).count || 'N/A'})`);
-      return hours;
-    })(),
+    hours: convertArrayToCamelCase(hourEntries.data || []),
     milestones: convertArrayToCamelCase(milestones.data || []),
     deliverables: convertArrayToCamelCase(deliverables.data || []),
     sprints: convertArrayToCamelCase(sprints.data || []),

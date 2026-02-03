@@ -366,42 +366,55 @@ function unifiedSyncStream(
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         
-        // Fetch unassigned hours - try with workday columns, fall back to phase_id
-        // Remove default 1000 limit - use range(0, 49999) for up to 50k rows
+        // Fetch ALL unassigned hours via pagination (Supabase returns max 1000 per request)
+        const PAGE = 1000;
+        const fetchAllUnassigned = async (cols: string) => {
+          const all: any[] = [];
+          for (let offset = 0; ; offset += PAGE) {
+            const { data, error } = await supabase
+              .from('hour_entries')
+              .select(cols)
+              .is('task_id', null)
+              .range(offset, offset + PAGE - 1);
+            if (error) throw error;
+            const page = data || [];
+            all.push(...page);
+            if (page.length < PAGE) break;
+          }
+          return all;
+        };
+
         let unassignedHours: any[] = [];
+        let hoursWithDesc: any[] = [];
         try {
-          const { data } = await supabase
-            .from('hour_entries')
-            .select('id, project_id, phase_id, workday_phase, workday_task')
-            .is('task_id', null)
-            .range(0, 49999);
-          unassignedHours = data || [];
+          unassignedHours = await fetchAllUnassigned('id, project_id, phase_id, workday_phase, workday_task');
+          hoursWithDesc = await fetchAllUnassigned('id, project_id, description');
         } catch (e) {
-          // workday columns might not exist
-          const { data } = await supabase
-            .from('hour_entries')
-            .select('id, project_id, phase_id')
-            .is('task_id', null)
-            .range(0, 49999);
-          unassignedHours = data || [];
           logAndPush('workday_phase/workday_task columns not available, using phase_id fallback');
+          unassignedHours = await fetchAllUnassigned('id, project_id, phase_id');
+          hoursWithDesc = await fetchAllUnassigned('id, project_id, description');
         }
         
         if (unassignedHours && unassignedHours.length > 0) {
-          // Fetch all tasks and units
-          const { data: tasks } = await supabase.from('tasks').select('id, project_id, name').range(0, 49999);
-          const { data: units } = await supabase.from('units').select('id, project_id, name').range(0, 49999);
-          
-          // Also fetch descriptions from hours for matching
-          const { data: hoursWithDesc } = await supabase
-            .from('hour_entries')
-            .select('id, project_id, description')
-            .is('task_id', null)
-            .range(0, 49999);
+          // Fetch all tasks and units (paginate in case of large datasets)
+          const tasks: any[] = [];
+          const units: any[] = [];
+          for (let offset = 0; ; offset += PAGE) {
+            const { data: t } = await supabase.from('tasks').select('id, project_id, name').range(offset, offset + PAGE - 1);
+            const tp = t || [];
+            tasks.push(...tp);
+            if (tp.length < PAGE) break;
+          }
+          for (let offset = 0; ; offset += PAGE) {
+            const { data: u } = await supabase.from('units').select('id, project_id, name').range(offset, offset + PAGE - 1);
+            const up = u || [];
+            units.push(...up);
+            if (up.length < PAGE) break;
+          }
           
           // Group tasks by project_id
           const tasksByProject = new Map<string, any[]>();
-          (tasks || []).forEach((task: any) => {
+          tasks.forEach((task: any) => {
             if (!task.project_id || !task.name) return;
             const existing = tasksByProject.get(task.project_id) || [];
             existing.push(task);
@@ -410,7 +423,7 @@ function unifiedSyncStream(
           
           // Group units by project_id
           const unitsByProject = new Map<string, any[]>();
-          (units || []).forEach((unit: any) => {
+          units.forEach((unit: any) => {
             if (!unit.project_id || !unit.name) return;
             const existing = unitsByProject.get(unit.project_id) || [];
             existing.push(unit);
@@ -423,7 +436,7 @@ function unifiedSyncStream(
           // Match hours: check if task name is contained in hour description
           const hoursToUpdate: { id: string; task_id: string }[] = [];
           
-          for (const h of (hoursWithDesc || [])) {
+          for (const h of hoursWithDesc) {
             if (!h.project_id) continue;
             const description = normalize(h.description || '');
             if (!description) continue;
@@ -467,7 +480,7 @@ function unifiedSyncStream(
           }
           
           const totalMatched = tasksMatched + unitsMatched;
-          const stillUnmatched = (hoursWithDesc?.length || 0) - totalMatched;
+          const stillUnmatched = hoursWithDesc.length - totalMatched;
           logAndPush(`Matching complete: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched (by checking if task name is in description)`);
           pushLine(controller, { type: 'step', step: 'matching', status: 'done', tasksMatched, unitsMatched, stillUnmatched });
         } else {
@@ -479,14 +492,20 @@ function unifiedSyncStream(
         pushLine(controller, { type: 'step', step: 'aggregation', status: 'started' });
         logAndPush('Aggregating actual hours and cost to tasks...');
         
-        // Get all hours with task_id and aggregate (use range for up to 50k)
-        const { data: allMatchedHours } = await supabase
-          .from('hour_entries')
-          .select('task_id, hours, actual_cost, reported_standard_cost_amt')
-          .not('task_id', 'is', null)
-          .range(0, 49999);
+        // Get all hours with task_id via pagination and aggregate
+        const allMatchedHours: any[] = [];
+        for (let offset = 0; ; offset += PAGE) {
+          const { data } = await supabase
+            .from('hour_entries')
+            .select('task_id, hours, actual_cost, reported_standard_cost_amt')
+            .not('task_id', 'is', null)
+            .range(offset, offset + PAGE - 1);
+          const page = data || [];
+          allMatchedHours.push(...page);
+          if (page.length < PAGE) break;
+        }
         
-        if (allMatchedHours && allMatchedHours.length > 0) {
+        if (allMatchedHours.length > 0) {
           const taskAggregates = new Map<string, { actualHours: number; actualCost: number }>();
           
           for (const h of allMatchedHours) {

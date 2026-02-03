@@ -847,28 +847,32 @@ export default function DocumentsPage() {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
-      // Fetch unassigned hours - remove default 1000 limit, use range(0, 49999) for up to 50k rows
-      const { data: unassignedHours, error: hoursError, count: hoursCount } = await supabase
-        .from('hour_entries')
-        .select('id, project_id, phase_id, description', { count: 'exact' })
-        .is('task_id', null)
-        .range(0, 49999);
-      
-      if (hoursError) throw new Error(`Failed to fetch hours: ${hoursError.message}`);
-      addLog('info', `[Matching] Database reports ${hoursCount ?? 'unknown'} total unassigned hours`);
-      
-      // Try to get workday columns if they exist
-      let hoursWithWorkday = unassignedHours;
+      // Fetch ALL unassigned hours via pagination (Supabase returns max 1000 per request)
+      const PAGE = 1000;
+      const fetchAllUnassigned = async (columns: string) => {
+        const all: any[] = [];
+        let offset = 0;
+        while (true) {
+          const { data, error } = await supabase
+            .from('hour_entries')
+            .select(columns)
+            .is('task_id', null)
+            .range(offset, offset + PAGE - 1);
+          if (error) throw error;
+          const page = data || [];
+          all.push(...page);
+          if (page.length < PAGE) break;
+          offset += PAGE;
+        }
+        return all;
+      };
+
+      let hoursWithWorkday: any[];
       try {
-        const { data: hoursWd } = await supabase
-          .from('hour_entries')
-          .select('id, project_id, phase_id, workday_phase, workday_task, description')
-          .is('task_id', null)
-          .range(0, 49999);
-        if (hoursWd) hoursWithWorkday = hoursWd;
+        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, workday_phase, workday_task, description');
       } catch (e) {
-        // workday columns might not exist, use fallback
         addLog('info', '[Matching] workday_phase/workday_task columns not available, using phase_id fallback');
+        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, description');
       }
       
       if (!hoursWithWorkday || hoursWithWorkday.length === 0) {
@@ -1014,11 +1018,17 @@ export default function DocumentsPage() {
       // Aggregate actual hours and cost to tasks
       addLog('info', '[Aggregation] Aggregating actual hours and cost to tasks...');
       
-      const { data: allMatchedHours } = await supabase
-        .from('hour_entries')
-        .select('task_id, hours, actual_cost, reported_standard_cost_amt')
-        .not('task_id', 'is', null)
-        .range(0, 49999);
+      const allMatchedHours: any[] = [];
+      for (let offset = 0; ; offset += 1000) {
+        const { data } = await supabase
+          .from('hour_entries')
+          .select('task_id, hours, actual_cost, reported_standard_cost_amt')
+          .not('task_id', 'is', null)
+          .range(offset, offset + 999);
+        const page = data || [];
+        allMatchedHours.push(...page);
+        if (page.length < 1000) break;
+      }
       
       if (allMatchedHours && allMatchedHours.length > 0) {
         const taskAggregates = new Map<string, { actualHours: number; actualCost: number }>();
