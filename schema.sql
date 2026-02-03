@@ -1,40 +1,16 @@
 -- ============================================================================
--- PPC V3 Complete Database Schema
--- Version: 1.18.0 (With Hierarchy Nodes & Work Items)
--- 
--- This is a complete schema file that recreates the database from scratch.
--- It includes:
--- - All table definitions with data integrity constraints
--- - Optimized indexes for performance (single and composite)
--- - Auto-ID generation triggers
--- - Calculated fields triggers
--- - Auto-update updated_at triggers
--- 
--- OPTIMIZATIONS IN THIS VERSION:
--- - Added 40+ performance indexes (single and composite)
--- - Added data validation constraints (CHECK constraints)
--- - Optimized functions with STRICT modifier
--- - Added automatic updated_at timestamp triggers
--- - Fixed schema-code mismatches
--- - Added hierarchy_nodes table (unified portfolios, customers, sites, units)
--- - Added work_items table (unified epics, features, user_stories)
--- 
--- IMPORTANT: This script will DROP existing tables if they exist.
--- Use with caution in production. For migrations, use incremental schema files.
+-- PPC V3 Consolidated Database Schema (single source of truth)
+-- Run this to create or recreate the full database. Drops all tables first.
 -- ============================================================================
 
 BEGIN;
 
 -- ============================================================================
--- DROP EXISTING TABLES (if recreating from scratch)
+-- DROP EXISTING TABLES (reverse dependency order)
 -- ============================================================================
--- Uncomment the following if you want to drop all tables and recreate
--- WARNING: This will delete all data!
-
-/*
-DROP TABLE IF EXISTS work_items CASCADE;
-DROP TABLE IF EXISTS hierarchy_nodes CASCADE;
+DROP TABLE IF EXISTS visual_snapshots CASCADE;
 DROP TABLE IF EXISTS project_documents CASCADE;
+DROP TABLE IF EXISTS project_mappings CASCADE;
 DROP TABLE IF EXISTS change_impacts CASCADE;
 DROP TABLE IF EXISTS change_requests CASCADE;
 DROP TABLE IF EXISTS snapshots CASCADE;
@@ -61,7 +37,6 @@ DROP TABLE IF EXISTS sites CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS portfolios CASCADE;
 DROP TABLE IF EXISTS employees CASCADE;
-*/
 
 -- ============================================================================
 -- SEQUENCES: Create sequences for ID generation
@@ -279,6 +254,7 @@ CREATE TABLE IF NOT EXISTS units (
   baseline_end_date DATE,
   actual_start_date DATE,
   actual_end_date DATE,
+  start_date DATE,
   percent_complete NUMERIC(5, 2) DEFAULT 0,
   baseline_hours NUMERIC(10, 2) DEFAULT 0,
   actual_hours NUMERIC(10, 2) DEFAULT 0,
@@ -293,31 +269,9 @@ CREATE TABLE IF NOT EXISTS units (
 );
 
 CREATE INDEX IF NOT EXISTS idx_units_site_id ON units(site_id);
+CREATE INDEX IF NOT EXISTS idx_units_start_date ON units(start_date);
 CREATE INDEX IF NOT EXISTS idx_units_employee_id ON units(employee_id);
 CREATE INDEX IF NOT EXISTS idx_units_is_active ON units(is_active);
-
--- ============================================================================
--- HIERARCHY NODES (Unified table for portfolios, customers, sites, units)
--- Consolidates hierarchy into single table for better performance
--- ============================================================================
-CREATE TABLE IF NOT EXISTS hierarchy_nodes (
-  id VARCHAR(50) PRIMARY KEY,
-  node_type VARCHAR(20) NOT NULL CHECK (node_type IN ('portfolio', 'customer', 'site', 'unit')),
-  name VARCHAR(255) NOT NULL,
-  parent_id VARCHAR(50) REFERENCES hierarchy_nodes(id) ON DELETE CASCADE,
-  employee_id VARCHAR(50) REFERENCES employees(id) ON DELETE SET NULL,
-  location VARCHAR(255),
-  methodology VARCHAR(100),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  CONSTRAINT fk_hierarchy_parent FOREIGN KEY (parent_id) REFERENCES hierarchy_nodes(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_hierarchy_node_type ON hierarchy_nodes(node_type);
-CREATE INDEX IF NOT EXISTS idx_hierarchy_parent_id ON hierarchy_nodes(parent_id);
-CREATE INDEX IF NOT EXISTS idx_hierarchy_employee_id ON hierarchy_nodes(employee_id);
-CREATE INDEX IF NOT EXISTS idx_hierarchy_name ON hierarchy_nodes(name);
-CREATE INDEX IF NOT EXISTS idx_hierarchy_type_parent ON hierarchy_nodes(node_type, parent_id);
 
 -- PROJECTS (depends on units, sites, customers, portfolios)
 -- Note: id should use Project_by_ID from Workday directly as primary key
@@ -359,6 +313,7 @@ CREATE TABLE IF NOT EXISTS projects (
   spi NUMERIC(10, 4) DEFAULT 0,
   is_overhead BOOLEAN DEFAULT false,
   is_tpw BOOLEAN DEFAULT false,
+  has_schedule BOOLEAN DEFAULT false,
   status VARCHAR(50) DEFAULT 'Not Started',
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),
@@ -538,6 +493,18 @@ CREATE TABLE IF NOT EXISTS hour_entries (
   date DATE NOT NULL,
   hours NUMERIC(10, 2) NOT NULL CHECK (hours >= 0),
   description TEXT,
+  workday_phase VARCHAR(255),
+  workday_task VARCHAR(255),
+  actual_cost NUMERIC(10, 2),
+  reported_standard_cost_amt NUMERIC(10, 2),
+  billable_rate NUMERIC(10, 2),
+  billable_amount NUMERIC(10, 2),
+  standard_cost_rate NUMERIC(10, 2),
+  actual_revenue NUMERIC(10, 2),
+  customer_billing_status VARCHAR(50),
+  invoice_number VARCHAR(50),
+  invoice_status VARCHAR(50),
+  charge_type VARCHAR(10),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -546,12 +513,13 @@ CREATE INDEX IF NOT EXISTS idx_hour_entries_employee_id ON hour_entries(employee
 CREATE INDEX IF NOT EXISTS idx_hour_entries_project_id ON hour_entries(project_id);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_phase_id ON hour_entries(phase_id);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_task_id ON hour_entries(task_id);
-CREATE INDEX IF NOT EXISTS idx_hour_entries_date ON hour_entries(date);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_date ON hour_entries(date DESC);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_employee_date ON hour_entries(employee_id, date);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_project_date ON hour_entries(project_id, date);
--- Note: Removed date range index with CURRENT_DATE (not IMMUTABLE)
--- Use a regular index on date instead - filter in application code
-CREATE INDEX IF NOT EXISTS idx_hour_entries_date ON hour_entries(date DESC);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_phase ON hour_entries(workday_phase);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_task ON hour_entries(workday_task);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_project_workday ON hour_entries(project_id, workday_phase, workday_task);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_actual_cost ON hour_entries(actual_cost);
 
 -- TASK QUANTITY ENTRIES
 CREATE TABLE IF NOT EXISTS task_quantity_entries (
@@ -723,34 +691,6 @@ CREATE TABLE IF NOT EXISTS user_stories (
 CREATE INDEX IF NOT EXISTS idx_user_stories_feature_id ON user_stories(feature_id);
 CREATE INDEX IF NOT EXISTS idx_user_stories_sprint_id ON user_stories(sprint_id);
 
--- ============================================================================
--- WORK ITEMS (Unified table for epics, features, user_stories)
--- Consolidates work items into single table for better performance
--- ============================================================================
-CREATE TABLE IF NOT EXISTS work_items (
-  id VARCHAR(50) PRIMARY KEY,
-  work_item_type VARCHAR(20) NOT NULL CHECK (work_item_type IN ('epic', 'feature', 'user_story')),
-  name VARCHAR(255) NOT NULL,
-  description TEXT,
-  project_id VARCHAR(50) REFERENCES projects(id) ON DELETE CASCADE,
-  parent_id VARCHAR(50) REFERENCES work_items(id) ON DELETE CASCADE,
-  status VARCHAR(50) DEFAULT 'Not Started',
-  priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
-  assigned_to VARCHAR(50) REFERENCES employees(id) ON DELETE SET NULL,
-  sprint_id VARCHAR(50) REFERENCES sprints(id) ON DELETE SET NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  CONSTRAINT fk_work_items_parent FOREIGN KEY (parent_id) REFERENCES work_items(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_work_items_type ON work_items(work_item_type);
-CREATE INDEX IF NOT EXISTS idx_work_items_project_id ON work_items(project_id);
-CREATE INDEX IF NOT EXISTS idx_work_items_parent_id ON work_items(parent_id);
-CREATE INDEX IF NOT EXISTS idx_work_items_sprint_id ON work_items(sprint_id);
-CREATE INDEX IF NOT EXISTS idx_work_items_assigned_to ON work_items(assigned_to);
-CREATE INDEX IF NOT EXISTS idx_work_items_type_project ON work_items(work_item_type, project_id);
-CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(status);
-
 -- FORECASTS
 CREATE TABLE IF NOT EXISTS forecasts (
   id VARCHAR(50) PRIMARY KEY,
@@ -828,10 +768,10 @@ CREATE INDEX IF NOT EXISTS idx_project_health_project_id ON project_health(proje
 CREATE INDEX IF NOT EXISTS idx_project_health_status ON project_health(status) WHERE status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_project_health_updated_at ON project_health(updated_at DESC);
 
--- PROJECT LOG
+-- PROJECT LOG (no FK on project_id so parser can log before project exists)
 CREATE TABLE IF NOT EXISTS project_log (
   id VARCHAR(50) PRIMARY KEY,
-  project_id VARCHAR(50) REFERENCES projects(id),
+  project_id VARCHAR(50),
   entry_date TIMESTAMP DEFAULT NOW(),
   entry_type VARCHAR(50),
   message TEXT,
@@ -906,9 +846,14 @@ CREATE TABLE IF NOT EXISTS project_documents (
   description TEXT,
   version INTEGER DEFAULT 1,
   is_active BOOLEAN DEFAULT true,
+  is_current_version BOOLEAN DEFAULT false,
+  health_score INTEGER,
+  health_check_json JSONB,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_project_documents_current ON project_documents(project_id, is_current_version) WHERE is_current_version = true;
 
 CREATE INDEX IF NOT EXISTS idx_project_documents_project ON project_documents(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_documents_customer ON project_documents(customer_id);
@@ -917,6 +862,20 @@ CREATE INDEX IF NOT EXISTS idx_project_documents_type ON project_documents(docum
 CREATE INDEX IF NOT EXISTS idx_project_documents_uploaded_at ON project_documents(uploaded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_project_documents_is_active ON project_documents(is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_project_documents_project_type ON project_documents(project_id, document_type);
+
+-- PROJECT MAPPINGS (MPP project id to Workday project id for actuals)
+CREATE TABLE IF NOT EXISTS project_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  mpp_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  workday_project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(mpp_project_id, workday_project_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_mappings_mpp ON project_mappings(mpp_project_id);
+CREATE INDEX IF NOT EXISTS idx_project_mappings_workday ON project_mappings(workday_project_id);
+CREATE INDEX IF NOT EXISTS idx_project_mappings_active ON project_mappings(is_active);
 
 -- ============================================================================
 -- AUTO-GENERATE ID TRIGGERS
@@ -1290,12 +1249,12 @@ CREATE TRIGGER trigger_auto_calculate_phase_fields
   FOR EACH ROW
   EXECUTE FUNCTION auto_calculate_phase_fields();
 
--- TASKS
+-- TASKS (preserve MPP/Data Management remaining_hours and remaining_cost when set)
 CREATE OR REPLACE FUNCTION auto_calculate_task_fields()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.remaining_hours := calculate_remaining_hours(NEW.baseline_hours, NEW.actual_hours);
-  NEW.remaining_cost := calculate_remaining_cost(NEW.baseline_cost, NEW.actual_cost);
+  NEW.remaining_hours := COALESCE(NEW.remaining_hours, calculate_remaining_hours(NEW.baseline_hours, NEW.actual_hours));
+  NEW.remaining_cost := COALESCE(NEW.remaining_cost, calculate_remaining_cost(NEW.baseline_cost, NEW.actual_cost));
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -1481,16 +1440,6 @@ CREATE TRIGGER trigger_update_updated_at_change_impacts
 
 CREATE TRIGGER trigger_update_updated_at_project_documents
   BEFORE UPDATE ON project_documents
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER trigger_update_updated_at_hierarchy_nodes
-  BEFORE UPDATE ON hierarchy_nodes
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER trigger_update_updated_at_work_items
-  BEFORE UPDATE ON work_items
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 

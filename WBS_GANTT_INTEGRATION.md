@@ -127,7 +127,7 @@ const { project, phases, tasks, workday_summary } = await wbsResponse.json();
 
 ## 🛠️ **Setup Required**
 
-1. **Run SQL Script**: Execute `setup_project_mappings.sql` in Supabase SQL Editor
+1. **Run SQL Script**: Execute `schema.sql` (project root) in Supabase SQL Editor for full schema, or ensure `project_mappings` table exists
 2. **Create Mappings**: Use project mapping interface to link projects
 3. **Test Integration**: Verify WBS Gantt shows combined data
 
