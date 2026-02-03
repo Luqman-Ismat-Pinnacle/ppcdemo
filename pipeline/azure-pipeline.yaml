@@ -13,7 +13,7 @@ variables:
 trigger:
   branches:
     include:
-      - main
+      - master
 
 stages:
   - stage: Build

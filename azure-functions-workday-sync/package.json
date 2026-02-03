@@ -1,0 +1,16 @@
+{
+  "name": "azure-functions-workday-sync",
+  "version": "1.0.0",
+  "description": "Workday to Azure Postgres sync – 1:1 with Supabase Edge Functions. Cron + manual trigger.",
+  "main": "index.js",
+  "scripts": {
+    "start": "func start",
+    "test": "node run-sync.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

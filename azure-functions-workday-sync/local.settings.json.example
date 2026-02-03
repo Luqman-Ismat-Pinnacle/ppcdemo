@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "WORKDAY_ISU_USER": "your-workday-isu-user",
+    "WORKDAY_ISU_PASS": "your-workday-isu-password",
+    "POSTGRES_CONNECTION_STRING": "postgresql://user:password@host:5432/dbname?sslmode=require",
+    "WORKDAY_HOURS_DAYS_BACK": "365",
+    "WORKDAY_HOURS_WINDOW_DAYS": "30"
+  }
+}

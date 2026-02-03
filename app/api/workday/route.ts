@@ -12,7 +12,6 @@ const EDGE_FUNCTIONS = {
   'employees': 'workday-employees',
   'projects': 'workday-projects',
   'hours': 'workday-hours',
-  'sync': 'workday-sync'
 } as const;
 
 type SyncType = keyof typeof EDGE_FUNCTIONS;
@@ -623,6 +622,6 @@ export async function GET() {
   return NextResponse.json({
     available: true,
     syncTypes: Object.keys(EDGE_FUNCTIONS),
-    message: 'POST { syncType } to sync data. All syncs use streaming NDJSON. Optional hoursDaysBack (default 365, max 730). General ledger removed.',
+    message: 'POST { syncType } or syncType: "unified" to sync. Uses streaming NDJSON. Optional hoursDaysBack (default 365, max 730).',
   });
 }
