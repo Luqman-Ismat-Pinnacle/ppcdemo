@@ -1145,33 +1145,33 @@ export default function WBSGanttPage() {
                   </EnhancedTooltip>
                 </th>
                 <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Baseline Hours', description: 'Original budgeted hours.' }}>
+                  <EnhancedTooltip content={{ title: 'Baseline Hours', description: 'From MPP file (not calculated).' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>BL Hrs</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Actual Hours', description: 'Hours logged to date.' }}>
-                    <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Act Hrs</span>
+                <th style={{ width: '50px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
+                  <EnhancedTooltip content={{ title: 'Actual Hours', description: 'From matched hour entries (not calculated).' }}>
+                    <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Act Hrs</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '55px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
+                <th style={{ width: '55px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
                   <EnhancedTooltip content={{ title: 'Remaining Hours', description: 'From MPP file (not calculated).' }}>
-                    <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Rem Hrs</span>
+                    <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Rem Hrs</span>
                   </EnhancedTooltip>
                 </th>
                 <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Baseline Cost', description: 'Original budgeted cost.', calculation: 'Baseline Hours × Rate' }}>
+                  <EnhancedTooltip content={{ title: 'Baseline Cost', description: 'From MPP file (not calculated).' }}>
                     <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>BL Cost</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Actual Cost', description: 'From matched hours entries.' }}>
-                    <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Act Cost</span>
+                <th style={{ width: '70px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
+                  <EnhancedTooltip content={{ title: 'Actual Cost', description: 'From matched hour entries (not calculated).' }}>
+                    <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Act Cost</span>
                   </EnhancedTooltip>
                 </th>
-                <th style={{ width: '75px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, color: 'var(--pinnacle-teal)', whiteSpace: 'nowrap' }} className="number">
-                  <EnhancedTooltip content={{ title: 'Remaining Cost', description: 'From stored value (not calculated).' }}>
-                    <span style={{ cursor: 'help', borderBottom: '1px dotted var(--pinnacle-teal)' }}>Rem Cost</span>
+                <th style={{ width: '75px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
+                  <EnhancedTooltip content={{ title: 'Remaining Cost', description: 'From MPP file or stored value (not calculated).' }}>
+                    <span style={{ cursor: 'help', borderBottom: '1px dotted #666' }}>Rem Cost</span>
                   </EnhancedTooltip>
                 </th>
                 <th style={{ width: '40px', position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, whiteSpace: 'nowrap' }} className="number">
@@ -1291,14 +1291,14 @@ export default function WBSGanttPage() {
                     <td style={{ fontSize: '0.65rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.daysRequired !== undefined && row.daysRequired !== null ? Number(row.daysRequired).toFixed(2) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.baselineHours ? Number(row.baselineHours).toFixed(2) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.65rem' }}>{row.actualHours ? Number(row.actualHours).toFixed(2) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{(() => {
+                    <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{row.actualHours ? Number(row.actualHours).toFixed(2) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.65rem' }}>{(() => {
                       const remHrs = (row as any).remainingHours ?? row.projectedRemainingHours ?? (row as any).remaining_hours;
                       return remHrs != null ? Number(remHrs).toFixed(2) : '-';
                     })()}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.baselineCost != null ? formatCurrency(row.baselineCost) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.65rem' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{row.remainingCost != null ? formatCurrency(row.remainingCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.65rem' }}>{row.remainingCost != null ? formatCurrency(row.remainingCost) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     <td>
                       <div

@@ -924,6 +924,9 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     // Use MPP parser remainingHours only - no calculation fallback
     const taskRemaining = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
     const remainingHours = taskRemaining != null ? Number(taskRemaining) || 0 : null;
+    // Use MPP parser remainingCost only - never calculated; empty if not from MPP
+    const rawRemainingCost = task.remainingCost ?? task.remaining_cost;
+    const remainingCost = rawRemainingCost != null ? Number(rawRemainingCost) : null;
 
     return {
       ...task,
@@ -935,7 +938,7 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,
-      remainingCost: Math.max(0, adjustedBaselineCost - actualCost) + nonLaborForecast,
+      remainingCost,
     };
   });
 
@@ -955,6 +958,9 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     // Use MPP parser remainingHours only - no calculation fallback
     const subRemaining = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours;
     const subRemainingHours = subRemaining != null ? Number(subRemaining) || 0 : null;
+    // Use MPP parser remainingCost only - never calculated; empty if not from MPP
+    const rawSubRemainingCost = task.remainingCost ?? task.remaining_cost;
+    const subRemainingCost = rawSubRemainingCost != null ? Number(rawSubRemainingCost) : null;
 
     return {
       ...task,
@@ -966,7 +972,7 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,
-      remainingCost: Math.max(0, adjustedBaselineCost - actualCost) + nonLaborForecast,
+      remainingCost: subRemainingCost,
     };
   });
 

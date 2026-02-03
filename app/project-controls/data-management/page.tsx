@@ -1160,7 +1160,7 @@ export default function DataManagementPage() {
         // Cost
         { key: 'baselineCost', header: 'BL Cost', type: 'number', editable: true },
         { key: 'actualCost', header: 'Act Cost', type: 'number', editable: false, autoCalculated: false, tooltip: 'Sum of actual_cost from matched hours entries' },
-        { key: 'remainingCost', header: 'Rem Cost', type: 'number', editable: false, autoCalculated: false, tooltip: 'From stored value (not calculated)' },
+        { key: 'remainingCost', header: 'Rem Cost', type: 'number', editable: true, autoCalculated: false, tooltip: 'From MPP parser or set in Data Management; flows to WBS Gantt' },
         { key: 'baselineQty', header: 'BL Qty', type: 'number', editable: true },
         { key: 'actualQty', header: 'Act Qty', type: 'number', editable: true },
         { key: 'completedQty', header: 'Comp Qty', type: 'number', editable: true },
