@@ -498,28 +498,33 @@ export default function ResourceGanttChart({
     }
   }, [toggleEmployee]);
   
-  // Empty state
+  // Empty state - explicit minHeight so "No data" is always visible
   if (items.length === 0) {
+    const emptyHeight = typeof height === 'number' ? Math.max(height, 320) : 400;
     return (
       <div style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        height: typeof height === 'number' ? height : 400,
+        minHeight: 320,
+        height: emptyHeight,
+        padding: 24,
         background: 'var(--bg-tertiary)',
         borderRadius: 8,
         border: '1px solid var(--border-color)',
-        color: 'var(--text-muted)'
+        color: 'var(--text-muted)',
+        textAlign: 'center',
+        boxSizing: 'border-box'
       }}>
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.5, marginBottom: 16 }}>
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.6, marginBottom: 16, flexShrink: 0 }}>
           <rect x="3" y="4" width="18" height="16" rx="2" ry="2" />
           <line x1="3" y1="10" x2="21" y2="10" />
           <line x1="9" y1="4" x2="9" y2="20" />
         </svg>
-        <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>No Resource Assignments</p>
-        <p style={{ margin: '8px 0 0', fontSize: '0.85rem', opacity: 0.7 }}>
-          Assign resources to tasks to see the Gantt view
+        <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>No data</p>
+        <p style={{ margin: '8px 0 0', fontSize: '0.85rem', opacity: 0.9, maxWidth: 360 }}>
+          Assign employees to tasks to see the Resource Gantt chart.
         </p>
       </div>
     );

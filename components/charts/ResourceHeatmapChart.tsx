@@ -554,8 +554,8 @@ export default function ResourceHeatmapChart({
         </div>
       )}
 
-      {/* Chart or Empty State */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      {/* Chart or Empty State - minHeight ensures empty state is visible when flex collapses */}
+      <div style={{ flex: 1, minHeight: 320 }}>
         {isEmpty ? (
           <EmptyState 
             employees={employees}
@@ -659,19 +659,20 @@ function EmptyState({
       borderRadius: 8,
       border: '1px solid var(--border-color)',
       color: 'var(--text-muted)',
-      textAlign: 'center'
+      textAlign: 'center',
+      boxSizing: 'border-box'
     }}>
-      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}>
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.6, flexShrink: 0 }}>
         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
         <rect x="7" y="7" width="3" height="3" />
         <rect x="14" y="7" width="3" height="3" />
         <rect x="7" y="14" width="3" height="3" />
         <rect x="14" y="14" width="3" height="3" />
       </svg>
-      <p style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>
-        No Heatmap Data
+      <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+        No data
       </p>
-      <p style={{ margin: '12px 0 0', fontSize: '0.85rem', opacity: 0.8, maxWidth: 400 }}>
+      <p style={{ margin: '12px 0 0', fontSize: '0.85rem', opacity: 0.9, maxWidth: 400 }}>
         {message}
       </p>
     </div>
