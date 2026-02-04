@@ -690,17 +690,16 @@ function buildTasks(
     const priority = mapPriority(task.priority);
 
     const assignedResourceIds = getTaskResourceIds(task, resources);
-    const effectiveResourceIds = assignedResourceIds.length > 0 ? assignedResourceIds : resources.map(r => r.id);
-
-    if (assignedResourceIds.length === 0) {
-      warnings.push(`Task "${task.taskName || taskId}" has no assigned resource. Using all resources.`);
-    }
-
+    
+    // Only use assigned resources - don't assign unassigned tasks to everyone
     const resourcesMap: Record<string, number> = {};
-    effectiveResourceIds.forEach(resourceId => {
-      if (!resourceIds.has(resourceId)) return;
-      resourcesMap[resourceId] = sizingHours;
-    });
+    if (assignedResourceIds.length > 0) {
+      assignedResourceIds.forEach(resourceId => {
+        if (!resourceIds.has(resourceId)) return;
+        resourcesMap[resourceId] = sizingHours;
+      });
+    }
+    // If no resources assigned, leave resourcesMap empty - task will be tracked as unassigned
 
     const predecessorId = task.predecessorId || task.predecessor || null;
     const predecessorIds = predecessorId && taskIndex.has(predecessorId) ? [predecessorId] : [];

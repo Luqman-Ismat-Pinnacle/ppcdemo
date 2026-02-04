@@ -148,6 +148,10 @@ function ResourcingPageContent() {
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [isLevelingRunning, setIsLevelingRunning] = useState(false);
   const [isUtilizationExpanded, setIsUtilizationExpanded] = useState(true);
+  const [isUnassignedExpanded, setIsUnassignedExpanded] = useState(true);
+  
+  // Track manual task assignments (taskId -> resourceId)
+  const [taskAssignments, setTaskAssignments] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setHasMounted(true);
@@ -204,6 +208,73 @@ function ResourcingPageContent() {
     if (!resourceIds || resourceIds.length === 0) return 'Unassigned';
     return resourceIds.map(id => getResourceName(id)).join(', ');
   }, [getResourceName]);
+
+  // Get list of available employees for assignment dropdown
+  const availableEmployees = useMemo(() => {
+    return (data.employees || []).map((emp: any) => ({
+      id: emp.employeeId || emp.id,
+      name: emp.name || emp.fullName || emp.employeeId || 'Unknown',
+    })).filter((e: { id: string; name: string }) => e.id);
+  }, [data.employees]);
+
+  // Get unassigned tasks (tasks with no assignedResource, employeeId, or manual assignment)
+  const unassignedTasks = useMemo(() => {
+    return filteredTasks.filter((task: any) => {
+      const taskId = task.taskId || task.id || task.task_id;
+      // Check if manually assigned
+      if (taskAssignments[taskId]) return false;
+      
+      // Check if has assigned resource
+      const assignedResource = task.assignedResource || task.assigned_resource || task.assignedResourceType || '';
+      const employeeId = task.employeeId || task.employee_id || '';
+      
+      // A task is unassigned if it has no assigned resource AND no employeeId
+      const hasAssignment = (assignedResource && assignedResource.trim() !== '' && assignedResource.toLowerCase() !== 'unassigned') ||
+                           (employeeId && employeeId.trim() !== '');
+      
+      return !hasAssignment;
+    }).map((task: any) => ({
+      taskId: task.taskId || task.id || task.task_id,
+      taskName: task.taskName || task.name || task.task_name || 'Unnamed Task',
+      baselineHours: task.baselineHours || task.baseline_hours || task.baselineWork || 0,
+      startDate: task.startDate || task.start_date || task.baselineStartDate || null,
+      endDate: task.endDate || task.end_date || task.baselineEndDate || null,
+    }));
+  }, [filteredTasks, taskAssignments]);
+
+  // Assign a resource to a task
+  const assignResourceToTask = useCallback((taskId: string, resourceId: string) => {
+    setTaskAssignments(prev => ({
+      ...prev,
+      [taskId]: resourceId
+    }));
+    // Clear leveling result so user can re-run with new assignments
+    setLevelingResult(null);
+  }, []);
+
+  // Remove assignment from a task
+  const unassignTask = useCallback((taskId: string) => {
+    setTaskAssignments(prev => {
+      const newAssignments = { ...prev };
+      delete newAssignments[taskId];
+      return newAssignments;
+    });
+    setLevelingResult(null);
+  }, []);
+
+  // Get tasks with manual assignments for display
+  const manuallyAssignedTasks = useMemo(() => {
+    return Object.entries(taskAssignments).map(([taskId, resourceId]) => {
+      const task = filteredTasks.find((t: any) => (t.taskId || t.id || t.task_id) === taskId);
+      return {
+        taskId,
+        taskName: task?.taskName || task?.name || task?.task_name || 'Unknown Task',
+        baselineHours: task?.baselineHours || task?.baseline_hours || 0,
+        resourceId,
+        resourceName: getResourceName(resourceId),
+      };
+    });
+  }, [taskAssignments, filteredTasks, getResourceName]);
 
   // Filter tasks by project
   const filteredTasks = useMemo(() => {
@@ -934,6 +1005,18 @@ function ResourcingPageContent() {
     setTimeout(() => {
       try {
         const inputs = deriveLevelingInputs(data, levelingParams);
+        
+        // Apply manual task assignments to the leveling inputs
+        if (Object.keys(taskAssignments).length > 0) {
+          inputs.tasks.forEach(task => {
+            const manualAssignment = taskAssignments[task.id];
+            if (manualAssignment) {
+              // Clear existing resourcesMap and add only the manual assignment
+              task.resourcesMap = { [manualAssignment]: task.sizingHours };
+            }
+          });
+        }
+        
         const result = runResourceLeveling(
           inputs.tasks,
           inputs.resources,
@@ -948,7 +1031,7 @@ function ResourcingPageContent() {
         setIsLevelingRunning(false);
       }
     }, 100);
-  }, [data, levelingParams]);
+  }, [data, levelingParams, taskAssignments]);
 
   // Auto-run leveling when tab is opened and data is available
   useEffect(() => {
@@ -1556,6 +1639,184 @@ function ResourcingPageContent() {
                 </div>
               </div>
             </div>
+
+            {/* Unassigned Tasks Section */}
+            {(unassignedTasks.length > 0 || manuallyAssignedTasks.length > 0) && (
+              <div className="chart-card" style={{ borderLeft: '4px solid #F59E0B' }}>
+                <div 
+                  className="chart-card-header" 
+                  style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                  onClick={() => setIsUnassignedExpanded(!isUnassignedExpanded)}
+                >
+                  <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg 
+                      viewBox="0 0 24 24" 
+                      width="16" 
+                      height="16" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2"
+                      style={{ transform: isUnassignedExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                    >
+                      <path d="M9 18l6-6-6-6" />
+                    </svg>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F59E0B" strokeWidth="2" style={{ marginRight: '4px' }}>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    Task Assignments ({unassignedTasks.length} unassigned, {manuallyAssignedTasks.length} manually assigned)
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {isUnassignedExpanded ? 'Click to collapse' : 'Click to expand'}
+                  </span>
+                </div>
+                
+                {isUnassignedExpanded && (
+                  <div className="chart-card-body" style={{ padding: '1rem' }}>
+                    {/* Explanation */}
+                    <div style={{ padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', borderRadius: '8px', marginBottom: '1rem' }}>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                        <strong>Note:</strong> Tasks without assigned resources cannot be scheduled by the leveling algorithm. 
+                        Assign a resource to each task below using the dropdown, then run leveling.
+                      </p>
+                    </div>
+
+                    {/* Unassigned Tasks Table */}
+                    {unassignedTasks.length > 0 && (
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem', color: '#F59E0B' }}>
+                          Unassigned Tasks ({unassignedTasks.length})
+                        </h4>
+                        <div style={{ overflow: 'auto', maxHeight: '300px' }}>
+                          <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left' }}>Task Name</th>
+                                <th style={{ textAlign: 'right' }}>Hours</th>
+                                <th style={{ textAlign: 'left' }}>Dates</th>
+                                <th style={{ textAlign: 'left', minWidth: '200px' }}>Assign Resource</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {unassignedTasks.map((task) => (
+                                <tr key={task.taskId}>
+                                  <td style={{ fontWeight: 500 }}>{task.taskName}</td>
+                                  <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
+                                  <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                    {task.startDate && task.endDate 
+                                      ? `${formatDate(new Date(task.startDate))} → ${formatDate(new Date(task.endDate))}`
+                                      : 'No dates'}
+                                  </td>
+                                  <td>
+                                    <select
+                                      value=""
+                                      onChange={(e) => e.target.value && assignResourceToTask(task.taskId, e.target.value)}
+                                      style={{
+                                        width: '100%',
+                                        padding: '0.5rem',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--border-color)',
+                                        background: 'var(--bg-secondary)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <option value="">Select resource...</option>
+                                      {availableEmployees.map((emp) => (
+                                        <option key={emp.id} value={emp.id}>{emp.name}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Manually Assigned Tasks */}
+                    {manuallyAssignedTasks.length > 0 && (
+                      <div>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem', color: '#10B981' }}>
+                          Manually Assigned ({manuallyAssignedTasks.length})
+                        </h4>
+                        <div style={{ overflow: 'auto', maxHeight: '200px' }}>
+                          <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left' }}>Task Name</th>
+                                <th style={{ textAlign: 'right' }}>Hours</th>
+                                <th style={{ textAlign: 'left' }}>Assigned To</th>
+                                <th style={{ textAlign: 'center', width: '80px' }}>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {manuallyAssignedTasks.map((task) => (
+                                <tr key={task.taskId}>
+                                  <td style={{ fontWeight: 500 }}>{task.taskName}</td>
+                                  <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
+                                  <td style={{ color: '#10B981', fontWeight: 500 }}>{task.resourceName}</td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <button
+                                      onClick={() => unassignTask(task.taskId)}
+                                      style={{
+                                        padding: '0.25rem 0.5rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid #ef4444',
+                                        background: 'transparent',
+                                        color: '#ef4444',
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quick assign all button */}
+                    {unassignedTasks.length > 0 && availableEmployees.length > 0 && (
+                      <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Quick assign all unassigned to:</span>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                unassignedTasks.forEach(task => assignResourceToTask(task.taskId, e.target.value));
+                                e.target.value = '';
+                              }
+                            }}
+                            style={{
+                              padding: '0.5rem',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border-color)',
+                              background: 'var(--bg-secondary)',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="">Select resource...</option>
+                            {availableEmployees.map((emp) => (
+                              <option key={emp.id} value={emp.id}>{emp.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Results Section */}
             {levelingResult && (
