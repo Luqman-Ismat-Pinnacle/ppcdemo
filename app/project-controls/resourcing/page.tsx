@@ -13,7 +13,7 @@
  * @module app/project-controls/resourcing/page
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import ResourceHeatmapChart from '@/components/charts/ResourceHeatmapChart';
@@ -47,7 +47,38 @@ interface ResourceRequirement {
 
 type ActiveSection = 'overview' | 'requirements' | 'heatmap' | 'gantt' | 'leveling';
 
+// Loading fallback component
+function ResourcingPageLoading() {
+  return (
+    <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 100px)' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ 
+          width: '48px', 
+          height: '48px', 
+          border: '3px solid var(--border-color)', 
+          borderTopColor: 'var(--pinnacle-teal)', 
+          borderRadius: '50%', 
+          animation: 'spin 1s linear infinite',
+          margin: '0 auto 1rem',
+        }} />
+        <p style={{ color: 'var(--text-secondary)' }}>Loading Resourcing...</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+// Main page wrapper with Suspense
 export default function ResourcingPage() {
+  return (
+    <Suspense fallback={<ResourcingPageLoading />}>
+      <ResourcingPageContent />
+    </Suspense>
+  );
+}
+
+// Inner component that uses useSearchParams
+function ResourcingPageContent() {
   const searchParams = useSearchParams();
   const { filteredData, data: fullData } = useData();
   
