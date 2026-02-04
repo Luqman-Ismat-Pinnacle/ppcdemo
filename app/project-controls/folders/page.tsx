@@ -213,7 +213,15 @@ export default function DocumentsPage() {
                   ? JSON.parse(dbDoc.health_check_json) 
                   : dbDoc.health_check_json;
                 if (parsed.score !== undefined) {
-                  healthCheck = parsed as ProjectHealthAutoResult;
+                  // Ensure results array exists (may be missing from older saves)
+                  healthCheck = {
+                    score: parsed.score,
+                    passed: parsed.passed ?? 0,
+                    failed: parsed.failed ?? (parsed.totalChecks - parsed.passed) ?? 0,
+                    totalChecks: parsed.totalChecks ?? 0,
+                    issues: parsed.issues ?? [],
+                    results: parsed.results ?? [], // Ensure results is always an array
+                  };
                 }
               } catch (e) {
                 console.warn('Failed to parse health check:', e);
@@ -768,6 +776,7 @@ export default function DocumentsPage() {
 
       // Save health score and health_check_json to project_documents (by storage_path)
       try {
+        // Save the FULL health result including results array for the health report
         const healthRes = await fetch('/api/data/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -779,14 +788,16 @@ export default function DocumentsPage() {
             healthCheckJson: {
               score: healthResult.score,
               passed: healthResult.passed,
+              failed: healthResult.totalChecks - healthResult.passed,
               totalChecks: healthResult.totalChecks,
-              issues: healthResult.issues,
+              issues: healthResult.issues || [],
+              results: healthResult.results || [], // Include full results array for health report
             },
           }),
         });
         const healthResultJson = await healthRes.json();
         if (healthRes.ok && healthResultJson.success) {
-          pushLog('success', '[Documents] Health score and parser result saved to project_documents.');
+          pushLog('success', '[Documents] Health score and full results saved to project_documents.');
         } else {
           pushLog('warning', `[Documents] Health save failed: ${healthResultJson.error || 'Unknown'}`);
         }

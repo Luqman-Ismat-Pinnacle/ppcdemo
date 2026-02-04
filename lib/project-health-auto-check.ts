@@ -14,6 +14,7 @@ export interface ProjectHealthAutoResult {
   score: number;
   totalChecks: number;
   passed: number;
+  failed?: number;
   results: HealthCheckResult[];
   issues: string[];
 }
