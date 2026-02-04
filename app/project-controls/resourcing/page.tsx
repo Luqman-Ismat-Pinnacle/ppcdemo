@@ -6,8 +6,8 @@
  * User-friendly resource management with:
  * - Overview dashboard with key metrics
  * - Resource Requirements Calculator (FTE based on baseline hours)
- * - Interactive resource utilization heatmap (by Role or by Task)
- * - Resource Gantt chart with assignment timelines
+ * - Interactive resource utilization heatmap (by Role)
+ * - Resource Gantt chart with assignment timelines (by Role)
  * - Resource leveling analysis
  * 
  * Handles comma-separated roles in task assignments and defaults to viewing by role.
@@ -19,8 +19,8 @@ import React, { useMemo, useState, useEffect, Suspense, useCallback } from 'reac
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import ResourceLevelingChart from '@/components/charts/ResourceLevelingChart';
-import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import ChartWrapper from '@/components/charts/ChartWrapper';
+import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 
 // FTE Constants
@@ -44,38 +44,47 @@ interface ResourceRequirement {
     baselineHours: number;
     actualHours: number;
     percentComplete: number;
+    startDate: string | null;
+    endDate: string | null;
   }>;
 }
 
-interface RoleData {
-  role: string;
-  tasks: Array<{
-    taskId: string;
-    taskName: string;
-    baselineHours: number;
-    actualHours: number;
-    startDate: string | null;
-    endDate: string | null;
-    percentComplete: number;
-  }>;
-  totalBaselineHours: number;
-  totalActualHours: number;
+interface GanttItem {
+  id: string;
+  name: string;
+  type: 'role' | 'task';
+  level: number;
+  startDate: Date | null;
+  endDate: Date | null;
+  percentComplete: number;
+  baselineHours: number;
+  actualHours: number;
 }
 
 type ActiveSection = 'overview' | 'requirements' | 'heatmap' | 'gantt' | 'leveling';
-type ViewMode = 'role' | 'task';
 
 // Helper: Parse roles from a string (handles comma-separated)
 function parseRoles(resourceStr: string | null | undefined): string[] {
   if (!resourceStr || typeof resourceStr !== 'string') return ['Unassigned'];
   
-  // Split by comma and clean up
   const roles = resourceStr
     .split(',')
     .map(r => r.trim())
     .filter(r => r.length > 0);
   
   return roles.length > 0 ? roles : ['Unassigned'];
+}
+
+// Helper: Parse date safely
+function parseDate(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Helper: Format date for display
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // Loading fallback component
@@ -113,14 +122,12 @@ function ResourcingPageContent() {
   const searchParams = useSearchParams();
   const { filteredData, data: fullData } = useData();
   
-  // Check if we came from Project Plan page with a specific project
   const projectIdParam = searchParams.get('projectId');
   const scrollToSection = searchParams.get('section');
   
   const [activeSection, setActiveSection] = useState<ActiveSection>('overview');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectIdParam);
   const [expandedResourceType, setExpandedResourceType] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('role'); // Default to role view
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
   const [hasMounted, setHasMounted] = useState(false);
 
@@ -163,18 +170,18 @@ function ResourcingPageContent() {
       : tasks;
   }, [data.tasks, selectedProjectId]);
 
-  // Extract and aggregate data by role (handles comma-separated roles)
-  const roleData = useMemo((): RoleData[] => {
-    const roleMap = new Map<string, RoleData>();
+  // Calculate Resource Requirements grouped by role (handles comma-separated roles)
+  const resourceRequirements = useMemo((): ResourceRequirement[] => {
+    const roleMap = new Map<string, ResourceRequirement>();
 
     filteredTasks.forEach((task: any) => {
       const resourceStr = task.assignedResource || task.assigned_resource || task.assignedResourceType || '';
       const roles = parseRoles(resourceStr);
       const baselineHours = task.baselineHours || task.baseline_hours || task.baselineWork || task.baseline_work || 0;
       const actualHours = task.actualHours || task.actual_hours || 0;
+      const percentComplete = task.percentComplete || task.percent_complete || 0;
       const startDate = task.startDate || task.start_date || task.baselineStartDate || task.baseline_start_date || null;
       const endDate = task.endDate || task.end_date || task.baselineEndDate || task.baseline_end_date || null;
-      const percentComplete = task.percentComplete || task.percent_complete || 0;
       
       // Distribute hours equally among roles if multiple
       const hoursPerRole = baselineHours / roles.length;
@@ -183,50 +190,42 @@ function ResourcingPageContent() {
       roles.forEach(role => {
         if (!roleMap.has(role)) {
           roleMap.set(role, {
-            role,
-            tasks: [],
+            resourceType: role,
+            taskCount: 0,
             totalBaselineHours: 0,
             totalActualHours: 0,
+            remainingHours: 0,
+            fteRequired: 0,
+            fteMonthly: 0,
+            tasks: [],
           });
         }
         
-        const rd = roleMap.get(role)!;
-        rd.tasks.push({
+        const req = roleMap.get(role)!;
+        req.taskCount++;
+        req.totalBaselineHours += hoursPerRole;
+        req.totalActualHours += actualPerRole;
+        req.remainingHours += Math.max(0, hoursPerRole - actualPerRole);
+        req.tasks.push({
           taskId: task.taskId || task.id || task.task_id,
           taskName: task.taskName || task.name || task.task_name || 'Unnamed Task',
           baselineHours: hoursPerRole,
           actualHours: actualPerRole,
+          percentComplete,
           startDate,
           endDate,
-          percentComplete,
         });
-        rd.totalBaselineHours += hoursPerRole;
-        rd.totalActualHours += actualPerRole;
       });
+    });
+
+    // Calculate FTE
+    roleMap.forEach((req) => {
+      req.fteRequired = req.totalBaselineHours / HOURS_PER_YEAR;
+      req.fteMonthly = req.totalBaselineHours / (HOURS_PER_YEAR / 12);
     });
 
     return Array.from(roleMap.values()).sort((a, b) => b.totalBaselineHours - a.totalBaselineHours);
   }, [filteredTasks]);
-
-  // Calculate Resource Requirements (FTE based on baseline hours)
-  const resourceRequirements = useMemo((): ResourceRequirement[] => {
-    return roleData.map(rd => ({
-      resourceType: rd.role,
-      taskCount: rd.tasks.length,
-      totalBaselineHours: rd.totalBaselineHours,
-      totalActualHours: rd.totalActualHours,
-      remainingHours: Math.max(0, rd.totalBaselineHours - rd.totalActualHours),
-      fteRequired: rd.totalBaselineHours / HOURS_PER_YEAR,
-      fteMonthly: rd.totalBaselineHours / (HOURS_PER_YEAR / 12),
-      tasks: rd.tasks.map(t => ({
-        taskId: t.taskId,
-        taskName: t.taskName,
-        baselineHours: t.baselineHours,
-        actualHours: t.actualHours,
-        percentComplete: t.percentComplete,
-      })),
-    }));
-  }, [roleData]);
 
   // Calculate summary metrics
   const summaryMetrics = useMemo(() => {
@@ -249,329 +248,451 @@ function ResourcingPageContent() {
     };
   }, [resourceRequirements, filteredTasks.length]);
 
-  // Build heatmap data from tasks by role
-  const heatmapData = useMemo(() => {
-    if (roleData.length === 0) return { resources: [], weeks: [], data: [] };
+  // ============================================================================
+  // HEATMAP DATA & CHART
+  // ============================================================================
+  
+  const heatmapChartData = useMemo(() => {
+    if (resourceRequirements.length === 0) {
+      return { roles: [] as string[], weeks: [] as string[], matrix: [] as number[][] };
+    }
 
-    // Get date range from all tasks
+    // Collect all dates from tasks
     const allDates: Date[] = [];
-    roleData.forEach(rd => {
-      rd.tasks.forEach(t => {
-        if (t.startDate) {
-          const d = new Date(t.startDate);
-          if (!isNaN(d.getTime())) allDates.push(d);
-        }
-        if (t.endDate) {
-          const d = new Date(t.endDate);
-          if (!isNaN(d.getTime())) allDates.push(d);
-        }
+    resourceRequirements.forEach(req => {
+      req.tasks.forEach(t => {
+        const start = parseDate(t.startDate);
+        const end = parseDate(t.endDate);
+        if (start) allDates.push(start);
+        if (end) allDates.push(end);
       });
     });
 
     if (allDates.length === 0) {
-      // Use current quarter as fallback
+      // Use current month as fallback
       const now = new Date();
-      const start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-      const end = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0);
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 3, 0);
       allDates.push(start, end);
     }
 
     const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
     const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
 
-    // Generate weeks between min and max
+    // Generate weeks
     const weeks: string[] = [];
+    const weekDates: Date[] = [];
     const current = new Date(minDate);
-    // Start from Monday of the week
-    current.setDate(current.getDate() - current.getDay() + 1);
+    current.setDate(current.getDate() - current.getDay() + 1); // Start from Monday
     
     while (current <= maxDate) {
-      weeks.push(current.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+      weeks.push(formatDate(current));
+      weekDates.push(new Date(current));
       current.setDate(current.getDate() + 7);
     }
 
-    if (weeks.length === 0) weeks.push('Current');
+    if (weeks.length === 0) {
+      weeks.push('Week 1');
+      weekDates.push(new Date());
+    }
 
-    // Build utilization data per role per week
-    const resources = roleData.map(rd => rd.role);
-    const dataMatrix: number[][] = roleData.map(rd => {
-      // Simple approximation: distribute hours evenly across task duration
-      const weeklyUtilization = weeks.map(() => 0);
+    // Build utilization matrix: roles x weeks
+    const roles = resourceRequirements.map(r => r.resourceType);
+    const matrix: number[][] = resourceRequirements.map(req => {
+      const weeklyHours = new Array(weeks.length).fill(0);
       
-      rd.tasks.forEach(task => {
-        if (!task.startDate || !task.endDate) return;
+      req.tasks.forEach(task => {
+        const start = parseDate(task.startDate);
+        const end = parseDate(task.endDate);
+        if (!start || !end || task.baselineHours <= 0) return;
         
-        const taskStart = new Date(task.startDate);
-        const taskEnd = new Date(task.endDate);
-        const taskDurationWeeks = Math.max(1, Math.ceil((taskEnd.getTime() - taskStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-        const weeklyHours = task.baselineHours / taskDurationWeeks;
+        const taskDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+        const hoursPerDay = task.baselineHours / taskDays;
         
-        weeks.forEach((weekLabel, weekIdx) => {
-          // Parse week date
-          const weekDate = new Date(minDate);
-          weekDate.setDate(minDate.getDate() - minDate.getDay() + 1 + (weekIdx * 7));
-          const weekEnd = new Date(weekDate);
+        weekDates.forEach((weekStart, weekIdx) => {
+          const weekEnd = new Date(weekStart);
           weekEnd.setDate(weekEnd.getDate() + 6);
           
-          // Check if task overlaps with this week
-          if (taskStart <= weekEnd && taskEnd >= weekDate) {
-            weeklyUtilization[weekIdx] += weeklyHours;
+          // Count overlapping days
+          const overlapStart = Math.max(start.getTime(), weekStart.getTime());
+          const overlapEnd = Math.min(end.getTime(), weekEnd.getTime());
+          
+          if (overlapStart <= overlapEnd) {
+            const overlapDays = Math.ceil((overlapEnd - overlapStart) / (24 * 60 * 60 * 1000)) + 1;
+            weeklyHours[weekIdx] += hoursPerDay * Math.min(overlapDays, 5); // Max 5 work days
           }
         });
       });
       
-      // Convert to utilization percentage (assuming 40 hrs/week = 100%)
-      return weeklyUtilization.map(h => Math.round((h / HOURS_PER_WEEK) * 100));
+      // Convert to utilization percentage (40 hrs/week = 100%)
+      return weeklyHours.map(h => Math.round((h / HOURS_PER_WEEK) * 100));
     });
 
-    return { resources, weeks, data: dataMatrix };
-  }, [roleData]);
+    return { roles, weeks, matrix };
+  }, [resourceRequirements]);
 
-  // Build gantt data
-  const ganttData = useMemo(() => {
-    const items: Array<{
-      id: string;
-      name: string;
-      type: 'role' | 'task';
-      level: number;
-      startDate: string | null;
-      endDate: string | null;
-      percentComplete: number;
-      baselineHours: number;
-      actualHours: number;
-      utilization: number;
-      parentId?: string;
-    }> = [];
+  // Build ECharts heatmap option
+  const heatmapOption = useMemo((): EChartsOption => {
+    const { roles, weeks, matrix } = heatmapChartData;
+    
+    if (roles.length === 0 || weeks.length === 0) {
+      return { series: [] };
+    }
 
-    roleData.forEach(rd => {
-      // Get date range for role
-      const roleDates = rd.tasks
-        .flatMap(t => [t.startDate, t.endDate])
-        .filter((d): d is string => !!d)
-        .map(d => new Date(d).getTime())
-        .filter(d => !isNaN(d));
+    // Convert to [x, y, value] format for ECharts heatmap
+    const seriesData: number[][] = [];
+    matrix.forEach((row, yIdx) => {
+      row.forEach((val, xIdx) => {
+        seriesData.push([xIdx, yIdx, val]);
+      });
+    });
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        position: 'top',
+        formatter: (params: any) => {
+          if (!params?.data) return '';
+          const [xIdx, yIdx, value] = params.data;
+          const role = roles[yIdx] || '';
+          const week = weeks[xIdx] || '';
+          
+          let status = 'Underutilized';
+          let statusColor = '#1A9B8F';
+          if (value > 110) { status = 'Overloaded'; statusColor = '#E91E63'; }
+          else if (value > 100) { status = 'At Capacity'; statusColor = '#FF9800'; }
+          else if (value >= 80) { status = 'Optimal'; statusColor = '#CDDC39'; }
+          else if (value >= 50) { status = 'Building'; statusColor = '#40E0D0'; }
+
+          return `
+            <div style="padding:8px 12px;min-width:160px;">
+              <div style="font-weight:600;color:#40E0D0;margin-bottom:6px;">${role}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:8px;">Week of ${week}</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span>Utilization:</span>
+                <span style="font-weight:700;">${value}%</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span>Status:</span>
+                <span style="font-weight:600;color:${statusColor}">${status}</span>
+              </div>
+            </div>
+          `;
+        },
+        backgroundColor: 'rgba(20,20,20,0.96)',
+        borderColor: 'rgba(64,224,208,0.3)',
+        borderWidth: 1,
+        textStyle: { color: '#fff' },
+      },
+      grid: {
+        left: 160,
+        right: 80,
+        top: 30,
+        bottom: 80,
+        containLabel: false
+      },
+      xAxis: {
+        type: 'category',
+        data: weeks,
+        splitArea: { show: true },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+        axisLabel: {
+          color: 'rgba(255,255,255,0.7)',
+          fontSize: 10,
+          rotate: 45,
+          interval: 0,
+        },
+      },
+      yAxis: {
+        type: 'category',
+        data: roles,
+        splitArea: { show: true },
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+        axisLabel: {
+          color: 'rgba(255,255,255,0.85)',
+          fontSize: 11,
+          width: 140,
+          overflow: 'truncate',
+        },
+      },
+      visualMap: {
+        min: 0,
+        max: 120,
+        calculable: true,
+        orient: 'vertical',
+        right: 10,
+        top: 'center',
+        itemHeight: 140,
+        inRange: {
+          color: ['#1a1a1a', '#1A9B8F', '#40E0D0', '#CDDC39', '#FF9800', '#E91E63']
+        },
+        textStyle: { color: 'rgba(255,255,255,0.7)', fontSize: 10 },
+        formatter: (value: number) => `${value}%`,
+      },
+      series: [{
+        name: 'Utilization',
+        type: 'heatmap',
+        data: seriesData,
+        label: {
+          show: true,
+          formatter: (params: any) => params.data[2] > 0 ? `${params.data[2]}%` : '',
+          fontSize: 9,
+          fontWeight: 600,
+          color: '#fff',
+        },
+        itemStyle: {
+          borderColor: 'rgba(10,10,10,0.9)',
+          borderWidth: 2,
+          borderRadius: 4,
+        },
+        emphasis: {
+          itemStyle: {
+            borderColor: '#40E0D0',
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: 'rgba(64,224,208,0.5)',
+          }
+        }
+      }]
+    };
+  }, [heatmapChartData]);
+
+  // ============================================================================
+  // GANTT DATA & CHART (Based on EChartsGantt.tsx pattern)
+  // ============================================================================
+
+  const ganttItems = useMemo((): GanttItem[] => {
+    const items: GanttItem[] = [];
+    
+    resourceRequirements.forEach(req => {
+      // Calculate role date range
+      const taskDates = req.tasks
+        .flatMap(t => [parseDate(t.startDate), parseDate(t.endDate)])
+        .filter((d): d is Date => d !== null);
       
-      const roleStart = roleDates.length > 0 ? new Date(Math.min(...roleDates)).toISOString().split('T')[0] : null;
-      const roleEnd = roleDates.length > 0 ? new Date(Math.max(...roleDates)).toISOString().split('T')[0] : null;
-      const avgProgress = rd.tasks.length > 0 
-        ? Math.round(rd.tasks.reduce((sum, t) => sum + t.percentComplete, 0) / rd.tasks.length)
-        : 0;
-      const utilization = rd.totalBaselineHours > 0 
-        ? Math.round((rd.totalActualHours / rd.totalBaselineHours) * 100)
+      const roleStart = taskDates.length > 0 ? new Date(Math.min(...taskDates.map(d => d.getTime()))) : null;
+      const roleEnd = taskDates.length > 0 ? new Date(Math.max(...taskDates.map(d => d.getTime()))) : null;
+      const avgProgress = req.tasks.length > 0 
+        ? Math.round(req.tasks.reduce((sum, t) => sum + t.percentComplete, 0) / req.tasks.length)
         : 0;
 
       // Add role row
       items.push({
-        id: `role-${rd.role}`,
-        name: rd.role,
+        id: `role-${req.resourceType}`,
+        name: req.resourceType,
         type: 'role',
         level: 0,
         startDate: roleStart,
         endDate: roleEnd,
         percentComplete: avgProgress,
-        baselineHours: rd.totalBaselineHours,
-        actualHours: rd.totalActualHours,
-        utilization,
+        baselineHours: req.totalBaselineHours,
+        actualHours: req.totalActualHours,
       });
 
       // Add task rows if expanded
-      if (expandedRoles.has(rd.role)) {
-        rd.tasks.forEach(task => {
-          const taskUtil = task.baselineHours > 0 
-            ? Math.round((task.actualHours / task.baselineHours) * 100)
-            : 0;
-          
+      if (expandedRoles.has(req.resourceType)) {
+        req.tasks.forEach(task => {
           items.push({
             id: `task-${task.taskId}`,
             name: task.taskName,
             type: 'task',
             level: 1,
-            startDate: task.startDate,
-            endDate: task.endDate,
+            startDate: parseDate(task.startDate),
+            endDate: parseDate(task.endDate),
             percentComplete: task.percentComplete,
             baselineHours: task.baselineHours,
             actualHours: task.actualHours,
-            utilization: taskUtil,
-            parentId: `role-${rd.role}`,
           });
         });
       }
     });
 
     return items;
-  }, [roleData, expandedRoles]);
+  }, [resourceRequirements, expandedRoles]);
 
-  // Toggle role expansion
-  const toggleRole = useCallback((role: string) => {
-    setExpandedRoles(prev => {
-      const next = new Set(prev);
-      if (next.has(role)) {
-        next.delete(role);
-      } else {
-        next.add(role);
-      }
-      return next;
-    });
-  }, []);
-
-  // Build heatmap chart option
-  const heatmapOption = useMemo((): EChartsOption => {
-    if (heatmapData.resources.length === 0) return { series: [] };
-
-    const heatmapSeriesData: number[][] = [];
-    heatmapData.data.forEach((row, yIdx) => {
-      row.forEach((val, xIdx) => {
-        heatmapSeriesData.push([xIdx, yIdx, val]);
-      });
-    });
-
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        formatter: (params: any) => {
-          if (!params?.data) return '';
-          const [xIdx, yIdx, value] = params.data;
-          const resource = heatmapData.resources[yIdx] || '';
-          const period = heatmapData.weeks[xIdx] || '';
-          
-          let status = 'Underutilized';
-          let color = '#1A9B8F';
-          if (value > 100) { status = 'Overloaded'; color = '#E91E63'; }
-          else if (value > 80) { status = 'Optimal'; color = '#CDDC39'; }
-          else if (value > 50) { status = 'Building'; color = '#40E0D0'; }
-
-          return `
-            <div style="padding:8px 12px;">
-              <div style="font-weight:600;color:#40E0D0;margin-bottom:8px;">${resource}</div>
-              <div style="color:rgba(255,255,255,0.6);font-size:11px;margin-bottom:8px;">${period}</div>
-              <div style="display:flex;justify-content:space-between;">
-                <span>Utilization:</span>
-                <span style="font-weight:700;">${value}%</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;margin-top:4px;">
-                <span>Status:</span>
-                <span style="font-weight:600;color:${color}">${status}</span>
-              </div>
-            </div>
-          `;
-        },
-        backgroundColor: 'rgba(20,20,20,0.96)',
-        borderColor: 'rgba(64,224,208,0.3)',
-        textStyle: { color: '#fff' },
-      },
-      grid: { left: 150, right: 30, top: 20, bottom: 60 },
-      dataZoom: [
-        { type: 'slider', xAxisIndex: 0, bottom: 10, height: 20, fillerColor: 'rgba(64,224,208,0.2)' },
-        { type: 'slider', yAxisIndex: 0, left: 5, width: 16, showDetail: false, fillerColor: 'rgba(64,224,208,0.2)' },
-      ],
-      xAxis: {
-        type: 'category',
-        data: heatmapData.weeks,
-        axisLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 10, rotate: 45 },
-      },
-      yAxis: {
-        type: 'category',
-        data: heatmapData.resources,
-        axisLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 11, width: 130, overflow: 'truncate' },
-      },
-      visualMap: {
-        show: true,
-        type: 'continuous',
-        min: 0,
-        max: 120,
-        orient: 'horizontal',
-        right: 20,
-        top: -5,
-        itemWidth: 10,
-        itemHeight: 100,
-        text: ['120%', '0%'],
-        textStyle: { color: 'rgba(255,255,255,0.6)', fontSize: 10 },
-        inRange: { color: ['#1a1a1a', '#1A9B8F', '#40E0D0', '#CDDC39', '#FF9800', '#E91E63'] },
-      },
-      series: [{
-        type: 'heatmap',
-        data: heatmapSeriesData,
-        label: { show: true, formatter: (p: any) => p.data[2] > 0 ? `${p.data[2]}%` : '', fontSize: 9, color: '#fff' },
-        itemStyle: { borderColor: 'rgba(10,10,10,0.95)', borderWidth: 2, borderRadius: 3 },
-      }],
-    };
-  }, [heatmapData]);
-
-  // Build gantt chart option
+  // Build ECharts Gantt option (based on EChartsGantt.tsx)
   const ganttOption = useMemo((): EChartsOption => {
-    if (ganttData.length === 0) return { series: [] };
+    if (ganttItems.length === 0) {
+      return { series: [] };
+    }
 
-    const allDates = ganttData
+    // Get date range
+    const allDates = ganttItems
       .flatMap(item => [item.startDate, item.endDate])
-      .filter((d): d is string => !!d)
-      .map(d => new Date(d).getTime())
-      .filter(d => !isNaN(d));
+      .filter((d): d is Date => d !== null)
+      .map(d => d.getTime());
 
-    if (allDates.length === 0) return { series: [] };
+    if (allDates.length === 0) {
+      return { series: [] };
+    }
 
     const minTime = Math.min(...allDates);
     const maxTime = Math.max(...allDates);
-    const padding = (maxTime - minTime) * 0.05 || 7 * 24 * 60 * 60 * 1000;
+    const padding = Math.max((maxTime - minTime) * 0.05, 7 * 24 * 60 * 60 * 1000);
     const today = new Date().getTime();
 
-    const getBarColor = (util: number) => {
-      if (util > 100) return '#FF9800';
-      if (util >= 80) return '#CDDC39';
-      if (util >= 50) return '#40E0D0';
-      return '#1A9B8F';
-    };
+    const categories = ganttItems.map(item => item.id);
 
-    const seriesData = ganttData.map((item, index) => ({
-      name: item.name,
-      value: [
-        index,
-        item.startDate ? new Date(item.startDate).getTime() : minTime,
-        item.endDate ? new Date(item.endDate).getTime() : maxTime,
-        item.percentComplete,
-        item.utilization,
-        item.type,
-        item.id,
-        item.baselineHours,
-        item.actualHours,
-      ],
-      itemStyle: { color: getBarColor(item.utilization) },
-    }));
+    // Prepare series data
+    const seriesData = ganttItems.map((item, index) => {
+      const utilization = item.baselineHours > 0 
+        ? Math.round((item.actualHours / item.baselineHours) * 100)
+        : 0;
+      
+      let color = '#4A90E2';
+      if (utilization > 100) color = '#FF9800';
+      else if (utilization >= 80) color = '#CDDC39';
+      else if (utilization >= 50) color = '#40E0D0';
+      else color = '#1A9B8F';
+
+      return {
+        name: item.name,
+        value: [
+          index,
+          item.startDate?.getTime() || minTime,
+          item.endDate?.getTime() || maxTime,
+          item.percentComplete,
+          item.type,
+          color,
+          item.baselineHours,
+          item.actualHours,
+          utilization,
+        ],
+        itemStyle: { color },
+      };
+    });
+
+    // Custom render function for Gantt bars
+    const renderItem = (params: any, api: any): any => {
+      const categoryIndex = api.value(0);
+      const start = api.coord([api.value(1), categoryIndex]);
+      const end = api.coord([api.value(2), categoryIndex]);
+      const progress = api.value(3);
+      const itemType = api.value(4);
+      const color = api.value(5);
+
+      const h = itemType === 'role' ? 22 : 16;
+      const barWidth = Math.max(end[0] - start[0], 4);
+
+      const rectShape = echarts.graphic.clipRectByRect(
+        { x: start[0], y: start[1] - h / 2, width: barWidth, height: h },
+        { x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height }
+      );
+
+      if (!rectShape) return undefined;
+
+      const children: any[] = [];
+
+      // Background bar
+      children.push({
+        type: 'rect',
+        shape: rectShape,
+        style: {
+          fill: color,
+          opacity: 0.25,
+          stroke: 'rgba(255,255,255,0.15)',
+          lineWidth: 1,
+        }
+      });
+
+      // Progress fill
+      if (progress > 0) {
+        const progressWidth = barWidth * (progress / 100);
+        const progressRect = echarts.graphic.clipRectByRect(
+          { x: start[0], y: start[1] - h / 2, width: progressWidth, height: h },
+          { x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height }
+        );
+        if (progressRect) {
+          children.push({
+            type: 'rect',
+            shape: progressRect,
+            style: { fill: color, opacity: 1 }
+          });
+        }
+      }
+
+      // Utilization text
+      if (barWidth > 50) {
+        const utilization = api.value(8);
+        children.push({
+          type: 'text',
+          style: {
+            text: `${utilization}%`,
+            x: start[0] + 8,
+            y: start[1],
+            fill: '#fff',
+            fontSize: 10,
+            fontWeight: 600,
+            align: 'left',
+            verticalAlign: 'middle',
+            textShadowColor: 'rgba(0,0,0,0.5)',
+            textShadowBlur: 2,
+          }
+        });
+      }
+
+      return { type: 'group', children };
+    };
 
     return {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'item',
         formatter: (params: any) => {
-          if (!params?.value) return '';
-          const idx = params.value[0];
-          const item = ganttData[idx];
+          const index = params.value[0];
+          const item = ganttItems[index];
           if (!item) return '';
-          
+
+          const utilization = item.baselineHours > 0 
+            ? Math.round((item.actualHours / item.baselineHours) * 100)
+            : 0;
           const icon = item.type === 'role' ? '👥' : '📋';
+          const startStr = item.startDate ? formatDate(item.startDate) : 'N/A';
+          const endStr = item.endDate ? formatDate(item.endDate) : 'N/A';
+
           return `
-            <div style="padding:8px 12px;">
-              <div style="font-weight:600;color:#40E0D0;margin-bottom:8px;">${icon} ${item.name}</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <div><span style="color:rgba(255,255,255,0.5);font-size:10px;">Progress</span><br/><b>${item.percentComplete}%</b></div>
-                <div><span style="color:rgba(255,255,255,0.5);font-size:10px;">Utilization</span><br/><b style="color:${getBarColor(item.utilization)}">${item.utilization}%</b></div>
-                <div><span style="color:rgba(255,255,255,0.5);font-size:10px;">Baseline</span><br/><b>${item.baselineHours.toFixed(0)} hrs</b></div>
-                <div><span style="color:rgba(255,255,255,0.5);font-size:10px;">Actual</span><br/><b>${item.actualHours.toFixed(0)} hrs</b></div>
+            <div style="padding:8px 12px;min-width:200px;">
+              <div style="font-weight:600;color:#40E0D0;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                <span>${icon}</span>
+                <span>${item.name}</span>
               </div>
-              ${item.startDate ? `<div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,0.7);">${item.startDate} → ${item.endDate || '?'}</div>` : ''}
+              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:8px;">
+                ${startStr} → ${endStr}
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Progress</div>
+                  <div style="font-weight:600;">${item.percentComplete}%</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Utilization</div>
+                  <div style="font-weight:600;">${utilization}%</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Baseline</div>
+                  <div style="font-weight:600;">${item.baselineHours.toFixed(0)} hrs</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Actual</div>
+                  <div style="font-weight:600;">${item.actualHours.toFixed(0)} hrs</div>
+                </div>
+              </div>
             </div>
           `;
         },
         backgroundColor: 'rgba(20,20,20,0.96)',
         borderColor: 'rgba(64,224,208,0.3)',
+        borderWidth: 1,
         textStyle: { color: '#fff' },
       },
-      grid: { left: 200, right: 30, top: 40, bottom: 50 },
-      dataZoom: [
-        { type: 'slider', xAxisIndex: 0, bottom: 10, height: 20, fillerColor: 'rgba(64,224,208,0.2)' },
-        { type: 'inside', xAxisIndex: 0 },
-        { type: 'slider', yAxisIndex: 0, left: 5, width: 16, showDetail: false, fillerColor: 'rgba(64,224,208,0.2)' },
-      ],
+      grid: {
+        left: 200,
+        right: 30,
+        top: 40,
+        bottom: 40,
+        containLabel: false,
+      },
       xAxis: {
         type: 'time',
         position: 'top',
@@ -582,7 +703,7 @@ function ResourcingPageContent() {
       },
       yAxis: {
         type: 'category',
-        data: ganttData.map(item => item.id),
+        data: categories,
         inverse: true,
         axisLine: { show: false },
         axisTick: { show: false },
@@ -590,67 +711,35 @@ function ResourcingPageContent() {
           color: 'rgba(255,255,255,0.85)',
           fontSize: 11,
           formatter: (id: string) => {
-            const item = ganttData.find(i => i.id === id);
+            const item = ganttItems.find(i => i.id === id);
             if (!item) return '';
-            const prefix = item.level > 0 ? '    ' : '';
+            const indent = item.level > 0 ? '    ' : '';
             const icon = item.type === 'role' ? '▶ ' : '  ';
-            const name = item.name.length > 25 ? item.name.slice(0, 25) + '...' : item.name;
-            return `${prefix}${icon}${name}`;
+            const name = item.name.length > 22 ? item.name.slice(0, 22) + '...' : item.name;
+            return `${indent}${icon}${name}`;
           },
         },
       },
+      dataZoom: [
+        {
+          type: 'slider',
+          xAxisIndex: 0,
+          bottom: 10,
+          height: 20,
+          fillerColor: 'rgba(64,224,208,0.2)',
+          borderColor: 'rgba(64,224,208,0.3)',
+        },
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          zoomOnMouseWheel: 'ctrl',
+        }
+      ],
       series: [
         {
+          name: 'Resource Gantt',
           type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const categoryIndex = api.value(0);
-            const start = api.coord([api.value(1), categoryIndex]);
-            const end = api.coord([api.value(2), categoryIndex]);
-            const progress = api.value(3);
-            const utilization = api.value(4);
-            const itemType = api.value(5);
-            
-            const h = itemType === 'role' ? 22 : 16;
-            const barWidth = Math.max(end[0] - start[0], 4);
-            const color = getBarColor(utilization);
-            
-            const children: any[] = [];
-            
-            // Background
-            children.push({
-              type: 'rect',
-              shape: { x: start[0], y: start[1] - h/2, width: barWidth, height: h },
-              style: { fill: color, opacity: 0.25, stroke: 'rgba(255,255,255,0.15)', lineWidth: 1 },
-            });
-            
-            // Progress fill
-            if (progress > 0) {
-              children.push({
-                type: 'rect',
-                shape: { x: start[0], y: start[1] - h/2, width: barWidth * (progress / 100), height: h },
-                style: { fill: color, opacity: 1 },
-              });
-            }
-            
-            // Text
-            if (barWidth > 40) {
-              children.push({
-                type: 'text',
-                style: {
-                  text: `${utilization}%`,
-                  x: start[0] + 6,
-                  y: start[1],
-                  fill: '#fff',
-                  fontSize: 9,
-                  fontWeight: 600,
-                  align: 'left',
-                  verticalAlign: 'middle',
-                },
-              });
-            }
-            
-            return { type: 'group', children };
-          },
+          renderItem,
           encode: { x: [1, 2], y: 0 },
           data: seriesData,
           clip: true,
@@ -663,25 +752,40 @@ function ResourcingPageContent() {
             symbol: ['none', 'none'],
             data: [{
               xAxis: today,
-              lineStyle: { color: '#ef4444', width: 2 },
-              label: { formatter: 'Today', position: 'start', color: '#ef4444', fontSize: 10 },
-            }],
-          },
-        },
-      ],
+              lineStyle: { color: '#ef4444', width: 2, type: 'solid' },
+              label: {
+                formatter: 'Today',
+                position: 'start',
+                color: '#ef4444',
+                fontSize: 10,
+                fontWeight: 'bold',
+              }
+            }]
+          }
+        }
+      ]
     };
-  }, [ganttData]);
+  }, [ganttItems]);
 
-  // Handle gantt chart click
+  // Handle gantt chart click to expand/collapse roles
   const handleGanttClick = useCallback((params: any) => {
     if (params?.value) {
-      const itemId = params.value[6] as string;
-      if (itemId?.startsWith('role-')) {
-        const role = itemId.replace('role-', '');
-        toggleRole(role);
+      const index = params.value[0];
+      const item = ganttItems[index];
+      if (item?.type === 'role') {
+        const role = item.name;
+        setExpandedRoles(prev => {
+          const next = new Set(prev);
+          if (next.has(role)) {
+            next.delete(role);
+          } else {
+            next.add(role);
+          }
+          return next;
+        });
       }
     }
-  }, [toggleRole]);
+  }, [ganttItems]);
 
   // Navigation tabs
   const sections: { id: ActiveSection; label: string; icon: React.ReactNode }[] = [
@@ -1010,22 +1114,32 @@ function ResourcingPageContent() {
 
         {/* Heatmap Section */}
         {activeSection === 'heatmap' && (
-          <div className="chart-card" style={{ height: 'calc(100% - 20px)', minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
+          <div className="chart-card" style={{ height: 'calc(100vh - 280px)', minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
             <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
               <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /><rect x="7" y="14" width="3" height="3" /><rect x="14" y="14" width="3" height="3" /></svg>
                 Resource Utilization Heatmap (by Role)
               </h3>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {heatmapChartData.roles.length} roles × {heatmapChartData.weeks.length} weeks
+              </div>
             </div>
             <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
-              {heatmapData.resources.length === 0 ? (
+              {heatmapChartData.roles.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /></svg>
                   <p style={{ fontWeight: 600 }}>No heatmap data available</p>
                   <p style={{ fontSize: '0.85rem' }}>Upload an MPP file with tasks that have dates and resource assignments.</p>
                 </div>
               ) : (
-                <ChartWrapper option={heatmapOption} height="100%" enableExport enableFullscreen visualId="resource-heatmap-role" visualTitle="Resource Heatmap by Role" />
+                <ChartWrapper 
+                  option={heatmapOption} 
+                  height="100%" 
+                  enableExport 
+                  enableFullscreen 
+                  visualId="resource-heatmap-role" 
+                  visualTitle="Resource Heatmap by Role" 
+                />
               )}
             </div>
           </div>
@@ -1033,26 +1147,44 @@ function ResourcingPageContent() {
 
         {/* Gantt Section */}
         {activeSection === 'gantt' && (
-          <div className="chart-card" style={{ height: 'calc(100% - 20px)', minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
+          <div className="chart-card" style={{ height: 'calc(100vh - 280px)', minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
             <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /></svg>
                 Resource Gantt Chart (by Role)
               </h3>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => setExpandedRoles(new Set(roleData.map(r => r.role)))} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }}>Expand All</button>
-                <button onClick={() => setExpandedRoles(new Set())} style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }}>Collapse All</button>
+                <button 
+                  onClick={() => setExpandedRoles(new Set(resourceRequirements.map(r => r.resourceType)))} 
+                  style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Expand All
+                </button>
+                <button 
+                  onClick={() => setExpandedRoles(new Set())} 
+                  style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }}
+                >
+                  Collapse All
+                </button>
               </div>
             </div>
-            <div className="chart-card-body" style={{ flex: 1, padding: '1rem', overflow: 'hidden' }}>
-              {ganttData.length === 0 ? (
+            <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
+              {ganttItems.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                   <p style={{ fontWeight: 600 }}>No Gantt data available</p>
                   <p style={{ fontSize: '0.85rem' }}>Upload an MPP file with tasks that have dates and resource assignments.</p>
                 </div>
               ) : (
-                <ChartWrapper option={ganttOption} height="100%" onClick={handleGanttClick} enableExport enableFullscreen visualId="resource-gantt-role" visualTitle="Resource Gantt by Role" />
+                <ChartWrapper 
+                  option={ganttOption} 
+                  height="100%" 
+                  onClick={handleGanttClick} 
+                  enableExport 
+                  enableFullscreen 
+                  visualId="resource-gantt-role" 
+                  visualTitle="Resource Gantt by Role" 
+                />
               )}
             </div>
           </div>
