@@ -1601,7 +1601,7 @@ export default function DocumentsPage() {
             {expandedHealthFileId && (() => {
               const file = uploadedFiles.find((f) => f.id === expandedHealthFileId);
               const h = file?.healthCheck;
-              if (!file || !h) return null;
+              if (!file || !h || !h.results) return null;
               const failedChecks = h.results.filter(r => !r.passed);
               return (
                 <div style={{ marginTop: '1rem', padding: '1.25rem', background: 'var(--bg-tertiary)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
