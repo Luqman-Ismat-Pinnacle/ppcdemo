@@ -18,10 +18,17 @@
 import React, { useMemo, useState, useEffect, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
-import ResourceLevelingChart from '@/components/charts/ResourceLevelingChart';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
+import {
+  runResourceLeveling,
+  deriveLevelingInputs,
+  DEFAULT_LEVELING_PARAMS,
+  LEVELING_PARAM_LABELS,
+  type LevelingParams,
+  type LevelingResult,
+} from '@/lib/resource-leveling-engine';
 
 // FTE Constants
 const HOURS_PER_DAY = 8;
@@ -135,6 +142,11 @@ function ResourcingPageContent() {
   const [expandedResourceType, setExpandedResourceType] = useState<string | null>(null);
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
   const [hasMounted, setHasMounted] = useState(false);
+  
+  // Resource Leveling state
+  const [levelingParams, setLevelingParams] = useState<LevelingParams>(DEFAULT_LEVELING_PARAMS);
+  const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
+  const [isLevelingRunning, setIsLevelingRunning] = useState(false);
 
   useEffect(() => {
     setHasMounted(true);
@@ -888,6 +900,43 @@ function ResourcingPageContent() {
     }
   }, [ganttItems]);
 
+  // Run resource leveling
+  const runLeveling = useCallback(() => {
+    setIsLevelingRunning(true);
+    
+    // Use setTimeout to allow UI to update
+    setTimeout(() => {
+      try {
+        const inputs = deriveLevelingInputs(data, levelingParams);
+        const result = runResourceLeveling(
+          inputs.tasks,
+          inputs.resources,
+          inputs.project,
+          levelingParams,
+          inputs.warnings
+        );
+        setLevelingResult(result);
+      } catch (error) {
+        console.error('Leveling error:', error);
+      } finally {
+        setIsLevelingRunning(false);
+      }
+    }, 100);
+  }, [data, levelingParams]);
+
+  // Auto-run leveling when tab is opened and data is available
+  useEffect(() => {
+    if (activeSection === 'leveling' && !levelingResult && data.tasks?.length > 0) {
+      runLeveling();
+    }
+  }, [activeSection, levelingResult, data.tasks?.length, runLeveling]);
+
+  // Update a single leveling parameter
+  const updateLevelingParam = useCallback((key: keyof LevelingParams, value: number | boolean) => {
+    setLevelingParams(prev => ({ ...prev, [key]: value }));
+    setLevelingResult(null); // Clear result so user can re-run
+  }, []);
+
   // Navigation tabs
   const sections: { id: ActiveSection; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg> },
@@ -1291,52 +1340,410 @@ function ResourcingPageContent() {
           </div>
         )}
 
-        {/* Leveling Section */}
+        {/* Leveling Section - Comprehensive Resource Leveling */}
         {activeSection === 'leveling' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div className="chart-card">
-              <div className="chart-card-header">
-                <h3 className="chart-card-title">Project Resource Leveling</h3>
-              </div>
-              <div className="chart-card-body" style={{ padding: '1rem' }}>
-                {data.resourceLeveling?.quarterly && data.resourceLeveling.quarterly.length > 0 ? (
-                  <div style={{ marginBottom: '2rem' }}>
-                    <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '1rem', color: 'var(--text-primary)' }}>Quarterly Summary</h4>
-                    <table className="data-table" style={{ width: '100%', marginBottom: '1rem' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left' }}>Metric</th>
-                          {data.resourceLeveling.quarterly.map((q: any, idx: number) => (<th key={idx} style={{ textAlign: 'right' }}>{q.quarterLabel}</th>))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>Total Project Hours</td>
-                          {data.resourceLeveling.quarterly.map((q: any, idx: number) => (<td key={idx} style={{ textAlign: 'right' }}>{q.totalProjectHours.toLocaleString()}</td>))}
-                        </tr>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>Projected FTE</td>
-                          {data.resourceLeveling.quarterly.map((q: any, idx: number) => (<td key={idx} style={{ textAlign: 'right' }}>{q.projectedFTEUtilization.toFixed(2)}</td>))}
-                        </tr>
-                        <tr>
-                          <td style={{ fontWeight: 600 }}>Variance %</td>
-                          {data.resourceLeveling.quarterly.map((q: any, idx: number) => {
-                            const color = q.variancePercent < -10 ? '#F59E0B' : q.variancePercent > 10 ? '#E91E63' : '#10B981';
-                            return (<td key={idx} style={{ textAlign: 'right', color, fontWeight: 600 }}>{q.variancePercent > 0 ? '+' : ''}{q.variancePercent.toFixed(0)}%</td>);
-                          })}
-                        </tr>
-                      </tbody>
-                    </table>
+            
+            {/* What is Resource Leveling - Explanation */}
+            <div className="chart-card" style={{ background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(59,130,246,0.05) 100%)' }}>
+              <div className="chart-card-body" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'linear-gradient(135deg, #3B82F6, #40E0D0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" strokeWidth="2">
+                      <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+                    </svg>
                   </div>
-                ) : (
-                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No quarterly leveling data available</div>
-                )}
-                <div>
-                  <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '1rem', color: 'var(--text-primary)' }}>Monthly View</h4>
-                  <ResourceLevelingChart data={data.resourceLeveling || { monthly: [], quarterly: [] }} height="400px" />
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>What is Resource Leveling?</h3>
+                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                      Resource leveling optimizes your project schedule by distributing work evenly across available resources.
+                      It resolves conflicts when resources are over-allocated and ensures tasks are scheduled based on priority and dependencies.
+                    </p>
+                    <div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10B981' }} />
+                        <span>Balances workload</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#3B82F6' }} />
+                        <span>Respects dependencies</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#F59E0B' }} />
+                        <span>Optimizes by priority</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Configuration Panel */}
+            <div className="chart-card">
+              <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3" /><path d="M12 1v6m0 6v10" /><path d="M21 12h-6m-6 0H1" />
+                  </svg>
+                  Leveling Configuration
+                </h3>
+                <button
+                  onClick={runLeveling}
+                  disabled={isLevelingRunning || !data.tasks?.length}
+                  style={{
+                    padding: '0.6rem 1.25rem',
+                    border: 'none',
+                    borderRadius: '8px',
+                    background: isLevelingRunning ? 'var(--bg-tertiary)' : 'var(--pinnacle-teal)',
+                    color: isLevelingRunning ? 'var(--text-muted)' : '#000',
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    cursor: isLevelingRunning ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
+                  {isLevelingRunning ? (
+                    <>
+                      <div style={{ width: 14, height: 14, border: '2px solid var(--text-muted)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                      Run Leveling
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="chart-card-body" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+                  
+                  {/* Workday Hours */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                      {LEVELING_PARAM_LABELS.workdayHours.label}
+                    </label>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                      {LEVELING_PARAM_LABELS.workdayHours.description}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input
+                        type="range"
+                        min={LEVELING_PARAM_LABELS.workdayHours.min}
+                        max={LEVELING_PARAM_LABELS.workdayHours.max}
+                        step={LEVELING_PARAM_LABELS.workdayHours.step}
+                        value={levelingParams.workdayHours}
+                        onChange={(e) => updateLevelingParam('workdayHours', Number(e.target.value))}
+                        style={{ flex: 1, accentColor: 'var(--pinnacle-teal)' }}
+                      />
+                      <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
+                        {levelingParams.workdayHours} hrs
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Buffer Days */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                      {LEVELING_PARAM_LABELS.bufferDays.label}
+                    </label>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                      {LEVELING_PARAM_LABELS.bufferDays.description}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input
+                        type="range"
+                        min={LEVELING_PARAM_LABELS.bufferDays.min}
+                        max={LEVELING_PARAM_LABELS.bufferDays.max}
+                        step={LEVELING_PARAM_LABELS.bufferDays.step}
+                        value={levelingParams.bufferDays}
+                        onChange={(e) => updateLevelingParam('bufferDays', Number(e.target.value))}
+                        style={{ flex: 1, accentColor: 'var(--pinnacle-teal)' }}
+                      />
+                      <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
+                        {levelingParams.bufferDays} days
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Max Schedule Days */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                      {LEVELING_PARAM_LABELS.maxScheduleDays.label}
+                    </label>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                      {LEVELING_PARAM_LABELS.maxScheduleDays.description}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input
+                        type="range"
+                        min={LEVELING_PARAM_LABELS.maxScheduleDays.min}
+                        max={LEVELING_PARAM_LABELS.maxScheduleDays.max}
+                        step={LEVELING_PARAM_LABELS.maxScheduleDays.step}
+                        value={levelingParams.maxScheduleDays}
+                        onChange={(e) => updateLevelingParam('maxScheduleDays', Number(e.target.value))}
+                        style={{ flex: 1, accentColor: 'var(--pinnacle-teal)' }}
+                      />
+                      <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
+                        {levelingParams.maxScheduleDays} days
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Toggle Options */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
+                      Options
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={levelingParams.preferSingleResource}
+                          onChange={(e) => updateLevelingParam('preferSingleResource', e.target.checked)}
+                          style={{ width: 18, height: 18, accentColor: 'var(--pinnacle-teal)' }}
+                        />
+                        <span style={{ fontSize: '0.85rem' }}>Prefer single resource per task</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={levelingParams.allowSplits}
+                          onChange={(e) => updateLevelingParam('allowSplits', e.target.checked)}
+                          style={{ width: 18, height: 18, accentColor: 'var(--pinnacle-teal)' }}
+                        />
+                        <span style={{ fontSize: '0.85rem' }}>Allow task splitting across resources</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={levelingParams.workdaysOnly}
+                          onChange={(e) => updateLevelingParam('workdaysOnly', e.target.checked)}
+                          style={{ width: 18, height: 18, accentColor: 'var(--pinnacle-teal)' }}
+                        />
+                        <span style={{ fontSize: '0.85rem' }}>Workdays only (exclude weekends)</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Results Section */}
+            {levelingResult && (
+              <>
+                {/* Summary Metrics */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+                  <div className="metric-card accent-teal" style={{ padding: '1rem' }}>
+                    <div className="metric-label" style={{ fontSize: '0.7rem' }}>Scheduled Tasks</div>
+                    <div className="metric-value" style={{ fontSize: '1.5rem' }}>
+                      {levelingResult.summary.scheduledTasks} / {levelingResult.summary.totalTasks}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: levelingResult.summary.scheduledTasks === levelingResult.summary.totalTasks ? '#10B981' : '#F59E0B' }}>
+                      {levelingResult.summary.scheduledTasks === levelingResult.summary.totalTasks ? 'All tasks scheduled' : `${levelingResult.summary.totalTasks - levelingResult.summary.scheduledTasks} unscheduled`}
+                    </div>
+                  </div>
+                  
+                  <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <div className="metric-label" style={{ fontSize: '0.7rem' }}>Total Hours</div>
+                    <div className="metric-value" style={{ fontSize: '1.5rem' }}>{formatNumber(levelingResult.summary.totalHours)}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Project work effort</div>
+                  </div>
+                  
+                  <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <div className="metric-label" style={{ fontSize: '0.7rem' }}>Avg Utilization</div>
+                    <div className="metric-value" style={{ fontSize: '1.5rem', color: levelingResult.summary.averageUtilization > 80 ? '#10B981' : levelingResult.summary.averageUtilization > 50 ? '#F59E0B' : '#E91E63' }}>
+                      {levelingResult.summary.averageUtilization.toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Across all resources</div>
+                  </div>
+                  
+                  <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <div className="metric-label" style={{ fontSize: '0.7rem' }}>Peak Utilization</div>
+                    <div className="metric-value" style={{ fontSize: '1.5rem', color: levelingResult.summary.peakUtilization > 100 ? '#E91E63' : '#10B981' }}>
+                      {levelingResult.summary.peakUtilization.toFixed(0)}%
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Maximum daily load</div>
+                  </div>
+                  
+                  <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <div className="metric-label" style={{ fontSize: '0.7rem' }}>Max Delay</div>
+                    <div className="metric-value" style={{ fontSize: '1.5rem', color: levelingResult.summary.maxDelayDays > 0 ? '#F59E0B' : '#10B981' }}>
+                      {levelingResult.summary.maxDelayDays} days
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Longest task delay</div>
+                  </div>
+                  
+                  <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+                    <div className="metric-label" style={{ fontSize: '0.7rem' }}>Schedule Window</div>
+                    <div className="metric-value" style={{ fontSize: '0.9rem' }}>
+                      {levelingResult.projectWindow.startDate}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>to {levelingResult.projectWindow.endDate}</div>
+                  </div>
+                </div>
+
+                {/* Warnings & Errors */}
+                {(levelingResult.warnings.length > 0 || levelingResult.errors.length > 0) && (
+                  <div className="chart-card" style={{ borderLeft: '4px solid #F59E0B' }}>
+                    <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <h3 className="chart-card-title" style={{ color: '#F59E0B' }}>
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '8px' }}>
+                          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                          <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        Warnings & Issues ({levelingResult.warnings.length + levelingResult.errors.length})
+                      </h3>
+                    </div>
+                    <div className="chart-card-body" style={{ padding: '1rem', maxHeight: '200px', overflow: 'auto' }}>
+                      {levelingResult.errors.map((err, idx) => (
+                        <div key={`err-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'rgba(239,68,68,0.1)', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                          <span style={{ color: '#ef4444', fontWeight: 600 }}>Error:</span>
+                          <span style={{ fontSize: '0.85rem' }}>{err.name} - {err.message}</span>
+                        </div>
+                      ))}
+                      {levelingResult.warnings.map((warn, idx) => (
+                        <div key={`warn-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'rgba(245,158,11,0.1)', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                          <span style={{ color: '#F59E0B', fontWeight: 600 }}>Warning:</span>
+                          <span style={{ fontSize: '0.85rem' }}>{warn}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resource Utilization */}
+                {levelingResult.resourceUtilization.length > 0 && (
+                  <div className="chart-card">
+                    <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <h3 className="chart-card-title">Resource Utilization</h3>
+                    </div>
+                    <div className="chart-card-body" style={{ padding: '1rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
+                        {levelingResult.resourceUtilization.map((res) => (
+                          <div key={res.resourceId} style={{ padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{res.name}</span>
+                              <span style={{ fontWeight: 700, fontSize: '1rem', color: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63' }}>
+                                {res.utilizationPct.toFixed(0)}%
+                              </span>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${Math.min(100, res.utilizationPct)}%`,
+                                height: '100%',
+                                background: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63',
+                                borderRadius: '4px',
+                                transition: 'width 0.3s ease'
+                              }} />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              <span>{formatNumber(res.totalAssigned)} hrs assigned</span>
+                              <span>{formatNumber(res.totalAvailable)} hrs available</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Delayed Tasks */}
+                {levelingResult.delayedTasks.length > 0 && (
+                  <div className="chart-card">
+                    <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <h3 className="chart-card-title" style={{ color: '#F59E0B' }}>
+                        Delayed Tasks ({levelingResult.delayedTasks.length})
+                      </h3>
+                    </div>
+                    <div className="chart-card-body" style={{ padding: 0 }}>
+                      <div style={{ overflow: 'auto', maxHeight: '300px' }}>
+                        <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: 'left' }}>Task</th>
+                              <th style={{ textAlign: 'right' }}>Delay</th>
+                              <th style={{ textAlign: 'right' }}>Hours</th>
+                              <th style={{ textAlign: 'left' }}>Scheduled</th>
+                              <th style={{ textAlign: 'left' }}>Assigned To</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {levelingResult.delayedTasks.map((task) => (
+                              <tr key={task.taskId}>
+                                <td style={{ fontWeight: 500 }}>{task.name}</td>
+                                <td style={{ textAlign: 'right', color: '#F59E0B', fontWeight: 600 }}>{task.delayDays} days</td>
+                                <td style={{ textAlign: 'right' }}>{formatNumber(task.totalHours)}</td>
+                                <td style={{ fontSize: '0.8rem' }}>{task.startDate} → {task.endDate}</td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{task.assignedResources.join(', ') || 'Unassigned'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Scheduled Tasks Summary */}
+                <div className="chart-card">
+                  <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <h3 className="chart-card-title">Scheduled Tasks ({Object.keys(levelingResult.schedules).length})</h3>
+                  </div>
+                  <div className="chart-card-body" style={{ padding: 0 }}>
+                    <div style={{ overflow: 'auto', maxHeight: '400px' }}>
+                      <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left' }}>Task</th>
+                            <th style={{ textAlign: 'left' }}>Start</th>
+                            <th style={{ textAlign: 'left' }}>End</th>
+                            <th style={{ textAlign: 'right' }}>Hours</th>
+                            <th style={{ textAlign: 'left' }}>Assigned To</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.values(levelingResult.schedules)
+                            .sort((a, b) => a.startDate.localeCompare(b.startDate))
+                            .map((schedule) => (
+                              <tr key={schedule.taskId}>
+                                <td style={{ fontWeight: 500 }}>{schedule.name}</td>
+                                <td>{schedule.startDate}</td>
+                                <td>{schedule.endDate}</td>
+                                <td style={{ textAlign: 'right' }}>{formatNumber(schedule.totalHours)}</td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                  {schedule.assignedResources.join(', ') || 'Unassigned'}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* No Data State */}
+            {!levelingResult && !isLevelingRunning && (
+              <div className="chart-card">
+                <div className="chart-card-body" style={{ padding: '3rem', textAlign: 'center' }}>
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.5 }}>
+                    <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+                  </svg>
+                  <p style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                    {data.tasks?.length ? 'Click "Run Leveling" to optimize your schedule' : 'No task data available'}
+                  </p>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {data.tasks?.length 
+                      ? 'Adjust the configuration options above, then run the leveling algorithm to see results.'
+                      : 'Upload an MPP file with tasks to use resource leveling.'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
