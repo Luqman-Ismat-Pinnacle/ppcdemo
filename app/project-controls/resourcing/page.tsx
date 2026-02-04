@@ -331,7 +331,7 @@ function ResourcingPageContent() {
     return { roles, weeks, matrix };
   }, [resourceRequirements]);
 
-  // Build ECharts heatmap option
+  // Build ECharts heatmap option with scroll/zoom
   const heatmapOption = useMemo((): EChartsOption => {
     const { roles, weeks, matrix } = heatmapChartData;
     
@@ -347,11 +347,18 @@ function ResourcingPageContent() {
       });
     });
 
+    // Calculate default zoom ranges based on data size
+    const maxVisibleWeeks = 12;
+    const maxVisibleRoles = 10;
+    const xZoomEnd = weeks.length > maxVisibleWeeks ? Math.round((maxVisibleWeeks / weeks.length) * 100) : 100;
+    const yZoomEnd = roles.length > maxVisibleRoles ? Math.round((maxVisibleRoles / roles.length) * 100) : 100;
+
     return {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'item',
         position: 'top',
+        confine: true,
         formatter: (params: any) => {
           if (!params?.data) return '';
           const [xIdx, yIdx, value] = params.data;
@@ -384,37 +391,88 @@ function ResourcingPageContent() {
         borderColor: 'rgba(64,224,208,0.3)',
         borderWidth: 1,
         textStyle: { color: '#fff' },
+        extraCssText: 'box-shadow:0 4px 12px rgba(0,0,0,0.4);border-radius:8px;'
       },
       grid: {
-        left: 160,
+        left: 180,
         right: 80,
         top: 30,
-        bottom: 80,
+        bottom: 60,
         containLabel: false
       },
+      // Horizontal and vertical scroll/zoom controls
+      dataZoom: [
+        // Horizontal slider at bottom
+        {
+          type: 'slider',
+          xAxisIndex: 0,
+          bottom: 8,
+          height: 20,
+          start: 0,
+          end: xZoomEnd,
+          fillerColor: 'rgba(64,224,208,0.2)',
+          borderColor: 'rgba(64,224,208,0.3)',
+          handleStyle: { color: '#40E0D0', borderColor: '#40E0D0' },
+          textStyle: { color: '#9ca3af', fontSize: 10 },
+          dataBackground: {
+            lineStyle: { color: 'rgba(64,224,208,0.3)' },
+            areaStyle: { color: 'rgba(64,224,208,0.1)' }
+          }
+        },
+        // Vertical slider on left
+        {
+          type: 'slider',
+          yAxisIndex: 0,
+          left: 8,
+          width: 20,
+          start: 0,
+          end: yZoomEnd,
+          fillerColor: 'rgba(64,224,208,0.2)',
+          borderColor: 'rgba(64,224,208,0.3)',
+          handleStyle: { color: '#40E0D0', borderColor: '#40E0D0' },
+          showDetail: false
+        },
+        // Inside zoom for mouse wheel/drag
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          zoomOnMouseWheel: 'shift',
+          moveOnMouseMove: true,
+          moveOnMouseWheel: true
+        },
+        {
+          type: 'inside',
+          yAxisIndex: 0,
+          zoomOnMouseWheel: 'ctrl',
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false
+        }
+      ],
       xAxis: {
         type: 'category',
         data: weeks,
-        splitArea: { show: true },
+        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.05)'] } },
         axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
         axisLabel: {
-          color: 'rgba(255,255,255,0.7)',
+          color: '#9ca3af',
           fontSize: 10,
           rotate: 45,
           interval: 0,
         },
+        axisTick: { show: false }
       },
       yAxis: {
         type: 'category',
         data: roles,
-        splitArea: { show: true },
+        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.05)'] } },
         axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
         axisLabel: {
-          color: 'rgba(255,255,255,0.85)',
-          fontSize: 11,
-          width: 140,
+          color: '#9ca3af',
+          fontSize: 10,
+          width: 150,
           overflow: 'truncate',
         },
+        axisTick: { show: false }
       },
       visualMap: {
         min: 0,
@@ -423,12 +481,13 @@ function ResourcingPageContent() {
         orient: 'vertical',
         right: 10,
         top: 'center',
-        itemHeight: 140,
+        itemHeight: 120,
+        itemWidth: 12,
         inRange: {
           color: ['#1a1a1a', '#1A9B8F', '#40E0D0', '#CDDC39', '#FF9800', '#E91E63']
         },
-        textStyle: { color: 'rgba(255,255,255,0.7)', fontSize: 10 },
-        formatter: (value: number) => `${value}%`,
+        textStyle: { color: '#9ca3af', fontSize: 10 },
+        formatter: (value: number) => `${Math.round(value)}%`,
       },
       series: [{
         name: 'Utilization',
@@ -440,17 +499,19 @@ function ResourcingPageContent() {
           fontSize: 9,
           fontWeight: 600,
           color: '#fff',
+          textShadowColor: 'rgba(0,0,0,0.7)',
+          textShadowBlur: 3
         },
         itemStyle: {
-          borderColor: 'rgba(10,10,10,0.9)',
+          borderColor: 'rgba(10,10,10,0.95)',
           borderWidth: 2,
-          borderRadius: 4,
+          borderRadius: 3,
         },
         emphasis: {
           itemStyle: {
             borderColor: '#40E0D0',
             borderWidth: 2,
-            shadowBlur: 10,
+            shadowBlur: 12,
             shadowColor: 'rgba(64,224,208,0.5)',
           }
         }
@@ -511,7 +572,7 @@ function ResourcingPageContent() {
     return items;
   }, [resourceRequirements, expandedRoles]);
 
-  // Build ECharts Gantt option (based on EChartsGantt.tsx)
+  // Build ECharts Gantt option (EXACTLY like WBS Gantt - EChartsGantt.tsx)
   const ganttOption = useMemo((): EChartsOption => {
     if (ganttItems.length === 0) {
       return { series: [] };
@@ -529,52 +590,59 @@ function ResourcingPageContent() {
 
     const minTime = Math.min(...allDates);
     const maxTime = Math.max(...allDates);
-    const padding = Math.max((maxTime - minTime) * 0.05, 7 * 24 * 60 * 60 * 1000);
     const today = new Date().getTime();
 
     const categories = ganttItems.map(item => item.id);
 
-    // Prepare series data
+    // Prepare series data - matching WBS Gantt format exactly
     const seriesData = ganttItems.map((item, index) => {
       const utilization = item.baselineHours > 0 
         ? Math.round((item.actualHours / item.baselineHours) * 100)
         : 0;
       
-      let color = '#4A90E2';
-      if (utilization > 100) color = '#FF9800';
-      else if (utilization >= 80) color = '#CDDC39';
-      else if (utilization >= 50) color = '#40E0D0';
-      else color = '#1A9B8F';
+      // Color logic matching WBS Gantt
+      let color: string;
+      if (utilization >= 100) color = '#40E0D0';      // Teal - on track or complete
+      else if (utilization >= 90) color = '#CDDC39';  // Lime - nearly there
+      else if (utilization >= 80) color = '#FF9800';  // Orange - needs attention
+      else if (utilization > 0) color = '#E91E63';    // Pink - behind
+      else {
+        // Default colors by type
+        color = item.type === 'role' ? '#40E0D0' : '#4A90E2';
+      }
 
       return {
         name: item.name,
         value: [
-          index,
-          item.startDate?.getTime() || minTime,
-          item.endDate?.getTime() || maxTime,
-          item.percentComplete,
-          item.type,
-          color,
-          item.baselineHours,
-          item.actualHours,
-          utilization,
+          index,                                    // 0: category index
+          item.startDate?.getTime() || minTime,    // 1: start time
+          item.endDate?.getTime() || maxTime,      // 2: end time
+          item.percentComplete,                     // 3: progress
+          item.type,                               // 4: item type
+          color,                                   // 5: color
+          item.type === 'role',                    // 6: is role (like isCritical)
+          item.id,                                 // 7: id
+          `${item.baselineHours.toFixed(0)} hrs`,  // 8: resource text (hours)
+          false                                    // 9: is milestone
         ],
-        itemStyle: { color },
+        itemStyle: { normal: { color } }
       };
     });
 
-    // Custom render function for Gantt bars
+    // Custom render function - EXACTLY matching WBS Gantt renderItem
     const renderItem = (params: any, api: any): any => {
       const categoryIndex = api.value(0);
       const start = api.coord([api.value(1), categoryIndex]);
       const end = api.coord([api.value(2), categoryIndex]);
       const progress = api.value(3);
-      const itemType = api.value(4);
       const color = api.value(5);
+      const isRole = api.value(6);
+      const resourceText = api.value(8);
 
-      const h = itemType === 'role' ? 22 : 16;
-      const barWidth = Math.max(end[0] - start[0], 4);
+      const h = 20; // Task bar height - same as WBS Gantt
+      const barWidth = Math.max(end[0] - start[0], 2);
 
+      // Base bar shape
       const rectShape = echarts.graphic.clipRectByRect(
         { x: start[0], y: start[1] - h / 2, width: barWidth, height: h },
         { x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height }
@@ -584,25 +652,26 @@ function ResourcingPageContent() {
 
       const children: any[] = [];
 
-      // Background bar
+      // 1. Draw the background bar (planned duration) - matching WBS Gantt
       children.push({
         type: 'rect',
         shape: rectShape,
         style: {
           fill: color,
-          opacity: 0.25,
-          stroke: 'rgba(255,255,255,0.15)',
-          lineWidth: 1,
+          opacity: 0.2,
+          stroke: isRole ? '#40E0D0' : 'rgba(255,255,255,0.1)',
+          lineWidth: isRole ? 2 : 1
         }
       });
 
-      // Progress fill
+      // 2. Draw the progress bar (actual completion) - matching WBS Gantt
       if (progress > 0) {
         const progressWidth = barWidth * (progress / 100);
         const progressRect = echarts.graphic.clipRectByRect(
           { x: start[0], y: start[1] - h / 2, width: progressWidth, height: h },
           { x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height }
         );
+
         if (progressRect) {
           children.push({
             type: 'rect',
@@ -612,94 +681,73 @@ function ResourcingPageContent() {
         }
       }
 
-      // Utilization text
-      if (barWidth > 50) {
-        const utilization = api.value(8);
+      // 3. Draw Resource Text next to bar - matching WBS Gantt
+      if (resourceText && barWidth > 10) {
         children.push({
           type: 'text',
           style: {
-            text: `${utilization}%`,
-            x: start[0] + 8,
+            text: resourceText,
+            x: start[0] + barWidth + 10, // Offset from the bar
             y: start[1],
-            fill: '#fff',
+            fill: '#6b7280', // Text color matching WBS Gantt
             fontSize: 10,
-            fontWeight: 600,
             align: 'left',
-            verticalAlign: 'middle',
-            textShadowColor: 'rgba(0,0,0,0.5)',
-            textShadowBlur: 2,
-          }
+            verticalAlign: 'middle'
+          },
+          silent: true
         });
       }
 
-      return { type: 'group', children };
+      return {
+        type: 'group',
+        children
+      };
+    };
+
+    // Tooltip formatter matching WBS Gantt style
+    const tooltipFormatter = (params: any) => {
+      const index = params.value[0];
+      const item = ganttItems[index];
+      if (!item) return '';
+
+      const utilization = item.baselineHours > 0 
+        ? Math.round((item.actualHours / item.baselineHours) * 100)
+        : 0;
+      const startStr = item.startDate ? item.startDate.toISOString().split('T')[0] : 'N/A';
+      const endStr = item.endDate ? item.endDate.toISOString().split('T')[0] : 'N/A';
+      const isRole = item.type === 'role';
+
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <span style="font-weight:bold;font-size:14px">${item.name}</span>
+                ${isRole ? '<span style="background:#40E0D0;color:black;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:bold">ROLE</span>' : ''}
+              </div>
+              <div style="font-size:12px;color:rgba(255,255,255,0.7)">
+                <div>Period: <span style="color:white">${startStr}</span> to <span style="color:white">${endStr}</span></div>
+                <div style="margin-top:2px">Progress: <span style="color:white;font-weight:600">${item.percentComplete}%</span></div>
+                <div style="margin-top:2px">Baseline: <span style="color:white">${item.baselineHours.toFixed(0)} hrs</span></div>
+                <div style="margin-top:2px">Actual: <span style="color:white">${item.actualHours.toFixed(0)} hrs</span></div>
+                ${utilization > 0 ? `<div style="margin-top:2px">Utilization: <span style="color:white;font-weight:600">${utilization}%</span></div>` : ''}
+              </div>`;
     };
 
     return {
-      backgroundColor: 'transparent',
       tooltip: {
         trigger: 'item',
-        formatter: (params: any) => {
-          const index = params.value[0];
-          const item = ganttItems[index];
-          if (!item) return '';
-
-          const utilization = item.baselineHours > 0 
-            ? Math.round((item.actualHours / item.baselineHours) * 100)
-            : 0;
-          const icon = item.type === 'role' ? '👥' : '📋';
-          const startStr = item.startDate ? formatDate(item.startDate) : 'N/A';
-          const endStr = item.endDate ? formatDate(item.endDate) : 'N/A';
-
-          return `
-            <div style="padding:8px 12px;min-width:200px;">
-              <div style="font-weight:600;color:#40E0D0;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                <span>${icon}</span>
-                <span>${item.name}</span>
-              </div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:8px;">
-                ${startStr} → ${endStr}
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <div>
-                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Progress</div>
-                  <div style="font-weight:600;">${item.percentComplete}%</div>
-                </div>
-                <div>
-                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Utilization</div>
-                  <div style="font-weight:600;">${utilization}%</div>
-                </div>
-                <div>
-                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Baseline</div>
-                  <div style="font-weight:600;">${item.baselineHours.toFixed(0)} hrs</div>
-                </div>
-                <div>
-                  <div style="font-size:10px;color:rgba(255,255,255,0.5);">Actual</div>
-                  <div style="font-weight:600;">${item.actualHours.toFixed(0)} hrs</div>
-                </div>
-              </div>
-            </div>
-          `;
-        },
-        backgroundColor: 'rgba(20,20,20,0.96)',
-        borderColor: 'rgba(64,224,208,0.3)',
-        borderWidth: 1,
-        textStyle: { color: '#fff' },
+        formatter: tooltipFormatter
       },
-      grid: {
-        left: 200,
-        right: 30,
-        top: 40,
-        bottom: 40,
-        containLabel: false,
+      // Grid matching WBS Gantt exactly
+      grid: { 
+        left: 220, 
+        right: 150, 
+        top: 40, 
+        bottom: 20, 
+        containLabel: true 
       },
       xAxis: {
         type: 'time',
         position: 'top',
-        min: minTime - padding,
-        max: maxTime + padding,
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)', type: 'dashed' } },
-        axisLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10 },
+        axisLabel: { color: '#9ca3af', fontSize: 10 }
       },
       yAxis: {
         type: 'category',
@@ -708,60 +756,24 @@ function ResourcingPageContent() {
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: {
-          color: 'rgba(255,255,255,0.85)',
-          fontSize: 11,
+          color: '#9ca3af',
+          fontSize: 10,
           formatter: (id: string) => {
             const item = ganttItems.find(i => i.id === id);
             if (!item) return '';
-            const indent = item.level > 0 ? '    ' : '';
-            const icon = item.type === 'role' ? '▶ ' : '  ';
-            const name = item.name.length > 22 ? item.name.slice(0, 22) + '...' : item.name;
-            return `${indent}${icon}${name}`;
-          },
-        },
-      },
-      dataZoom: [
-        {
-          type: 'slider',
-          xAxisIndex: 0,
-          bottom: 10,
-          height: 20,
-          fillerColor: 'rgba(64,224,208,0.2)',
-          borderColor: 'rgba(64,224,208,0.3)',
-        },
-        {
-          type: 'inside',
-          xAxisIndex: 0,
-          zoomOnMouseWheel: 'ctrl',
+            // Indentation matching WBS Gantt style
+            return `${' '.repeat(item.level * 2)}${item.name}`;
+          }
         }
-      ],
+      },
       series: [
         {
-          name: 'Resource Gantt',
+          name: 'Gantt',
           type: 'custom',
-          renderItem,
+          renderItem: renderItem,
           encode: { x: [1, 2], y: 0 },
           data: seriesData,
-          clip: true,
-        },
-        // Today line
-        {
-          type: 'line',
-          markLine: {
-            silent: true,
-            symbol: ['none', 'none'],
-            data: [{
-              xAxis: today,
-              lineStyle: { color: '#ef4444', width: 2, type: 'solid' },
-              label: {
-                formatter: 'Today',
-                position: 'start',
-                color: '#ef4444',
-                fontSize: 10,
-                fontWeight: 'bold',
-              }
-            }]
-          }
+          clip: true
         }
       ]
     };
