@@ -221,56 +221,56 @@ export default function OverviewPage() {
     };
   }, [data.snapshots]);
 
-  // Calculate Top and Worst Performers based on hours variance
+  // Calculate Top and Worst Performing Projects based on hours variance
   const performersData = useMemo(() => {
     const tasks = data.tasks || [];
-    const employees = data.employees || [];
+    const projects = data.projects || [];
     
-    // Build employee ID to name map
-    const employeeMap = new Map<string, string>();
-    employees.forEach((emp: any) => {
-      const id = emp.employeeId || emp.id;
-      const name = emp.name || emp.fullName || id;
-      if (id) employeeMap.set(id, name);
+    // Build project ID to name map
+    const projectMap = new Map<string, string>();
+    projects.forEach((proj: any) => {
+      const id = proj.id || proj.projectId;
+      const name = proj.name || proj.projectName || id;
+      if (id) projectMap.set(id, name);
     });
 
-    // Aggregate hours by employee/resource
-    const resourceStats = new Map<string, { 
+    // Aggregate hours by project
+    const projectStats = new Map<string, { 
       name: string; 
       baselineHours: number; 
       actualHours: number; 
       taskCount: number;
-      projects: Set<string>;
+      resourceCount: Set<string>;
     }>();
 
     tasks.forEach((task: any) => {
-      const resourceId = task.employeeId || task.assignedResourceId || task.assignedResource || 'Unassigned';
-      const resourceName = employeeMap.get(resourceId) || resourceId;
+      const projectId = task.projectId || task.project_id || 'Unknown';
+      const projectName = projectMap.get(projectId) || task.projectName || task.project_name || projectId;
       const baselineHours = task.baselineHours || task.baseline_hours || task.budgetHours || 0;
       const actualHours = task.actualHours || task.actual_hours || 0;
-      const projectName = task.projectName || task.project_name || 'Unknown';
+      const resourceId = task.employeeId || task.assignedResourceId || task.assignedResource || '';
 
       if (baselineHours > 0 || actualHours > 0) {
-        if (!resourceStats.has(resourceId)) {
-          resourceStats.set(resourceId, { 
-            name: resourceName, 
+        if (!projectStats.has(projectId)) {
+          projectStats.set(projectId, { 
+            name: projectName, 
             baselineHours: 0, 
             actualHours: 0, 
             taskCount: 0,
-            projects: new Set()
+            resourceCount: new Set()
           });
         }
-        const stats = resourceStats.get(resourceId)!;
+        const stats = projectStats.get(projectId)!;
         stats.baselineHours += baselineHours;
         stats.actualHours += actualHours;
         stats.taskCount += 1;
-        if (projectName) stats.projects.add(projectName);
+        if (resourceId) stats.resourceCount.add(resourceId);
       }
     });
 
     // Convert to array and calculate variance
-    const performers = Array.from(resourceStats.entries())
-      .filter(([_, stats]) => stats.baselineHours > 0) // Only include resources with baseline hours
+    const performers = Array.from(projectStats.entries())
+      .filter(([_, stats]) => stats.baselineHours > 0) // Only include projects with baseline hours
       .map(([id, stats]) => {
         const variance = stats.baselineHours > 0 
           ? ((stats.actualHours - stats.baselineHours) / stats.baselineHours) * 100 
@@ -286,10 +286,10 @@ export default function OverviewPage() {
           variance: Math.round(variance * 10) / 10,
           efficiency: Math.round(efficiency * 10) / 10,
           taskCount: stats.taskCount,
-          projectCount: stats.projects.size,
+          resourceCount: stats.resourceCount.size,
         };
       })
-      .filter(p => p.name !== 'Unassigned' && p.taskCount > 0);
+      .filter(p => p.name !== 'Unknown' && p.taskCount > 0);
 
     // Sort: Top performers have lowest variance (under budget), Worst have highest variance (over budget)
     const sortedByVariance = [...performers].sort((a, b) => a.variance - b.variance);
@@ -297,8 +297,8 @@ export default function OverviewPage() {
     const topPerformers = sortedByVariance.slice(0, 5); // Best 5 (lowest/most negative variance)
     const worstPerformers = sortedByVariance.slice(-5).reverse(); // Worst 5 (highest variance)
 
-    return { topPerformers, worstPerformers, totalResources: performers.length };
-  }, [data.tasks, data.employees]);
+    return { topPerformers, worstPerformers, totalProjects: performers.length };
+  }, [data.tasks, data.projects]);
 
   const filteredCountMetrics = useMemo(() => {
     let list = data.countMetricsAnalysis || [];
@@ -505,8 +505,8 @@ export default function OverviewPage() {
         />
       </div>
 
-      {/* Top & Worst Performers - Prominent first-view section */}
-      {performersData.totalResources > 0 && (
+      {/* Top & Worst Performing Projects - Prominent first-view section */}
+      {performersData.totalProjects > 0 && (
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(2, 1fr)', 
@@ -531,7 +531,7 @@ export default function OverviewPage() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="chart-card-title" style={{ margin: 0, color: '#10B981' }}>Top Performers</h3>
+                  <h3 className="chart-card-title" style={{ margin: 0, color: '#10B981' }}>Top Performing Projects</h3>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Under budget on hours</span>
                 </div>
               </div>
@@ -573,7 +573,7 @@ export default function OverviewPage() {
                           {performer.name}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {performer.taskCount} tasks · {performer.projectCount} project{performer.projectCount !== 1 ? 's' : ''}
+                          {performer.taskCount} tasks · {performer.resourceCount} resource{performer.resourceCount !== 1 ? 's' : ''}
                         </div>
                       </div>
                       
@@ -595,13 +595,13 @@ export default function OverviewPage() {
                 </div>
               ) : (
                 <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No performer data available
+                  No project data available
                 </div>
               )}
             </div>
           </div>
 
-          {/* Worst Performers */}
+          {/* Projects Needing Attention */}
           <div className="chart-card" style={{ borderTop: '4px solid #EF4444' }}>
             <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -621,7 +621,7 @@ export default function OverviewPage() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="chart-card-title" style={{ margin: 0, color: '#EF4444' }}>Needs Attention</h3>
+                  <h3 className="chart-card-title" style={{ margin: 0, color: '#EF4444' }}>Projects Needing Attention</h3>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Over budget on hours</span>
                 </div>
               </div>
@@ -663,7 +663,7 @@ export default function OverviewPage() {
                           {performer.name}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {performer.taskCount} tasks · {performer.projectCount} project{performer.projectCount !== 1 ? 's' : ''}
+                          {performer.taskCount} tasks · {performer.resourceCount} resource{performer.resourceCount !== 1 ? 's' : ''}
                         </div>
                       </div>
                       
@@ -685,7 +685,7 @@ export default function OverviewPage() {
                 </div>
               ) : (
                 <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No performer data available
+                  No project data available
                 </div>
               )}
             </div>
