@@ -221,6 +221,85 @@ export default function OverviewPage() {
     };
   }, [data.snapshots]);
 
+  // Calculate Top and Worst Performers based on hours variance
+  const performersData = useMemo(() => {
+    const tasks = data.tasks || [];
+    const employees = data.employees || [];
+    
+    // Build employee ID to name map
+    const employeeMap = new Map<string, string>();
+    employees.forEach((emp: any) => {
+      const id = emp.employeeId || emp.id;
+      const name = emp.name || emp.fullName || id;
+      if (id) employeeMap.set(id, name);
+    });
+
+    // Aggregate hours by employee/resource
+    const resourceStats = new Map<string, { 
+      name: string; 
+      baselineHours: number; 
+      actualHours: number; 
+      taskCount: number;
+      projects: Set<string>;
+    }>();
+
+    tasks.forEach((task: any) => {
+      const resourceId = task.employeeId || task.assignedResourceId || task.assignedResource || 'Unassigned';
+      const resourceName = employeeMap.get(resourceId) || resourceId;
+      const baselineHours = task.baselineHours || task.baseline_hours || task.budgetHours || 0;
+      const actualHours = task.actualHours || task.actual_hours || 0;
+      const projectName = task.projectName || task.project_name || 'Unknown';
+
+      if (baselineHours > 0 || actualHours > 0) {
+        if (!resourceStats.has(resourceId)) {
+          resourceStats.set(resourceId, { 
+            name: resourceName, 
+            baselineHours: 0, 
+            actualHours: 0, 
+            taskCount: 0,
+            projects: new Set()
+          });
+        }
+        const stats = resourceStats.get(resourceId)!;
+        stats.baselineHours += baselineHours;
+        stats.actualHours += actualHours;
+        stats.taskCount += 1;
+        if (projectName) stats.projects.add(projectName);
+      }
+    });
+
+    // Convert to array and calculate variance
+    const performers = Array.from(resourceStats.entries())
+      .filter(([_, stats]) => stats.baselineHours > 0) // Only include resources with baseline hours
+      .map(([id, stats]) => {
+        const variance = stats.baselineHours > 0 
+          ? ((stats.actualHours - stats.baselineHours) / stats.baselineHours) * 100 
+          : 0;
+        const efficiency = stats.baselineHours > 0 
+          ? (stats.actualHours / stats.baselineHours) * 100 
+          : 0;
+        return {
+          id,
+          name: stats.name,
+          baselineHours: Math.round(stats.baselineHours),
+          actualHours: Math.round(stats.actualHours),
+          variance: Math.round(variance * 10) / 10,
+          efficiency: Math.round(efficiency * 10) / 10,
+          taskCount: stats.taskCount,
+          projectCount: stats.projects.size,
+        };
+      })
+      .filter(p => p.name !== 'Unassigned' && p.taskCount > 0);
+
+    // Sort: Top performers have lowest variance (under budget), Worst have highest variance (over budget)
+    const sortedByVariance = [...performers].sort((a, b) => a.variance - b.variance);
+    
+    const topPerformers = sortedByVariance.slice(0, 5); // Best 5 (lowest/most negative variance)
+    const worstPerformers = sortedByVariance.slice(-5).reverse(); // Worst 5 (highest variance)
+
+    return { topPerformers, worstPerformers, totalResources: performers.length };
+  }, [data.tasks, data.employees]);
+
   const filteredCountMetrics = useMemo(() => {
     let list = data.countMetricsAnalysis || [];
     if (projectFilterValues.length > 0) {
@@ -425,6 +504,194 @@ export default function OverviewPage() {
           emptyMessage="Click any chart bar to filter the page"
         />
       </div>
+
+      {/* Top & Worst Performers - Prominent first-view section */}
+      {performersData.totalResources > 0 && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(2, 1fr)', 
+          gap: '1.5rem', 
+          marginBottom: '1.5rem' 
+        }}>
+          {/* Top Performers */}
+          <div className="chart-card" style={{ borderTop: '4px solid #10B981' }}>
+            <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ 
+                  width: '36px', 
+                  height: '36px', 
+                  borderRadius: '50%', 
+                  background: 'linear-gradient(135deg, #10B981, #34D399)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}>
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2.5">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="chart-card-title" style={{ margin: 0, color: '#10B981' }}>Top Performers</h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Under budget on hours</span>
+                </div>
+              </div>
+            </div>
+            <div className="chart-card-body" style={{ padding: 0 }}>
+              {performersData.topPerformers.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {performersData.topPerformers.map((performer, idx) => (
+                    <div 
+                      key={performer.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '0.875rem 1rem',
+                        borderBottom: idx < performersData.topPerformers.length - 1 ? '1px solid var(--border-color)' : 'none',
+                        gap: '1rem'
+                      }}
+                    >
+                      {/* Rank Badge */}
+                      <div style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        background: idx === 0 ? '#10B981' : idx === 1 ? '#34D399' : 'var(--bg-tertiary)',
+                        color: idx < 2 ? '#fff' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        flexShrink: 0
+                      }}>
+                        {idx + 1}
+                      </div>
+                      
+                      {/* Name and Stats */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {performer.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {performer.taskCount} tasks · {performer.projectCount} project{performer.projectCount !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      
+                      {/* Hours Info */}
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                          {performer.actualHours.toLocaleString()} / {performer.baselineHours.toLocaleString()} hrs
+                        </div>
+                        <div style={{ 
+                          fontSize: '0.8rem', 
+                          fontWeight: 700,
+                          color: performer.variance <= 0 ? '#10B981' : '#F59E0B'
+                        }}>
+                          {performer.variance <= 0 ? '' : '+'}{performer.variance}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No performer data available
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Worst Performers */}
+          <div className="chart-card" style={{ borderTop: '4px solid #EF4444' }}>
+            <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ 
+                  width: '36px', 
+                  height: '36px', 
+                  borderRadius: '50%', 
+                  background: 'linear-gradient(135deg, #EF4444, #F87171)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}>
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2.5">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="chart-card-title" style={{ margin: 0, color: '#EF4444' }}>Needs Attention</h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Over budget on hours</span>
+                </div>
+              </div>
+            </div>
+            <div className="chart-card-body" style={{ padding: 0 }}>
+              {performersData.worstPerformers.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {performersData.worstPerformers.map((performer, idx) => (
+                    <div 
+                      key={performer.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '0.875rem 1rem',
+                        borderBottom: idx < performersData.worstPerformers.length - 1 ? '1px solid var(--border-color)' : 'none',
+                        gap: '1rem'
+                      }}
+                    >
+                      {/* Rank Badge */}
+                      <div style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '50%',
+                        background: idx === 0 ? '#EF4444' : idx === 1 ? '#F87171' : 'var(--bg-tertiary)',
+                        color: idx < 2 ? '#fff' : 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        flexShrink: 0
+                      }}>
+                        {idx + 1}
+                      </div>
+                      
+                      {/* Name and Stats */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {performer.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {performer.taskCount} tasks · {performer.projectCount} project{performer.projectCount !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      
+                      {/* Hours Info */}
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                          {performer.actualHours.toLocaleString()} / {performer.baselineHours.toLocaleString()} hrs
+                        </div>
+                        <div style={{ 
+                          fontSize: '0.8rem', 
+                          fontWeight: 700,
+                          color: performer.variance > 20 ? '#EF4444' : performer.variance > 0 ? '#F59E0B' : '#10B981'
+                        }}>
+                          +{performer.variance}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No performer data available
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Charts Grid */}
       <div className="dashboard-grid">
