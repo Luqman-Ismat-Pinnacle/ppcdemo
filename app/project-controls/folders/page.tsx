@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import { useLogs } from '@/lib/logs-context';
 import { createClient } from '@supabase/supabase-js';
@@ -71,9 +72,13 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 const STORAGE_BUCKET = 'project-documents';
 
 export default function DocumentsPage() {
+  const router = useRouter();
   const { refreshData, filteredData } = useData();
   const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Track which file row has its dropdown expanded
+  const [expandedDropdownId, setExpandedDropdownId] = useState<string | null>(null);
 
   // Split projects by plan status: has_schedule flag OR has at least one document in project_documents
   const { projectsWithPlan, projectsWithoutPlan } = useMemo(() => {
@@ -1210,6 +1215,7 @@ export default function DocumentsPage() {
               <table className="data-table" style={{ fontSize: '0.875rem' }}>
                 <thead>
                   <tr>
+                    <th style={{ width: '40px' }}></th>
                     <th>File Name</th>
                     <th>Size</th>
                     <th>Project ID</th>
@@ -1225,8 +1231,44 @@ export default function DocumentsPage() {
                         (d.storagePath === file.storagePath || d.storage_path === file.storagePath) &&
                         (d.isCurrentVersion === true || d.is_current_version === true)
                     );
+                    const isDropdownOpen = expandedDropdownId === file.id;
+                    const failedChecks = file.healthCheck?.results?.filter((r: HealthCheckResult) => !r.passed) || [];
+                    
                     return (
-                    <tr key={file.id}>
+                    <React.Fragment key={file.id}>
+                    <tr 
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setExpandedDropdownId(isDropdownOpen ? null : file.id)}
+                    >
+                      <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setExpandedDropdownId(isDropdownOpen ? null : file.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <svg 
+                            viewBox="0 0 24 24" 
+                            width="16" 
+                            height="16" 
+                            fill="none" 
+                            stroke="var(--text-muted)" 
+                            strokeWidth="2"
+                            style={{ 
+                              transform: isDropdownOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                              transition: 'transform 0.2s',
+                            }}
+                          >
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                        </button>
+                      </td>
                       <td>
                         {file.fileName}
                         {isCurrentVersion && (
@@ -1247,7 +1289,7 @@ export default function DocumentsPage() {
                       </td>
                       <td>{(file.fileSize / 1024 / 1024).toFixed(2)} MB</td>
                       <td>{file.workdayProjectId || '-'}</td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         {file.healthCheck ? (
                           <span
                             onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)}
@@ -1278,7 +1320,7 @@ export default function DocumentsPage() {
                           {file.status}
                         </span>
                       </td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button
                             onClick={() => handleProcess(file.id)}
@@ -1331,6 +1373,227 @@ export default function DocumentsPage() {
                         </div>
                       </td>
                     </tr>
+                    
+                    {/* Expandable Dropdown Row */}
+                    {isDropdownOpen && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: 0, background: 'var(--bg-tertiary)' }}>
+                          <div style={{ 
+                            padding: '1.25rem 1.5rem', 
+                            borderTop: '1px solid var(--border-color)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1rem',
+                          }}>
+                            {/* Health Score Reasons Section */}
+                            <div>
+                              <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'space-between',
+                                marginBottom: '0.75rem',
+                              }}>
+                                <h4 style={{ 
+                                  margin: 0, 
+                                  fontSize: '0.9rem', 
+                                  fontWeight: 600, 
+                                  color: 'var(--text-primary)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                }}>
+                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+                                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                                  </svg>
+                                  Health Score Analysis
+                                </h4>
+                                {file.healthCheck && (
+                                  <span style={{
+                                    padding: '0.25rem 0.75rem',
+                                    borderRadius: '20px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    backgroundColor: file.healthCheck.score >= 80 ? 'rgba(16,185,129,0.2)' : file.healthCheck.score >= 50 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+                                    color: file.healthCheck.score >= 80 ? '#10B981' : file.healthCheck.score >= 50 ? '#F59E0B' : '#EF4444',
+                                  }}>
+                                    {file.healthCheck.score}% ({file.healthCheck.passed}/{file.healthCheck.totalChecks} passed)
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {!file.healthCheck ? (
+                                <div style={{ 
+                                  padding: '1rem', 
+                                  background: 'var(--bg-secondary)', 
+                                  borderRadius: '8px',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '0.85rem',
+                                }}>
+                                  No health check data available. Run MPXJ to analyze the project plan.
+                                </div>
+                              ) : failedChecks.length === 0 ? (
+                                <div style={{ 
+                                  padding: '1rem', 
+                                  background: 'rgba(16,185,129,0.1)', 
+                                  borderRadius: '8px',
+                                  border: '1px solid rgba(16,185,129,0.3)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.75rem',
+                                }}>
+                                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#10B981" strokeWidth="2">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                                    <polyline points="22 4 12 14.01 9 11.01" />
+                                  </svg>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: '#10B981' }}>All health checks passed!</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                                      This project plan follows best practices and is ready for execution.
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                                    The following checks need attention:
+                                  </div>
+                                  {failedChecks.map((check: HealthCheckResult, idx: number) => {
+                                    const rec = healthRecommendations[check.checkName];
+                                    return (
+                                      <div 
+                                        key={idx}
+                                        style={{
+                                          padding: '0.75rem 1rem',
+                                          background: 'var(--bg-secondary)',
+                                          borderRadius: '6px',
+                                          borderLeft: '3px solid #EF4444',
+                                        }}
+                                      >
+                                        <div style={{ 
+                                          display: 'flex', 
+                                          alignItems: 'flex-start', 
+                                          gap: '0.5rem',
+                                        }}>
+                                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#EF4444" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}>
+                                            <circle cx="12" cy="12" r="10" />
+                                            <line x1="15" y1="9" x2="9" y2="15" />
+                                            <line x1="9" y1="9" x2="15" y2="15" />
+                                          </svg>
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                                              {check.checkName}
+                                            </div>
+                                            {check.message && (
+                                              <div style={{ fontSize: '0.8rem', color: '#F59E0B', marginTop: '0.25rem' }}>
+                                                {check.message}
+                                              </div>
+                                            )}
+                                            {rec && (
+                                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                                                <strong>How to fix:</strong> {rec.fix}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Quick Actions Section */}
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '0.75rem', 
+                              paddingTop: '0.75rem',
+                              borderTop: '1px solid var(--border-color)',
+                            }}>
+                              <button
+                                onClick={() => {
+                                  const projectId = file.workdayProjectId;
+                                  if (projectId) {
+                                    router.push(`/project-controls/resourcing?projectId=${projectId}&section=requirements`);
+                                  } else {
+                                    router.push('/project-controls/resourcing?section=requirements');
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  padding: '0.6rem 1rem',
+                                  background: 'linear-gradient(135deg, var(--pinnacle-teal), var(--pinnacle-lime))',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  color: '#000',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                  <circle cx="9" cy="7" r="4" />
+                                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                </svg>
+                                View Resources Required
+                              </button>
+                              
+                              <button
+                                onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  padding: '0.6rem 1rem',
+                                  background: 'var(--bg-secondary)',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '6px',
+                                  color: 'var(--text-primary)',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                                </svg>
+                                View Full Health Report
+                              </button>
+                              
+                              {file.workdayProjectId && (
+                                <button
+                                  onClick={() => router.push(`/project-controls/wbs-gantt?projectId=${file.workdayProjectId}`)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    padding: '0.6rem 1rem',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <line x1="4" y1="9" x2="20" y2="9" />
+                                    <line x1="4" y1="15" x2="20" y2="15" />
+                                    <rect x="6" y="6" width="8" height="6" rx="1" />
+                                  </svg>
+                                  View WBS Gantt
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );})}
                 </tbody>
               </table>
