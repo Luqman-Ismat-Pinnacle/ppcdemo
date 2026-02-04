@@ -209,6 +209,14 @@ function ResourcingPageContent() {
     return resourceIds.map(id => getResourceName(id)).join(', ');
   }, [getResourceName]);
 
+  // Filter tasks by project - MUST come before hooks that depend on it
+  const filteredTasks = useMemo(() => {
+    const tasks = data.tasks || [];
+    return selectedProjectId 
+      ? tasks.filter((t: any) => (t.projectId || t.project_id) === selectedProjectId)
+      : tasks;
+  }, [data.tasks, selectedProjectId]);
+
   // Get list of available employees for assignment dropdown
   const availableEmployees = useMemo(() => {
     return (data.employees || []).map((emp: any) => ({
@@ -275,14 +283,6 @@ function ResourcingPageContent() {
       };
     });
   }, [taskAssignments, filteredTasks, getResourceName]);
-
-  // Filter tasks by project
-  const filteredTasks = useMemo(() => {
-    const tasks = data.tasks || [];
-    return selectedProjectId 
-      ? tasks.filter((t: any) => (t.projectId || t.project_id) === selectedProjectId)
-      : tasks;
-  }, [data.tasks, selectedProjectId]);
 
   // Calculate Resource Requirements grouped by role (handles comma-separated roles)
   const resourceRequirements = useMemo((): ResourceRequirement[] => {
