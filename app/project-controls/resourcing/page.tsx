@@ -139,6 +139,8 @@ function ResourcingPageContent() {
   
   const [activeSection, setActiveSection] = useState<ActiveSection>('overview');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectIdParam);
+  const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [expandedResourceType, setExpandedResourceType] = useState<string | null>(null);
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
   const [hasMounted, setHasMounted] = useState(false);
@@ -184,6 +186,20 @@ function ResourcingPageContent() {
     }));
   }, [data.projects]);
 
+  // Filter projects based on search query
+  const filteredProjects = useMemo(() => {
+    if (!projectSearchQuery.trim()) return availableProjects;
+    const query = projectSearchQuery.toLowerCase();
+    return availableProjects.filter(p => p.name?.toLowerCase().includes(query));
+  }, [availableProjects, projectSearchQuery]);
+
+  // Get selected project name for display
+  const selectedProjectName = useMemo(() => {
+    if (!selectedProjectId) return '';
+    const project = availableProjects.find(p => p.id === selectedProjectId);
+    return project?.name || selectedProjectId;
+  }, [selectedProjectId, availableProjects]);
+
   // Build employee ID to name map for leveling results display
   const employeeNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -217,38 +233,86 @@ function ResourcingPageContent() {
       : tasks;
   }, [data.tasks, selectedProjectId]);
 
-  // Get list of available employees for assignment dropdown
+  // Get list of available employees for assignment dropdown (with role/title info)
   const availableEmployees = useMemo(() => {
     return (data.employees || []).map((emp: any) => ({
       id: emp.employeeId || emp.id,
       name: emp.name || emp.fullName || emp.employeeId || 'Unknown',
-    })).filter((e: { id: string; name: string }) => e.id);
+      role: emp.role || emp.title || emp.jobTitle || emp.position || '',
+    })).filter((e: { id: string; name: string; role: string }) => e.id);
   }, [data.employees]);
 
-  // Get unassigned tasks (tasks with no assignedResource, employeeId, or manual assignment)
+  // Helper to get employees filtered by role (case-insensitive partial match)
+  const getEmployeesForRole = useCallback((taskRole: string) => {
+    if (!taskRole || taskRole === 'Unspecified') {
+      return availableEmployees; // Return all if no role specified
+    }
+    
+    const roleLower = taskRole.toLowerCase();
+    const roleWords = roleLower.split(/[\s,]+/).filter(w => w.length > 2);
+    
+    // Filter employees whose role matches any word from the task role
+    const matched = availableEmployees.filter(emp => {
+      if (!emp.role) return false;
+      const empRoleLower = emp.role.toLowerCase();
+      return roleWords.some(word => empRoleLower.includes(word)) || empRoleLower.includes(roleLower);
+    });
+    
+    // If we found matches, return them; otherwise return all (fallback)
+    return matched.length > 0 ? matched : availableEmployees;
+  }, [availableEmployees]);
+
+  // Build project ID to name map
+  const projectNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (data.projects || []).forEach((p: any) => {
+      const id = p.id || p.projectId;
+      if (id) map.set(id, p.name || id);
+    });
+    return map;
+  }, [data.projects]);
+
+  // Helper to get project name
+  const getProjectName = useCallback((projectId: string | null | undefined): string => {
+    if (!projectId) return 'Unknown Project';
+    return projectNameMap.get(projectId) || projectId;
+  }, [projectNameMap]);
+
+  // Helper to get project name from task ID (for leveling results)
+  const getProjectNameByTaskId = useCallback((taskId: string): string => {
+    const task = filteredTasks.find((t: any) => (t.taskId || t.id || t.task_id) === taskId);
+    if (task) {
+      return getProjectName(task.projectId || task.project_id);
+    }
+    return 'Unknown';
+  }, [filteredTasks, getProjectName]);
+
+  // Get unassigned tasks (tasks with no specific person assigned - role-only tasks)
   const unassignedTasks = useMemo(() => {
     return filteredTasks.filter((task: any) => {
       const taskId = task.taskId || task.id || task.task_id;
       // Check if manually assigned
       if (taskAssignments[taskId]) return false;
       
-      // Check if has assigned resource
-      const assignedResource = task.assignedResource || task.assigned_resource || task.assignedResourceType || '';
+      // Check if has a specific person assigned (employeeId)
       const employeeId = task.employeeId || task.employee_id || '';
       
-      // A task is unassigned if it has no assigned resource AND no employeeId
-      const hasAssignment = (assignedResource && assignedResource.trim() !== '' && assignedResource.toLowerCase() !== 'unassigned') ||
-                           (employeeId && employeeId.trim() !== '');
+      // A task is unassigned if it has no specific person (employeeId) assigned
+      // Having only a role (assignedResource) is NOT considered assigned to a specific person
+      const hasPersonAssigned = employeeId && employeeId.trim() !== '';
       
-      return !hasAssignment;
+      return !hasPersonAssigned;
     }).map((task: any) => ({
       taskId: task.taskId || task.id || task.task_id,
       taskName: task.taskName || task.name || task.task_name || 'Unnamed Task',
       baselineHours: task.baselineHours || task.baseline_hours || task.baselineWork || 0,
       startDate: task.startDate || task.start_date || task.baselineStartDate || null,
       endDate: task.endDate || task.end_date || task.baselineEndDate || null,
+      role: task.assignedResource || task.assigned_resource || task.assignedResourceType || 'Unspecified',
+      projectId: task.projectId || task.project_id || null,
+      projectName: getProjectName(task.projectId || task.project_id),
     }));
-  }, [filteredTasks, taskAssignments]);
+  }, [filteredTasks, taskAssignments, getProjectName]);
 
   // Assign a resource to a task
   const assignResourceToTask = useCallback((taskId: string, resourceId: string) => {
@@ -280,9 +344,11 @@ function ResourcingPageContent() {
         baselineHours: task?.baselineHours || task?.baseline_hours || 0,
         resourceId,
         resourceName: getResourceName(resourceId),
+        role: task?.assignedResource || task?.assigned_resource || task?.assignedResourceType || 'Unspecified',
+        projectName: getProjectName(task?.projectId || task?.project_id),
       };
     });
-  }, [taskAssignments, filteredTasks, getResourceName]);
+  }, [taskAssignments, filteredTasks, getResourceName, getProjectName]);
 
   // Calculate Resource Requirements grouped by role (handles comma-separated roles)
   const resourceRequirements = useMemo((): ResourceRequirement[] => {
@@ -1070,27 +1136,121 @@ function ResourcingPageContent() {
           </p>
         </div>
         
-        {/* Project Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        {/* Project Search Filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', position: 'relative' }}>
           <label style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Filter by Project:</label>
-          <select
-            value={selectedProjectId || ''}
-            onChange={(e) => setSelectedProjectId(e.target.value || null)}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '6px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-secondary)',
-              color: 'var(--text-primary)',
-              fontSize: '0.875rem',
-              minWidth: '200px',
-            }}
-          >
-            <option value="">All Projects</option>
-            {availableProjects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <div style={{ position: 'relative', minWidth: '280px' }}>
+            <div style={{ position: 'relative' }}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--text-muted)" strokeWidth="2" 
+                   style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder={selectedProjectId ? selectedProjectName : "Search projects..."}
+                value={projectSearchQuery}
+                onChange={(e) => {
+                  setProjectSearchQuery(e.target.value);
+                  setShowProjectDropdown(true);
+                }}
+                onFocus={() => setShowProjectDropdown(true)}
+                onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem 2.5rem 0.5rem 2.25rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.875rem',
+                }}
+              />
+              {selectedProjectId && (
+                <button
+                  onClick={() => {
+                    setSelectedProjectId(null);
+                    setProjectSearchQuery('');
+                  }}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Clear filter"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            
+            {/* Search Results Dropdown */}
+            {showProjectDropdown && (projectSearchQuery || !selectedProjectId) && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: '4px',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                maxHeight: '300px',
+                overflow: 'auto',
+                zIndex: 100,
+              }}>
+                <div
+                  onClick={() => {
+                    setSelectedProjectId(null);
+                    setProjectSearchQuery('');
+                    setShowProjectDropdown(false);
+                  }}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border-color)',
+                    background: !selectedProjectId ? 'var(--bg-tertiary)' : 'transparent',
+                    fontWeight: !selectedProjectId ? 600 : 400,
+                  }}
+                >
+                  All Projects
+                </div>
+                {filteredProjects.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      setSelectedProjectId(p.id);
+                      setProjectSearchQuery('');
+                      setShowProjectDropdown(false);
+                    }}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      cursor: 'pointer',
+                      background: selectedProjectId === p.id ? 'var(--bg-tertiary)' : 'transparent',
+                      fontWeight: selectedProjectId === p.id ? 600 : 400,
+                    }}
+                  >
+                    {p.name}
+                  </div>
+                ))}
+                {filteredProjects.length === 0 && projectSearchQuery && (
+                  <div style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    No projects match "{projectSearchQuery}"
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1165,35 +1325,6 @@ function ResourcingPageContent() {
               </div>
               </div>
           </div>
-
-            {/* Quick Access Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
-              <div className="chart-card" style={{ cursor: 'pointer' }} onClick={() => setActiveSection('requirements')}>
-                <div className="chart-card-body" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ width: '60px', height: '60px', borderRadius: '12px', background: 'linear-gradient(135deg, var(--pinnacle-teal), var(--pinnacle-lime))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#000" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Resource Requirements Calculator</h3>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>Calculate FTE needs by role based on baseline hours</p>
-                  </div>
-                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginLeft: 'auto' }}><path d="M9 18l6-6-6-6" /></svg>
-                </div>
-          </div>
-
-              <div className="chart-card" style={{ cursor: 'pointer' }} onClick={() => setActiveSection('heatmap')}>
-                <div className="chart-card-body" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ width: '60px', height: '60px', borderRadius: '12px', background: 'linear-gradient(135deg, #E91E63, #F59E0B)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /><rect x="7" y="14" width="3" height="3" /><rect x="14" y="14" width="3" height="3" /></svg>
-            </div>
-                  <div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Utilization Heatmap</h3>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>Visualize resource utilization by role over time</p>
-                  </div>
-                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginLeft: 'auto' }}><path d="M9 18l6-6-6-6" /></svg>
-                </div>
-              </div>
-            </div>
 
             {/* Top Resource Types Preview */}
             {resourceRequirements.length > 0 && (
@@ -1686,51 +1817,80 @@ function ResourcingPageContent() {
                     {unassignedTasks.length > 0 && (
                       <div style={{ marginBottom: '1.5rem' }}>
                         <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem', color: '#F59E0B' }}>
-                          Unassigned Tasks ({unassignedTasks.length})
+                          Tasks Needing Assignment ({unassignedTasks.length})
                         </h4>
-                        <div style={{ overflow: 'auto', maxHeight: '300px' }}>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                          These tasks have a role specified but no specific person assigned. The dropdown shows employees that match the task's role.
+                        </p>
+                        <div style={{ overflow: 'auto', maxHeight: '400px' }}>
                           <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
                             <thead>
                               <tr>
                                 <th style={{ textAlign: 'left' }}>Task Name</th>
+                                <th style={{ textAlign: 'left' }}>Project</th>
+                                <th style={{ textAlign: 'left' }}>Role Required</th>
                                 <th style={{ textAlign: 'right' }}>Hours</th>
-                                <th style={{ textAlign: 'left' }}>Dates</th>
-                                <th style={{ textAlign: 'left', minWidth: '200px' }}>Assign Resource</th>
+                                <th style={{ textAlign: 'left', minWidth: '220px' }}>Assign Person</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {unassignedTasks.map((task) => (
-                                <tr key={task.taskId}>
-                                  <td style={{ fontWeight: 500 }}>{task.taskName}</td>
-                                  <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
-                                  <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                    {task.startDate && task.endDate 
-                                      ? `${formatDate(new Date(task.startDate))} → ${formatDate(new Date(task.endDate))}`
-                                      : 'No dates'}
-                                  </td>
-                                  <td>
-                                    <select
-                                      value=""
-                                      onChange={(e) => e.target.value && assignResourceToTask(task.taskId, e.target.value)}
-                                      style={{
-                                        width: '100%',
-                                        padding: '0.5rem',
-                                        borderRadius: '6px',
-                                        border: '1px solid var(--border-color)',
-                                        background: 'var(--bg-secondary)',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '0.85rem',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <option value="">Select resource...</option>
-                                      {availableEmployees.map((emp) => (
-                                        <option key={emp.id} value={emp.id}>{emp.name}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                </tr>
-                              ))}
+                              {unassignedTasks.map((task) => {
+                                const matchingEmployees = getEmployeesForRole(task.role);
+                                const hasMatches = matchingEmployees.length < availableEmployees.length;
+                                return (
+                                  <tr key={task.taskId}>
+                                    <td style={{ fontWeight: 500 }}>{task.taskName}</td>
+                                    <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{task.projectName}</td>
+                                    <td>
+                                      <span style={{ 
+                                        padding: '0.25rem 0.5rem', 
+                                        background: 'var(--bg-tertiary)', 
+                                        borderRadius: '4px', 
+                                        fontSize: '0.8rem',
+                                        color: 'var(--pinnacle-teal)'
+                                      }}>
+                                        {task.role}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
+                                    <td>
+                                      <select
+                                        value=""
+                                        onChange={(e) => e.target.value && assignResourceToTask(task.taskId, e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          padding: '0.5rem',
+                                          borderRadius: '6px',
+                                          border: hasMatches ? '2px solid var(--pinnacle-teal)' : '1px solid var(--border-color)',
+                                          background: 'var(--bg-secondary)',
+                                          color: 'var(--text-primary)',
+                                          fontSize: '0.85rem',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        <option value="">{hasMatches ? `${matchingEmployees.length} matching...` : 'Select person...'}</option>
+                                        {hasMatches && matchingEmployees.length > 0 && (
+                                          <optgroup label={`Matching "${task.role}"`}>
+                                            {matchingEmployees.map((emp) => (
+                                              <option key={emp.id} value={emp.id}>{emp.name} {emp.role ? `(${emp.role})` : ''}</option>
+                                            ))}
+                                          </optgroup>
+                                        )}
+                                        {hasMatches && (
+                                          <optgroup label="All Employees">
+                                            {availableEmployees.filter(e => !matchingEmployees.find(m => m.id === e.id)).map((emp) => (
+                                              <option key={emp.id} value={emp.id}>{emp.name} {emp.role ? `(${emp.role})` : ''}</option>
+                                            ))}
+                                          </optgroup>
+                                        )}
+                                        {!hasMatches && availableEmployees.map((emp) => (
+                                          <option key={emp.id} value={emp.id}>{emp.name} {emp.role ? `(${emp.role})` : ''}</option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -1748,6 +1908,8 @@ function ResourcingPageContent() {
                             <thead>
                               <tr>
                                 <th style={{ textAlign: 'left' }}>Task Name</th>
+                                <th style={{ textAlign: 'left' }}>Project</th>
+                                <th style={{ textAlign: 'left' }}>Role</th>
                                 <th style={{ textAlign: 'right' }}>Hours</th>
                                 <th style={{ textAlign: 'left' }}>Assigned To</th>
                                 <th style={{ textAlign: 'center', width: '80px' }}>Action</th>
@@ -1757,6 +1919,12 @@ function ResourcingPageContent() {
                               {manuallyAssignedTasks.map((task) => (
                                 <tr key={task.taskId}>
                                   <td style={{ fontWeight: 500 }}>{task.taskName}</td>
+                                  <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{task.projectName}</td>
+                                  <td>
+                                    <span style={{ padding: '0.25rem 0.5rem', background: 'var(--bg-tertiary)', borderRadius: '4px', fontSize: '0.8rem' }}>
+                                      {task.role}
+                                    </span>
+                                  </td>
                                   <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
                                   <td style={{ color: '#10B981', fontWeight: 500 }}>{task.resourceName}</td>
                                   <td style={{ textAlign: 'center' }}>
@@ -1783,34 +1951,16 @@ function ResourcingPageContent() {
                       </div>
                     )}
 
-                    {/* Quick assign all button */}
-                    {unassignedTasks.length > 0 && availableEmployees.length > 0 && (
-                      <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Quick assign all unassigned to:</span>
-                          <select
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                unassignedTasks.forEach(task => assignResourceToTask(task.taskId, e.target.value));
-                                e.target.value = '';
-                              }
-                            }}
-                            style={{
-                              padding: '0.5rem',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border-color)',
-                              background: 'var(--bg-secondary)',
-                              color: 'var(--text-primary)',
-                              fontSize: '0.85rem',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <option value="">Select resource...</option>
-                            {availableEmployees.map((emp) => (
-                              <option key={emp.id} value={emp.id}>{emp.name}</option>
-                            ))}
-                          </select>
-                        </div>
+                    {/* Assignment tip */}
+                    {unassignedTasks.length > 0 && (
+                      <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+                        </svg>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          <strong>Tip:</strong> Dropdowns with a teal border show employees that match the task's required role. 
+                          After assigning, click "Run Leveling" to schedule the tasks.
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1973,6 +2123,7 @@ function ResourcingPageContent() {
                           <thead>
                             <tr>
                               <th style={{ textAlign: 'left' }}>Task</th>
+                              <th style={{ textAlign: 'left' }}>Project</th>
                               <th style={{ textAlign: 'right' }}>Delay</th>
                               <th style={{ textAlign: 'right' }}>Hours</th>
                               <th style={{ textAlign: 'left' }}>Scheduled</th>
@@ -1983,6 +2134,7 @@ function ResourcingPageContent() {
                             {levelingResult.delayedTasks.map((task) => (
                               <tr key={task.taskId}>
                                 <td style={{ fontWeight: 500 }}>{task.name}</td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{getProjectNameByTaskId(task.taskId)}</td>
                                 <td style={{ textAlign: 'right', color: '#F59E0B', fontWeight: 600 }}>{task.delayDays} days</td>
                                 <td style={{ textAlign: 'right' }}>{formatNumber(task.totalHours)}</td>
                                 <td style={{ fontSize: '0.8rem' }}>{task.startDate} → {task.endDate}</td>
@@ -2007,6 +2159,7 @@ function ResourcingPageContent() {
                         <thead>
                           <tr>
                             <th style={{ textAlign: 'left' }}>Task</th>
+                            <th style={{ textAlign: 'left' }}>Project</th>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
                             <th style={{ textAlign: 'right' }}>Hours</th>
@@ -2019,6 +2172,7 @@ function ResourcingPageContent() {
                             .map((schedule) => (
                               <tr key={schedule.taskId}>
                                 <td style={{ fontWeight: 500 }}>{schedule.name}</td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{getProjectNameByTaskId(schedule.taskId)}</td>
                                 <td>{schedule.startDate}</td>
                                 <td>{schedule.endDate}</td>
                                 <td style={{ textAlign: 'right' }}>{formatNumber(schedule.totalHours)}</td>
