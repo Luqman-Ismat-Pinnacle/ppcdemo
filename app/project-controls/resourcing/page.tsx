@@ -147,6 +147,7 @@ function ResourcingPageContent() {
   const [levelingParams, setLevelingParams] = useState<LevelingParams>(DEFAULT_LEVELING_PARAMS);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [isLevelingRunning, setIsLevelingRunning] = useState(false);
+  const [isUtilizationExpanded, setIsUtilizationExpanded] = useState(true);
 
   useEffect(() => {
     setHasMounted(true);
@@ -178,6 +179,31 @@ function ResourcingPageContent() {
       name: p.name,
     }));
   }, [data.projects]);
+
+  // Build employee ID to name map for leveling results display
+  const employeeNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (data.employees || []).forEach((emp: any) => {
+      const id = emp.employeeId || emp.id;
+      const name = emp.name || emp.fullName || id;
+      if (id) {
+        map.set(id, name);
+        map.set(id.toLowerCase(), name);
+      }
+    });
+    return map;
+  }, [data.employees]);
+
+  // Helper to get resource name from ID
+  const getResourceName = useCallback((resourceId: string): string => {
+    return employeeNameMap.get(resourceId) || employeeNameMap.get(resourceId.toLowerCase()) || resourceId;
+  }, [employeeNameMap]);
+
+  // Helper to get resource names from an array of IDs
+  const getResourceNames = useCallback((resourceIds: string[]): string => {
+    if (!resourceIds || resourceIds.length === 0) return 'Unassigned';
+    return resourceIds.map(id => getResourceName(id)).join(', ');
+  }, [getResourceName]);
 
   // Filter tasks by project
   const filteredTasks = useMemo(() => {
@@ -988,7 +1014,7 @@ function ResourcingPageContent() {
       {/* Navigation Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', flexShrink: 0, overflowX: 'auto' }}>
         {sections.map((section) => (
-          <button
+            <button
             key={section.id}
             onClick={() => setActiveSection(section.id)}
             style={{
@@ -1008,9 +1034,9 @@ function ResourcingPageContent() {
           >
             {section.icon}
             {section.label}
-          </button>
+            </button>
         ))}
-      </div>
+          </div>
 
       {/* Content Area */}
       <div style={{ flex: 1, overflow: 'auto' }}>
@@ -1025,7 +1051,7 @@ function ResourcingPageContent() {
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{formatNumber(summaryMetrics.totalFTE, 1)}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   Based on {formatNumber(summaryMetrics.totalBaselineHours)} baseline hours
-                </div>
+        </div>
               </div>
               
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
@@ -1038,14 +1064,14 @@ function ResourcingPageContent() {
                 <div className="metric-label">Total Tasks</div>
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{formatNumber(summaryMetrics.totalTasks)}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>With resource assignments</div>
-              </div>
+                </div>
               
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="metric-label">Hours Progress</div>
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{formatNumber(summaryMetrics.utilizationPercent, 0)}%</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   {formatNumber(summaryMetrics.totalActualHours)} of {formatNumber(summaryMetrics.totalBaselineHours)} hrs
-                </div>
+              </div>
               </div>
               
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
@@ -1053,9 +1079,9 @@ function ResourcingPageContent() {
                 <div className="metric-value" style={{ fontSize: '2rem', color: '#F59E0B' }}>{formatNumber(summaryMetrics.totalRemainingHours)}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   {formatNumber(summaryMetrics.totalRemainingHours / HOURS_PER_YEAR, 1)} FTE remaining
-                </div>
               </div>
-            </div>
+              </div>
+          </div>
 
             {/* Quick Access Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
@@ -1070,13 +1096,13 @@ function ResourcingPageContent() {
                   </div>
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ marginLeft: 'auto' }}><path d="M9 18l6-6-6-6" /></svg>
                 </div>
-              </div>
+          </div>
 
               <div className="chart-card" style={{ cursor: 'pointer' }} onClick={() => setActiveSection('heatmap')}>
                 <div className="chart-card-body" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <div style={{ width: '60px', height: '60px', borderRadius: '12px', background: 'linear-gradient(135deg, #E91E63, #F59E0B)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /><rect x="7" y="14" width="3" height="3" /><rect x="14" y="14" width="3" height="3" /></svg>
-                  </div>
+            </div>
                   <div>
                     <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Utilization Heatmap</h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>Visualize resource utilization by role over time</p>
@@ -1115,9 +1141,9 @@ function ResourcingPageContent() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
         )}
 
         {/* Resource Requirements Calculator Section */}
@@ -1129,7 +1155,7 @@ function ResourcingPageContent() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
                   <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'var(--pinnacle-teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#000" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
-                  </div>
+            </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Resource Requirements Calculator</h3>
                     <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
@@ -1140,22 +1166,22 @@ function ResourcingPageContent() {
                       <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{DAYS_PER_WEEK}</strong> days/week</div>
                       <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{HOURS_PER_WEEK}</strong> hours/week</div>
                       <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{formatNumber(HOURS_PER_YEAR)}</strong> hours/year</div>
+          </div>
                     </div>
                   </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
             {/* Summary Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
               <div className="metric-card accent-teal" style={{ padding: '1rem' }}>
                 <div className="metric-label" style={{ fontSize: '0.75rem' }}>Total FTE Required</div>
                 <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(summaryMetrics.totalFTE, 2)}</div>
-              </div>
+          </div>
               <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="metric-label" style={{ fontSize: '0.75rem' }}>Total Baseline Hours</div>
                 <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(summaryMetrics.totalBaselineHours)}</div>
-              </div>
+        </div>
               <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="metric-label" style={{ fontSize: '0.75rem' }}>Resource Types (Roles)</div>
                 <div className="metric-value" style={{ fontSize: '1.75rem' }}>{summaryMetrics.uniqueResourceTypes}</div>
@@ -1170,7 +1196,7 @@ function ResourcingPageContent() {
             <div className="chart-card">
               <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <h3 className="chart-card-title">FTE Requirements by Role</h3>
-              </div>
+        </div>
               <div className="chart-card-body" style={{ padding: 0 }}>
                 {resourceRequirements.length === 0 ? (
                   <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -1181,8 +1207,8 @@ function ResourcingPageContent() {
                 ) : (
                   <div style={{ overflow: 'auto' }}>
                     <table className="data-table" style={{ fontSize: '0.875rem', margin: 0 }}>
-                      <thead>
-                        <tr>
+                <thead>
+                  <tr>
                           <th style={{ width: '40px' }}></th>
                           <th style={{ textAlign: 'left' }}>Role</th>
                           <th style={{ textAlign: 'right' }}>Tasks</th>
@@ -1191,28 +1217,28 @@ function ResourcingPageContent() {
                           <th style={{ textAlign: 'right' }}>Remaining</th>
                           <th style={{ textAlign: 'right' }}>FTE (Annual)</th>
                           <th style={{ textAlign: 'right' }}>FTE (Monthly)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                  </tr>
+                </thead>
+                <tbody>
                         {resourceRequirements.map((req) => (
                           <React.Fragment key={req.resourceType}>
                             <tr style={{ cursor: 'pointer' }} onClick={() => setExpandedResourceType(expandedResourceType === req.resourceType ? null : req.resourceType)}>
                               <td style={{ textAlign: 'center' }}>
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: expandedResourceType === req.resourceType ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}><path d="M9 18l6-6-6-6" /></svg>
-                              </td>
-                              <td style={{ fontWeight: 600 }}>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: req.resourceType === 'Unassigned' ? '#F59E0B' : 'var(--pinnacle-teal)' }} />
                                   {req.resourceType}
                                 </div>
-                              </td>
+                    </td>
                               <td style={{ textAlign: 'right' }}>{req.taskCount}</td>
                               <td style={{ textAlign: 'right' }}>{formatNumber(req.totalBaselineHours)}</td>
                               <td style={{ textAlign: 'right' }}>{formatNumber(req.totalActualHours)}</td>
                               <td style={{ textAlign: 'right', color: req.remainingHours > 0 ? '#F59E0B' : '#10B981' }}>{formatNumber(req.remainingHours)}</td>
                               <td style={{ textAlign: 'right', color: 'var(--pinnacle-teal)', fontWeight: 700, fontSize: '1rem' }}>{formatNumber(req.fteRequired, 2)}</td>
                               <td style={{ textAlign: 'right', color: 'var(--pinnacle-lime)', fontWeight: 600 }}>{formatNumber(req.fteMonthly, 2)}</td>
-                            </tr>
+                  </tr>
                             {expandedResourceType === req.resourceType && (
                               <tr>
                                 <td colSpan={8} style={{ padding: 0, background: 'var(--bg-tertiary)' }}>
@@ -1232,13 +1258,13 @@ function ResourcingPageContent() {
                                                 </div>
                                                 {formatNumber(task.percentComplete)}%
                                               </div>
-                                            </td>
-                                          </tr>
+                    </td>
+                  </tr>
                                         ))}
                                       </tbody>
                                     </table>
                                   </div>
-                                </td>
+                    </td>
                               </tr>
                             )}
                           </React.Fragment>
@@ -1252,15 +1278,15 @@ function ResourcingPageContent() {
                           <td style={{ textAlign: 'right', color: '#F59E0B' }}>{formatNumber(summaryMetrics.totalRemainingHours)}</td>
                           <td style={{ textAlign: 'right', color: 'var(--pinnacle-teal)', fontSize: '1.1rem' }}>{formatNumber(summaryMetrics.totalFTE, 2)}</td>
                           <td style={{ textAlign: 'right', color: 'var(--pinnacle-lime)' }}>{formatNumber(summaryMetrics.totalBaselineHours / (HOURS_PER_YEAR / 12), 2)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                  </tr>
+                </tbody>
+              </table>
               </div>
+                )}
             </div>
-          </div>
-        )}
+            </div>
+            </div>
+          )}
 
         {/* Heatmap Section */}
         {activeSection === 'heatmap' && (
@@ -1272,15 +1298,15 @@ function ResourcingPageContent() {
               </h3>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 {heatmapChartData.roles.length} roles × {heatmapChartData.weeks.length} weeks
-              </div>
-            </div>
+          </div>
+        </div>
             <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
               {heatmapChartData.roles.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /></svg>
                   <p style={{ fontWeight: 600 }}>No heatmap data available</p>
                   <p style={{ fontSize: '0.85rem' }}>Upload an MPP file with tasks that have dates and resource assignments.</p>
-                </div>
+      </div>
               ) : (
                 <ChartWrapper 
                   option={heatmapOption} 
@@ -1298,24 +1324,24 @@ function ResourcingPageContent() {
         {/* Gantt Section */}
         {activeSection === 'gantt' && (
           <div className="chart-card" style={{ height: 'calc(100vh - 280px)', minHeight: '500px', display: 'flex', flexDirection: 'column' }}>
-            <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /></svg>
                 Resource Gantt Chart (by Role)
-              </h3>
+            </h3>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
+                <button
                   onClick={() => setExpandedRoles(new Set(resourceRequirements.map(r => r.resourceType)))} 
                   style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }}
                 >
                   Expand All
                 </button>
-                <button 
+                        <button
                   onClick={() => setExpandedRoles(new Set())} 
                   style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', cursor: 'pointer' }}
                 >
                   Collapse All
-                </button>
+                        </button>
               </div>
             </div>
             <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
@@ -1324,8 +1350,8 @@ function ResourcingPageContent() {
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                   <p style={{ fontWeight: 600 }}>No Gantt data available</p>
                   <p style={{ fontSize: '0.85rem' }}>Upload an MPP file with tasks that have dates and resource assignments.</p>
-                </div>
-              ) : (
+                      </div>
+                    ) : (
                 <ChartWrapper 
                   option={ganttOption} 
                   height="100%" 
@@ -1337,8 +1363,8 @@ function ResourcingPageContent() {
                 />
               )}
             </div>
-          </div>
-        )}
+                      </div>
+                    )}
 
         {/* Leveling Section - Comprehensive Resource Leveling */}
         {activeSection === 'leveling' && (
@@ -1352,7 +1378,7 @@ function ResourcingPageContent() {
                     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" strokeWidth="2">
                       <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
                     </svg>
-                  </div>
+                    </div>
                   <div style={{ flex: 1 }}>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>What is Resource Leveling?</h3>
                     <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -1363,18 +1389,18 @@ function ResourcingPageContent() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
                         <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10B981' }} />
                         <span>Balances workload</span>
-                      </div>
+                  </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
                         <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#3B82F6' }} />
                         <span>Respects dependencies</span>
-                      </div>
+            </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
                         <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#F59E0B' }} />
                         <span>Optimizes by priority</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          </div>
+        </div>
+          </div>
+              </div>
               </div>
             </div>
 
@@ -1387,20 +1413,20 @@ function ResourcingPageContent() {
                   </svg>
                   Leveling Configuration
                 </h3>
-                <button
+                                <button
                   onClick={runLeveling}
                   disabled={isLevelingRunning || !data.tasks?.length}
-                  style={{
+                                  style={{
                     padding: '0.6rem 1.25rem',
-                    border: 'none',
+                                    border: 'none',
                     borderRadius: '8px',
                     background: isLevelingRunning ? 'var(--bg-tertiary)' : 'var(--pinnacle-teal)',
                     color: isLevelingRunning ? 'var(--text-muted)' : '#000',
-                    fontWeight: 600,
+                                    fontWeight: 600,
                     fontSize: '0.875rem',
                     cursor: isLevelingRunning ? 'not-allowed' : 'pointer',
                     display: 'flex',
-                    alignItems: 'center',
+                                    alignItems: 'center',
                     gap: '0.5rem',
                   }}
                 >
@@ -1441,8 +1467,8 @@ function ResourcingPageContent() {
                       <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
                         {levelingParams.workdayHours} hrs
                       </span>
-                    </div>
-                  </div>
+          </div>
+        </div>
 
                   {/* Buffer Days */}
                   <div>
@@ -1464,8 +1490,8 @@ function ResourcingPageContent() {
                       />
                       <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
                         {levelingParams.bufferDays} days
-                      </span>
-                    </div>
+            </span>
+          </div>
                   </div>
 
                   {/* Max Schedule Days */}
@@ -1488,9 +1514,9 @@ function ResourcingPageContent() {
                       />
                       <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
                         {levelingParams.maxScheduleDays} days
-                      </span>
-                    </div>
+                    </span>
                   </div>
+                    </div>
 
                   {/* Toggle Options */}
                   <div>
@@ -1602,51 +1628,73 @@ function ResourcingPageContent() {
                         <div key={`err-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'rgba(239,68,68,0.1)', borderRadius: '6px', marginBottom: '0.5rem' }}>
                           <span style={{ color: '#ef4444', fontWeight: 600 }}>Error:</span>
                           <span style={{ fontSize: '0.85rem' }}>{err.name} - {err.message}</span>
-                        </div>
-                      ))}
+                </div>
+              ))}
                       {levelingResult.warnings.map((warn, idx) => (
                         <div key={`warn-${idx}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.5rem', background: 'rgba(245,158,11,0.1)', borderRadius: '6px', marginBottom: '0.5rem' }}>
                           <span style={{ color: '#F59E0B', fontWeight: 600 }}>Warning:</span>
                           <span style={{ fontSize: '0.85rem' }}>{warn}</span>
-                        </div>
+            </div>
                       ))}
-                    </div>
-                  </div>
+          </div>
+        </div>
                 )}
 
-                {/* Resource Utilization */}
+                {/* Resource Utilization - Collapsible */}
                 {levelingResult.resourceUtilization.length > 0 && (
                   <div className="chart-card">
-                    <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <h3 className="chart-card-title">Resource Utilization</h3>
+                    <div 
+                      className="chart-card-header" 
+                      style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                      onClick={() => setIsUtilizationExpanded(!isUtilizationExpanded)}
+                    >
+                      <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <svg 
+                          viewBox="0 0 24 24" 
+                          width="16" 
+                          height="16" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2"
+                          style={{ transform: isUtilizationExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                        Resource Utilization ({levelingResult.resourceUtilization.length})
+                      </h3>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        {isUtilizationExpanded ? 'Click to collapse' : 'Click to expand'}
+                      </span>
                     </div>
-                    <div className="chart-card-body" style={{ padding: '1rem' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
-                        {levelingResult.resourceUtilization.map((res) => (
-                          <div key={res.resourceId} style={{ padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{res.name}</span>
-                              <span style={{ fontWeight: 700, fontSize: '1rem', color: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63' }}>
-                                {res.utilizationPct.toFixed(0)}%
-                              </span>
+                    {isUtilizationExpanded && (
+                      <div className="chart-card-body" style={{ padding: '1rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
+                          {levelingResult.resourceUtilization.map((res) => (
+                            <div key={res.resourceId} style={{ padding: '1rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{getResourceName(res.resourceId)}</span>
+                                <span style={{ fontWeight: 700, fontSize: '1rem', color: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63' }}>
+                                  {res.utilizationPct.toFixed(0)}%
+                                </span>
+                              </div>
+                              <div style={{ width: '100%', height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{
+                                  width: `${Math.min(100, res.utilizationPct)}%`,
+                                  height: '100%',
+                                  background: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63',
+                                  borderRadius: '4px',
+                                  transition: 'width 0.3s ease'
+                                }} />
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <span>{formatNumber(res.totalAssigned)} hrs assigned</span>
+                                <span>{formatNumber(res.totalAvailable)} hrs available</span>
+                              </div>
                             </div>
-                            <div style={{ width: '100%', height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                              <div style={{
-                                width: `${Math.min(100, res.utilizationPct)}%`,
-                                height: '100%',
-                                background: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63',
-                                borderRadius: '4px',
-                                transition: 'width 0.3s ease'
-                              }} />
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              <span>{formatNumber(res.totalAssigned)} hrs assigned</span>
-                              <span>{formatNumber(res.totalAvailable)} hrs available</span>
-                            </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -1677,7 +1725,7 @@ function ResourcingPageContent() {
                                 <td style={{ textAlign: 'right', color: '#F59E0B', fontWeight: 600 }}>{task.delayDays} days</td>
                                 <td style={{ textAlign: 'right' }}>{formatNumber(task.totalHours)}</td>
                                 <td style={{ fontSize: '0.8rem' }}>{task.startDate} → {task.endDate}</td>
-                                <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{task.assignedResources.join(', ') || 'Unassigned'}</td>
+                                <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{getResourceNames(task.assignedResources)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1714,7 +1762,7 @@ function ResourcingPageContent() {
                                 <td>{schedule.endDate}</td>
                                 <td style={{ textAlign: 'right' }}>{formatNumber(schedule.totalHours)}</td>
                                 <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                  {schedule.assignedResources.join(', ') || 'Unassigned'}
+                                  {getResourceNames(schedule.assignedResources)}
                                 </td>
                               </tr>
                             ))}
@@ -1732,7 +1780,7 @@ function ResourcingPageContent() {
                 <div className="chart-card-body" style={{ padding: '3rem', textAlign: 'center' }}>
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.5 }}>
                     <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
-                  </svg>
+            </svg>
                   <p style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                     {data.tasks?.length ? 'Click "Run Leveling" to optimize your schedule' : 'No task data available'}
                   </p>
@@ -1741,10 +1789,10 @@ function ResourcingPageContent() {
                       ? 'Adjust the configuration options above, then run the leveling algorithm to see results.'
                       : 'Upload an MPP file with tasks to use resource leveling.'}
                   </p>
-                </div>
-              </div>
+        </div>
+        </div>
             )}
-          </div>
+                      </div>
         )}
       </div>
     </div>
