@@ -82,9 +82,14 @@ function parseDate(dateStr: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// Helper: Format date for display
+// Helper: Format date for display (includes year)
 function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Helper: Format date short (for heatmap weeks)
+function formatDateShort(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
 }
 
 // Loading fallback component
@@ -286,7 +291,7 @@ function ResourcingPageContent() {
     current.setDate(current.getDate() - current.getDay() + 1); // Start from Monday
     
     while (current <= maxDate) {
-      weeks.push(formatDate(current));
+      weeks.push(formatDateShort(current));
       weekDates.push(new Date(current));
       current.setDate(current.getDate() + 7);
     }
@@ -594,6 +599,12 @@ function ResourcingPageContent() {
 
     const categories = ganttItems.map(item => item.id);
 
+    // Calculate zoom defaults based on item count
+    const maxVisibleItems = 15;
+    const yZoomEnd = ganttItems.length > maxVisibleItems 
+      ? Math.round((maxVisibleItems / ganttItems.length) * 100) 
+      : 100;
+
     // Prepare series data - matching WBS Gantt format exactly
     const seriesData = ganttItems.map((item, index) => {
       const utilization = item.baselineHours > 0 
@@ -713,8 +724,9 @@ function ResourcingPageContent() {
       const utilization = item.baselineHours > 0 
         ? Math.round((item.actualHours / item.baselineHours) * 100)
         : 0;
-      const startStr = item.startDate ? item.startDate.toISOString().split('T')[0] : 'N/A';
-      const endStr = item.endDate ? item.endDate.toISOString().split('T')[0] : 'N/A';
+      // Format dates with year
+      const startStr = item.startDate ? formatDate(item.startDate) : 'N/A';
+      const endStr = item.endDate ? formatDate(item.endDate) : 'N/A';
       const isRole = item.type === 'role';
 
       return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -735,19 +747,77 @@ function ResourcingPageContent() {
         trigger: 'item',
         formatter: tooltipFormatter
       },
-      // Grid matching WBS Gantt exactly
+      // Grid with space for dataZoom controls
       grid: { 
         left: 220, 
-        right: 150, 
+        right: 100, 
         top: 40, 
-        bottom: 20, 
-        containLabel: true 
+        bottom: 60,
+        containLabel: false
       },
+      // Horizontal and vertical zoom/scroll
+      dataZoom: [
+        // Horizontal slider at bottom
+        {
+          type: 'slider',
+          xAxisIndex: 0,
+          bottom: 8,
+          height: 20,
+          start: 0,
+          end: 100,
+          fillerColor: 'rgba(64,224,208,0.2)',
+          borderColor: 'rgba(64,224,208,0.3)',
+          handleStyle: { color: '#40E0D0', borderColor: '#40E0D0' },
+          textStyle: { color: '#9ca3af', fontSize: 10 },
+          dataBackground: {
+            lineStyle: { color: 'rgba(64,224,208,0.3)' },
+            areaStyle: { color: 'rgba(64,224,208,0.1)' }
+          }
+        },
+        // Vertical slider on left
+        {
+          type: 'slider',
+          yAxisIndex: 0,
+          left: 8,
+          width: 20,
+          start: 0,
+          end: yZoomEnd,
+          fillerColor: 'rgba(64,224,208,0.2)',
+          borderColor: 'rgba(64,224,208,0.3)',
+          handleStyle: { color: '#40E0D0', borderColor: '#40E0D0' },
+          showDetail: false
+        },
+        // Inside zoom for mouse interaction
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          zoomOnMouseWheel: 'shift',
+          moveOnMouseMove: true,
+          moveOnMouseWheel: true
+        },
+        {
+          type: 'inside',
+          yAxisIndex: 0,
+          zoomOnMouseWheel: 'ctrl',
+          moveOnMouseMove: false,
+          moveOnMouseWheel: false
+        }
+      ],
       xAxis: {
         type: 'time',
         position: 'top',
+        min: minTime,
+        max: maxTime,
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)', type: 'dashed' } },
-        axisLabel: { color: '#9ca3af', fontSize: 10 }
+        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+        axisLabel: { 
+          color: '#9ca3af', 
+          fontSize: 10,
+          formatter: (value: number) => {
+            const d = new Date(value);
+            return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}\n${d.getFullYear()}`;
+          }
+        }
       },
       yAxis: {
         type: 'category',
@@ -774,6 +844,25 @@ function ResourcingPageContent() {
           encode: { x: [1, 2], y: 0 },
           data: seriesData,
           clip: true
+        },
+        // Today line marker
+        {
+          type: 'line',
+          markLine: {
+            silent: true,
+            symbol: ['none', 'none'],
+            data: [{
+              xAxis: today,
+              lineStyle: { color: '#ef4444', width: 2, type: 'solid' },
+              label: {
+                formatter: 'Today',
+                position: 'start',
+                color: '#ef4444',
+                fontSize: 10,
+                fontWeight: 'bold'
+              }
+            }]
+          }
         }
       ]
     };
