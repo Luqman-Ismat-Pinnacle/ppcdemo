@@ -291,13 +291,20 @@ export default function OverviewPage() {
       })
       .filter(p => p.name !== 'Unknown' && p.taskCount > 0);
 
-    // Sort: Top performers have lowest variance (under budget), Worst have highest variance (over budget)
-    const sortedByVariance = [...performers].sort((a, b) => a.variance - b.variance);
+    // Split into under budget (top performers) and over budget (needs attention)
+    // Top performers: variance <= 0 (under or on budget), sorted by lowest variance first
+    const underBudget = performers
+      .filter(p => p.variance <= 0)
+      .sort((a, b) => a.variance - b.variance)
+      .slice(0, 5);
     
-    const topPerformers = sortedByVariance.slice(0, 5); // Best 5 (lowest/most negative variance)
-    const worstPerformers = sortedByVariance.slice(-5).reverse(); // Worst 5 (highest variance)
+    // Needs attention: variance > 0 (over budget), sorted by highest variance first
+    const overBudget = performers
+      .filter(p => p.variance > 0)
+      .sort((a, b) => b.variance - a.variance)
+      .slice(0, 5);
 
-    return { topPerformers, worstPerformers, totalProjects: performers.length };
+    return { topPerformers: underBudget, worstPerformers: overBudget, totalProjects: performers.length };
   }, [data.tasks, data.projects]);
 
   const filteredCountMetrics = useMemo(() => {
