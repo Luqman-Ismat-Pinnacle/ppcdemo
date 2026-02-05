@@ -56,10 +56,8 @@ import {
   getNextSortState,
   sortByState,
 } from '@/lib/sort-utils';
-import {
-  createSnapshot,
-  type SnapshotCreateInput
-} from '@/lib/snapshot-utils';
+// Snapshot functionality removed - variance feature replaces snapshots
+// import { createSnapshot, type SnapshotCreateInput } from '@/lib/snapshot-utils';
 import { useUser } from '@/lib/user-context';
 import DatePicker from '@/components/ui/DatePicker';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
@@ -2289,36 +2287,16 @@ export default function DataManagementPage() {
     const section = getCurrentSection();
     if (!section) return;
 
-    // Handle unified snapshots
+    // Snapshot functionality has been replaced with the variance trending feature
     if (section.key === 'snapshots') {
-      if (!data.projects || data.projects.length === 0) {
-        setUploadStatus({ type: 'error', message: 'Add a project before creating snapshots.' });
-        return;
-      }
-
-      const effectiveDate = snapshotDate || new Date().toISOString().split('T')[0];
-      const versionName = snapshotVersionName || `${snapshotType} ${effectiveDate}`;
-
-      const input: SnapshotCreateInput = {
-        snapshotDate: effectiveDate,
-        snapshotType,
-        versionName,
-        createdBy: snapshotCreatedBy || currentUserName || 'System',
-        notes: snapshotNotes || null,
-        scope: snapshotScope,
-        scopeId: snapshotScopeId || null,
-      };
-
-      const newSnapshot = createSnapshot(data, input);
-      setNewRows((prev: any[]) => [...prev, newSnapshot]);
-      setUploadStatus({ type: 'success', message: `Created unified snapshot ${versionName}. Save to persist.` });
-      setSnapshotVersionName('');
-      setSnapshotNotes('');
-      setSnapshotScopeId('');
+      setUploadStatus({ 
+        type: 'info', 
+        message: 'Snapshot creation has been replaced with automatic variance trending. Use the variance indicators throughout the app to track changes over time.' 
+      });
       return;
     }
 
-  }, [getCurrentSection, data, snapshotDate, snapshotVersionName, snapshotCreatedBy, snapshotNotes, currentUserName, snapshotType, snapshotScope, snapshotScopeId]);
+  }, [getCurrentSection]);
 
   const handleLockSnapshots = useCallback(() => {
     const section = getCurrentSection();

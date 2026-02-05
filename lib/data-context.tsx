@@ -16,11 +16,13 @@
  * @module lib/data-context
  */
 
-import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode, useCallback } from 'react';
 import type { SampleData, HierarchyFilter, DateFilter } from '@/types/data';
 import { transformData } from '@/lib/data-transforms';
 import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
+import { VariancePeriod, MetricsHistory } from '@/lib/variance-engine';
+import { autoRecordMetricsIfNeeded } from '@/lib/metrics-recorder';
 
 // ============================================================================
 // EMPTY DATA STRUCTURE
@@ -137,6 +139,14 @@ interface DataContextType {
   resetData: () => void;
   refreshData: () => Promise<Partial<SampleData> | undefined>;
   saveVisualSnapshot: (snapshot: any) => Promise<boolean>;
+  
+  // Variance trending state
+  variancePeriod: VariancePeriod;
+  setVariancePeriod: (period: VariancePeriod) => void;
+  varianceEnabled: boolean;
+  setVarianceEnabled: (enabled: boolean) => void;
+  metricsHistory: MetricsHistory[];
+  refreshMetricsHistory: () => Promise<void>;
 }
 
 // ============================================================================
@@ -181,6 +191,58 @@ export function DataProvider({ children }: DataProviderProps) {
   // State for active filters
   const [hierarchyFilter, setHierarchyFilter] = useState<HierarchyFilter | null>(null);
   const [dateFilter, setDateFilter] = useState<DateFilter | null>(null);
+
+  // Variance trending state
+  const [variancePeriod, setVariancePeriod] = useState<VariancePeriod>(() => {
+    // Load from localStorage if available
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('variancePeriod');
+      if (stored && ['day', 'week', 'month', 'quarter', 'custom'].includes(stored)) {
+        return stored as VariancePeriod;
+      }
+    }
+    return 'week';
+  });
+  const [varianceEnabled, setVarianceEnabledState] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('varianceEnabled');
+      return stored !== 'false'; // Default to true
+    }
+    return true;
+  });
+  const [metricsHistory, setMetricsHistory] = useState<MetricsHistory[]>([]);
+
+  // Persist variance settings
+  const setVarianceEnabled = useCallback((enabled: boolean) => {
+    setVarianceEnabledState(enabled);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('varianceEnabled', String(enabled));
+    }
+  }, []);
+
+  const handleSetVariancePeriod = useCallback((period: VariancePeriod) => {
+    setVariancePeriod(period);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('variancePeriod', period);
+    }
+  }, []);
+
+  // Fetch metrics history from database
+  const refreshMetricsHistory = useCallback(async () => {
+    try {
+      const response = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fetch', dataKey: 'metricsHistory' }),
+      });
+      const result = await response.json();
+      if (result.data) {
+        setMetricsHistory(result.data);
+      }
+    } catch (err) {
+      logger.error('Error fetching metrics history', err);
+    }
+  }, []);
 
   /**
    * Fetch data from database on app initialization
@@ -230,12 +292,18 @@ export function DataProvider({ children }: DataProviderProps) {
             // Apply transformations to build computed views (wbsData, laborBreakdown, etc.)
             const transformedData = transformData(mergedData);
             // Replace all data, not merge, to ensure fresh state
-            setData({ ...createEmptyData(), ...mergedData, ...transformedData });
+            const finalData = { ...createEmptyData(), ...mergedData, ...transformedData };
+            setData(finalData);
             logger.debug('Loaded and transformed data from database:', Object.keys(mergedData).map(k => {
               const value = (mergedData as Record<string, unknown>)[k];
               const length = Array.isArray(value) ? value.length : (value ? 1 : 0);
               return `${length} ${k}`;
             }).join(', '));
+            
+            // Auto-record daily metrics for variance trending (non-blocking)
+            autoRecordMetricsIfNeeded(finalData).catch(err => {
+              logger.warn('Failed to auto-record metrics:', err);
+            });
           }
         }
       } catch (err) {
@@ -809,6 +877,14 @@ export function DataProvider({ children }: DataProviderProps) {
     resetData,
     refreshData,
     saveVisualSnapshot,
+    
+    // Variance trending
+    variancePeriod,
+    setVariancePeriod: handleSetVariancePeriod,
+    varianceEnabled,
+    setVarianceEnabled,
+    metricsHistory,
+    refreshMetricsHistory,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

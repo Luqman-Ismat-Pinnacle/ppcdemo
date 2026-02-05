@@ -1,22 +1,20 @@
 'use client';
 
 /**
- * TableCompareExport – Compare, Fullscreen, Export in chart header.
- * Icon-only buttons matching chart visuals. Opens SnapshotComparisonModal on Compare.
+ * TableCompareExport – Fullscreen and Export buttons in chart header.
+ * Icon-only buttons matching chart visuals.
  * Portals modal to document.body (like ChartWrapper) so it renders above all content.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
-import SnapshotComparisonModal from './SnapshotComparisonModal';
 import { useChartHeaderActions } from '@/components/charts/ChartCard';
-import { CompareIcon, FullscreenIcon, DownloadIcon } from './ChartActionIcons';
+import { FullscreenIcon, DownloadIcon } from './ChartActionIcons';
 
 interface TableCompareExportProps {
   visualId: string;
   visualTitle: string;
-  /** Row data for compare modal and Excel export (array of plain objects) */
+  /** Row data for Excel export (array of plain objects) */
   data: Record<string, unknown>[] | any[];
   children: React.ReactNode;
   className?: string;
@@ -32,7 +30,6 @@ export default function TableCompareExport({
   style,
 }: TableCompareExportProps) {
   const setHeaderActions = useChartHeaderActions();
-  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const dataArray = Array.isArray(data) ? data : [];
   const dataRef = useRef(dataArray);
@@ -52,14 +49,6 @@ export default function TableCompareExport({
     if (!setHeaderActions) return;
     const buttons = (
       <>
-        <button
-          type="button"
-          className="chart-action-btn"
-          onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
-          title="Compare with snapshots"
-        >
-          <CompareIcon size={14} />
-        </button>
         <button
           type="button"
           className="chart-action-btn"
@@ -84,14 +73,6 @@ export default function TableCompareExport({
 
   const buttonsEl = (
     <>
-      <button
-        type="button"
-        className="chart-action-btn"
-        onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
-        title="Compare with snapshots"
-      >
-        <CompareIcon size={14} />
-      </button>
       <button
         type="button"
         className="chart-action-btn"
@@ -136,17 +117,6 @@ export default function TableCompareExport({
       }}>
         {children}
       </div>
-      {isCompareOpen && typeof document !== 'undefined' && createPortal(
-        <SnapshotComparisonModal
-          isOpen={isCompareOpen}
-          onClose={() => setIsCompareOpen(false)}
-          visualId={visualId}
-          visualTitle={visualTitle}
-          visualType="table"
-          currentData={dataArray}
-        />,
-        document.body
-      )}
       {isFullscreenOpen && (
         <div
           role="dialog"

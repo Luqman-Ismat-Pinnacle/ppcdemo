@@ -26,26 +26,31 @@ import VelocityChart from '@/components/charts/VelocityChart';
 
 type MainView = 'boards' | 'backlog' | 'sprint' | 'burndown' | 'velocity';
 
-const viewLabels: Record<MainView, { label: string; title: string }> = {
+const viewConfig: Record<MainView, { label: string; icon: string; description: string }> = {
   boards: { 
-    label: 'Boards', 
-    title: 'Kanban board for all work item types (Epic, Feature, User Story, Task, Bug).' 
+    label: 'Kanban Board', 
+    icon: '📋',
+    description: 'Visual workflow with drag-and-drop cards' 
   },
   backlog: { 
     label: 'Backlog', 
-    title: 'Backlog of epics, features, and user stories. Prioritize and assign to sprints.' 
+    icon: '📝',
+    description: 'Prioritize and organize work items' 
   },
   sprint: { 
     label: 'Taskboard', 
-    title: 'Sprint taskboard with work items and tasks for the current sprint.' 
+    icon: '🎯',
+    description: 'Current sprint tasks and progress' 
   },
   burndown: { 
     label: 'Burndown', 
-    title: 'Sprint burndown chart showing remaining work vs ideal trend.' 
+    icon: '📉',
+    description: 'Sprint progress visualization' 
   },
   velocity: { 
     label: 'Velocity', 
-    title: 'Team velocity tracking - planned vs completed across sprints.' 
+    icon: '📊',
+    description: 'Team capacity over time' 
   }
 };
 
@@ -53,61 +58,146 @@ export default function SprintPlanningPage() {
   const [mainView, setMainView] = useState<MainView>('boards');
 
   return (
-    <div className="page-panel full-height-page project-management-page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Sprint Planning</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            ADO-style sprint management with boards, backlog, and analytics
-          </p>
+    <div className="page-panel full-height-page project-management-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ 
+        padding: '1.25rem 1.5rem', 
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h1 style={{ 
+              fontSize: '1.5rem', 
+              fontWeight: 700, 
+              color: 'var(--text-primary)', 
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              Sprint Planning
+            </h1>
+            <p style={{ marginTop: '6px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Manage work items, sprints, and track team progress
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Main View Tabs */}
+      {/* Navigation Tabs - Clean card-style tabs */}
       <div style={{
         display: 'flex',
-        gap: '0.25rem',
-        padding: '0 1rem',
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        marginBottom: '1rem'
+        gap: '0.5rem',
+        padding: '1rem 1.5rem',
+        background: 'rgba(0,0,0,0.15)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        flexShrink: 0,
+        overflowX: 'auto'
       }}>
-        {(Object.keys(viewLabels) as MainView[]).map(viewType => (
-          <button
-            key={viewType}
-            onClick={() => setMainView(viewType)}
-            title={viewLabels[viewType].title}
-            style={{
-              padding: '0.75rem 1.25rem',
-              background: mainView === viewType ? 'rgba(64, 224, 208, 0.1)' : 'none',
-              border: 'none',
-              borderBottom: mainView === viewType ? '2px solid var(--pinnacle-teal)' : '2px solid transparent',
-              color: mainView === viewType ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-              fontSize: '0.85rem',
-              fontWeight: mainView === viewType ? 600 : 400,
-              cursor: 'pointer',
-              borderRadius: mainView === viewType ? '6px 6px 0 0' : '0',
-              transition: 'all 0.15s'
-            }}
-          >
-            {viewLabels[viewType].label}
-          </button>
-        ))}
+        {(Object.keys(viewConfig) as MainView[]).map(viewType => {
+          const config = viewConfig[viewType];
+          const isActive = mainView === viewType;
+          
+          return (
+            <button
+              key={viewType}
+              onClick={() => setMainView(viewType)}
+              title={config.description}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.65rem 1rem',
+                background: isActive ? 'var(--pinnacle-teal)' : 'rgba(255,255,255,0.04)',
+                border: isActive ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                color: isActive ? '#000' : 'var(--text-secondary)',
+                fontSize: '0.85rem',
+                fontWeight: isActive ? 600 : 500,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.08)';
+                }
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>{config.icon}</span>
+              {config.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Render Selected View */}
-      {mainView === 'boards' && <BoardsView />}
-      {mainView === 'backlog' && <BacklogView />}
-      {mainView === 'sprint' && <SprintView />}
-      {mainView === 'burndown' && (
-        <div style={{ padding: '0 1rem', height: 'calc(100% - 120px)' }}>
-          <SprintBurndownChart unit="hours" height="100%" />
-        </div>
-      )}
-      {mainView === 'velocity' && (
-        <div style={{ padding: '0 1rem', height: 'calc(100% - 120px)' }}>
-          <VelocityChart unit="points" height="100%" />
-        </div>
-      )}
+      {/* Content Area */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {mainView === 'boards' && <BoardsView />}
+        {mainView === 'backlog' && <BacklogView />}
+        {mainView === 'sprint' && <SprintView />}
+        {mainView === 'burndown' && (
+          <div style={{ flex: 1, padding: '1.5rem', overflow: 'auto' }}>
+            <div style={{ 
+              background: 'var(--bg-card)', 
+              borderRadius: '12px', 
+              border: '1px solid var(--border-color)',
+              padding: '1.5rem',
+              height: '100%',
+              minHeight: '400px'
+            }}>
+              <h3 style={{ 
+                fontSize: '1rem', 
+                fontWeight: 600, 
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                📉 Sprint Burndown
+              </h3>
+              <div style={{ height: 'calc(100% - 40px)' }}>
+                <SprintBurndownChart unit="hours" height="100%" />
+              </div>
+            </div>
+          </div>
+        )}
+        {mainView === 'velocity' && (
+          <div style={{ flex: 1, padding: '1.5rem', overflow: 'auto' }}>
+            <div style={{ 
+              background: 'var(--bg-card)', 
+              borderRadius: '12px', 
+              border: '1px solid var(--border-color)',
+              padding: '1.5rem',
+              height: '100%',
+              minHeight: '400px'
+            }}>
+              <h3 style={{ 
+                fontSize: '1rem', 
+                fontWeight: 600, 
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                📊 Team Velocity
+              </h3>
+              <div style={{ height: 'calc(100% - 40px)' }}>
+                <VelocityChart unit="points" height="100%" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

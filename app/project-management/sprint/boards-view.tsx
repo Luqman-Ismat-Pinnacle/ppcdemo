@@ -27,7 +27,27 @@ import WorkItemModal from './components/WorkItemModal';
 type WorkItemType = 'Epic' | 'Feature' | 'User Story' | 'Task' | 'Bug';
 type WorkItem = (Task | UserStory | Feature | Epic) & { workItemType: WorkItemType };
 
-// State workflow - matches user requirements
+// Simplified state workflow - grouped for better usability
+// Default view shows 5 main columns, with QC expanded into sub-columns when needed
+const MAIN_STATES = [
+  'Not Started',
+  'In Progress',
+  'Roadblock',
+  'In QC',  // Grouped QC states
+  'Closed'
+];
+
+const QC_STATES = [
+  'QC Initial',
+  'QC Kickoff',
+  'QC Mid',
+  'QC Final',
+  'QC Post-Validation',
+  'QC Field QC',
+  'QC Validation'
+];
+
+// Full state workflow for detailed view
 const STATE_WORKFLOW = [
   'Not Started',
   'In Progress',
@@ -42,15 +62,12 @@ const STATE_WORKFLOW = [
   'Closed'
 ];
 
-const QC_STATES = [
-  'QC Initial',
-  'QC Kickoff',
-  'QC Mid',
-  'QC Final',
-  'QC Post-Validation',
-  'QC Field QC',
-  'QC Validation'
-];
+// Map QC sub-states to the grouped "In QC" state
+const mapStateToDisplay = (state: string, isDetailedView: boolean): string => {
+  if (isDetailedView) return state;
+  if (QC_STATES.includes(state)) return 'In QC';
+  return state;
+};
 
 // Tooltips for work item types (agile hierarchy)
 const WORK_ITEM_TYPE_TOOLTIPS: Record<WorkItemType, string> = {
@@ -146,6 +163,7 @@ export default function BoardsView() {
   const [selectedProject, setSelectedProject] = useState<string>('all');
   const [wipLimits, setWipLimits] = useState<Record<string, number>>({});
   const [showWipWarning, setShowWipWarning] = useState(true);
+  const [isDetailedView, setIsDetailedView] = useState(false); // Toggle for expanded QC states
   
   // Drag state
   const [draggedItem, setDraggedItem] = useState<WorkItem | null>(null);
@@ -231,15 +249,17 @@ export default function BoardsView() {
 
   // Group items by state into columns
   const boardColumns = useMemo(() => {
-    const columns: BoardColumn[] = STATE_WORKFLOW.map(state => ({
+    const stateList = isDetailedView ? STATE_WORKFLOW : MAIN_STATES;
+    const columns: BoardColumn[] = stateList.map(state => ({
       state,
       items: [],
       wipLimit: wipLimits[state]
     }));
 
     filteredWorkItems.forEach(item => {
-      const status = getWorkItemStatus(item);
-      const column = columns.find(col => col.state === status);
+      const rawStatus = getWorkItemStatus(item);
+      const displayStatus = mapStateToDisplay(rawStatus, isDetailedView);
+      const column = columns.find(col => col.state === displayStatus);
       if (column) {
         column.items.push(item);
       } else {
@@ -249,7 +269,7 @@ export default function BoardsView() {
     });
 
     return columns;
-  }, [filteredWorkItems, wipLimits]);
+  }, [filteredWorkItems, wipLimits, isDetailedView]);
 
   // Group items by swimlane
   const getSwimlaneKey = (item: WorkItem): string => {
@@ -556,194 +576,306 @@ export default function BoardsView() {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Header with Create Buttons */}
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem' }}>
+      {/* Toolbar - Create Buttons and Filters */}
       <div style={{
-        padding: '1rem',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '1rem'
-      }}>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => handleCreate('Epic')}
-            className="btn btn-primary"
-            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            title={WORK_ITEM_TYPE_TOOLTIPS['Epic']}
-          >
-            + Epic
-          </button>
-          <button
-            onClick={() => handleCreate('Feature')}
-            className="btn btn-primary"
-            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            title={WORK_ITEM_TYPE_TOOLTIPS['Feature']}
-          >
-            + Feature
-          </button>
-          <button
-            onClick={() => handleCreate('User Story')}
-            className="btn btn-primary"
-            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            title={WORK_ITEM_TYPE_TOOLTIPS['User Story']}
-          >
-            + User Story
-          </button>
-          <button
-            onClick={() => handleCreate('Task')}
-            className="btn btn-primary"
-            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            title={WORK_ITEM_TYPE_TOOLTIPS['Task']}
-          >
-            + Task
-          </button>
-          <button
-            onClick={() => handleCreate('Bug')}
-            className="btn btn-primary"
-            style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            title={WORK_ITEM_TYPE_TOOLTIPS['Bug']}
-          >
-            + Bug
-          </button>
-        </div>
-      </div>
-
-      {/* Filters and Controls */}
-      <div style={{ 
-        padding: '1rem', 
-        background: 'rgba(255,255,255,0.02)', 
-        borderRadius: '8px',
-        marginBottom: '1rem',
-        display: 'flex',
-        flexWrap: 'wrap',
+        flexDirection: 'column',
         gap: '1rem',
-        alignItems: 'center'
+        marginBottom: '1rem',
+        flexShrink: 0
       }}>
-        {/* Work Item Type Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} title="Show or hide work item types on the board. Hierarchy: Epic → Feature → User Story → Task / Bug.">
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Types:</span>
-          {(['Epic', 'Feature', 'User Story', 'Task', 'Bug'] as WorkItemType[]).map(type => (
-            <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }} title={WORK_ITEM_TYPE_TOOLTIPS[type]}>
-              <input
-                type="checkbox"
-                checked={selectedWorkItemTypes.includes(type)}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setSelectedWorkItemTypes([...selectedWorkItemTypes, type]);
-                  } else {
-                    setSelectedWorkItemTypes(selectedWorkItemTypes.filter(t => t !== type));
-                  }
+        {/* Row 1: Create buttons and view toggle */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}>
+          {/* Create Buttons */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '0.5rem', 
+            flexWrap: 'wrap',
+            background: 'rgba(255,255,255,0.02)',
+            padding: '0.5rem',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.05)'
+          }}>
+            <span style={{ 
+              fontSize: '0.75rem', 
+              color: 'var(--text-muted)', 
+              alignSelf: 'center',
+              padding: '0 0.5rem',
+              borderRight: '1px solid rgba(255,255,255,0.1)',
+              marginRight: '0.25rem'
+            }}>
+              Create:
+            </span>
+            {(['Epic', 'Feature', 'User Story', 'Task', 'Bug'] as WorkItemType[]).map(type => (
+              <button
+                key={type}
+                onClick={() => handleCreate(type)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  background: 'transparent',
+                  border: `1px solid ${getWorkItemTypeColor(type)}40`,
+                  borderRadius: '6px',
+                  color: getWorkItemTypeColor(type),
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  transition: 'all 0.15s'
                 }}
-                style={{ cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{type}</span>
-            </label>
-          ))}
+                title={WORK_ITEM_TYPE_TOOLTIPS[type]}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = `${getWorkItemTypeColor(type)}20`;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                }}
+              >
+                <span style={{ fontSize: '0.9rem' }}>+</span>
+                {type}
+              </button>
+            ))}
+          </div>
+
+          {/* View Toggle */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.75rem',
+            background: 'rgba(255,255,255,0.02)',
+            padding: '0.5rem 0.75rem',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.05)'
+          }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>View:</span>
+            <button
+              onClick={() => setIsDetailedView(false)}
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.75rem',
+                background: !isDetailedView ? 'var(--pinnacle-teal)' : 'transparent',
+                border: !isDetailedView ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '5px',
+                color: !isDetailedView ? '#000' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontWeight: !isDetailedView ? 600 : 400
+              }}
+              title="Show 5 main columns with QC grouped"
+            >
+              Simple (5 cols)
+            </button>
+            <button
+              onClick={() => setIsDetailedView(true)}
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.75rem',
+                background: isDetailedView ? 'var(--pinnacle-teal)' : 'transparent',
+                border: isDetailedView ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '5px',
+                color: isDetailedView ? '#000' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontWeight: isDetailedView ? 600 : 400
+              }}
+              title="Show all 11 columns including QC sub-states"
+            >
+              Detailed (11 cols)
+            </button>
+          </div>
         </div>
 
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search work items..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          title="Search by work item name or ID"
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem',
-            minWidth: '200px'
-          }}
-        />
+        {/* Row 2: Filters */}
+        <div style={{ 
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          alignItems: 'center',
+          padding: '0.75rem',
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.05)'
+        }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '280px' }}>
+            <svg 
+              viewBox="0 0 24 24" 
+              width="14" 
+              height="14" 
+              fill="none" 
+              stroke="var(--text-muted)" 
+              strokeWidth="2"
+              style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search work items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              title="Search by work item name or ID"
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem 0.5rem 2rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontSize: '0.8rem'
+              }}
+            />
+          </div>
 
-        {/* Assignee Filter */}
-        <select
-          value={selectedAssignee}
-          onChange={(e) => setSelectedAssignee(e.target.value)}
-          title="Filter work items by assigned person"
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem'
-          }}
-        >
-          <option value="all">All Assignees</option>
-          {employees.map(emp => (
-            <option key={emp.employeeId} value={emp.employeeId}>{emp.name}</option>
-          ))}
-        </select>
+          {/* Separator */}
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
 
-        {/* Project Filter */}
-        <select
-          value={selectedProject}
-          onChange={(e) => setSelectedProject(e.target.value)}
-          title="Filter work items by project"
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem'
-          }}
-        >
-          <option value="all">All Projects</option>
-          {projects.map(proj => (
-            <option key={proj.projectId} value={proj.projectId}>{proj.name}</option>
-          ))}
-        </select>
+          {/* Work Item Type Chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginRight: '0.25rem' }}>Show:</span>
+            {(['Epic', 'Feature', 'User Story', 'Task', 'Bug'] as WorkItemType[]).map(type => {
+              const isSelected = selectedWorkItemTypes.includes(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => {
+                    if (isSelected) {
+                      setSelectedWorkItemTypes(selectedWorkItemTypes.filter(t => t !== type));
+                    } else {
+                      setSelectedWorkItemTypes([...selectedWorkItemTypes, type]);
+                    }
+                  }}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.7rem',
+                    fontWeight: 500,
+                    background: isSelected ? `${getWorkItemTypeColor(type)}20` : 'transparent',
+                    border: `1px solid ${isSelected ? getWorkItemTypeColor(type) : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: '12px',
+                    color: isSelected ? getWorkItemTypeColor(type) : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                  title={WORK_ITEM_TYPE_TOOLTIPS[type]}
+                >
+                  {type}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* Swimlane Selector */}
-        <select
-          value={swimlaneType}
-          onChange={(e) => setSwimlaneType(e.target.value as SwimlaneType)}
-          title="Group cards into horizontal lanes (e.g. by assignee, priority, or type)"
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem'
-          }}
-        >
-          <option value="none">No Swimlanes</option>
-          <option value="assignee">By Assignee</option>
-          <option value="priority">By Priority</option>
-          <option value="workItemType">By Work Item Type</option>
-          <option value="project">By Project</option>
-        </select>
+          {/* Separator */}
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
+
+          {/* Dropdown Filters */}
+          <select
+            value={selectedAssignee}
+            onChange={(e) => setSelectedAssignee(e.target.value)}
+            title="Filter work items by assigned person"
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8rem',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="all">All Assignees</option>
+            {employees.map(emp => (
+              <option key={emp.employeeId} value={emp.employeeId}>{emp.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            title="Filter work items by project"
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8rem',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="all">All Projects</option>
+            {projects.map(proj => (
+              <option key={proj.projectId} value={proj.projectId}>{proj.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={swimlaneType}
+            onChange={(e) => setSwimlaneType(e.target.value as SwimlaneType)}
+            title="Group cards into horizontal lanes"
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8rem',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="none">No Swimlanes</option>
+            <option value="assignee">By Assignee</option>
+            <option value="priority">By Priority</option>
+            <option value="workItemType">By Type</option>
+            <option value="project">By Project</option>
+          </select>
+        </div>
       </div>
 
-      {/* Kanban Board - tall so columns have plenty of vertical space */}
+      {/* Kanban Board - responsive with horizontal scroll */}
       <div style={{ 
         flex: 1, 
         overflowX: 'auto', 
+        overflowY: 'hidden',
         display: 'flex', 
-        gap: '1rem', 
-        paddingBottom: '1rem',
-        minHeight: 'calc(100vh - 320px)'
+        gap: '0.75rem', 
+        paddingBottom: '0.5rem'
       }}>
         {boardColumns.map((column) => {
           const isOverLimit = column.wipLimit && column.items.length > column.wipLimit;
           const isAtLimit = column.wipLimit && column.items.length === column.wipLimit;
+          const isQCColumn = column.state === 'In QC';
+          
+          // Get column color based on state
+          const getColumnColor = (state: string) => {
+            switch (state) {
+              case 'Not Started': return '#6B7280';
+              case 'In Progress': return '#3B82F6';
+              case 'Roadblock': return '#EF4444';
+              case 'In QC': return '#F59E0B';
+              case 'Closed': return '#10B981';
+              default: 
+                if (state.startsWith('QC')) return '#F59E0B';
+                return '#6B7280';
+            }
+          };
+          
+          const columnColor = getColumnColor(column.state);
           
           return (
             <div
               key={column.state}
               style={{
-                minWidth: '300px',
-                flex: 1,
-                background: 'rgba(255,255,255,0.02)',
+                minWidth: isDetailedView ? '240px' : '280px',
+                maxWidth: isDetailedView ? '280px' : '350px',
+                flex: '1 1 auto',
+                background: 'var(--bg-card)',
                 borderRadius: '12px',
                 border: dragOverColumn === column.state 
                   ? '2px solid var(--pinnacle-teal)' 
@@ -751,10 +883,11 @@ export default function BoardsView() {
                     ? '2px solid #EF4444' 
                     : isAtLimit && showWipWarning
                       ? '2px solid #F59E0B'
-                      : '1px solid rgba(255,255,255,0.05)',
+                      : '1px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 flexDirection: 'column',
-                transition: 'all 0.2s'
+                transition: 'all 0.2s',
+                overflow: 'hidden'
               }}
               onDragOver={(e) => handleDragOver(e, column.state)}
               onDragLeave={handleDragLeave}
@@ -762,61 +895,83 @@ export default function BoardsView() {
             >
               {/* Column Header */}
               <div style={{ 
-                padding: '1rem', 
-                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                padding: '0.85rem 1rem', 
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                background: `linear-gradient(135deg, ${columnColor}15 0%, transparent 100%)`,
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexShrink: 0
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <div style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '3px',
+                    background: columnColor
+                  }} />
                   <h3
                     style={{
-                      fontSize: '0.85rem',
-                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
                       color: 'var(--text-primary)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em'
+                      margin: 0
                     }}
                     title={STATE_TOOLTIPS[column.state] ?? `Status: ${column.state}`}
                   >
                     {column.state}
+                    {isQCColumn && !isDetailedView && (
+                      <span style={{ 
+                        fontSize: '0.65rem', 
+                        color: 'var(--text-muted)', 
+                        fontWeight: 400,
+                        marginLeft: '0.35rem'
+                      }}>
+                        (grouped)
+                      </span>
+                    )}
                   </h3>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ 
                     fontSize: '0.7rem', 
                     background: isOverLimit ? '#EF4444' : 'rgba(255,255,255,0.1)', 
-                    padding: '0.1rem 0.5rem', 
+                    padding: '0.15rem 0.5rem', 
                     borderRadius: '10px', 
-                    color: 'var(--text-muted)'
+                    color: isOverLimit ? '#fff' : 'var(--text-muted)',
+                    fontWeight: 600
                   }}>
                     {column.items.length}
-                    {column.wipLimit && ` / ${column.wipLimit}`}
+                    {column.wipLimit && <span style={{ opacity: 0.7 }}> / {column.wipLimit}</span>}
                   </span>
-                </div>
-                <button
-                  onClick={() => {
-                    const newLimit = prompt(`Set WIP limit for ${column.state}:`, column.wipLimit?.toString() || '');
-                    if (newLimit !== null) {
-                      const limit = parseInt(newLimit);
-                      if (!isNaN(limit) && limit > 0) {
-                        setWipLimits({ ...wipLimits, [column.state]: limit });
-                      } else if (newLimit === '') {
-                        const { [column.state]: _, ...rest } = wipLimits;
-                        setWipLimits(rest);
+                  <button
+                    onClick={() => {
+                      const newLimit = prompt(`Set WIP limit for ${column.state}:`, column.wipLimit?.toString() || '');
+                      if (newLimit !== null) {
+                        const limit = parseInt(newLimit);
+                        if (!isNaN(limit) && limit > 0) {
+                          setWipLimits({ ...wipLimits, [column.state]: limit });
+                        } else if (newLimit === '') {
+                          const { [column.state]: _, ...rest } = wipLimits;
+                          setWipLimits(rest);
+                        }
                       }
-                    }
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    fontSize: '0.7rem',
-                    padding: '0.25rem'
-                  }}
-                  title="Set WIP limit"
-                >
-                  ⚙️
-                </button>
+                    }}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontSize: '0.65rem',
+                      padding: '0.2rem 0.35rem',
+                      borderRadius: '4px',
+                      lineHeight: 1
+                    }}
+                    title="Set WIP limit"
+                  >
+                    ⚙
+                  </button>
+                </div>
               </div>
 
               {/* Column Body */}

@@ -626,92 +626,239 @@ export default function BacklogView() {
     );
   };
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  // Get color for work item type
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'Epic': return '#9333EA';
+      case 'Feature': return '#EC4899';
+      case 'User Story': return '#3B82F6';
+      case 'Task': return '#10B981';
+      default: return '#6B7280';
+    }
+  };
 
-      {/* Filters and Controls */}
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem' }}>
+      {/* Toolbar */}
       <div style={{
-        padding: '1rem',
-        background: 'rgba(255,255,255,0.02)',
-        borderRadius: '8px',
-        marginBottom: '1rem',
         display: 'flex',
-        gap: '1rem',
-        alignItems: 'center',
-        flexWrap: 'wrap'
+        flexDirection: 'column',
+        gap: '0.75rem',
+        marginBottom: '1rem',
+        flexShrink: 0
       }}>
-        {/* View Mode */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>View:</span>
-          <button
-            onClick={() => setViewMode('hierarchy')}
-            style={{
-              padding: '0.4rem 0.8rem',
-              borderRadius: '6px',
-              border: 'none',
-              background: viewMode === 'hierarchy' ? 'var(--pinnacle-teal)' : 'var(--bg-secondary)',
-              color: viewMode === 'hierarchy' ? '#000' : 'var(--text-primary)',
-              fontSize: '0.8rem',
-              cursor: 'pointer'
-            }}
-          >
-            Hierarchy
-          </button>
-          <button
-            onClick={() => setViewMode('flat')}
-            style={{
-              padding: '0.4rem 0.8rem',
-              borderRadius: '6px',
-              border: 'none',
-              background: viewMode === 'flat' ? 'var(--pinnacle-teal)' : 'var(--bg-secondary)',
-              color: viewMode === 'flat' ? '#000' : 'var(--text-primary)',
-              fontSize: '0.8rem',
-              cursor: 'pointer'
-            }}
-          >
-            Flat
-          </button>
+        {/* Row 1: Create buttons */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}>
+          {/* Create Buttons */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '0.5rem', 
+            flexWrap: 'wrap',
+            background: 'rgba(255,255,255,0.02)',
+            padding: '0.5rem',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.05)'
+          }}>
+            <span style={{ 
+              fontSize: '0.75rem', 
+              color: 'var(--text-muted)', 
+              alignSelf: 'center',
+              padding: '0 0.5rem',
+              borderRight: '1px solid rgba(255,255,255,0.1)',
+              marginRight: '0.25rem'
+            }}>
+              Create:
+            </span>
+            {(['Epic', 'Feature', 'User Story', 'Task'] as const).map(type => (
+              <button
+                key={type}
+                onClick={() => handleCreate(type)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  background: 'transparent',
+                  border: `1px solid ${getTypeColor(type)}40`,
+                  borderRadius: '6px',
+                  color: getTypeColor(type),
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = `${getTypeColor(type)}20`;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                }}
+              >
+                <span style={{ fontSize: '0.9rem' }}>+</span>
+                {type}
+              </button>
+            ))}
+          </div>
+
+          {/* View Mode Toggle */}
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            background: 'rgba(255,255,255,0.02)',
+            padding: '0.4rem',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.05)'
+          }}>
+            <button
+              onClick={() => setViewMode('hierarchy')}
+              style={{
+                padding: '0.4rem 0.75rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: viewMode === 'hierarchy' ? 'var(--pinnacle-teal)' : 'transparent',
+                color: viewMode === 'hierarchy' ? '#000' : 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                fontWeight: viewMode === 'hierarchy' ? 600 : 400,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <span>🌳</span> Hierarchy
+            </button>
+            <button
+              onClick={() => setViewMode('flat')}
+              style={{
+                padding: '0.4rem 0.75rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: viewMode === 'flat' ? 'var(--pinnacle-teal)' : 'transparent',
+                color: viewMode === 'flat' ? '#000' : 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                fontWeight: viewMode === 'flat' ? 600 : 400,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <span>📋</span> Flat
+            </button>
+          </div>
         </div>
 
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search backlog..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem',
-            minWidth: '200px',
-            flex: 1
-          }}
-        />
+        {/* Row 2: Filters */}
+        <div style={{ 
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          alignItems: 'center',
+          padding: '0.75rem',
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.05)'
+        }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+            <svg 
+              viewBox="0 0 24 24" 
+              width="14" 
+              height="14" 
+              fill="none" 
+              stroke="var(--text-muted)" 
+              strokeWidth="2"
+              style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search backlog..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem 0.5rem 2rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontSize: '0.8rem'
+              }}
+            />
+          </div>
 
-        {/* Sprint Filter */}
-        <select
-          value={selectedSprint}
-          onChange={(e) => setSelectedSprint(e.target.value)}
-          style={{
-            padding: '0.4rem 0.8rem',
-            borderRadius: '6px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem'
-          }}
-        >
-          <option value="all">All Sprints</option>
-          <option value="backlog">Backlog Only</option>
-          {sprints.map(sprint => (
-            <option key={sprint.id || sprint.sprintId} value={sprint.id || sprint.sprintId}>
-              {sprint.name}
-            </option>
-          ))}
-        </select>
+          {/* Separator */}
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
+
+          {/* Sprint Filter */}
+          <select
+            value={selectedSprint}
+            onChange={(e) => setSelectedSprint(e.target.value)}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              minWidth: '140px'
+            }}
+          >
+            <option value="all">All Sprints</option>
+            <option value="backlog">📥 Backlog Only</option>
+            {sprints.map(sprint => (
+              <option key={sprint.id || sprint.sprintId} value={sprint.id || sprint.sprintId}>
+                🏃 {sprint.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Expand/Collapse All */}
+          <button
+            onClick={() => {
+              if (expandedItems.size > 0) {
+                setExpandedItems(new Set());
+              } else {
+                const allIds = new Set<string>();
+                const addIds = (items: BacklogItem[]) => {
+                  items.forEach(item => {
+                    if (item.children && item.children.length > 0) {
+                      allIds.add(item.id);
+                      addIds(item.children);
+                    }
+                  });
+                };
+                addIds(backlogHierarchy);
+                setExpandedItems(allIds);
+              }
+            }}
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem'
+            }}
+          >
+            {expandedItems.size > 0 ? '🔼 Collapse All' : '🔽 Expand All'}
+          </button>
+        </div>
       </div>
 
       {/* Backlog List */}

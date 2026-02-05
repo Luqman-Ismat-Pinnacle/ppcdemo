@@ -186,7 +186,7 @@ export default function QCLogPage() {
 
     if (isEditing) {
       return (
-        <td style={{ padding: '8px 12px', textAlign: isNumber ? 'center' : 'left' }}>
+        <td style={{ padding: '6px 10px', textAlign: isNumber ? 'center' : 'left' }}>
           <input
             type={isNumber ? 'number' : 'text'}
             value={editValue}
@@ -195,12 +195,12 @@ export default function QCLogPage() {
             onKeyDown={(e) => handleKeyPress(e, qcTask)}
             autoFocus
             style={{
-              width: '100%',
-              padding: '6px 10px',
-              fontSize: '0.8rem',
+              width: isNumber ? '50px' : '100%',
+              padding: '4px 6px',
+              fontSize: '0.75rem',
               background: 'var(--bg-tertiary)',
               border: '2px solid var(--pinnacle-teal)',
-              borderRadius: '6px',
+              borderRadius: '4px',
               color: 'var(--text-primary)',
               outline: 'none',
               textAlign: isNumber ? 'center' : 'left'
@@ -215,16 +215,20 @@ export default function QCLogPage() {
         onClick={() => startEdit(qcTask.qcTaskId, field, value)}
         style={{ 
           cursor: 'pointer', 
-          padding: '12px 16px',
+          padding: '8px 12px',
           textAlign: isNumber ? 'center' : 'left',
           transition: 'background 0.15s',
-          fontSize: '0.85rem',
+          fontSize: '0.75rem',
           fontWeight: isNumber ? 600 : 400,
-          color: isNumber && value > 0 ? 'var(--text-primary)' : 'var(--text-secondary)'
+          color: isNumber && value > 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
+          maxWidth: isNumber ? 'auto' : '150px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
         }}
         onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'rgba(64, 224, 208, 0.1)'; }}
         onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
-        title="Click to edit"
+        title={isNumber ? 'Click to edit' : (value || 'Click to edit')}
       >
         {isNumber ? (value ?? 0) : (value || '—')}
       </td>
@@ -247,7 +251,7 @@ export default function QCLogPage() {
 
     if (isEditing) {
       return (
-        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+        <td style={{ padding: '6px 10px', textAlign: 'center' }}>
           <select
             value={editValue}
             onChange={(e) => {
@@ -258,11 +262,11 @@ export default function QCLogPage() {
             autoFocus
             style={{
               width: '100%',
-              padding: '6px 10px',
-              fontSize: '0.8rem',
+              padding: '4px 6px',
+              fontSize: '0.7rem',
               background: 'var(--bg-tertiary)',
               border: '2px solid var(--pinnacle-teal)',
-              borderRadius: '6px',
+              borderRadius: '4px',
               color: 'var(--text-primary)',
               outline: 'none'
             }}
@@ -282,7 +286,7 @@ export default function QCLogPage() {
         onClick={() => startEdit(qcTask.qcTaskId, 'qcStatus', qcTask.qcStatus)}
         style={{ 
           cursor: 'pointer', 
-          padding: '12px 16px',
+          padding: '8px 12px',
           textAlign: 'center',
           transition: 'background 0.15s'
         }}
@@ -292,14 +296,14 @@ export default function QCLogPage() {
       >
         <span style={{
           display: 'inline-block',
-          padding: '5px 12px',
-          borderRadius: '20px',
-          fontSize: '0.75rem',
+          padding: '3px 8px',
+          borderRadius: '12px',
+          fontSize: '0.65rem',
           fontWeight: 600,
           background: colors.bg,
           color: colors.color,
           border: `1px solid ${colors.border}`,
-          minWidth: '90px'
+          whiteSpace: 'nowrap'
         }}>
           {qcTask.qcStatus}
         </span>
@@ -308,22 +312,58 @@ export default function QCLogPage() {
   };
 
   return (
-    <div className="page-panel full-height-page project-management-page" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0, overflow: 'auto' }}>
-      {/* Header */}
-      <div className="page-header" style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 className="page-title">QC Log</h1>
+    <div className="page-panel full-height-page project-management-page" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0, overflow: 'hidden', padding: '1rem' }}>
+      {/* Header with Title and Filters */}
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        gap: '1rem',
+        flexShrink: 0
+      }}>
+        {/* Title Row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.25rem'
+            }}>
+              ✓
+            </div>
+            <div>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>QC Log</h1>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                Track and manage quality control tasks
+              </p>
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
+
+        {/* Filters Row */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '0.75rem', 
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          padding: '0.75rem',
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.05)'
+        }}>
+          <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '280px' }}>
             <svg 
               viewBox="0 0 24 24" 
-              width="16" 
-              height="16" 
+              width="14" 
+              height="14" 
               fill="none" 
               stroke="var(--text-muted)" 
               strokeWidth="2"
-              style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}
+              style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}
             >
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -334,13 +374,13 @@ export default function QCLogPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
-                padding: '10px 14px 10px 40px',
+                width: '100%',
+                padding: '0.5rem 0.75rem 0.5rem 2rem',
                 fontSize: '0.85rem',
-                background: 'var(--bg-tertiary)',
+                background: 'var(--bg-secondary)',
                 border: '1px solid var(--border-color)',
-                borderRadius: '8px',
+                borderRadius: '6px',
                 color: 'var(--text-primary)',
-                width: '240px',
               }}
             />
           </div>
@@ -348,432 +388,191 @@ export default function QCLogPage() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             style={{
-              padding: '10px 14px',
+              padding: '0.5rem 0.75rem',
               fontSize: '0.85rem',
-              background: 'var(--bg-tertiary)',
+              background: 'var(--bg-secondary)',
               border: '1px solid var(--border-color)',
-              borderRadius: '8px',
+              borderRadius: '6px',
               color: 'var(--text-primary)',
-              width: '160px',
+              cursor: 'pointer',
+              minWidth: '140px',
             }}
           >
-            <option value="all">All Status</option>
+            <option value="all">📊 All Status</option>
             {statuses.map((status) => (
               <option key={status} value={status}>
-                {status}
+                {status === 'Complete' ? '✅' : status === 'In Progress' ? '🔄' : '⏳'} {status}
               </option>
             ))}
           </select>
+          <span style={{ 
+            fontSize: '0.8rem', 
+            color: 'var(--text-muted)',
+            padding: '0.5rem 0.75rem',
+            background: 'rgba(255,255,255,0.05)',
+            borderRadius: '6px'
+          }}>
+            {filteredQCTasks.length} of {data.qctasks.length} tasks
+          </span>
         </div>
       </div>
 
-      {/* Summary Stats - responsive: fill row, wrap on narrow screens */}
+      {/* Summary Stats - Compact cards */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
-        gap: '12px',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', 
+        gap: '0.75rem',
         flexShrink: 0
       }}>
         {[
-          { label: 'Total Tasks', value: summaryStats.total, color: 'var(--text-primary)' },
-          { label: 'Complete', value: summaryStats.complete, color: '#10B981' },
-          { label: 'In Progress', value: summaryStats.inProgress, color: '#F59E0B' },
-          { label: 'Not Started', value: summaryStats.notStarted, color: '#6B7280' },
-          { label: 'Total Hours', value: summaryStats.totalHours.toFixed(1), color: 'var(--pinnacle-teal)' },
-          { label: 'Avg Score', value: summaryStats.avgScore.toFixed(1), color: '#3B82F6' },
-          { label: 'Critical Errors', value: summaryStats.totalCritical, color: '#EF4444' },
-          { label: 'Non-Critical', value: summaryStats.totalNonCritical, color: '#F59E0B' },
+          { label: 'Total', value: summaryStats.total, color: 'var(--text-primary)', icon: '📋' },
+          { label: 'Complete', value: summaryStats.complete, color: '#10B981', icon: '✅' },
+          { label: 'In Progress', value: summaryStats.inProgress, color: '#F59E0B', icon: '🔄' },
+          { label: 'Not Started', value: summaryStats.notStarted, color: '#6B7280', icon: '⏳' },
+          { label: 'Hours', value: summaryStats.totalHours.toFixed(1), color: 'var(--pinnacle-teal)', icon: '⏱️' },
+          { label: 'Avg Score', value: summaryStats.avgScore.toFixed(1), color: '#3B82F6', icon: '⭐' },
+          { label: 'Critical', value: summaryStats.totalCritical, color: '#EF4444', icon: '🚨' },
+          { label: 'Minor', value: summaryStats.totalNonCritical, color: '#F59E0B', icon: '⚠️' },
         ].map((stat, idx) => (
           <div 
             key={idx}
             style={{
               background: 'var(--bg-card)',
               borderRadius: '10px',
-              padding: '14px 16px',
+              padding: '0.85rem 1rem',
               border: '1px solid var(--border-color)',
-              textAlign: 'center'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
             }}
           >
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {stat.label}
-            </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: stat.color }}>
-              {stat.value}
+            <span style={{ fontSize: '1.25rem' }}>{stat.icon}</span>
+            <div>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {stat.label}
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: stat.color }}>
+                {stat.value}
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {/* QC Tasks Table - scrollable when many rows */}
-      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 280, minWidth: 0 }}>
-        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', padding: '14px 20px', flexShrink: 0 }}>
-          <h3 className="chart-card-title" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
-              <path d="M9 11l3 3L22 4"></path>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-            </svg>
-            QC Tasks
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        minHeight: 200, 
+        minWidth: 0,
+        background: 'var(--bg-card)',
+        borderRadius: '12px',
+        border: '1px solid var(--border-color)',
+        overflow: 'hidden'
+      }}>
+        <div style={{ 
+          borderBottom: '1px solid var(--border-color)', 
+          padding: '0.75rem 1rem', 
+          flexShrink: 0,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'rgba(255,255,255,0.02)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '1rem' }}>📋</span>
+            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>QC Tasks</span>
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.75rem',
+            fontSize: '0.75rem', 
+            color: 'var(--text-muted)'
+          }}>
             <span style={{ 
-              fontSize: '0.75rem', 
-              background: 'var(--bg-tertiary)', 
-              padding: '4px 10px', 
-              borderRadius: '12px',
-              color: 'var(--text-muted)',
-              fontWeight: 500
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '4px',
+              padding: '4px 8px',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '4px'
             }}>
-              {filteredQCTasks.length} records
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              Click to edit
             </span>
-          </h3>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            Click any cell to edit
-          </span>
+          </div>
         </div>
-        <div className="chart-card-body no-padding" style={{ flex: 1, minHeight: 0, overflow: 'auto', maxHeight: '65vh' }}>
-          <table className="data-table" style={{ 
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <table style={{ 
             width: '100%', 
+            minWidth: '900px',
             borderCollapse: 'collapse',
-            fontSize: '0.85rem'
+            fontSize: '0.8rem'
           }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)' }}>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'left', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '14%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcTaskId'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
+                {[
+                  { key: 'qcTaskId', label: 'QC Task ID', align: 'left', minWidth: '100px' },
+                  { key: 'parentTask', label: 'Parent Task', align: 'left', minWidth: '140px' },
+                  { key: 'qcHours', label: 'Hours', align: 'center', minWidth: '70px' },
+                  { key: 'qcScore', label: 'Score', align: 'center', minWidth: '70px' },
+                  { key: 'qcCount', label: 'Count', align: 'center', minWidth: '60px' },
+                  { key: 'qcStatus', label: 'Status', align: 'center', minWidth: '100px' },
+                  { key: 'qcCriticalErrors', label: 'Critical', align: 'center', minWidth: '70px' },
+                  { key: 'qcNonCriticalErrors', label: 'Minor', align: 'center', minWidth: '70px' },
+                  { key: 'qcComments', label: 'Comments', align: 'left', minWidth: '120px' },
+                ].map((col) => (
+                  <th 
+                    key={col.key}
+                    style={{ 
+                      padding: '10px 12px', 
+                      textAlign: col.align as 'left' | 'center' | 'right', 
+                      fontWeight: 600, 
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.7rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      borderBottom: '1px solid var(--border-color)',
+                      minWidth: col.minWidth,
+                      whiteSpace: 'nowrap',
+                      position: 'sticky',
+                      top: 0,
+                      background: 'var(--bg-secondary)',
+                      zIndex: 1
                     }}
                   >
-                    QC Task ID
-                    {formatSortIndicator(qcSort, 'qcTaskId') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcTaskId')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'left', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '14%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'parentTask'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Parent Task
-                    {formatSortIndicator(qcSort, 'parentTask') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'parentTask')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'center', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '10%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcHours'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Hours
-                    {formatSortIndicator(qcSort, 'qcHours') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcHours')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'center', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '10%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcScore'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Score
-                    {formatSortIndicator(qcSort, 'qcScore') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcScore')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'center', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '8%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcCount'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Count
-                    {formatSortIndicator(qcSort, 'qcCount') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcCount')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'center', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '14%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcStatus'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Status
-                    {formatSortIndicator(qcSort, 'qcStatus') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcStatus')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'center', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '10%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcCriticalErrors'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Critical
-                    {formatSortIndicator(qcSort, 'qcCriticalErrors') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcCriticalErrors')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'center', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '10%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcNonCriticalErrors'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Non-Critical
-                    {formatSortIndicator(qcSort, 'qcNonCriticalErrors') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcNonCriticalErrors')}
-                      </span>
-                    )}
-                  </button>
-                </th>
-                <th style={{ 
-                  padding: '14px 20px', 
-                  textAlign: 'left', 
-                  fontWeight: 600, 
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.75rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  borderBottom: '2px solid var(--border-color)',
-                  width: '10%'
-                }}>
-                  <button
-                    type="button"
-                    onClick={() => setQcSort(prev => getNextSortState(prev, 'qcComments'))}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      color: 'inherit',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontSize: 'inherit',
-                      textTransform: 'inherit',
-                      letterSpacing: 'inherit',
-                    }}
-                  >
-                    Comments
-                    {formatSortIndicator(qcSort, 'qcComments') && (
-                      <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
-                        {formatSortIndicator(qcSort, 'qcComments')}
-                      </span>
-                    )}
-                  </button>
-                </th>
+                    <button
+                      type="button"
+                      onClick={() => setQcSort(prev => getNextSortState(prev, col.key))}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: 'inherit',
+                        textTransform: 'inherit',
+                        letterSpacing: 'inherit',
+                      }}
+                    >
+                      {col.label}
+                      {formatSortIndicator(qcSort, col.key) && (
+                        <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>
+                          {formatSortIndicator(qcSort, col.key)}
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -782,24 +581,29 @@ export default function QCLogPage() {
                   key={qc.qcTaskId}
                   style={{ 
                     borderBottom: '1px solid var(--border-color)',
-                    background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'
+                    background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+                    transition: 'background 0.1s'
                   }}
                 >
                   <td style={{ 
-                    padding: '12px 20px',
+                    padding: '8px 12px',
                     fontFamily: 'monospace',
-                    fontSize: '0.8rem',
+                    fontSize: '0.75rem',
                     color: 'var(--pinnacle-teal)',
                     fontWeight: 500
                   }}>
                     {qc.qcTaskId}
                   </td>
                   <td style={{ 
-                    padding: '12px 20px',
-                    fontSize: '0.85rem',
-                    color: 'var(--text-secondary)'
+                    padding: '8px 12px',
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    maxWidth: '180px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
                   }}
-                  title={`ID: ${qc.parentTaskId}`}
+                  title={`${getTaskName(qc.parentTaskId)} (ID: ${qc.parentTaskId})`}
                   >
                     {getTaskName(qc.parentTaskId)}
                   </td>
@@ -811,10 +615,10 @@ export default function QCLogPage() {
                     onClick={() => startEdit(qc.qcTaskId, 'qcCriticalErrors', qc.qcCriticalErrors)}
                     style={{ 
                       cursor: 'pointer', 
-                      padding: '12px 16px',
+                      padding: '8px 12px',
                       textAlign: 'center',
                       transition: 'background 0.15s',
-                      fontSize: '0.85rem',
+                      fontSize: '0.75rem',
                       fontWeight: 600,
                       color: (qc.qcCriticalErrors || 0) > 0 ? '#EF4444' : 'var(--text-muted)'
                     }}
@@ -831,29 +635,37 @@ export default function QCLogPage() {
                         onKeyDown={(e) => handleKeyPress(e, qc)}
                         autoFocus
                         style={{
-                          width: '60px',
-                          padding: '6px',
-                          fontSize: '0.8rem',
+                          width: '50px',
+                          padding: '4px',
+                          fontSize: '0.75rem',
                           background: 'var(--bg-tertiary)',
                           border: '2px solid var(--pinnacle-teal)',
-                          borderRadius: '6px',
+                          borderRadius: '4px',
                           color: 'var(--text-primary)',
                           outline: 'none',
                           textAlign: 'center'
                         }}
                       />
                     ) : (
-                      qc.qcCriticalErrors ?? 0
+                      <span style={{
+                        display: 'inline-block',
+                        minWidth: '24px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: (qc.qcCriticalErrors || 0) > 0 ? 'rgba(239, 68, 68, 0.15)' : 'transparent'
+                      }}>
+                        {qc.qcCriticalErrors ?? 0}
+                      </span>
                     )}
                   </td>
                   <td 
                     onClick={() => startEdit(qc.qcTaskId, 'qcNonCriticalErrors', qc.qcNonCriticalErrors)}
                     style={{ 
                       cursor: 'pointer', 
-                      padding: '12px 16px',
+                      padding: '8px 12px',
                       textAlign: 'center',
                       transition: 'background 0.15s',
-                      fontSize: '0.85rem',
+                      fontSize: '0.75rem',
                       fontWeight: 600,
                       color: (qc.qcNonCriticalErrors || 0) > 0 ? '#F59E0B' : 'var(--text-muted)'
                     }}
@@ -870,19 +682,27 @@ export default function QCLogPage() {
                         onKeyDown={(e) => handleKeyPress(e, qc)}
                         autoFocus
                         style={{
-                          width: '60px',
-                          padding: '6px',
-                          fontSize: '0.8rem',
+                          width: '50px',
+                          padding: '4px',
+                          fontSize: '0.75rem',
                           background: 'var(--bg-tertiary)',
                           border: '2px solid var(--pinnacle-teal)',
-                          borderRadius: '6px',
+                          borderRadius: '4px',
                           color: 'var(--text-primary)',
                           outline: 'none',
                           textAlign: 'center'
                         }}
                       />
                     ) : (
-                      qc.qcNonCriticalErrors ?? 0
+                      <span style={{
+                        display: 'inline-block',
+                        minWidth: '24px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: (qc.qcNonCriticalErrors || 0) > 0 ? 'rgba(245, 158, 11, 0.15)' : 'transparent'
+                      }}>
+                        {qc.qcNonCriticalErrors ?? 0}
+                      </span>
                     )}
                   </td>
                   {renderEditableCell(qc, 'qcComments', qc.qcComments || '', false)}
@@ -891,12 +711,36 @@ export default function QCLogPage() {
               {filteredQCTasks.length === 0 && (
                 <tr>
                   <td colSpan={9} style={{ 
-                    padding: '40px', 
-                    textAlign: 'center', 
-                    color: 'var(--text-muted)',
-                    fontSize: '0.9rem'
+                    padding: '3rem', 
+                    textAlign: 'center'
                   }}>
-                    No QC tasks found matching your criteria
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      gap: '0.75rem' 
+                    }}>
+                      <span style={{ fontSize: '2rem', opacity: 0.5 }}>🔍</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                        No QC tasks found matching your criteria
+                      </span>
+                      {searchTerm && (
+                        <button
+                          onClick={() => setSearchTerm('')}
+                          style={{
+                            padding: '0.4rem 0.75rem',
+                            fontSize: '0.75rem',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Clear search
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )}

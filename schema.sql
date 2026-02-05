@@ -753,6 +753,48 @@ CREATE TABLE IF NOT EXISTS visual_snapshots (
 CREATE INDEX IF NOT EXISTS idx_visual_snapshots_visual_id ON visual_snapshots(visual_id);
 CREATE INDEX IF NOT EXISTS idx_visual_snapshots_date ON visual_snapshots(snapshot_date);
 
+-- METRICS HISTORY (for variance trending feature)
+CREATE TABLE IF NOT EXISTS metrics_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recorded_date DATE NOT NULL,
+  scope VARCHAR(50) NOT NULL DEFAULT 'all',  -- 'project', 'phase', 'task', 'all'
+  scope_id VARCHAR(50),                       -- ID of the scoped entity
+  
+  -- Progress metrics
+  total_tasks INTEGER,
+  completed_tasks INTEGER,
+  percent_complete NUMERIC(5, 2),
+  
+  -- Hours metrics  
+  baseline_hours NUMERIC(12, 2),
+  actual_hours NUMERIC(12, 2),
+  remaining_hours NUMERIC(12, 2),
+  
+  -- Cost metrics
+  baseline_cost NUMERIC(14, 2),
+  actual_cost NUMERIC(14, 2),
+  remaining_cost NUMERIC(14, 2),
+  
+  -- EVM metrics
+  earned_value NUMERIC(14, 2),
+  planned_value NUMERIC(14, 2),
+  cpi NUMERIC(5, 3),
+  spi NUMERIC(5, 3),
+  
+  -- QC metrics
+  qc_pass_rate NUMERIC(5, 2),
+  qc_critical_errors INTEGER,
+  qc_total_tasks INTEGER,
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(recorded_date, scope, scope_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metrics_history_date ON metrics_history(recorded_date);
+CREATE INDEX IF NOT EXISTS idx_metrics_history_scope ON metrics_history(scope, scope_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_history_date_scope ON metrics_history(recorded_date DESC, scope);
+
 -- PROJECT HEALTH
 CREATE TABLE IF NOT EXISTS project_health (
   id VARCHAR(50) PRIMARY KEY,

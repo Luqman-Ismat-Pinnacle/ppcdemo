@@ -10,3 +10,8 @@ export { default as SearchableDropdown } from './SearchableDropdown';
 export { default as DatePicker } from './DatePicker';
 export { default as OverflowTooltip } from './OverflowTooltip';
 export { default as EnhancedTooltip, type TooltipContent } from './EnhancedTooltip';
+
+// Variance trending components
+export { VarianceIndicator } from './VarianceIndicator';
+export { VarianceDetailsPanel } from './VarianceDetailsPanel';
+export { PeriodSelector, PeriodPills } from './PeriodSelector';

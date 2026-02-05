@@ -14,64 +14,28 @@
  * @module app/insights/hours/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import * as echarts from 'echarts';
-import type { EChartsOption } from 'echarts';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import { useTheme } from '@/lib/theme-context';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
 import QualityHoursChart from '@/components/charts/QualityHoursChart';
-import NonExecutePieChart, { buildNonExecutePieOption } from '@/components/charts/NonExecutePieChart';
+import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
 import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
 import HoursWaterfallChart from '@/components/charts/HoursWaterfallChart';
-import ChartCard, { useChartHeaderActions } from '@/components/charts/ChartCard';
+import ChartCard from '@/components/charts/ChartCard';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import TableCompareExport from '@/components/ui/TableCompareExport';
-import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
-import { CompareIcon } from '@/components/ui/ChartActionIcons';
+import VarianceIndicator from '@/components/ui/VarianceIndicator';
 import {
   type SortState,
   formatSortIndicator,
   getNextSortState,
   sortByState,
 } from '@/lib/sort-utils';
+import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
 
 /** View type for the combined stacked bar chart */
 type StackedViewType = 'chargeCode' | 'project' | 'role';
-
-/** Puts a Compare button in the chart header that opens the Non-Execute snapshot comparison modal (both pies). */
-function NonExecuteCompareButton({ onOpen }: { onOpen: () => void }) {
-  const setHeaderActions = useChartHeaderActions();
-  React.useEffect(() => {
-    setHeaderActions?.(
-      <button
-        type="button"
-        onClick={onOpen}
-        title="Compare with snapshots"
-        aria-label="Compare with snapshots"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 12px',
-          fontSize: 12,
-          fontWeight: 600,
-          background: 'var(--bg-tertiary)',
-          border: '1px solid rgba(255,255,255,0.2)',
-          borderRadius: 8,
-          color: 'var(--text-secondary)',
-          cursor: 'pointer',
-        }}
-      >
-        <CompareIcon size={14} />
-        <span>Compare</span>
-      </button>
-    );
-    return () => setHeaderActions?.(null);
-  }, [onOpen, setHeaderActions]);
-  return null;
-}
 
 /**
  * Format week date to readable label (includes year for labor breakdown tables/charts)
@@ -87,19 +51,12 @@ function formatWeekLabel(dateStr: string): string {
 }
 
 export default function HoursPage() {
-  const { filteredData } = useData();
+  const { filteredData, variancePeriod, varianceEnabled, metricsHistory } = useData();
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
   const [workerTableSort, setWorkerTableSort] = useState<SortState | null>(null);
   const [roleTableSort, setRoleTableSort] = useState<SortState | null>(null);
-  const [isNonExecuteCompareOpen, setIsNonExecuteCompareOpen] = useState(false);
-  const theme = useTheme()?.theme || 'dark';
-  const onRenderNonExecuteChart = useCallback((container: HTMLDivElement, option: EChartsOption) => {
-    const ch = echarts.init(container, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
-    ch.setOption(option);
-    return ch;
-  }, [theme]);
 
   const selectedEmployees = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'employee').map((f) => f.value)), [pageFilters]);
   const selectedRoles = useMemo(() => new Set(pageFilters.filter((f) => f.dimension === 'role').map((f) => f.value)), [pageFilters]);
@@ -134,6 +91,20 @@ export default function HoursPage() {
     if (!data?.nonExecuteHours?.percent && data?.nonExecuteHours?.percent !== 0) return null;
     return data.nonExecuteHours.percent;
   }, [data?.nonExecuteHours]);
+
+  // Calculate variance using the new variance engine
+  const varianceData = useMemo(() => {
+    const hoursVariance = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod);
+    const efficiencyVariance = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod);
+    const qcVariance = calculateMetricVariance(metricsHistory, 'qc_pass_rate', variancePeriod);
+    
+    return {
+      totalHours: hoursVariance,
+      efficiency: efficiencyVariance,
+      qualityHours: qcVariance,
+      nonExecute: null, // Non-execute specific tracking can be added
+    };
+  }, [metricsHistory, variancePeriod]);
 
   const handleBarClick = useCallback((params: { name: string; dataIndex: number; value?: number }) => {
     const dimension = stackedView === 'chargeCode' ? 'chargeCode' : stackedView === 'project' ? 'project' : 'role';
@@ -467,18 +438,66 @@ export default function HoursPage() {
                 ? data.taskHoursEfficiency.actualWorked.reduce((a: number, b: number) => a + b, 0).toLocaleString()
                 : '—'}
             </div>
+            {varianceEnabled && varianceData.totalHours ? (
+              <VarianceIndicator
+                current={varianceData.totalHours.current}
+                previous={varianceData.totalHours.previous}
+                metricName="Total Hours"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+              />
+            ) : (
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
+            )}
           </div>
           <div className="metric-card accent-lime" style={{ minWidth: 120 }}>
             <div className="metric-label">Efficiency</div>
             <div className="metric-value">{overallEfficiency !== null ? `${overallEfficiency}%` : '—'}</div>
+            {varianceEnabled && varianceData.efficiency ? (
+              <VarianceIndicator
+                current={varianceData.efficiency.current}
+                previous={varianceData.efficiency.previous}
+                metricName="Efficiency"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+                positiveDirection="up"
+              />
+            ) : (
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
+            )}
           </div>
           <div className="metric-card" style={{ minWidth: 120 }}>
             <div className="metric-label">Quality Hours</div>
             <div className="metric-value">{qualityHoursPercent !== null ? `${qualityHoursPercent}%` : '—'}</div>
+            {varianceEnabled && varianceData.qualityHours ? (
+              <VarianceIndicator
+                current={varianceData.qualityHours.current}
+                previous={varianceData.qualityHours.previous}
+                metricName="Quality Hours"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+                positiveDirection="up"
+                formatType="percent"
+              />
+            ) : (
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
+            )}
           </div>
           <div className="metric-card accent-orange" style={{ minWidth: 120 }}>
             <div className="metric-label">Non-Execute</div>
             <div className="metric-value">{nonExecutePercent !== null ? `${nonExecutePercent}%` : '—'}</div>
+            <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+              vs {getPeriodDisplayName(variancePeriod)}
+            </div>
           </div>
         </div>
       </div>
@@ -546,7 +565,6 @@ export default function HoursPage() {
             </h3>
           </EnhancedTooltip>
         }>
-          <NonExecuteCompareButton onOpen={() => setIsNonExecuteCompareOpen(true)} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', padding: '1rem', minHeight: 340 }}>
             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>TPW Comparison (Hours)</div>
@@ -1110,22 +1128,6 @@ export default function HoursPage() {
           </TableCompareExport>
       </ChartCard>
       </div>
-
-      {/* Non-Execute Compare modal – shows both TPW and Other pie charts */}
-      {typeof document !== 'undefined' && (
-        <SnapshotComparisonModal
-          isOpen={isNonExecuteCompareOpen}
-          onClose={() => setIsNonExecuteCompareOpen(false)}
-          visualId="non-execute-hours"
-          visualTitle="Non-Execute Hours"
-          visualType="chart"
-          currentData={{
-            tpw: buildNonExecutePieOption(data?.nonExecuteHours?.tpwComparison || [], true),
-            other: buildNonExecutePieOption(data?.nonExecuteHours?.otherBreakdown || [], true),
-          }}
-          onRenderChart={onRenderNonExecuteChart}
-        />
-      )}
     </div>
   );
 }

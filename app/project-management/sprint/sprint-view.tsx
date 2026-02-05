@@ -425,82 +425,179 @@ export default function SprintView() {
 
   // Handle card click to edit
 
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>
-            {currentSprint ? `${currentSprint.name}` : 'Select a sprint'}
-          </h2>
-          {currentSprint && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', margin: 0 }}>
-              {currentSprint.startDate ? new Date(currentSprint.startDate).toLocaleDateString() : ''} to {currentSprint.endDate ? new Date(currentSprint.endDate).toLocaleDateString() : ''}
-            </p>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <select
-            value={selectedSprint}
-            onChange={(e) => setSelectedSprint(e.target.value)}
-            style={{
-              padding: '0.4rem 0.8rem',
-              borderRadius: '6px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-secondary)',
-              color: 'var(--text-primary)',
-              fontSize: '0.8rem'
-            }}
-          >
-            <option value="current">Current Sprint</option>
-            {sprints.map((s: any) => (
-              <option key={s.id || s.sprintId} value={s.id || s.sprintId}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <button 
-            onClick={() => handleCreate('Task')}
-            className="btn btn-primary"
-          >
-            + New Task
-          </button>
-          <button 
-            onClick={() => setIsCreateSprintModalOpen(true)}
-            className="btn btn-secondary"
-            style={{ marginLeft: '0.5rem' }}
-          >
-            + New Sprint
-          </button>
-        </div>
-      </div>
+  // Get sprint progress
+  const sprintProgress = useMemo(() => {
+    const total = sprintTasks.length;
+    const closed = sprintTasks.filter(t => t.status === 'Closed').length;
+    const inProgress = sprintTasks.filter(t => t.status === 'In Progress').length;
+    return { total, closed, inProgress, percent: total > 0 ? Math.round((closed / total) * 100) : 0 };
+  }, [sprintTasks]);
 
-      {/* View Tabs */}
-      <div style={{
-        display: 'flex',
-        gap: '0.5rem',
-        padding: '0 1rem',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-        marginBottom: '1rem'
+  const viewConfig = {
+    backlog: { label: 'Sprint Backlog', icon: '📋' },
+    taskboard: { label: 'Taskboard', icon: '📊' },
+    capacity: { label: 'Capacity', icon: '👥' },
+    kanban: { label: 'Kanban', icon: '🎯' }
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '1rem' }}>
+      {/* Sprint Header */}
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        gap: '0.75rem',
+        marginBottom: '1rem',
+        flexShrink: 0
       }}>
-        {(['backlog', 'taskboard', 'capacity', 'kanban'] as SprintView[]).map(viewType => (
-          <button
-            key={viewType}
-            onClick={() => setSprintView(viewType)}
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'none',
-              border: 'none',
-              borderBottom: sprintView === viewType ? '2px solid var(--pinnacle-teal)' : '2px solid transparent',
-              color: sprintView === viewType ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-              fontSize: '0.85rem',
-              fontWeight: sprintView === viewType ? 600 : 400,
-              cursor: 'pointer',
-              textTransform: 'capitalize'
-            }}
-          >
-            {viewType}
-          </button>
-        ))}
+        {/* Row 1: Sprint Info and Actions */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          padding: '1rem',
+          background: 'var(--bg-card)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.08)'
+        }}>
+          {/* Sprint Info */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: '1 1 auto' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, var(--pinnacle-teal) 0%, #0d9488 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.5rem'
+            }}>
+              🏃
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>
+                  {currentSprint ? currentSprint.name : 'No Sprint Selected'}
+                </h2>
+                {currentSprint && (
+                  <span style={{
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '12px',
+                    background: currentSprint.status === 'Active' ? '#10B98120' : 'rgba(255,255,255,0.1)',
+                    color: currentSprint.status === 'Active' ? '#10B981' : 'var(--text-muted)',
+                    fontSize: '0.7rem',
+                    fontWeight: 600
+                  }}>
+                    {currentSprint.status || 'Planning'}
+                  </span>
+                )}
+              </div>
+              {currentSprint && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>
+                  📅 {currentSprint.startDate ? new Date(currentSprint.startDate).toLocaleDateString() : 'TBD'} → {currentSprint.endDate ? new Date(currentSprint.endDate).toLocaleDateString() : 'TBD'}
+                  <span style={{ marginLeft: '1rem' }}>
+                    📊 {sprintProgress.closed}/{sprintProgress.total} tasks ({sprintProgress.percent}%)
+                  </span>
+                </p>
+              )}
+            </div>
+          </div>
+          
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexShrink: 0 }}>
+            <select
+              value={selectedSprint}
+              onChange={(e) => setSelectedSprint(e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                fontSize: '0.85rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="current">📍 Current Sprint</option>
+              {sprints.map((s: any) => (
+                <option key={s.id || s.sprintId} value={s.id || s.sprintId}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <button 
+              onClick={() => handleCreate('Task')}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                border: 'none',
+                background: 'var(--pinnacle-teal)',
+                color: '#000',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              + Task
+            </button>
+            <button 
+              onClick={() => setIsCreateSprintModalOpen(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'transparent',
+                color: 'var(--text-secondary)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              + Sprint
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: View Tabs */}
+        <div style={{
+          display: 'flex',
+          gap: '0.5rem',
+          padding: '0.5rem',
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.05)'
+        }}>
+          {(Object.entries(viewConfig) as [SprintView, typeof viewConfig[SprintView]][]).map(([key, config]) => (
+            <button
+              key={key}
+              onClick={() => setSprintView(key)}
+              style={{
+                padding: '0.6rem 1rem',
+                background: sprintView === key ? 'var(--pinnacle-teal)' : 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: sprintView === key ? '#000' : 'var(--text-secondary)',
+                fontSize: '0.85rem',
+                fontWeight: sprintView === key ? 600 : 400,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                transition: 'all 0.15s'
+              }}
+            >
+              <span>{config.icon}</span>
+              {config.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Sprint Backlog View */}
@@ -711,39 +808,45 @@ export default function SprintView() {
       {/* Kanban View */}
       {sprintView === 'kanban' && (
         <>
-          <div style={{ padding: '0 1rem', marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Group By:</span>
-              <select
-                value={view}
-                onChange={(e) => setView(e.target.value as KanbanView)}
-                className="btn btn-secondary"
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-              >
-                <option value="status">Status</option>
-                <option value="sprint">Sprint</option>
-                <option value="resource">Resource</option>
-                <option value="project">Project</option>
-                <option value="phase">Phase</option>
-              </select>
-            </div>
-          </div>
-          {/* Header with Create Button */}
-          <div style={{
-            padding: '1rem',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-            display: 'flex',
+          {/* Kanban Toolbar */}
+          <div style={{ 
+            display: 'flex', 
             justifyContent: 'space-between',
             alignItems: 'center',
+            marginBottom: '1rem',
+            padding: '0.75rem',
+            background: 'rgba(255,255,255,0.02)',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.05)'
           }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Sprint Tasks</h3>
-            <button
-              onClick={() => handleCreate('Task')}
-              className="btn btn-primary"
-              style={{ fontSize: '0.8rem', padding: '0.5rem 1rem' }}
-            >
-              + New Task
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {sprintTasks.length} tasks in sprint
+              </span>
+              <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Group by:</span>
+                <select
+                  value={view}
+                  onChange={(e) => setView(e.target.value as KanbanView)}
+                  style={{ 
+                    padding: '0.4rem 0.75rem', 
+                    fontSize: '0.8rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-secondary)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="status">📊 Status</option>
+                  <option value="resource">👤 Resource</option>
+                  <option value="project">📁 Project</option>
+                  <option value="phase">🎯 Phase</option>
+                  <option value="sprint">🏃 Sprint</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Kanban Board */}

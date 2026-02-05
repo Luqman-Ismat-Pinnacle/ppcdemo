@@ -22,12 +22,14 @@ import InsightsFilterBar, { type FilterChip } from '@/components/insights/Insigh
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import TableCompareExport from '@/components/ui/TableCompareExport';
+import VarianceIndicator from '@/components/ui/VarianceIndicator';
 import {
   type SortState,
   formatSortIndicator,
   getNextSortState,
   sortByState,
 } from '@/lib/sort-utils';
+import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
 
 function formatPercent(value: unknown): string {
   if (value == null || value === '') return '—';
@@ -37,7 +39,7 @@ function formatPercent(value: unknown): string {
 }
 
 export default function OverviewPage() {
-  const { filteredData, isLoading: dataLoading } = useData();
+  const { filteredData, isLoading: dataLoading, variancePeriod, varianceEnabled, metricsHistory } = useData();
   const data = filteredData;
 
   // Unique projects for budget variance (when no filters: show first project's bridge)
@@ -182,44 +184,21 @@ export default function OverviewPage() {
     };
   }, [data.wbsData?.items, data.tasks]);
 
-  // Calculate percentage changes (compare to previous snapshot or period)
-  const calculateChange = useMemo(() => {
-    const snapshots = data.snapshots || [];
-    const sortedSnapshots = [...snapshots].sort((a, b) =>
-      new Date(b.snapshotDate).getTime() - new Date(a.snapshotDate).getTime()
-    );
-
-    // Get most recent snapshot for comparison
-    const latestSnapshot = sortedSnapshots[0];
-    const previousSnapshot = sortedSnapshots[1];
-
+  // Calculate variance using the new variance engine
+  const varianceData = useMemo(() => {
+    // Get variance for each KPI using metricsHistory
+    const hoursVariance = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod);
+    const efficiencyVariance = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod);
+    const costVariance = calculateMetricVariance(metricsHistory, 'actual_cost', variancePeriod);
+    const qcVariance = calculateMetricVariance(metricsHistory, 'qc_pass_rate', variancePeriod);
+    
     return {
-      totalHours: (current: number) => {
-        if (!previousSnapshot?.totalHours) return null;
-        const prev = previousSnapshot.totalHours;
-        const change = prev > 0 ? ((current - prev) / prev) * 100 : 0;
-        return Math.round(change * 10) / 10;
-      },
-      efficiency: (current: number | null) => {
-        if (current === null || !previousSnapshot?.snapshotData?.metrics?.cpi) return null;
-        const prev = previousSnapshot.snapshotData.metrics.cpi * 100 || 100;
-        const change = prev > 0 ? ((current - prev) / prev) * 100 : 0;
-        return Math.round(change * 10) / 10;
-      },
-      budgetForecast: (current: number) => {
-        if (!previousSnapshot?.totalCost) return null;
-        const prev = previousSnapshot.totalCost;
-        const change = prev > 0 ? ((current - prev) / prev) * 100 : 0;
-        return Math.round(change * 10) / 10;
-      },
-      qcPassRate: (current: number) => {
-        // Try to get from snapshot data
-        if (!previousSnapshot?.snapshotData?.charts?.qcMetrics) return null;
-        // For now, return null if no comparison data
-        return null;
-      },
+      totalHours: hoursVariance,
+      efficiency: efficiencyVariance,
+      budgetForecast: costVariance,
+      qcPassRate: qcVariance,
     };
-  }, [data.snapshots]);
+  }, [metricsHistory, variancePeriod]);
 
   // Calculate Top and Worst Performing Projects based on hours variance
   const performersData = useMemo(() => {
@@ -414,12 +393,19 @@ export default function OverviewPage() {
           <div className="metric-card">
             <div className="metric-label">Total Hours</div>
             <div className="metric-value">{totalHours.toLocaleString()}</div>
-            {calculateChange.totalHours(totalHours) !== null ? (
-              <div className={`metric-change ${calculateChange.totalHours(totalHours)! >= 0 ? 'up' : 'down'}`}>
-                {calculateChange.totalHours(totalHours)! >= 0 ? '+' : ''}{calculateChange.totalHours(totalHours)}%
-              </div>
+            {varianceEnabled && varianceData.totalHours ? (
+              <VarianceIndicator
+                current={varianceData.totalHours.current}
+                previous={varianceData.totalHours.previous}
+                metricName="Total Hours"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+              />
             ) : (
-              <div className="metric-change" style={{ opacity: 0.5 }}>N/A</div>
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
             )}
           </div>
         </EnhancedTooltip>
@@ -439,12 +425,20 @@ export default function OverviewPage() {
           <div className="metric-card accent-lime">
             <div className="metric-label">Efficiency</div>
             <div className="metric-value">{efficiency !== null ? `${efficiency}%` : 'No Data'}</div>
-            {efficiency !== null && calculateChange.efficiency(efficiency) !== null ? (
-              <div className={`metric-change ${calculateChange.efficiency(efficiency)! >= 0 ? 'up' : 'down'}`}>
-                {calculateChange.efficiency(efficiency)! >= 0 ? '+' : ''}{calculateChange.efficiency(efficiency)}%
-              </div>
+            {varianceEnabled && varianceData.efficiency ? (
+              <VarianceIndicator
+                current={varianceData.efficiency.current}
+                previous={varianceData.efficiency.previous}
+                metricName="Efficiency"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+                positiveDirection="up"
+              />
             ) : (
-              <div className="metric-change" style={{ opacity: 0.5 }}>N/A</div>
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
             )}
           </div>
         </EnhancedTooltip>
@@ -464,12 +458,21 @@ export default function OverviewPage() {
           <div className="metric-card accent-orange">
             <div className="metric-label">Budget Forecast</div>
             <div className="metric-value">${(budgetForecast / 1000).toFixed(0)}K</div>
-            {calculateChange.budgetForecast(budgetForecast) !== null ? (
-              <div className={`metric-change ${calculateChange.budgetForecast(budgetForecast)! >= 0 ? 'up' : 'down'}`}>
-                {calculateChange.budgetForecast(budgetForecast)! >= 0 ? '+' : ''}{calculateChange.budgetForecast(budgetForecast)}%
-              </div>
+            {varianceEnabled && varianceData.budgetForecast ? (
+              <VarianceIndicator
+                current={varianceData.budgetForecast.current}
+                previous={varianceData.budgetForecast.previous}
+                metricName="Budget Forecast"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+                positiveDirection="down"
+                formatType="currency"
+              />
             ) : (
-              <div className="metric-change" style={{ opacity: 0.5 }}>N/A</div>
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
             )}
           </div>
         </EnhancedTooltip>
@@ -489,12 +492,21 @@ export default function OverviewPage() {
           <div className="metric-card accent-pink">
             <div className="metric-label">QC Pass Rate</div>
             <div className="metric-value">{qcPassRate}%</div>
-            {calculateChange.qcPassRate(qcPassRate) !== null ? (
-              <div className={`metric-change ${calculateChange.qcPassRate(qcPassRate)! >= 0 ? 'up' : 'down'}`}>
-                {calculateChange.qcPassRate(qcPassRate)! >= 0 ? '+' : ''}{calculateChange.qcPassRate(qcPassRate)}%
-              </div>
+            {varianceEnabled && varianceData.qcPassRate ? (
+              <VarianceIndicator
+                current={varianceData.qcPassRate.current}
+                previous={varianceData.qcPassRate.previous}
+                metricName="QC Pass Rate"
+                period={variancePeriod}
+                size="sm"
+                showInsights={true}
+                positiveDirection="up"
+                formatType="percent"
+              />
             ) : (
-              <div className="metric-change" style={{ opacity: 0.5 }}>N/A</div>
+              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
+                vs {getPeriodDisplayName(variancePeriod)}
+              </div>
             )}
           </div>
         </EnhancedTooltip>

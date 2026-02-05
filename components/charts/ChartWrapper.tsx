@@ -30,9 +30,10 @@ import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 import { useTheme } from '@/lib/theme-context';
 import { SkeletonChart } from '@/components/ui/Skeleton';
-import SnapshotComparisonModal from '@/components/ui/SnapshotComparisonModal';
-import { CompareIcon, FullscreenIcon, DownloadIcon } from '@/components/ui/ChartActionIcons';
+import { FullscreenIcon, DownloadIcon } from '@/components/ui/ChartActionIcons';
 import { useChartHeaderActions } from './ChartCard';
+import { useData } from '@/lib/data-context';
+import { VarianceIndicator } from '@/components/ui/VarianceIndicator';
 
 interface ChartWrapperProps {
   option: EChartsOption;
@@ -46,14 +47,36 @@ interface ChartWrapperProps {
   enableExport?: boolean;
   /** Show fullscreen button; opens chart in a modal overlay */
   enableFullscreen?: boolean;
-  /** Show Compare button; opens snapshot comparison modal */
-  enableCompare?: boolean;
+  /** Show variance toggle button */
+  enableVariance?: boolean;
+  /** Variance data for this chart (current vs previous values) */
+  varianceData?: { current: number; previous: number; metricName?: string };
   /** Filename for export (without extension) */
   exportFilename?: string;
   visualId?: string;
   visualTitle?: string;
   isLoading?: boolean;
   isEmpty?: boolean;
+}
+
+// Variance toggle icon component
+function VarianceIcon({ size = 14, enabled = false }: { size?: number; enabled?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={enabled ? 'var(--pinnacle-teal)' : 'currentColor'}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 3v18h18" />
+      <path d="M7 16l4-4 4 4 6-6" />
+      {enabled && <circle cx="21" cy="10" r="3" fill="var(--pinnacle-teal)" stroke="none" />}
+    </svg>
+  );
 }
 
 const ChartWrapper = React.memo(function ChartWrapper({
@@ -65,7 +88,8 @@ const ChartWrapper = React.memo(function ChartWrapper({
   onClick,
   enableExport = false,
   enableFullscreen = false,
-  enableCompare = false,
+  enableVariance = false,
+  varianceData,
   exportFilename = 'chart',
   visualId,
   visualTitle = 'Chart',
@@ -78,10 +102,13 @@ const ChartWrapper = React.memo(function ChartWrapper({
   const fullscreenChartRef = useRef<HTMLDivElement>(null);
   const fullscreenInstanceRef = useRef<echarts.ECharts | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [showVariance, setShowVariance] = useState(false);
   const themeContext = useTheme();
   const theme = themeContext?.theme || 'dark';
   const setHeaderActions = useChartHeaderActions();
+  
+  // Access variance settings from context
+  const { varianceEnabled } = useData();
 
   const onRenderChart = useCallback((container: HTMLDivElement, opt: EChartsOption) => {
     const ch = echarts.init(container, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
@@ -314,15 +341,19 @@ const ChartWrapper = React.memo(function ChartWrapper({
 
   const actionButtons = (
     <>
-      {enableCompare && visualId && !isLoading && !isEmpty && (
+      {enableVariance && varianceEnabled && !isLoading && !isEmpty && (
         <button
           type="button"
           className="chart-action-btn"
-          onClick={(e) => { e.stopPropagation(); setIsCompareOpen(true); }}
-          title="Compare with snapshots"
-          style={inChartCard ? undefined : { top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }}
+          onClick={(e) => { e.stopPropagation(); setShowVariance(!showVariance); }}
+          title={showVariance ? "Hide variance" : "Show variance"}
+          style={{
+            ...(inChartCard ? {} : { top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }),
+            background: showVariance ? 'rgba(64, 224, 208, 0.2)' : undefined,
+            borderColor: showVariance ? 'var(--pinnacle-teal)' : undefined,
+          }}
         >
-          <CompareIcon size={14} />
+          <VarianceIcon size={14} enabled={showVariance} />
         </button>
       )}
       {enableFullscreen && !isLoading && !isEmpty && (
@@ -359,7 +390,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
     }
     return () => setHeaderActions(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- actionButtons is derived from deps
-  }, [setHeaderActions, isLoading, isEmpty, enableCompare, visualId, enableFullscreen, enableExport]);
+  }, [setHeaderActions, isLoading, isEmpty, visualId, enableFullscreen, enableExport, enableVariance, varianceEnabled, showVariance]);
 
   return (
     <div
@@ -399,6 +430,28 @@ const ChartWrapper = React.memo(function ChartWrapper({
         ref={chartRef}
         className={`w-full h-full transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
       />
+      
+      {/* Variance indicator overlay */}
+      {showVariance && varianceData && varianceEnabled && !isLoading && !isEmpty && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '8px',
+            left: '8px',
+            zIndex: 20,
+          }}
+        >
+          <VarianceIndicator
+            metricName={varianceData.metricName || visualTitle}
+            current={varianceData.current}
+            previous={varianceData.previous}
+            format="number"
+            size="sm"
+            expandable={true}
+          />
+        </div>
+      )}
+      
       {isFullscreen && typeof document !== 'undefined' && createPortal(
         <div
           role="dialog"
@@ -486,18 +539,6 @@ const ChartWrapper = React.memo(function ChartWrapper({
             </div>
           </div>
         </div>,
-        document.body
-      )}
-      {enableCompare && visualId && isCompareOpen && typeof document !== 'undefined' && createPortal(
-        <SnapshotComparisonModal
-          isOpen={isCompareOpen}
-          onClose={() => setIsCompareOpen(false)}
-          visualId={visualId}
-          visualTitle={visualTitle}
-          visualType="chart"
-          currentData={resolvedOptionRef.current}
-          onRenderChart={onRenderChart}
-        />,
         document.body
       )}
     </div>
