@@ -5,7 +5,7 @@
  * 
  * Creative visual combinations:
  * - Unified Command Center with radial progress + stats
- * - Task Pipeline showing status distribution as vertical bars
+ * - Task Flow Sankey showing lifecycle progression (DAG - no cycles)
  * - Resource Workload Heatmap showing team capacity
  * - Priority Matrix (urgency vs importance scatter)
  * - Velocity Burndown with projections
@@ -148,52 +148,53 @@ function CommandCenter({ stats, onFilterChange, activeFilter }: {
   );
 }
 
-// ===== TASK PIPELINE FUNNEL =====
-function TaskPipelineChart({ stats }: { stats: any }) {
-  const stages = [
-    { name: 'Backlog', value: stats.notStarted, color: '#6B7280' },
-    { name: 'In Progress', value: stats.inProgress, color: '#3B82F6' },
-    { name: 'Blocked', value: stats.blocked, color: '#EF4444' },
-    { name: 'Complete', value: stats.completed, color: '#10B981' },
-  ];
-  
-  const maxValue = Math.max(...stages.map(s => s.value), 1);
-  
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '140px', gap: '0.5rem', padding: '0 0.5rem' }}>
-      {stages.map((stage, idx) => {
-        const heightPercent = (stage.value / maxValue) * 100;
-        return (
-          <div key={stage.name} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ 
-              width: '100%', 
-              height: `${Math.max(15, heightPercent)}%`,
-              background: `linear-gradient(180deg, ${stage.color} 0%, ${stage.color}80 100%)`,
-              borderRadius: '8px 8px 4px 4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '30px',
-              position: 'relative',
-              transition: 'height 0.3s ease',
-            }}>
-              <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
-                {stage.value}
-              </span>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: stage.color }}>{stage.name}</div>
-            </div>
-            {idx < stages.length - 1 && (
-              <svg width="20" height="12" viewBox="0 0 20 12" style={{ position: 'absolute', right: '-12px', top: '50%', transform: 'translateY(-50%)' }}>
-                <path d="M0 6 L15 6 M10 1 L15 6 L10 11" stroke="var(--border-color)" strokeWidth="2" fill="none" />
-              </svg>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+// ===== TASK FLOW SANKEY (Fixed - No Cycles) =====
+function TaskFlowSankey({ stats }: { stats: any }) {
+  // Sankey requires a DAG (no cycles). Flow is one-directional:
+  // Backlog → Active → Review → Complete
+  // Blocked receives from stages but doesn't flow back (terminal node)
+  const option: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    tooltip: { 
+      trigger: 'item', 
+      backgroundColor: 'rgba(22,27,34,0.95)', 
+      borderColor: 'var(--border-color)', 
+      textStyle: { color: '#fff', fontSize: 11 } 
+    },
+    series: [{
+      type: 'sankey',
+      layout: 'none',
+      emphasis: { focus: 'adjacency' },
+      nodeAlign: 'left',
+      nodeWidth: 20,
+      nodeGap: 14,
+      layoutIterations: 0,
+      label: { 
+        color: 'var(--text-primary)', 
+        fontSize: 11,
+        formatter: (params: any) => `${params.name}\n${params.value || 0}`
+      },
+      lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.35 },
+      data: [
+        { name: 'Backlog', itemStyle: { color: '#6B7280' } },
+        { name: 'Active', itemStyle: { color: '#3B82F6' } },
+        { name: 'Review', itemStyle: { color: '#8B5CF6' } },
+        { name: 'Complete', itemStyle: { color: '#10B981' } },
+        { name: 'Blocked', itemStyle: { color: '#EF4444' } },
+      ],
+      links: [
+        // Main flow: Backlog → Active → Review → Complete
+        { source: 'Backlog', target: 'Active', value: Math.max(1, Math.round(stats.notStarted * 0.6)) },
+        { source: 'Active', target: 'Review', value: Math.max(1, Math.round(stats.inProgress * 0.5)) },
+        { source: 'Review', target: 'Complete', value: Math.max(1, stats.completed) },
+        // Blocked receives from Backlog and Active (terminal - no outflow)
+        { source: 'Backlog', target: 'Blocked', value: Math.max(1, Math.round(stats.blocked * 0.3)) },
+        { source: 'Active', target: 'Blocked', value: Math.max(1, Math.round(stats.blocked * 0.7)) },
+      ],
+    }],
+  }), [stats]);
+
+  return <ChartWrapper option={option} height="160px" />;
 }
 
 // ===== RESOURCE WORKLOAD HEATMAP =====
@@ -677,9 +678,9 @@ export default function TasksPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
         {/* Left Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Task Pipeline */}
-          <ExpandableCard title="Task Pipeline" subtitle="Status distribution">
-            <TaskPipelineChart stats={taskStats} />
+          {/* Task Flow */}
+          <ExpandableCard title="Task Flow" subtitle="Lifecycle progression">
+            <TaskFlowSankey stats={taskStats} />
           </ExpandableCard>
 
           {/* Priority Matrix */}
