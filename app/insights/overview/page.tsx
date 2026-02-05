@@ -23,6 +23,10 @@ import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import { SkeletonMetric } from '@/components/ui/Skeleton';
 import TableCompareExport from '@/components/ui/TableCompareExport';
 import VarianceIndicator from '@/components/ui/VarianceIndicator';
+import { VarianceTrendsModal } from '@/components/ui/VarianceTrendsModal';
+import ExecutiveVarianceDashboard from '@/components/insights/ExecutiveVarianceDashboard';
+import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
+import PlanForecastActualChart from '@/components/charts/PlanForecastActualChart';
 import {
   type SortState,
   formatSortIndicator,
@@ -53,6 +57,8 @@ export default function OverviewPage() {
 
   const [countMetricsSort, setCountMetricsSort] = useState<SortState | null>(null);
   const [projectMetricsSort, setProjectMetricsSort] = useState<SortState | null>(null);
+  const [showVarianceModal, setShowVarianceModal] = useState(false);
+  const [showExecutiveModal, setShowExecutiveModal] = useState(false);
 
   // Cross-visual filters (Power BI style)
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
@@ -359,12 +365,65 @@ export default function OverviewPage() {
 
   return (
     <div className="page-panel insights-page">
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 className="page-title">Portfolio Overview</h1>
           <p className="page-description" style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
             Key performance at a glance
           </p>
+        </div>
+        
+        {/* Action Buttons: Executive View & Variance Trends */}
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={() => setShowExecutiveModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.15) 0%, rgba(156, 39, 176, 0.1) 100%)',
+              border: '1px solid rgba(233, 30, 99, 0.4)',
+              borderRadius: '10px',
+              color: '#E91E63',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+            Executive View
+          </button>
+          
+          <button
+            onClick={() => setShowVarianceModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 20px',
+              background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.15) 0%, rgba(205, 220, 57, 0.1) 100%)',
+              border: '1px solid rgba(64, 224, 208, 0.4)',
+              borderRadius: '10px',
+              color: 'var(--pinnacle-teal)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 3v18h18" />
+              <path d="M7 16l4-4 4 4 6-6" />
+            </svg>
+            Variance Trends
+          </button>
         </div>
       </div>
 
@@ -1041,6 +1100,87 @@ export default function OverviewPage() {
           </TableCompareExport>
         </ChartCard>
       </div>
+
+      {/* Milestones Section */}
+      <div className="dashboard-grid" style={{ marginTop: '1.5rem' }}>
+        <ChartCard title="Milestone Status" gridClass="grid-half">
+          <MilestoneStatusPie
+            data={data.milestoneStatusPie || []}
+            height="280px"
+            onSliceClick={(params) => handleFilterClick('status', params.name, params.name)}
+            activeFilters={[]}
+          />
+        </ChartCard>
+
+        <ChartCard title="Plan vs Forecast vs Actual" gridClass="grid-half">
+          <PlanForecastActualChart 
+            data={data.planVsForecastVsActual || { labels: [], plan: [], forecast: [], actual: [] }} 
+            height="280px" 
+          />
+        </ChartCard>
+
+        {/* Milestone Summary Table */}
+        <ChartCard title="Upcoming Milestones" gridClass="grid-full" noPadding>
+          <TableCompareExport
+            visualId="milestone-summary"
+            visualTitle="Upcoming Milestones"
+            data={data.milestones?.slice(0, 10) || []}
+          >
+            <table className="data-table" style={{ fontSize: '0.875rem' }}>
+              <thead>
+                <tr>
+                  <th>Milestone</th>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th className="number">Progress</th>
+                  <th>Planned</th>
+                  <th className="number">Variance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.milestones?.slice(0, 10) || []).map((m: any, idx: number) => (
+                  <tr key={idx}>
+                    <td>{m.name || m.milestone}</td>
+                    <td>{m.projectNum || m.project}</td>
+                    <td>
+                      <span className={`badge badge-${
+                        m.status === 'Complete' || m.status === 'Completed' ? 'success' : 
+                        m.status === 'In Progress' ? 'warning' : 
+                        m.status === 'At Risk' || m.status === 'Late' ? 'critical' : 'default'
+                      }`}>
+                        {m.status || 'Pending'}
+                      </span>
+                    </td>
+                    <td className="number">{m.percentComplete || 0}%</td>
+                    <td>{m.plannedCompletion ? new Date(m.plannedCompletion).toLocaleDateString() : '-'}</td>
+                    <td className={`number ${(m.varianceDays || 0) < 0 ? 'status-good' : (m.varianceDays || 0) > 0 ? 'status-bad' : ''}`}>
+                      {m.varianceDays != null ? `${m.varianceDays > 0 ? '+' : ''}${m.varianceDays}d` : '-'}
+                    </td>
+                  </tr>
+                ))}
+                {(!data.milestones || data.milestones.length === 0) && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                      No milestone data available
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </TableCompareExport>
+        </ChartCard>
+      </div>
+
+      {/* Modals */}
+      <VarianceTrendsModal
+        isOpen={showVarianceModal}
+        onClose={() => setShowVarianceModal(false)}
+      />
+      
+      <ExecutiveVarianceDashboard
+        isOpen={showExecutiveModal}
+        onClose={() => setShowExecutiveModal(false)}
+      />
     </div>
   );
 }

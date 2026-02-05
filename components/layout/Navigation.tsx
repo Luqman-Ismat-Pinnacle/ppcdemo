@@ -4,9 +4,11 @@
  * @fileoverview Main Navigation Component for PPC V3.
  * 
  * Provides dropdown-based navigation organized into three categories:
- * - **Project Controls**: WBS & Gantt, Resourcing, Data Management
- * - **Insights**: Overview, Hours Analysis, QC Dashboard, Milestones, Documents
+ * - **Project Controls**: Project Plans, Resourcing, Data Management
+ * - **Insights**: Overview (with Variance & Milestones), Tasks (Hours & QC), Documents
  * - **Project Management**: Sprint Planning, Forecasting, QC Log
+ * 
+ * Note: WBS & Gantt is the home/landing page (accessible via logo click)
  * 
  * Features:
  * - Hover-activated dropdown menus
@@ -35,30 +37,25 @@ const navigation: NavDropdown[] = [
   {
     label: 'Project Controls',
     items: [
-      { label: 'WBS & Gantt Chart', href: '/project-controls/wbs-gantt' },
+      { label: 'Project Plans', href: '/project-controls/folders' },
       { label: 'Resourcing', href: '/project-controls/resourcing' },
       { divider: true },
       { label: 'Data Management', href: '/project-controls/data-management' },
-      { label: 'Project Plans', href: '/project-controls/folders' },
     ],
   },
   {
     label: 'Insights',
     items: [
       { label: 'Overview', href: '/insights/overview' },
-      { label: 'Hours & Labor Analysis', href: '/insights/hours' },
+      { label: 'Tasks', href: '/insights/tasks' },
       { divider: true },
-      { label: 'QC Dashboard', href: '/insights/qc-dashboard' },
-      { label: 'Milestone Tracker', href: '/insights/milestones' },
-      { label: 'Document Tracker', href: '/insights/documents' },
+      { label: 'Documents', href: '/insights/documents' },
     ],
   },
   {
     label: 'Project Management',
     items: [
       { label: 'Sprint Planning', href: '/project-management/sprint' },
-      { label: 'Iterations', href: '/project-management/sprint/iterations' },
-      { label: 'Capacity', href: '/project-management/sprint/capacity' },
       { divider: true },
       { label: 'Forecasting', href: '/project-management/forecast' },
       { label: 'QC Log', href: '/project-management/qc-log' },

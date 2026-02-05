@@ -566,7 +566,7 @@ export default function BoardsPage() {
                   }}
                   title="Set WIP limit"
                 >
-                  ⚙️
+                  ...
                 </button>
               </div>
 

@@ -398,10 +398,10 @@ export default function QCLogPage() {
               minWidth: '140px',
             }}
           >
-            <option value="all">📊 All Status</option>
+            <option value="all">All Status</option>
             {statuses.map((status) => (
               <option key={status} value={status}>
-                {status === 'Complete' ? '✅' : status === 'In Progress' ? '🔄' : '⏳'} {status}
+                {status}
               </option>
             ))}
           </select>
@@ -425,14 +425,14 @@ export default function QCLogPage() {
         flexShrink: 0
       }}>
         {[
-          { label: 'Total', value: summaryStats.total, color: 'var(--text-primary)', icon: '📋' },
-          { label: 'Complete', value: summaryStats.complete, color: '#10B981', icon: '✅' },
-          { label: 'In Progress', value: summaryStats.inProgress, color: '#F59E0B', icon: '🔄' },
-          { label: 'Not Started', value: summaryStats.notStarted, color: '#6B7280', icon: '⏳' },
-          { label: 'Hours', value: summaryStats.totalHours.toFixed(1), color: 'var(--pinnacle-teal)', icon: '⏱️' },
-          { label: 'Avg Score', value: summaryStats.avgScore.toFixed(1), color: '#3B82F6', icon: '⭐' },
-          { label: 'Critical', value: summaryStats.totalCritical, color: '#EF4444', icon: '🚨' },
-          { label: 'Minor', value: summaryStats.totalNonCritical, color: '#F59E0B', icon: '⚠️' },
+          { label: 'Total', value: summaryStats.total, color: 'var(--text-primary)' },
+          { label: 'Complete', value: summaryStats.complete, color: '#10B981' },
+          { label: 'In Progress', value: summaryStats.inProgress, color: '#F59E0B' },
+          { label: 'Not Started', value: summaryStats.notStarted, color: '#6B7280' },
+          { label: 'Hours', value: summaryStats.totalHours.toFixed(1), color: 'var(--pinnacle-teal)' },
+          { label: 'Avg Score', value: summaryStats.avgScore.toFixed(1), color: '#3B82F6' },
+          { label: 'Critical', value: summaryStats.totalCritical, color: '#EF4444' },
+          { label: 'Minor', value: summaryStats.totalNonCritical, color: '#F59E0B' },
         ].map((stat, idx) => (
           <div 
             key={idx}
@@ -481,7 +481,6 @@ export default function QCLogPage() {
           background: 'rgba(255,255,255,0.02)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <span style={{ fontSize: '1rem' }}>📋</span>
             <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>QC Tasks</span>
           </div>
           <div style={{ 
@@ -720,7 +719,7 @@ export default function QCLogPage() {
                       alignItems: 'center', 
                       gap: '0.75rem' 
                     }}>
-                      <span style={{ fontSize: '2rem', opacity: 0.5 }}>🔍</span>
+                      <span style={{ fontSize: '0.85rem', opacity: 0.5 }}>No results</span>
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                         No QC tasks found matching your criteria
                       </span>

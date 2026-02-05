@@ -30,9 +30,9 @@ export interface VarianceDetailsPanelProps {
 // ============================================================================
 
 const severityColors = {
-  info: { bg: 'rgba(59, 130, 246, 0.1)', border: '#3B82F6', text: '#3B82F6', icon: 'ℹ️' },
-  warning: { bg: 'rgba(245, 158, 11, 0.1)', border: '#F59E0B', text: '#F59E0B', icon: '⚠️' },
-  critical: { bg: 'rgba(239, 68, 68, 0.1)', border: '#EF4444', text: '#EF4444', icon: '🚨' },
+  info: { bg: 'rgba(59, 130, 246, 0.1)', border: '#3B82F6', text: '#3B82F6', icon: 'i' },
+  warning: { bg: 'rgba(245, 158, 11, 0.1)', border: '#F59E0B', text: '#F59E0B', icon: '!' },
+  critical: { bg: 'rgba(239, 68, 68, 0.1)', border: '#EF4444', text: '#EF4444', icon: '!!' },
 };
 
 const trendColors = {
@@ -204,7 +204,7 @@ export function VarianceDetailsPanel({
             <MiniTrendChart data={chartData} invertColors={invertColors} />
           ) : (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-              <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>📈</div>
+              <div style={{ fontSize: '0.9rem', marginBottom: '8px', opacity: 0.6 }}>No data</div>
               Trend chart will appear when historical data is available
             </div>
           )}
@@ -224,7 +224,7 @@ export function VarianceDetailsPanel({
               alignItems: 'center',
               gap: '6px'
             }}>
-              <span>🚩</span> Flags ({flags.length})
+              Flags ({flags.length})
             </h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -255,7 +255,7 @@ export function VarianceDetailsPanel({
               alignItems: 'center',
               gap: '6px'
             }}>
-              <span>💡</span> Insights ({insights.length})
+              Insights ({insights.length})
             </h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -280,7 +280,7 @@ export function VarianceDetailsPanel({
               alignItems: 'center',
               gap: '6px'
             }}>
-              <span>🔗</span> Related Metrics
+              Related Metrics
             </h3>
             
             <div style={{
@@ -336,7 +336,7 @@ export function VarianceDetailsPanel({
               gap: '6px',
             }}
           >
-            <span>📥</span> Export Analysis
+            Export Analysis
           </button>
         )}
       </div>
@@ -479,7 +479,6 @@ function InsightCard({ insight }: { insight: VarianceInsight }) {
           display: 'flex',
           gap: '8px',
         }}>
-          <span>💡</span>
           <span>{insight.recommendation}</span>
         </div>
       )}

@@ -190,7 +190,7 @@ export default function WorkdayStatusIndicator() {
               </>
             ) : (
               <>
-                <span>⚡</span> Sync Workday Data (Full)
+                Sync Workday Data (Full)
               </>
             )}
           </button>

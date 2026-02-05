@@ -7,8 +7,8 @@ import { useEffect } from 'react';
 export default function Home() {
   const router = useRouter();
   useEffect(() => {
-    // Redirect directly to overview, bypassing login
-    router.push('/insights/overview');
+    // Redirect to WBS Gantt as the home/landing page
+    router.push('/project-controls/wbs-gantt');
   }, [router]);
 
   return (

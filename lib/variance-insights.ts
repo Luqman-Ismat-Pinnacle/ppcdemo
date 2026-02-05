@@ -126,7 +126,7 @@ export function analyzeVariance(
       
       flags.push({
         severity: Math.abs(anomalyResult.zScore) > 3 ? 'critical' : 'warning',
-        icon: anomalyResult.zScore > 0 ? '📈' : '📉',
+        icon: anomalyResult.zScore > 0 ? '+' : '-',
         label: anomalyResult.zScore > 0 ? 'Spike' : 'Drop',
         tooltip: `${Math.abs(variance.changePercent).toFixed(1)}% ${variance.trend === 'up' ? 'increase' : 'decrease'}`
       });
@@ -164,7 +164,7 @@ export function analyzeVariance(
       if (trendInsight.severity !== 'info') {
         flags.push({
           severity: trendInsight.severity,
-          icon: trendInsight.type === 'trend' && variance.trend === 'up' ? '📊' : '📉',
+          icon: trendInsight.type === 'trend' && variance.trend === 'up' ? '+' : '-',
           label: 'Trend',
           tooltip: trendInsight.title
         });
@@ -313,14 +313,14 @@ export function checkThresholds(
   if (thresholds.criticalHigh !== undefined && value > thresholds.criticalHigh) {
     flags.push({
       severity: 'critical',
-      icon: '🚨',
+      icon: '!!',
       label: 'Critical High',
       tooltip: `${metricName} is ${value.toFixed(1)}, above critical threshold of ${thresholds.criticalHigh}`
     });
   } else if (thresholds.criticalLow !== undefined && value < thresholds.criticalLow) {
     flags.push({
       severity: 'critical',
-      icon: '🚨',
+      icon: '!!',
       label: 'Critical Low',
       tooltip: `${metricName} is ${value.toFixed(1)}, below critical threshold of ${thresholds.criticalLow}`
     });
@@ -329,14 +329,14 @@ export function checkThresholds(
   else if (thresholds.warningHigh !== undefined && value > thresholds.warningHigh) {
     flags.push({
       severity: 'warning',
-      icon: '⚠️',
+      icon: '!',
       label: 'Above Target',
       tooltip: `${metricName} is ${value.toFixed(1)}, above warning threshold of ${thresholds.warningHigh}`
     });
   } else if (thresholds.warningLow !== undefined && value < thresholds.warningLow) {
     flags.push({
       severity: 'warning',
-      icon: '⚠️',
+      icon: '!',
       label: 'Below Target',
       tooltip: `${metricName} is ${value.toFixed(1)}, below warning threshold of ${thresholds.warningLow}`
     });

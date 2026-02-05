@@ -732,7 +732,7 @@ export default function BacklogView() {
                 gap: '0.35rem'
               }}
             >
-              <span>🌳</span> Hierarchy
+              Hierarchy
             </button>
             <button
               onClick={() => setViewMode('flat')}
@@ -750,7 +750,7 @@ export default function BacklogView() {
                 gap: '0.35rem'
               }}
             >
-              <span>📋</span> Flat
+              Flat
             </button>
           </div>
         </div>
@@ -816,10 +816,10 @@ export default function BacklogView() {
             }}
           >
             <option value="all">All Sprints</option>
-            <option value="backlog">📥 Backlog Only</option>
+            <option value="backlog">Backlog Only</option>
             {sprints.map(sprint => (
               <option key={sprint.id || sprint.sprintId} value={sprint.id || sprint.sprintId}>
-                🏃 {sprint.name}
+                {sprint.name}
               </option>
             ))}
           </select>

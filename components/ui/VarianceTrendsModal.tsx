@@ -568,7 +568,7 @@ export function VarianceTrendsModal({ isOpen, onClose, initialMetric }: Variance
                   alignItems: 'center',
                   gap: '8px',
                 }}>
-                  <span>🚨</span> Flags & Alerts
+                  Flags & Alerts
                 </h4>
                 {selectedMetricData.analysis.flags.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -597,7 +597,7 @@ export function VarianceTrendsModal({ isOpen, onClose, initialMetric }: Variance
                   </div>
                 ) : (
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '12px', textAlign: 'center' }}>
-                    ✓ No alerts at this time
+                    No alerts at this time
                   </div>
                 )}
               </div>
@@ -617,7 +617,7 @@ export function VarianceTrendsModal({ isOpen, onClose, initialMetric }: Variance
                   alignItems: 'center',
                   gap: '8px',
                 }}>
-                  <span>💡</span> Insights
+                  Insights
                 </h4>
                 {selectedMetricData.analysis.insights.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -671,7 +671,7 @@ export function VarianceTrendsModal({ isOpen, onClose, initialMetric }: Variance
               border: '1px solid rgba(64, 224, 208, 0.2)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '1.25rem' }}>📊</span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Trend</span>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--pinnacle-teal)' }}>
                     Historical Context
@@ -693,7 +693,7 @@ export function VarianceTrendsModal({ isOpen, onClose, initialMetric }: Variance
                 border: '1px solid rgba(59, 130, 246, 0.2)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                  <span style={{ fontSize: '1.25rem' }}>💡</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Action</span>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#3B82F6' }}>
                       Recommended Actions

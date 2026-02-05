@@ -434,10 +434,10 @@ export default function SprintView() {
   }, [sprintTasks]);
 
   const viewConfig = {
-    backlog: { label: 'Sprint Backlog', icon: '📋' },
-    taskboard: { label: 'Taskboard', icon: '📊' },
-    capacity: { label: 'Capacity', icon: '👥' },
-    kanban: { label: 'Kanban', icon: '🎯' }
+    backlog: { label: 'Sprint Backlog', icon: '' },
+    taskboard: { label: 'Taskboard', icon: '' },
+    capacity: { label: 'Capacity', icon: '' },
+    kanban: { label: 'Kanban', icon: '' }
   };
 
   return (
@@ -474,7 +474,7 @@ export default function SprintView() {
               justifyContent: 'center',
               fontSize: '1.5rem'
             }}>
-              🏃
+              S
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -496,9 +496,9 @@ export default function SprintView() {
               </div>
               {currentSprint && (
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>
-                  📅 {currentSprint.startDate ? new Date(currentSprint.startDate).toLocaleDateString() : 'TBD'} → {currentSprint.endDate ? new Date(currentSprint.endDate).toLocaleDateString() : 'TBD'}
+                  {currentSprint.startDate ? new Date(currentSprint.startDate).toLocaleDateString() : 'TBD'} - {currentSprint.endDate ? new Date(currentSprint.endDate).toLocaleDateString() : 'TBD'}
                   <span style={{ marginLeft: '1rem' }}>
-                    📊 {sprintProgress.closed}/{sprintProgress.total} tasks ({sprintProgress.percent}%)
+                    {sprintProgress.closed}/{sprintProgress.total} tasks ({sprintProgress.percent}%)
                   </span>
                 </p>
               )}
@@ -839,11 +839,11 @@ export default function SprintView() {
                     cursor: 'pointer'
                   }}
                 >
-                  <option value="status">📊 Status</option>
-                  <option value="resource">👤 Resource</option>
-                  <option value="project">📁 Project</option>
-                  <option value="phase">🎯 Phase</option>
-                  <option value="sprint">🏃 Sprint</option>
+                  <option value="status">Status</option>
+                  <option value="resource">Resource</option>
+                  <option value="project">Project</option>
+                  <option value="phase">Phase</option>
+                  <option value="sprint">Sprint</option>
                 </select>
               </div>
             </div>

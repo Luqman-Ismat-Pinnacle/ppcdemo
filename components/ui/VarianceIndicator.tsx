@@ -319,7 +319,7 @@ export function VarianceIndicator({
             alignItems: 'center',
             gap: '6px'
           }}>
-            <span>📊</span>
+            <span>Trend:</span>
             <span>{analysis.historicalContext}</span>
           </div>
           
@@ -445,7 +445,7 @@ function InsightItem({ insight }: { insight: VarianceInsight }) {
           fontSize: '0.7rem',
           color: '#3B82F6',
         }}>
-          💡 {insight.recommendation}
+          {insight.recommendation}
         </div>
       )}
     </div>

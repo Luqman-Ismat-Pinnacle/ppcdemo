@@ -1728,7 +1728,7 @@ export default function DocumentsPage() {
                       border: '1px solid rgba(16,185,129,0.2)',
                       textAlign: 'center'
                     }}>
-                      <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>🎉</div>
+                      <div style={{ fontSize: '0.9rem', marginBottom: '6px', fontWeight: 600, color: '#10B981' }}>Success</div>
                       <div style={{ fontWeight: 600, color: '#10B981', fontSize: '0.9rem' }}>All health checks passed!</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
                         This project plan follows best practices and is ready for execution tracking.

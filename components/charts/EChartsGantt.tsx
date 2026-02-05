@@ -403,7 +403,7 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
             ` : ''}
             ${item.isCritical ? `
               <div style="margin-top:8px;color:#ef4444;font-weight:600;font-size:11px;display:flex;align-items:center;gap:4px;">
-                ⚠️ Critical Path
+                Critical Path
               </div>
             ` : ''}
           </div>

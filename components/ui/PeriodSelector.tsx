@@ -33,11 +33,11 @@ export interface PeriodSelectorProps {
 // ============================================================================
 
 const periodConfig: Record<VariancePeriod, { icon: string; description: string }> = {
-  day: { icon: '📅', description: 'Compare to yesterday' },
-  week: { icon: '📆', description: 'Compare to last week' },
-  month: { icon: '🗓️', description: 'Compare to last month' },
-  quarter: { icon: '📊', description: 'Compare to last quarter' },
-  custom: { icon: '⚙️', description: 'Custom date range' },
+  day: { icon: 'D', description: 'Compare to yesterday' },
+  week: { icon: 'W', description: 'Compare to last week' },
+  month: { icon: 'M', description: 'Compare to last month' },
+  quarter: { icon: 'Q', description: 'Compare to last quarter' },
+  custom: { icon: '*', description: 'Custom date range' },
 };
 
 const sizeStyles = {

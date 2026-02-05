@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * @fileoverview Document Tracker Page for PPC V3 Insights.
+ * @fileoverview Documents Page for PPC V3 Insights.
  * 
- * Tracks project deliverables and documentation status:
+ * Tracks project deliverables, documentation status, and project health:
+ * - Project health scores and status
  * - Document signoff gauges (approval rates)
  * - Deliverable status pie charts by type (DRD, QMP, SOP, Workflow)
  * - Deliverable tracker table with status indicators
@@ -50,16 +51,166 @@ export default function DocumentsPage() {
     });
   }, [data.deliverablesTracker, data.deliverables, statusFilterValues]);
 
+  // Calculate project health metrics from projects data
+  const projectHealthMetrics = useMemo(() => {
+    const projects = data.projects || [];
+    const projectHealth = data.projectHealth || [];
+    
+    // Get health scores from project health records
+    const healthMap = new Map<string, any>();
+    projectHealth.forEach((h: any) => {
+      const projId = h.projectId || h.project_id;
+      if (projId) healthMap.set(projId, h);
+    });
+
+    // Build project health summary
+    const projectsWithHealth = projects.map((p: any) => {
+      const projectId = p.id || p.projectId;
+      const health = healthMap.get(projectId);
+      return {
+        id: projectId,
+        name: p.name || p.projectName || projectId,
+        status: p.status || 'Active',
+        healthScore: health?.healthScore ?? health?.score ?? null,
+        approvalStatus: health?.approvalStatus || 'Pending',
+        passedChecks: health?.passedChecks || 0,
+        totalChecks: health?.totalChecks || 0,
+      };
+    }).slice(0, 8); // Show top 8 projects
+
+    // Calculate overall metrics
+    const withScores = projectsWithHealth.filter((p: any) => p.healthScore !== null);
+    const avgHealth = withScores.length > 0 
+      ? Math.round(withScores.reduce((sum: number, p: any) => sum + p.healthScore, 0) / withScores.length)
+      : null;
+    
+    const atRisk = projectsWithHealth.filter((p: any) => p.healthScore !== null && p.healthScore < 70).length;
+    const healthy = projectsWithHealth.filter((p: any) => p.healthScore !== null && p.healthScore >= 80).length;
+
+    return { projects: projectsWithHealth, avgHealth, atRisk, healthy, total: projects.length };
+  }, [data.projects, data.projectHealth]);
+
   return (
     <div className="page-panel insights-page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Document Tracker</h1>
+          <h1 className="page-title">Documents</h1>
           <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Deliverable approval status by type
+            Project health, deliverables, and documentation status
           </p>
         </div>
       </div>
+
+      {/* Project Health Summary */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+        gap: '1rem', 
+        marginBottom: '1.5rem' 
+      }}>
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          border: '1px solid var(--border-color)',
+        }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Avg Health Score</div>
+          <div style={{ 
+            fontSize: '2rem', 
+            fontWeight: 700, 
+            color: projectHealthMetrics.avgHealth !== null 
+              ? projectHealthMetrics.avgHealth >= 80 ? '#10B981' 
+              : projectHealthMetrics.avgHealth >= 60 ? '#F59E0B' 
+              : '#EF4444'
+              : 'var(--text-muted)'
+          }}>
+            {projectHealthMetrics.avgHealth !== null ? `${projectHealthMetrics.avgHealth}%` : '-'}
+          </div>
+        </div>
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          border: '1px solid var(--border-color)',
+        }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Healthy Projects</div>
+          <div style={{ fontSize: '2rem', fontWeight: 700, color: '#10B981' }}>
+            {projectHealthMetrics.healthy}
+          </div>
+        </div>
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          border: '1px solid var(--border-color)',
+        }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>At Risk</div>
+          <div style={{ fontSize: '2rem', fontWeight: 700, color: '#EF4444' }}>
+            {projectHealthMetrics.atRisk}
+          </div>
+        </div>
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          border: '1px solid var(--border-color)',
+        }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Total Projects</div>
+          <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            {projectHealthMetrics.total}
+          </div>
+        </div>
+      </div>
+
+      {/* Project Health Table */}
+      {projectHealthMetrics.projects.length > 0 && (
+        <ChartCard title="Project Health Overview" gridClass="grid-full" noPadding style={{ marginBottom: '1.5rem' }}>
+          <table className="data-table" style={{ fontSize: '0.875rem' }}>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Status</th>
+                <th className="number">Health Score</th>
+                <th className="number">Checks Passed</th>
+                <th>Approval</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectHealthMetrics.projects.map((p: any, idx: number) => (
+                <tr key={idx}>
+                  <td>{p.name}</td>
+                  <td>
+                    <span className={`badge badge-${p.status === 'Active' ? 'success' : p.status === 'On Hold' ? 'warning' : 'default'}`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  <td className="number">
+                    {p.healthScore !== null ? (
+                      <span style={{ 
+                        color: p.healthScore >= 80 ? '#10B981' : p.healthScore >= 60 ? '#F59E0B' : '#EF4444',
+                        fontWeight: 600
+                      }}>
+                        {p.healthScore}%
+                      </span>
+                    ) : '-'}
+                  </td>
+                  <td className="number">
+                    {p.totalChecks > 0 ? `${p.passedChecks}/${p.totalChecks}` : '-'}
+                  </td>
+                  <td>
+                    <span className={`badge badge-${
+                      p.approvalStatus === 'Approved' ? 'success' : 
+                      p.approvalStatus === 'Pending' ? 'warning' : 'default'
+                    }`}>
+                      {p.approvalStatus}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ChartCard>
+      )}
 
       {/* Filter Bar */}
       <div style={{ marginBottom: '1.5rem' }}>

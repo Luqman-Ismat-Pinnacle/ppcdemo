@@ -297,7 +297,7 @@ function buildChartOption(
         if (!item) return '';
         
         const typeLabel = item.type === 'employee' ? 'Resource' : 'Task';
-        const icon = item.type === 'employee' ? '👤' : '📋';
+        const icon = item.type === 'employee' ? '' : '';
         
         return `
           <div style="padding:8px 12px;">
@@ -330,7 +330,7 @@ function buildChartOption(
             ` : ''}
             ${item.isCritical ? `
               <div style="margin-top:8px;color:#ef4444;font-weight:600;font-size:11px;">
-                ⚠️ Critical Path
+                Critical Path
               </div>
             ` : ''}
           </div>

@@ -12,7 +12,7 @@ function humanizeLogLine(line: string): string {
   // Remove timestamp and emoji prefixes
   const raw = line
     .replace(/^\[\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\]\s*/i, '')
-    .replace(/^[❌⚠️✓]\s*/, '')
+    .replace(/^(ERROR:|WARNING:|OK:)\s*/, '')
     .trim();
   
   // Already humanized messages (from the new format) - return as-is
@@ -167,7 +167,7 @@ export default function StatusAndLogsDropdown() {
     
     const pushLog = (msg: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
       const time = new Date().toLocaleTimeString();
-      const prefix = type === 'error' ? '❌' : type === 'warning' ? '⚠️' : type === 'success' ? '✓' : '';
+      const prefix = type === 'error' ? 'ERROR:' : type === 'warning' ? 'WARNING:' : type === 'success' ? 'OK:' : '';
       const entry = `[${time}] ${prefix} ${msg}`.trim();
       logEntries.push(entry);
       setWorkdayLogs(prev => [entry, ...prev].slice(0, 100)); // Increased log limit

@@ -170,12 +170,12 @@ function RiskHeatMap({ risks }: { risks: ExecutiveRisk[] }) {
     risks.filter(r => r.impact === impact && r.probability === probability).length;
   
   const cells = [
-    { impact: 'low', probability: 'high', color: 'rgba(234, 179, 8, 0.3)', icon: '⚠️', label: 'Watch' },
-    { impact: 'high', probability: 'high', color: 'rgba(239, 68, 68, 0.4)', icon: '🔴', label: 'Act Now' },
-    { impact: 'low', probability: 'medium', color: 'rgba(34, 197, 94, 0.2)', icon: '✅', label: 'Monitor' },
-    { impact: 'high', probability: 'medium', color: 'rgba(234, 179, 8, 0.3)', icon: '⚠️', label: 'Watch' },
-    { impact: 'low', probability: 'low', color: 'rgba(34, 197, 94, 0.15)', icon: '✅', label: 'OK' },
-    { impact: 'high', probability: 'low', color: 'rgba(34, 197, 94, 0.2)', icon: '✅', label: 'Monitor' },
+    { impact: 'low', probability: 'high', color: 'rgba(234, 179, 8, 0.3)', icon: '!', label: 'Watch' },
+    { impact: 'high', probability: 'high', color: 'rgba(239, 68, 68, 0.4)', icon: '!!', label: 'Act Now' },
+    { impact: 'low', probability: 'medium', color: 'rgba(34, 197, 94, 0.2)', icon: '', label: 'Monitor' },
+    { impact: 'high', probability: 'medium', color: 'rgba(234, 179, 8, 0.3)', icon: '!', label: 'Watch' },
+    { impact: 'low', probability: 'low', color: 'rgba(34, 197, 94, 0.15)', icon: '', label: 'OK' },
+    { impact: 'high', probability: 'low', color: 'rgba(34, 197, 94, 0.2)', icon: '', label: 'Monitor' },
   ];
   
   return (
