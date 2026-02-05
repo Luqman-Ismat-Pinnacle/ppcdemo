@@ -1,1174 +1,911 @@
 'use client';
 
 /**
- * @fileoverview Overview Page for PPC V3 Insights.
+ * @fileoverview Executive Briefing - Overview Page for PPC V3.
  * 
- * Provides a high-level portfolio summary with:
- * - Key performance metrics (KPIs)
- * - SPI and CPI gauges (Earned Value Management metrics)
- * - Budget variance waterfall chart
- * - Count/Metrics analysis tables
- * 
- * This is the main executive dashboard for project status.
+ * Redesigned for executive presentations with progressive disclosure:
+ * 1. Health at a Glance - Answer "Are we on track?" in 5 seconds
+ * 2. Key Performance Metrics - SPI, CPI, % Complete, Forecast
+ * 3. What Needs Attention - Schedule risks and budget concerns
+ * 4. Milestones & Deliverables - Timeline with status
+ * 5. Team Performance Summary - Top performers and areas needing attention
+ * 6. Quick Actions - Drill-down buttons
  * 
  * @module app/insights/overview/page
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useData } from '@/lib/data-context';
-import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
-import ChartCard from '@/components/charts/ChartCard';
-import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
-import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
-import { SkeletonMetric } from '@/components/ui/Skeleton';
-import TableCompareExport from '@/components/ui/TableCompareExport';
-import VarianceIndicator from '@/components/ui/VarianceIndicator';
 import { VarianceTrendsModal } from '@/components/ui/VarianceTrendsModal';
 import ExecutiveVarianceDashboard from '@/components/insights/ExecutiveVarianceDashboard';
-import MilestoneStatusPie from '@/components/charts/MilestoneStatusPie';
-import PlanForecastActualChart from '@/components/charts/PlanForecastActualChart';
-import {
-  type SortState,
-  formatSortIndicator,
-  getNextSortState,
-  sortByState,
-} from '@/lib/sort-utils';
-import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
+import { calculateMetricVariance } from '@/lib/variance-engine';
 
-function formatPercent(value: unknown): string {
-  if (value == null || value === '') return '—';
-  const n = Number(value);
-  if (Number.isNaN(n)) return String(value);
-  return `${Number(n.toFixed(2))}%`;
+// Helper to generate sparkline SVG path
+function generateSparklinePath(data: number[], width: number, height: number): string {
+  if (!data.length) return '';
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const step = width / (data.length - 1 || 1);
+  
+  return data.map((val, i) => {
+    const x = i * step;
+    const y = height - ((val - min) / range) * height;
+    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+}
+
+// Traffic light component
+function TrafficLight({ status, label }: { status: 'green' | 'yellow' | 'red'; label: string }) {
+  const colors = {
+    green: { bg: 'rgba(16, 185, 129, 0.15)', border: '#10B981', text: '#10B981' },
+    yellow: { bg: 'rgba(245, 158, 11, 0.15)', border: '#F59E0B', text: '#F59E0B' },
+    red: { bg: 'rgba(239, 68, 68, 0.15)', border: '#EF4444', text: '#EF4444' },
+  };
+  const c = colors[status];
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '8px 16px',
+      background: c.bg,
+      border: `1px solid ${c.border}`,
+      borderRadius: '8px',
+    }}>
+      <div style={{
+        width: '12px',
+        height: '12px',
+        borderRadius: '50%',
+        background: c.border,
+        boxShadow: `0 0 8px ${c.border}`,
+      }} />
+      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: c.text }}>{label}</span>
+    </div>
+  );
+}
+
+// KPI Card with sparkline
+function KPICard({ 
+  title, 
+  value, 
+  unit = '', 
+  trend, 
+  trendLabel, 
+  sparklineData,
+  color = 'var(--pinnacle-teal)',
+  status = 'neutral'
+}: { 
+  title: string; 
+  value: string | number; 
+  unit?: string;
+  trend?: number;
+  trendLabel?: string;
+  sparklineData?: number[];
+  color?: string;
+  status?: 'good' | 'warning' | 'bad' | 'neutral';
+}) {
+  const statusColors = {
+    good: '#10B981',
+    warning: '#F59E0B',
+    bad: '#EF4444',
+    neutral: 'var(--text-primary)',
+  };
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)',
+      borderRadius: '16px',
+      padding: '1.5rem',
+      border: '1px solid var(--border-color)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+    }}>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+        <span style={{ 
+          fontSize: '2.5rem', 
+          fontWeight: 800, 
+          color: statusColors[status],
+          lineHeight: 1,
+        }}>
+          {value}
+        </span>
+        {unit && <span style={{ fontSize: '1.25rem', color: 'var(--text-muted)' }}>{unit}</span>}
+      </div>
+      
+      {/* Trend and Sparkline Row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+        {trend !== undefined && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              {trend >= 0 ? (
+                <path d="M8 4L12 8L10.5 8L10.5 12L5.5 12L5.5 8L4 8L8 4Z" fill="#10B981" />
+              ) : (
+                <path d="M8 12L4 8L5.5 8L5.5 4L10.5 4L10.5 8L12 8L8 12Z" fill="#EF4444" />
+              )}
+            </svg>
+            <span style={{ 
+              fontSize: '0.8rem', 
+              fontWeight: 600, 
+              color: trend >= 0 ? '#10B981' : '#EF4444' 
+            }}>
+              {trend >= 0 ? '+' : ''}{trend}%
+            </span>
+            {trendLabel && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{trendLabel}</span>
+            )}
+          </div>
+        )}
+        
+        {/* Sparkline */}
+        {sparklineData && sparklineData.length > 1 && (
+          <svg width="60" height="24" viewBox="0 0 60 24" style={{ opacity: 0.7 }}>
+            <path
+              d={generateSparklinePath(sparklineData, 60, 24)}
+              fill="none"
+              stroke={color}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Attention Item Component
+function AttentionItem({ 
+  title, 
+  subtitle, 
+  value, 
+  valueColor = 'var(--text-primary)',
+  icon
+}: { 
+  title: string; 
+  subtitle: string; 
+  value: string;
+  valueColor?: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      padding: '1rem',
+      background: 'var(--bg-secondary)',
+      borderRadius: '10px',
+      gap: '1rem',
+    }}>
+      {icon && (
+        <div style={{
+          width: '40px',
+          height: '40px',
+          borderRadius: '10px',
+          background: 'var(--bg-tertiary)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          {icon}
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {title}
+        </div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{subtitle}</div>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: valueColor, flexShrink: 0 }}>
+        {value}
+      </div>
+    </div>
+  );
 }
 
 export default function OverviewPage() {
-  const { filteredData, isLoading: dataLoading, variancePeriod, varianceEnabled, metricsHistory } = useData();
+  const { filteredData, variancePeriod, metricsHistory } = useData();
   const data = filteredData;
-
-  // Unique projects for budget variance (when no filters: show first project's bridge)
-  const projects = useMemo(() => {
-    const projectNames = [...new Set(data.budgetVariance?.map((item: any) => item.project || item.name).filter(Boolean) || [])];
-    if (projectNames.length === 0 && data.projects?.length) {
-      return data.projects.map((p: any) => p.name || p.projectId).filter(Boolean);
-    }
-    return projectNames;
-  }, [data.budgetVariance, data.projects]);
-
-  const [countMetricsSort, setCountMetricsSort] = useState<SortState | null>(null);
-  const [projectMetricsSort, setProjectMetricsSort] = useState<SortState | null>(null);
+  
   const [showVarianceModal, setShowVarianceModal] = useState(false);
   const [showExecutiveModal, setShowExecutiveModal] = useState(false);
 
-  // Cross-visual filters (Power BI style)
-  const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
-  const projectFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'project').map((f) => f.value), [pageFilters]);
-
-  const handleFilterClick = useCallback((dimension: string, value: string, label?: string) => {
-    setPageFilters((prev) => {
-      const exists = prev.some((f) => f.dimension === dimension && f.value === value);
-      if (exists) return prev.filter((f) => !(f.dimension === dimension && f.value === value));
-      return [...prev, { dimension, value, label: label || value }];
-    });
-  }, []);
-
-  const handleRemoveFilter = useCallback((dimension: string, value: string) => {
-    setPageFilters((prev) => prev.filter((f) => !(f.dimension === dimension && f.value === value)));
-  }, []);
-
-  const handleClearFilters = useCallback(() => setPageFilters([]), []);
-
-  // Calculate metrics
-  const totalHours = useMemo(() => {
-    if (!data.sCurve?.actual?.length) return 0;
-    return data.sCurve.actual.reduce((sum, val) => sum + val, 0);
-  }, [data.sCurve?.actual]);
-
-  const efficiency = useMemo(() => {
-    if (!data.sCurve?.planned?.length || !data.sCurve?.actual?.length) {
-      return null; // Return null to show "No Data"
-    }
-    const planned = data.sCurve.planned[data.sCurve.planned.length - 1] || 0;
-    const actual = data.sCurve.actual[data.sCurve.actual.length - 1] || 0;
-    return planned > 0 ? Math.round((actual / planned) * 100 * 10) / 10 : null;
-  }, [data.sCurve]);
-
-  const budgetForecast = useMemo(() => {
-    return data.budgetVariance.reduce((sum, item) => sum + Math.abs(item.value), 0);
-  }, [data.budgetVariance]);
-
-  const qcPassRate = useMemo(() => {
-    const total = data.milestoneStatus.reduce((sum, item) => sum + item.value, 0);
-    const completed = data.milestoneStatus.find((item) => item.name === 'Complete')?.value || 0;
-    return total > 0 ? Math.round((completed / total) * 100 * 10) / 10 : 0;
-  }, [data.milestoneStatus]);
-
-  // Calculate SPI and CPI from EVM data or WBS data
-  const { spi, cpi } = useMemo(() => {
-    // Try to get from WBS data (rolled up from tasks)
+  // Calculate overall health score and metrics
+  const healthMetrics = useMemo(() => {
+    const tasks = data.tasks || [];
     const wbsItems = data.wbsData?.items || [];
-    let totalPV = 0;  // Planned Value (Baseline Cost * % Scheduled)
-    let totalEV = 0;  // Earned Value (Baseline Cost * % Complete)
-    let totalAC = 0;  // Actual Cost
-    let totalBaselineHours = 0;
-    let totalActualHours = 0;
-    let totalPercentComplete = 0;
-    let itemCount = 0;
+    
+    // Calculate SPI and CPI
+    let totalPV = 0, totalEV = 0, totalAC = 0;
+    let totalBaselineHours = 0, totalActualHours = 0;
+    let totalPercentComplete = 0, itemCount = 0;
 
     const sumValues = (items: any[]) => {
       items.forEach(item => {
         if (item.baselineCost || item.actualCost || item.baselineHours) {
-          const baselineCost = item.baselineCost || 0;
-          const actualCost = item.actualCost || 0;
-          const percentComplete = item.percentComplete || 0;
-
-          // EV = Baseline Cost × % Complete
-          totalEV += baselineCost * (percentComplete / 100);
-          // AC = Actual Cost
-          totalAC += actualCost;
-          // PV = Baseline Cost (assuming we're at schedule date)
-          totalPV += baselineCost;
-
+          totalEV += (item.baselineCost || 0) * ((item.percentComplete || 0) / 100);
+          totalAC += item.actualCost || 0;
+          totalPV += item.baselineCost || 0;
           totalBaselineHours += item.baselineHours || 0;
           totalActualHours += item.actualHours || 0;
-          totalPercentComplete += percentComplete;
+          totalPercentComplete += item.percentComplete || 0;
           itemCount++;
         }
-        if (item.children?.length) {
-          sumValues(item.children);
-        }
+        if (item.children?.length) sumValues(item.children);
       });
     };
-
     sumValues(wbsItems);
 
-    // Also try from tasks directly
-    const tasks = data.tasks || [];
-    if (tasks.length > 0 && totalPV === 0) {
+    // Also from tasks
+    if (totalPV === 0) {
       tasks.forEach((task: any) => {
-        const baselineCost = task.baselineCost || task.budgetCost || 0;
-        const actualCost = task.actualCost || 0;
-        const percentComplete = task.percentComplete || 0;
-        const baselineHours = task.baselineHours || task.budgetHours || 0;
-        const actualHours = task.actualHours || 0;
-
-        totalEV += baselineCost * (percentComplete / 100);
-        totalAC += actualCost;
-        totalPV += baselineCost;
-        totalBaselineHours += baselineHours;
-        totalActualHours += actualHours;
-        totalPercentComplete += percentComplete;
+        totalEV += (task.baselineCost || task.budgetCost || 0) * ((task.percentComplete || 0) / 100);
+        totalAC += task.actualCost || 0;
+        totalPV += task.baselineCost || task.budgetCost || 0;
+        totalBaselineHours += task.baselineHours || task.budgetHours || 0;
+        totalActualHours += task.actualHours || 0;
+        totalPercentComplete += task.percentComplete || 0;
         itemCount++;
       });
     }
 
-    // Fall back to hours-based calculation if no cost data
-    if (totalPV === 0 && totalBaselineHours > 0) {
-      const avgPercentComplete = itemCount > 0 ? totalPercentComplete / itemCount : 0;
-      // SPI based on hours: Actual Progress / Planned Progress
-      const spiValue = totalBaselineHours > 0
-        ? (totalActualHours / totalBaselineHours)
-        : 1;
-      // CPI approximation: Baseline Hours Earned / Actual Hours Spent
+    const avgPercentComplete = itemCount > 0 ? Math.round(totalPercentComplete / itemCount) : 0;
+    
+    // Calculate SPI and CPI
+    let spi = 1, cpi = 1;
+    if (totalPV > 0 && totalEV > 0) {
+      spi = totalEV / totalPV;
+      cpi = totalAC > 0 ? totalEV / totalAC : 1;
+    } else if (totalBaselineHours > 0) {
+      spi = totalActualHours / totalBaselineHours;
       const earnedHours = totalBaselineHours * (avgPercentComplete / 100);
-      const cpiValue = totalActualHours > 0
-        ? (earnedHours / totalActualHours)
-        : 1;
-      return {
-        spi: Math.round(spiValue * 100) / 100,
-        cpi: Math.round(cpiValue * 100) / 100
-      };
+      cpi = totalActualHours > 0 ? earnedHours / totalActualHours : 1;
     }
 
-    // Calculate SPI and CPI from EVM values
-    const spiValue = totalPV > 0 ? totalEV / totalPV : 1;
-    const cpiValue = totalAC > 0 ? totalEV / totalAC : 1;
-
-    return {
-      spi: Math.round(spiValue * 100) / 100,
-      cpi: Math.round(cpiValue * 100) / 100
-    };
-  }, [data.wbsData?.items, data.tasks]);
-
-  // Calculate variance using the new variance engine
-  const varianceData = useMemo(() => {
-    // Get variance for each KPI using metricsHistory
-    const hoursVariance = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod);
-    const efficiencyVariance = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod);
-    const costVariance = calculateMetricVariance(metricsHistory, 'actual_cost', variancePeriod);
-    const qcVariance = calculateMetricVariance(metricsHistory, 'qc_pass_rate', variancePeriod);
+    // Calculate schedule variance in days
+    const today = new Date();
+    let scheduleDays = 0;
+    let budgetVariance = 0;
     
+    // Estimate schedule variance from milestones
+    const milestones = data.milestones || [];
+    const lateMilestones = milestones.filter((m: any) => 
+      m.varianceDays && m.varianceDays > 0 && m.status !== 'Complete'
+    );
+    if (lateMilestones.length > 0) {
+      scheduleDays = Math.max(...lateMilestones.map((m: any) => m.varianceDays || 0));
+    }
+
+    // Budget variance
+    budgetVariance = totalAC > 0 && totalPV > 0 ? ((totalAC - totalPV) / totalPV) * 100 : 0;
+
+    // Overall health score (0-100)
+    let healthScore = 100;
+    if (spi < 0.9) healthScore -= 25;
+    else if (spi < 1) healthScore -= 10;
+    if (cpi < 0.9) healthScore -= 25;
+    else if (cpi < 1) healthScore -= 10;
+    if (scheduleDays > 30) healthScore -= 20;
+    else if (scheduleDays > 7) healthScore -= 10;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+
+    // Status determination
+    const scheduleStatus: 'green' | 'yellow' | 'red' = spi >= 1 ? 'green' : spi >= 0.9 ? 'yellow' : 'red';
+    const budgetStatus: 'green' | 'yellow' | 'red' = cpi >= 1 ? 'green' : cpi >= 0.9 ? 'yellow' : 'red';
+    const qualityStatus: 'green' | 'yellow' | 'red' = avgPercentComplete >= 80 ? 'green' : avgPercentComplete >= 50 ? 'yellow' : 'red';
+
+    // Generate summary text
+    let summary = '';
+    if (spi >= 1 && cpi >= 1) {
+      summary = `Project is on track - ${avgPercentComplete}% complete, on schedule and under budget`;
+    } else if (spi >= 0.9 && cpi >= 0.9) {
+      summary = `Project has minor variances - ${avgPercentComplete}% complete with small schedule/budget concerns`;
+    } else {
+      const issues = [];
+      if (spi < 0.9) issues.push('behind schedule');
+      if (cpi < 0.9) issues.push('over budget');
+      summary = `Project needs attention - ${issues.join(' and ')}. Currently ${avgPercentComplete}% complete`;
+    }
+
     return {
-      totalHours: hoursVariance,
-      efficiency: efficiencyVariance,
-      budgetForecast: costVariance,
-      qcPassRate: qcVariance,
+      healthScore,
+      spi: Math.round(spi * 100) / 100,
+      cpi: Math.round(cpi * 100) / 100,
+      percentComplete: avgPercentComplete,
+      scheduleDays,
+      budgetVariance: Math.round(budgetVariance * 10) / 10,
+      scheduleStatus,
+      budgetStatus,
+      qualityStatus,
+      summary,
+      totalHours: totalActualHours,
+      baselineHours: totalBaselineHours,
+    };
+  }, [data]);
+
+  // Calculate variance trends
+  const varianceData = useMemo(() => {
+    return {
+      spi: calculateMetricVariance(metricsHistory, 'spi', variancePeriod),
+      cpi: calculateMetricVariance(metricsHistory, 'cpi', variancePeriod),
+      hours: calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod),
     };
   }, [metricsHistory, variancePeriod]);
 
-  // Calculate Top and Worst Performing Projects based on hours variance
-  const performersData = useMemo(() => {
+  // Schedule risks (late milestones and slipping tasks)
+  const scheduleRisks = useMemo(() => {
+    const milestones = data.milestones || [];
+    const risks = milestones
+      .filter((m: any) => m.varianceDays && m.varianceDays > 0 && m.status !== 'Complete')
+      .sort((a: any, b: any) => (b.varianceDays || 0) - (a.varianceDays || 0))
+      .slice(0, 5)
+      .map((m: any) => ({
+        name: m.name || m.milestone,
+        project: m.projectNum || m.project,
+        variance: `+${m.varianceDays}d late`,
+        status: m.status,
+      }));
+    return risks;
+  }, [data.milestones]);
+
+  // Budget concerns (over budget items)
+  const budgetConcerns = useMemo(() => {
     const tasks = data.tasks || [];
-    const projects = data.projects || [];
-    
-    // Build project ID to name map
-    const projectMap = new Map<string, string>();
-    projects.forEach((proj: any) => {
-      const id = proj.id || proj.projectId;
-      const name = proj.name || proj.projectName || id;
-      if (id) projectMap.set(id, name);
-    });
-
-    // Aggregate hours by project
-    const projectStats = new Map<string, { 
-      name: string; 
-      baselineHours: number; 
-      actualHours: number; 
-      taskCount: number;
-      resourceCount: Set<string>;
-    }>();
-
-    tasks.forEach((task: any) => {
-      const projectId = task.projectId || task.project_id || 'Unknown';
-      const projectName = projectMap.get(projectId) || task.projectName || task.project_name || projectId;
-      const baselineHours = task.baselineHours || task.baseline_hours || task.budgetHours || 0;
-      const actualHours = task.actualHours || task.actual_hours || 0;
-      const resourceId = task.employeeId || task.assignedResourceId || task.assignedResource || '';
-
-      if (baselineHours > 0 || actualHours > 0) {
-        if (!projectStats.has(projectId)) {
-          projectStats.set(projectId, { 
-            name: projectName, 
-            baselineHours: 0, 
-            actualHours: 0, 
-            taskCount: 0,
-            resourceCount: new Set()
-          });
-        }
-        const stats = projectStats.get(projectId)!;
-        stats.baselineHours += baselineHours;
-        stats.actualHours += actualHours;
-        stats.taskCount += 1;
-        if (resourceId) stats.resourceCount.add(resourceId);
-      }
-    });
-
-    // Convert to array and calculate variance
-    const performers = Array.from(projectStats.entries())
-      .filter(([_, stats]) => stats.baselineHours > 0) // Only include projects with baseline hours
-      .map(([id, stats]) => {
-        const variance = stats.baselineHours > 0 
-          ? ((stats.actualHours - stats.baselineHours) / stats.baselineHours) * 100 
-          : 0;
-        const efficiency = stats.baselineHours > 0 
-          ? (stats.actualHours / stats.baselineHours) * 100 
-          : 0;
+    const concerns = tasks
+      .filter((t: any) => {
+        const baseline = t.baselineHours || t.budgetHours || 0;
+        const actual = t.actualHours || 0;
+        return baseline > 0 && actual > baseline;
+      })
+      .map((t: any) => {
+        const baseline = t.baselineHours || t.budgetHours || 0;
+        const actual = t.actualHours || 0;
+        const variance = ((actual - baseline) / baseline) * 100;
         return {
-          id,
-          name: stats.name,
-          baselineHours: Math.round(stats.baselineHours),
-          actualHours: Math.round(stats.actualHours),
-          variance: Math.round(variance * 10) / 10,
-          efficiency: Math.round(efficiency * 10) / 10,
-          taskCount: stats.taskCount,
-          resourceCount: stats.resourceCount.size,
+          name: t.name || t.taskName,
+          project: t.projectName || t.project_name || '',
+          variance: `+${Math.round(variance)}% over`,
+          hours: `${actual}/${baseline} hrs`,
         };
       })
-      .filter(p => p.name !== 'Unknown' && p.taskCount > 0);
-
-    // Split into under budget (top performers) and over budget (needs attention)
-    // Top performers: variance <= 0 (under or on budget), sorted by lowest variance first
-    const underBudget = performers
-      .filter(p => p.variance <= 0)
-      .sort((a, b) => a.variance - b.variance)
+      .sort((a: any, b: any) => parseFloat(b.variance) - parseFloat(a.variance))
       .slice(0, 5);
+    return concerns;
+  }, [data.tasks]);
+
+  // Upcoming milestones
+  const upcomingMilestones = useMemo(() => {
+    const milestones = data.milestones || [];
+    const today = new Date();
+    const thirtyDaysOut = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
     
-    // Needs attention: variance > 0 (over budget), sorted by highest variance first
-    const overBudget = performers
-      .filter(p => p.variance > 0)
-      .sort((a, b) => b.variance - a.variance)
-      .slice(0, 5);
+    return milestones
+      .filter((m: any) => {
+        const planned = m.plannedCompletion ? new Date(m.plannedCompletion) : null;
+        return planned && planned >= today && planned <= thirtyDaysOut && m.status !== 'Complete';
+      })
+      .sort((a: any, b: any) => 
+        new Date(a.plannedCompletion).getTime() - new Date(b.plannedCompletion).getTime()
+      )
+      .slice(0, 6);
+  }, [data.milestones]);
 
-    return { topPerformers: underBudget, worstPerformers: overBudget, totalProjects: performers.length };
-  }, [data.tasks, data.projects]);
-
-  const filteredCountMetrics = useMemo(() => {
-    let list = data.countMetricsAnalysis || [];
-    if (projectFilterValues.length > 0) {
-      list = list.filter((m: any) => projectFilterValues.includes(m.project));
-    }
-    return list;
-  }, [data.countMetricsAnalysis, projectFilterValues]);
-
-  const sortedCountMetrics = useMemo(() => {
-    return sortByState(filteredCountMetrics, countMetricsSort, (item, key) => {
-      switch (key) {
-        case 'project':
-          return item.project;
-        case 'task':
-          return item.task;
-        case 'remainingHours':
-          return item.remainingHours;
-        case 'count':
-          return item.count;
-        case 'metric':
-          return item.metric;
-        case 'defensible':
-          return item.defensible;
-        case 'variance':
-          return item.variance;
-        case 'status':
-          return item.status;
-        default:
-          return null;
+  // Team performance
+  const teamPerformance = useMemo(() => {
+    const tasks = data.tasks || [];
+    const resourceStats = new Map<string, { hours: number; baseline: number; tasks: number }>();
+    
+    tasks.forEach((t: any) => {
+      const resource = t.assignedResource || t.employeeName || t.assignedTo || 'Unassigned';
+      if (resource === 'Unassigned') return;
+      
+      const baseline = t.baselineHours || t.budgetHours || 0;
+      const actual = t.actualHours || 0;
+      
+      if (!resourceStats.has(resource)) {
+        resourceStats.set(resource, { hours: 0, baseline: 0, tasks: 0 });
       }
+      const stats = resourceStats.get(resource)!;
+      stats.hours += actual;
+      stats.baseline += baseline;
+      stats.tasks += 1;
     });
-  }, [filteredCountMetrics, countMetricsSort]);
 
-  const filteredProjectMetrics = useMemo(() => {
-    let list = data.projectsEfficiencyMetrics || [];
-    if (projectFilterValues.length > 0) {
-      list = list.filter((p: any) => projectFilterValues.includes(p.project));
-    }
-    return list;
-  }, [data.projectsEfficiencyMetrics, projectFilterValues]);
+    const performers = Array.from(resourceStats.entries())
+      .filter(([_, s]) => s.baseline > 0)
+      .map(([name, s]) => ({
+        name,
+        efficiency: Math.round((s.hours / s.baseline) * 100),
+        tasks: s.tasks,
+        hours: s.hours,
+      }))
+      .sort((a, b) => a.efficiency - b.efficiency);
 
-  const sortedProjectMetrics = useMemo(() => {
-    return sortByState(filteredProjectMetrics, projectMetricsSort, (item, key) => {
-      switch (key) {
-        case 'project':
-          return item.project;
-        case 'efficiency':
-          return item.efficiency;
-        case 'metricsRatio':
-          return item.metricsRatio;
-        case 'remainingHours':
-          return item.remainingHours;
-        case 'flag':
-          return item.flag;
-        default:
-          return null;
-      }
-    });
-  }, [filteredProjectMetrics, projectMetricsSort]);
+    return {
+      top: performers.slice(0, 3),
+      needsAttention: performers.filter(p => p.efficiency > 110).slice(0, 3),
+    };
+  }, [data.tasks]);
 
-  const filteredBudgetVariance = useMemo(() => {
-    let list = data.budgetVariance || [];
-    if (projectFilterValues.length > 0) {
-      list = list.filter((item: any) => projectFilterValues.includes(item.name) || item.type === 'end');
-    } else {
-      const first = projects[0];
-      if (first) list = list.filter((item: any) => item.name === first || item.type === 'end');
-    }
-    return list;
-  }, [data.budgetVariance, projects, projectFilterValues]);
+  // Health score color
+  const healthColor = healthMetrics.healthScore >= 80 ? '#10B981' : 
+                      healthMetrics.healthScore >= 60 ? '#F59E0B' : '#EF4444';
 
   return (
     <div className="page-panel insights-page">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 className="page-title">Portfolio Overview</h1>
-          <p className="page-description" style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Key performance at a glance
-          </p>
-        </div>
-        
-        {/* Action Buttons: Executive View & Variance Trends */}
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button
-            onClick={() => setShowExecutiveModal(true)}
-            style={{
+      {/* SECTION 1: Health at a Glance */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)',
+        borderRadius: '20px',
+        padding: '2rem',
+        marginBottom: '2rem',
+        border: '1px solid var(--border-color)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.5rem' }}>
+          {/* Health Score */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div style={{
+              width: '100px',
+              height: '100px',
+              borderRadius: '50%',
+              background: `conic-gradient(${healthColor} ${healthMetrics.healthScore * 3.6}deg, var(--bg-tertiary) 0deg)`,
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '10px 20px',
-              background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.15) 0%, rgba(156, 39, 176, 0.1) 100%)',
-              border: '1px solid rgba(233, 30, 99, 0.4)',
-              borderRadius: '10px',
-              color: '#E91E63',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              transition: 'all 0.2s',
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7" />
-              <rect x="14" y="3" width="7" height="7" />
-              <rect x="14" y="14" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" />
-            </svg>
-            Executive View
-          </button>
-          
-          <button
-            onClick={() => setShowVarianceModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 20px',
-              background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.15) 0%, rgba(205, 220, 57, 0.1) 100%)',
-              border: '1px solid rgba(64, 224, 208, 0.4)',
-              borderRadius: '10px',
-              color: 'var(--pinnacle-teal)',
-              cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              transition: 'all 0.2s',
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 3v18h18" />
-              <path d="M7 16l4-4 4 4 6-6" />
-            </svg>
-            Variance Trends
-          </button>
+              justifyContent: 'center',
+              position: 'relative',
+            }}>
+              <div style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                background: 'var(--bg-card)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+              }}>
+                <span style={{ fontSize: '1.75rem', fontWeight: 800, color: healthColor }}>
+                  {healthMetrics.healthScore}
+                </span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>HEALTH</span>
+              </div>
+            </div>
+            
+            <div>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, marginBottom: '0.5rem' }}>
+                Portfolio Overview
+              </h1>
+              <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: 0, maxWidth: '500px' }}>
+                {healthMetrics.summary}
+              </p>
+            </div>
+          </div>
+
+          {/* Traffic Lights */}
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <TrafficLight status={healthMetrics.scheduleStatus} label="Schedule" />
+            <TrafficLight status={healthMetrics.budgetStatus} label="Budget" />
+            <TrafficLight status={healthMetrics.qualityStatus} label="Quality" />
+          </div>
         </div>
       </div>
 
-      {/* Metrics Row - Primary KPIs (skeleton when loading) */}
-      <div className="metrics-row-compact" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
-        {dataLoading ? (
-          <>
-            {[1, 2, 3, 4].map((i) => (
-              <SkeletonMetric key={i} />
-            ))}
-          </>
-        ) : (
-        <>
-        <EnhancedTooltip
-          content={{
-            title: 'Total Hours',
-            description: 'Cumulative total of all actual hours logged across all projects.',
-            calculation: 'Total Hours = Sum of all actual hours from hour_entries table\n\nCalculated from S-Curve actual values:\nTotal = Σ(actual hours per date)',
-            details: [
-              'Includes all hours from all projects, tasks, and employees',
-              'Rolled up from individual hour entries',
-              'Updated in real-time as hours are logged',
-            ],
-          }}
-        >
-          <div className="metric-card">
-            <div className="metric-label">Total Hours</div>
-            <div className="metric-value">{totalHours.toLocaleString()}</div>
-            {varianceEnabled && varianceData.totalHours ? (
-              <VarianceIndicator
-                current={varianceData.totalHours.current}
-                previous={varianceData.totalHours.previous}
-                metricName="Total Hours"
-                period={variancePeriod}
-                size="sm"
-                showInsights={true}
-              />
-            ) : (
-              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
-                vs {getPeriodDisplayName(variancePeriod)}
-              </div>
-            )}
-          </div>
-        </EnhancedTooltip>
-
-        <EnhancedTooltip
-          content={{
-            title: 'Efficiency',
-            description: 'Percentage of planned hours that have been completed. Measures how actual progress compares to planned progress.',
-            calculation: 'Efficiency = (Actual Hours / Planned Hours) × 100\n\nWhere:\n- Actual Hours = Cumulative actual hours at latest date\n- Planned Hours = Cumulative planned hours at latest date',
-            details: [
-              'Values above 100% indicate work is ahead of schedule',
-              'Values below 100% indicate work is behind schedule',
-              'Based on S-Curve planned vs actual comparison',
-            ],
-          }}
-        >
-          <div className="metric-card accent-lime">
-            <div className="metric-label">Efficiency</div>
-            <div className="metric-value">{efficiency !== null ? `${efficiency}%` : 'No Data'}</div>
-            {varianceEnabled && varianceData.efficiency ? (
-              <VarianceIndicator
-                current={varianceData.efficiency.current}
-                previous={varianceData.efficiency.previous}
-                metricName="Efficiency"
-                period={variancePeriod}
-                size="sm"
-                showInsights={true}
-                positiveDirection="up"
-              />
-            ) : (
-              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
-                vs {getPeriodDisplayName(variancePeriod)}
-              </div>
-            )}
-          </div>
-        </EnhancedTooltip>
-
-        <EnhancedTooltip
-          content={{
-            title: 'Budget Forecast',
-            description: 'Total absolute value of all budget variances across all projects. Represents the total deviation from planned budget.',
-            calculation: 'Budget Forecast = Σ |Budget Variance|\n\nWhere:\n- Budget Variance = Difference between planned and actual costs\n- Sum of absolute values of all variance items',
-            details: [
-              'Higher values indicate greater budget variance',
-              'Includes both positive and negative variances',
-              'Calculated from budget variance bridge data',
-            ],
-          }}
-        >
-          <div className="metric-card accent-orange">
-            <div className="metric-label">Budget Forecast</div>
-            <div className="metric-value">${(budgetForecast / 1000).toFixed(0)}K</div>
-            {varianceEnabled && varianceData.budgetForecast ? (
-              <VarianceIndicator
-                current={varianceData.budgetForecast.current}
-                previous={varianceData.budgetForecast.previous}
-                metricName="Budget Forecast"
-                period={variancePeriod}
-                size="sm"
-                showInsights={true}
-                positiveDirection="down"
-                formatType="currency"
-              />
-            ) : (
-              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
-                vs {getPeriodDisplayName(variancePeriod)}
-              </div>
-            )}
-          </div>
-        </EnhancedTooltip>
-
-        <EnhancedTooltip
-          content={{
-            title: 'QC Pass Rate',
-            description: 'Percentage of quality control checks that have passed. Measures the quality of deliverables.',
-            calculation: 'QC Pass Rate = (Completed Milestones / Total Milestones) × 100\n\nWhere:\n- Completed = Count of milestones with status "Complete"\n- Total = Sum of all milestone status values',
-            details: [
-              'Based on milestone status distribution',
-              'Higher values indicate better quality outcomes',
-              'Updated as milestones are completed',
-            ],
-          }}
-        >
-          <div className="metric-card accent-pink">
-            <div className="metric-label">QC Pass Rate</div>
-            <div className="metric-value">{qcPassRate}%</div>
-            {varianceEnabled && varianceData.qcPassRate ? (
-              <VarianceIndicator
-                current={varianceData.qcPassRate.current}
-                previous={varianceData.qcPassRate.previous}
-                metricName="QC Pass Rate"
-                period={variancePeriod}
-                size="sm"
-                showInsights={true}
-                positiveDirection="up"
-                formatType="percent"
-              />
-            ) : (
-              <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
-                vs {getPeriodDisplayName(variancePeriod)}
-              </div>
-            )}
-          </div>
-        </EnhancedTooltip>
-        </>
-        )}
-      </div>
-
-      {/* Filter Bar - Power BI style cross-visual filtering */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <InsightsFilterBar
-          filters={pageFilters}
-          onRemove={handleRemoveFilter}
-          onClearAll={handleClearFilters}
-          emptyMessage="Click any chart bar to filter the page"
+      {/* SECTION 2: Key Performance Metrics */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '1rem',
+        marginBottom: '2rem',
+      }}>
+        <KPICard
+          title="Schedule Performance (SPI)"
+          value={healthMetrics.spi.toFixed(2)}
+          trend={varianceData.spi?.percentChange}
+          trendLabel="vs last period"
+          status={healthMetrics.spi >= 1 ? 'good' : healthMetrics.spi >= 0.9 ? 'warning' : 'bad'}
+          color="#40E0D0"
+        />
+        <KPICard
+          title="Cost Performance (CPI)"
+          value={healthMetrics.cpi.toFixed(2)}
+          trend={varianceData.cpi?.percentChange}
+          trendLabel="vs last period"
+          status={healthMetrics.cpi >= 1 ? 'good' : healthMetrics.cpi >= 0.9 ? 'warning' : 'bad'}
+          color="#CDDC39"
+        />
+        <KPICard
+          title="Percent Complete"
+          value={healthMetrics.percentComplete}
+          unit="%"
+          status={healthMetrics.percentComplete >= 80 ? 'good' : healthMetrics.percentComplete >= 50 ? 'warning' : 'neutral'}
+          color="#3B82F6"
+        />
+        <KPICard
+          title="Forecast Variance"
+          value={healthMetrics.budgetVariance > 0 ? `+${healthMetrics.budgetVariance}` : healthMetrics.budgetVariance}
+          unit="%"
+          status={healthMetrics.budgetVariance <= 0 ? 'good' : healthMetrics.budgetVariance <= 10 ? 'warning' : 'bad'}
+          color="#E91E63"
         />
       </div>
 
-      {/* Top & Worst Performing Projects - Prominent first-view section */}
-      {performersData.totalProjects > 0 && (
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(2, 1fr)', 
-          gap: '1.5rem', 
-          marginBottom: '1.5rem' 
+      {/* SECTION 3: What Needs Attention */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '1.5rem',
+        marginBottom: '2rem',
+      }}>
+        {/* Schedule Risks */}
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          overflow: 'hidden',
         }}>
-          {/* Top Performers */}
-          <div className="chart-card" style={{ borderTop: '4px solid #10B981' }}>
-            <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{ 
-                  width: '36px', 
-                  height: '36px', 
-                  borderRadius: '50%', 
-                  background: 'linear-gradient(135deg, #10B981, #34D399)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center' 
-                }}>
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2.5">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="chart-card-title" style={{ margin: 0, color: '#10B981' }}>Top Performing Projects</h3>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Under budget on hours</span>
-                </div>
-              </div>
+          <div style={{
+            padding: '1rem 1.25rem',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: 'rgba(239, 68, 68, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12,6 12,12 16,14" />
+              </svg>
             </div>
-            <div className="chart-card-body" style={{ padding: 0 }}>
-              {performersData.topPerformers.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {performersData.topPerformers.map((performer, idx) => (
-                    <div 
-                      key={performer.id} 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        padding: '0.875rem 1rem',
-                        borderBottom: idx < performersData.topPerformers.length - 1 ? '1px solid var(--border-color)' : 'none',
-                        gap: '1rem'
-                      }}
-                    >
-                      {/* Rank Badge */}
-                      <div style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '50%',
-                        background: idx === 0 ? '#10B981' : idx === 1 ? '#34D399' : 'var(--bg-tertiary)',
-                        color: idx < 2 ? '#fff' : 'var(--text-secondary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        flexShrink: 0
-                      }}>
-                        {idx + 1}
-                      </div>
-                      
-                      {/* Name and Stats */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {performer.name}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {performer.taskCount} tasks · {performer.resourceCount} resource{performer.resourceCount !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                      
-                      {/* Hours Info */}
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                          {performer.actualHours.toLocaleString()} / {performer.baselineHours.toLocaleString()} hrs
-                        </div>
-                        <div style={{ 
-                          fontSize: '0.8rem', 
-                          fontWeight: 700,
-                          color: performer.variance <= 0 ? '#10B981' : '#F59E0B'
-                        }}>
-                          {performer.variance <= 0 ? '' : '+'}{performer.variance}%
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No project data available
-                </div>
-              )}
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Schedule Risks</h3>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Late or at-risk items</span>
             </div>
           </div>
-
-          {/* Projects Needing Attention */}
-          <div className="chart-card" style={{ borderTop: '4px solid #EF4444' }}>
-            <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{ 
-                  width: '36px', 
-                  height: '36px', 
-                  borderRadius: '50%', 
-                  background: 'linear-gradient(135deg, #EF4444, #F87171)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center' 
-                }}>
-                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" strokeWidth="2.5">
+          <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {scheduleRisks.length > 0 ? scheduleRisks.map((risk, idx) => (
+              <AttentionItem
+                key={idx}
+                title={risk.name}
+                subtitle={risk.project}
+                value={risk.variance}
+                valueColor="#EF4444"
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                     <line x1="12" y1="9" x2="12" y2="13" />
                     <line x1="12" y1="17" x2="12.01" y2="17" />
                   </svg>
-                </div>
-                <div>
-                  <h3 className="chart-card-title" style={{ margin: 0, color: '#EF4444' }}>Projects Needing Attention</h3>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Over budget on hours</span>
-                </div>
+                }
+              />
+            )) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No schedule risks identified
               </div>
-            </div>
-            <div className="chart-card-body" style={{ padding: 0 }}>
-              {performersData.worstPerformers.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {performersData.worstPerformers.map((performer, idx) => (
-                    <div 
-                      key={performer.id} 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        padding: '0.875rem 1rem',
-                        borderBottom: idx < performersData.worstPerformers.length - 1 ? '1px solid var(--border-color)' : 'none',
-                        gap: '1rem'
-                      }}
-                    >
-                      {/* Rank Badge */}
-                      <div style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '50%',
-                        background: idx === 0 ? '#EF4444' : idx === 1 ? '#F87171' : 'var(--bg-tertiary)',
-                        color: idx < 2 ? '#fff' : 'var(--text-secondary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        flexShrink: 0
-                      }}>
-                        {idx + 1}
-                      </div>
-                      
-                      {/* Name and Stats */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {performer.name}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {performer.taskCount} tasks · {performer.resourceCount} resource{performer.resourceCount !== 1 ? 's' : ''}
-                        </div>
-                      </div>
-                      
-                      {/* Hours Info */}
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-                          {performer.actualHours.toLocaleString()} / {performer.baselineHours.toLocaleString()} hrs
-                        </div>
-                        <div style={{ 
-                          fontSize: '0.8rem', 
-                          fontWeight: 700,
-                          color: performer.variance > 20 ? '#EF4444' : performer.variance > 0 ? '#F59E0B' : '#10B981'
-                        }}>
-                          +{performer.variance}%
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No project data available
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Charts Grid */}
-      <div className="dashboard-grid">
-        {/* SPI and CPI - Large KPI cards for instant readability */}
-        <div className="chart-card grid-half">
-          <div className="chart-card-header">
-            <EnhancedTooltip
-              content={{
-                title: 'Schedule Performance Index (SPI)',
-                description: 'Measures schedule efficiency - how much work has been completed compared to what was planned.',
-                calculation: 'SPI = Earned Value (EV) / Planned Value (PV)',
-                details: ['SPI = 1.0: On schedule', 'SPI > 1.0: Ahead', 'SPI < 1.0: Behind', 'Target: ≥ 0.95'],
-              }}
-            >
-              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Schedule Performance</h3>
-            </EnhancedTooltip>
-          </div>
-          <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-            <div style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, color: spi >= 1 ? '#10B981' : spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>
-              {spi.toFixed(2)}
-            </div>
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '8px' }}>
-              {spi >= 1 ? 'On or ahead of schedule' : spi >= 0.9 ? 'Slightly behind' : 'Behind schedule'}
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="chart-card grid-half">
-          <div className="chart-card-header">
-            <EnhancedTooltip
-              content={{
-                title: 'Cost Performance Index (CPI)',
-                description: 'Measures cost efficiency - value earned per dollar spent.',
-                calculation: 'CPI = Earned Value (EV) / Actual Cost (AC)',
-                details: ['CPI = 1.0: On budget', 'CPI > 1.0: Under budget', 'CPI < 1.0: Over budget', 'Target: ≥ 0.95'],
-              }}
-            >
-              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Cost Performance</h3>
-            </EnhancedTooltip>
-          </div>
-          <div className="chart-card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-            <div style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1, color: cpi >= 1 ? '#10B981' : cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>
-              {cpi.toFixed(2)}
+        {/* Budget Concerns */}
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '1rem 1.25rem',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+          }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: 'rgba(245, 158, 11, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
+                <line x1="12" y1="1" x2="12" y2="23" />
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
             </div>
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '8px' }}>
-              {cpi >= 1 ? 'On or under budget' : cpi >= 0.9 ? 'Slightly over' : 'Over budget'}
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Budget Concerns</h3>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Over-budget items</span>
             </div>
           </div>
-        </div>
-
-        {/* Budget Variance Bridge - Full Width */}
-        <ChartCard
-          gridClass="grid-full"
-          style={{ minHeight: 420 }}
-          title={
-            <EnhancedTooltip
-              content={{
-                title: 'Budget Variance Bridge',
-                description: 'Waterfall chart showing the breakdown of budget changes from baseline to forecast. Click a bar to filter the page by that project.',
-                calculation: 'Variance = Actual Cost - Planned Cost. Bridge shows starting budget, changes, and ending forecast.',
-                details: [
-                  'Each bar represents a variance component',
-                  'Click a bar to filter the page by project',
-                  'When no filters applied, first project is shown',
-                ],
-              }}
-            >
-              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Budget Variance Bridge</h3>
-            </EnhancedTooltip>
-          }
-        >
-          <div style={{ minHeight: 380 }}>
-            <BudgetVarianceChart
-              data={filteredBudgetVariance}
-              height={380}
-              isLoading={dataLoading}
-              isEmpty={!filteredBudgetVariance?.length}
-              onBarClick={(params) => handleFilterClick('project', params.name, params.name)}
-              activeFilters={projectFilterValues}
-            />
-          </div>
-        </ChartCard>
-
-        {/* Count/Metrics Analysis Table */}
-        <ChartCard
-          gridClass="grid-full"
-          noPadding
-          title={
-            <EnhancedTooltip
-              content={{
-                title: 'Count/Metrics Analysis',
-                description: 'Analysis of task metrics to determine hours defensibility.',
-                calculation: 'For each task: Defensible Hours = Count × Metric',
-                details: ['Rem Hrs: Remaining hours', 'Def: Defensible hours', 'Var: Variance'],
-              }}
-            >
-              <div>
-                <h3 className="chart-card-title" style={{ cursor: 'help' }}>Count/Metrics Analysis</h3>
-                <span className="chart-card-subtitle">Hours defensibility</span>
+          <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {budgetConcerns.length > 0 ? budgetConcerns.map((concern, idx) => (
+              <AttentionItem
+                key={idx}
+                title={concern.name}
+                subtitle={concern.hours}
+                value={concern.variance}
+                valueColor="#F59E0B"
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
+                }
+              />
+            )) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No budget concerns identified
               </div>
-            </EnhancedTooltip>
-          }
-        >
-          <TableCompareExport
-            visualId="count-metrics-analysis"
-            visualTitle="Count/Metrics Analysis"
-            data={sortedCountMetrics}
-          >
-            <table className="data-table" style={{ fontSize: '0.875rem' }}>
-              <thead>
-                <tr>
-                  {[
-                    { key: 'project', label: 'Project' },
-                    { key: 'task', label: 'Task' },
-                    {
-                      key: 'remainingHours',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Remaining Hours', description: 'Hours remaining to complete the task.', calculation: 'Baseline Hours - Actual Hours' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Rem Hrs</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'count',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Count', description: 'Number of units or deliverables.' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Count</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'metric',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Metric', description: 'Standard hours per unit.' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Metric</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'defensible',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Defensible Hours', description: 'Calculated justified hours.', calculation: 'Count × Metric' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Def</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'variance',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Variance', description: 'Difference between remaining and defensible hours.', calculation: 'Remaining Hours - Defensible Hours' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Var</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'status',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Status', description: 'Indicates if hours are defensible.', details: ['Good: Var >= 0', 'Warning: Var < 0 (small gap)', 'Critical: Var << 0 (large gap)'] }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Status</span>
-                        </EnhancedTooltip>
-                      )
-                    },
-                  ].map(({ key, label, align }) => {
-                    const indicator = formatSortIndicator(countMetricsSort, key);
-                    return (
-                      <th key={key} className={align}>
-                        <button
-                          type="button"
-                          onClick={() => setCountMetricsSort(prev => getNextSortState(prev, key))}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            color: 'inherit',
-                            cursor: 'pointer',
-                            fontWeight: 600,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          {label}
-                          {indicator && <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>{indicator}</span>}
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedCountMetrics.map((item, idx) => (
-                  <tr key={idx}>
-                    <td>{item.project}</td>
-                    <td>{item.task}</td>
-                    <td className="number">{item.remainingHours}</td>
-                    <td className="number">{item.count}</td>
-                    <td className="number">{item.metric}</td>
-                    <td className="number">{item.defensible}</td>
-                    <td className="number">{item.variance}</td>
-                    <td>
-                      <span className={`badge badge-${item.status === 'good' ? 'success' : item.status === 'warning' ? 'warning' : 'critical'}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableCompareExport>
-        </ChartCard>
-
-        {/* Projects Efficiency Metrics Table */}
-        <ChartCard
-          gridClass="grid-full"
-          noPadding
-          title={
-            <EnhancedTooltip
-              content={{
-                title: 'Projects: Efficiency vs Metrics',
-                description: 'Comparison of project efficiency percentages against metrics ratios to identify projects needing attention.',
-                calculation: 'Efficiency = (Actual Hours / Planned Hours) × 100\nMetrics Ratio = (Tasks with Metrics / Total Tasks) × 100',
-                details: [
-                  'Eff %: Project efficiency percentage',
-                  'Metrics: Ratio of tasks with count metrics',
-                  'Rem Hrs: Remaining hours to complete',
-                  'Flag: Status indicator (ok/watch/critical)',
-                  'Helps identify projects with tracking gaps',
-                ],
-              }}
-            >
-              <h3 className="chart-card-title" style={{ cursor: 'help' }}>Projects: Efficiency vs Metrics</h3>
-            </EnhancedTooltip>
-          }
-        >
-          <TableCompareExport
-            visualId="projects-efficiency-metrics"
-            visualTitle="Projects Efficiency vs Metrics"
-            data={sortedProjectMetrics}
-          >
-            <table className="data-table" style={{ fontSize: '0.875rem' }}>
-              <thead>
-                <tr>
-                  {[
-                    { key: 'project', label: 'Project' },
-                    {
-                      key: 'efficiency',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Efficiency %', description: 'Project execution efficiency.', calculation: '(Actual Hours / Planned Hours) × 100' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Eff %</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'metricsRatio',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Metrics Ratio', description: 'Percentage of tasks with defined metrics.', calculation: '(Tasks with Metrics / Total Tasks) × 100' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Metrics</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'remainingHours',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Remaining Hours', description: 'Total remaining hours for project.' }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Rem Hrs</span>
-                        </EnhancedTooltip>
-                      ),
-                      align: 'number'
-                    },
-                    {
-                      key: 'flag',
-                      label: (
-                        <EnhancedTooltip content={{ title: 'Flag Status', description: 'Overall project health indicator.', details: ['OK: Good metrics & efficiency', 'Watch: Minor issues', 'Critical: Low metrics or efficiency'] }}>
-                          <span style={{ borderBottom: '1px dotted #ccc', cursor: 'help' }}>Flag</span>
-                        </EnhancedTooltip>
-                      )
-                    },
-                  ].map(({ key, label, align }) => {
-                    const indicator = formatSortIndicator(projectMetricsSort, key);
-                    return (
-                      <th key={key} className={align}>
-                        <button
-                          type="button"
-                          onClick={() => setProjectMetricsSort(prev => getNextSortState(prev, key))}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            color: 'inherit',
-                            cursor: 'pointer',
-                            fontWeight: 600,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          {label}
-                          {indicator && <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>{indicator}</span>}
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedProjectMetrics.map((project, idx) => (
-                  <tr key={idx}>
-                    <td>{project.project}</td>
-                    <td className="number">{formatPercent(project.efficiency)}</td>
-                    <td className="number">{formatPercent(project.metricsRatio)}</td>
-                    <td className="number">{project.remainingHours}</td>
-                    <td>
-                      <span className={`badge badge-${project.flag === 'ok' ? 'success' : project.flag === 'watch' ? 'warning' : 'critical'}`}>
-                        {project.flag}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableCompareExport>
-        </ChartCard>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Milestones Section */}
-      <div className="dashboard-grid" style={{ marginTop: '1.5rem' }}>
-        <ChartCard title="Milestone Status" gridClass="grid-half">
-          <MilestoneStatusPie
-            data={data.milestoneStatusPie || []}
-            height="280px"
-            onSliceClick={(params) => handleFilterClick('status', params.name, params.name)}
-            activeFilters={[]}
-          />
-        </ChartCard>
-
-        <ChartCard title="Plan vs Forecast vs Actual" gridClass="grid-half">
-          <PlanForecastActualChart 
-            data={data.planVsForecastVsActual || { labels: [], plan: [], forecast: [], actual: [] }} 
-            height="280px" 
-          />
-        </ChartCard>
-
-        {/* Milestone Summary Table */}
-        <ChartCard title="Upcoming Milestones" gridClass="grid-full" noPadding>
-          <TableCompareExport
-            visualId="milestone-summary"
-            visualTitle="Upcoming Milestones"
-            data={data.milestones?.slice(0, 10) || []}
-          >
-            <table className="data-table" style={{ fontSize: '0.875rem' }}>
-              <thead>
-                <tr>
-                  <th>Milestone</th>
-                  <th>Project</th>
-                  <th>Status</th>
-                  <th className="number">Progress</th>
-                  <th>Planned</th>
-                  <th className="number">Variance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.milestones?.slice(0, 10) || []).map((m: any, idx: number) => (
-                  <tr key={idx}>
-                    <td>{m.name || m.milestone}</td>
-                    <td>{m.projectNum || m.project}</td>
-                    <td>
-                      <span className={`badge badge-${
-                        m.status === 'Complete' || m.status === 'Completed' ? 'success' : 
-                        m.status === 'In Progress' ? 'warning' : 
-                        m.status === 'At Risk' || m.status === 'Late' ? 'critical' : 'default'
-                      }`}>
+      {/* SECTION 4: Milestones Timeline */}
+      <div style={{
+        background: 'var(--bg-card)',
+        borderRadius: '16px',
+        border: '1px solid var(--border-color)',
+        marginBottom: '2rem',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '1rem 1.25rem',
+          borderBottom: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              background: 'rgba(64, 224, 208, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+                <path d="M5 3v18M5 12h14l-7-7M5 12l7 7" />
+              </svg>
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Upcoming Milestones</h3>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Next 30 days</span>
+            </div>
+          </div>
+        </div>
+        
+        <div style={{ padding: '1.25rem', overflowX: 'auto' }}>
+          {upcomingMilestones.length > 0 ? (
+            <div style={{ display: 'flex', gap: '1rem', minWidth: 'max-content' }}>
+              {upcomingMilestones.map((m: any, idx: number) => {
+                const planned = new Date(m.plannedCompletion);
+                const isLate = m.varianceDays && m.varianceDays > 0;
+                const isAtRisk = m.status === 'At Risk';
+                
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      minWidth: '180px',
+                      padding: '1rem',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: '12px',
+                      borderLeft: `4px solid ${isLate ? '#EF4444' : isAtRisk ? '#F59E0B' : '#10B981'}`,
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                      {planned.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                      {m.name || m.milestone}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{
+                        fontSize: '0.7rem',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: isLate ? 'rgba(239, 68, 68, 0.15)' : isAtRisk ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                        color: isLate ? '#EF4444' : isAtRisk ? '#F59E0B' : '#10B981',
+                        fontWeight: 600,
+                      }}>
                         {m.status || 'Pending'}
                       </span>
-                    </td>
-                    <td className="number">{m.percentComplete || 0}%</td>
-                    <td>{m.plannedCompletion ? new Date(m.plannedCompletion).toLocaleDateString() : '-'}</td>
-                    <td className={`number ${(m.varianceDays || 0) < 0 ? 'status-good' : (m.varianceDays || 0) > 0 ? 'status-bad' : ''}`}>
-                      {m.varianceDays != null ? `${m.varianceDays > 0 ? '+' : ''}${m.varianceDays}d` : '-'}
-                    </td>
-                  </tr>
-                ))}
-                {(!data.milestones || data.milestones.length === 0) && (
-                  <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                      No milestone data available
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </TableCompareExport>
-        </ChartCard>
+                      {m.varianceDays != null && m.varianceDays !== 0 && (
+                        <span style={{ fontSize: '0.7rem', color: m.varianceDays > 0 ? '#EF4444' : '#10B981' }}>
+                          {m.varianceDays > 0 ? '+' : ''}{m.varianceDays}d
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No upcoming milestones in the next 30 days
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 5: Team Performance */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '1.5rem',
+        marginBottom: '2rem',
+      }}>
+        {/* Top Performers */}
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          borderTop: '4px solid #10B981',
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#10B981' }}>Top Performers</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Best hours efficiency</span>
+          </div>
+          <div style={{ padding: '0.75rem' }}>
+            {teamPerformance.top.length > 0 ? teamPerformance.top.map((p, idx) => (
+              <div key={idx} style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0.75rem',
+                gap: '1rem',
+                borderBottom: idx < teamPerformance.top.length - 1 ? '1px solid var(--border-color)' : 'none',
+              }}>
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: idx === 0 ? '#10B981' : 'var(--bg-tertiary)',
+                  color: idx === 0 ? '#fff' : 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                }}>
+                  {idx + 1}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.tasks} tasks</div>
+                </div>
+                <div style={{ fontWeight: 700, color: '#10B981' }}>{p.efficiency}%</div>
+              </div>
+            )) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No performance data available
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Needs Attention */}
+        <div style={{
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          borderTop: '4px solid #F59E0B',
+          overflow: 'hidden',
+        }}>
+          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#F59E0B' }}>Needs Attention</h3>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Over 110% of baseline hours</span>
+          </div>
+          <div style={{ padding: '0.75rem' }}>
+            {teamPerformance.needsAttention.length > 0 ? teamPerformance.needsAttention.map((p, idx) => (
+              <div key={idx} style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0.75rem',
+                gap: '1rem',
+                borderBottom: idx < teamPerformance.needsAttention.length - 1 ? '1px solid var(--border-color)' : 'none',
+              }}>
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                }}>
+                  {idx + 1}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{p.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.tasks} tasks</div>
+                </div>
+                <div style={{ fontWeight: 700, color: '#F59E0B' }}>{p.efficiency}%</div>
+              </div>
+            )) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                All resources within budget
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 6: Quick Actions */}
+      <div style={{
+        display: 'flex',
+        gap: '1rem',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        background: 'var(--bg-secondary)',
+        borderRadius: '16px',
+      }}>
+        <button
+          onClick={() => setShowVarianceModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 24px',
+            background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.15) 0%, rgba(205, 220, 57, 0.1) 100%)',
+            border: '1px solid var(--pinnacle-teal)',
+            borderRadius: '10px',
+            color: 'var(--pinnacle-teal)',
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: '0.9rem',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 3v18h18" />
+            <path d="M7 16l4-4 4 4 6-6" />
+          </svg>
+          View Variance Analysis
+        </button>
+        
+        <button
+          onClick={() => setShowExecutiveModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '12px 24px',
+            background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.15) 0%, rgba(156, 39, 176, 0.1) 100%)',
+            border: '1px solid #E91E63',
+            borderRadius: '10px',
+            color: '#E91E63',
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: '0.9rem',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+          </svg>
+          Open Executive Dashboard
+        </button>
       </div>
 
       {/* Modals */}
