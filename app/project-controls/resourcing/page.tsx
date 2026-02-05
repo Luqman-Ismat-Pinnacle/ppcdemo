@@ -368,7 +368,7 @@ function ResourcingPageContent() {
       const actualPerRole = actualHours / roles.length;
       
       roles.forEach(role => {
-        if (!roleMap.has(role)) {
+      if (!roleMap.has(role)) {
           roleMap.set(role, {
             resourceType: role,
             taskCount: 0,
@@ -468,8 +468,8 @@ function ResourcingPageContent() {
     while (current <= maxDate) {
       weeks.push(formatDateShort(current));
       weekDates.push(new Date(current));
-      current.setDate(current.getDate() + 7);
-    }
+          current.setDate(current.getDate() + 7);
+        }
 
     if (weeks.length === 0) {
       weeks.push('Week 1');
@@ -1054,7 +1054,7 @@ function ResourcingPageContent() {
           const next = new Set(prev);
           if (next.has(role)) {
             next.delete(role);
-          } else {
+    } else {
             next.add(role);
           }
           return next;
@@ -1134,8 +1134,8 @@ function ResourcingPageContent() {
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
             Plan, analyze, and optimize resource allocation across your projects
           </p>
-        </div>
-        
+      </div>
+
         {/* Project Search Filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', position: 'relative' }}>
           <label style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Filter by Project:</label>
@@ -1144,7 +1144,7 @@ function ResourcingPageContent() {
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--text-muted)" strokeWidth="2" 
                    style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}>
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+            </svg>
               <input
                 type="text"
                 placeholder={selectedProjectId ? selectedProjectName : "Search projects..."}
@@ -1166,7 +1166,7 @@ function ResourcingPageContent() {
                 }}
               />
               {selectedProjectId && (
-                <button
+            <button
                   onClick={() => {
                     setSelectedProjectId(null);
                     setProjectSearchQuery('');
@@ -1189,7 +1189,7 @@ function ResourcingPageContent() {
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--text-muted)" strokeWidth="2">
                     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                   </svg>
-                </button>
+            </button>
               )}
             </div>
             
@@ -1224,7 +1224,7 @@ function ResourcingPageContent() {
                   }}
                 >
                   All Projects
-                </div>
+          </div>
                 {filteredProjects.map((p) => (
                   <div
                     key={p.id}
@@ -1241,18 +1241,18 @@ function ResourcingPageContent() {
                     }}
                   >
                     {p.name}
-                  </div>
+        </div>
                 ))}
                 {filteredProjects.length === 0 && projectSearchQuery && (
                   <div style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
                     No projects match "{projectSearchQuery}"
-                  </div>
+              </div>
                 )}
               </div>
             )}
-          </div>
-        </div>
-      </div>
+                </div>
+              </div>
+              </div>
 
       {/* Navigation Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', flexShrink: 0, overflowX: 'auto' }}>
@@ -1279,7 +1279,7 @@ function ResourcingPageContent() {
             {section.label}
             </button>
         ))}
-          </div>
+              </div>
 
       {/* Content Area */}
       <div style={{ flex: 1, overflow: 'auto' }}>
@@ -1294,27 +1294,27 @@ function ResourcingPageContent() {
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{formatNumber(summaryMetrics.totalFTE, 1)}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   Based on {formatNumber(summaryMetrics.totalBaselineHours)} baseline hours
-        </div>
               </div>
-              
+          </div>
+
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="metric-label">Resource Types</div>
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{summaryMetrics.uniqueResourceTypes}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Unique roles assigned</div>
-              </div>
-              
+          </div>
+
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="metric-label">Total Tasks</div>
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{formatNumber(summaryMetrics.totalTasks)}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>With resource assignments</div>
-                </div>
+            </div>
               
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
                 <div className="metric-label">Hours Progress</div>
                 <div className="metric-value" style={{ fontSize: '2rem' }}>{formatNumber(summaryMetrics.utilizationPercent, 0)}%</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   {formatNumber(summaryMetrics.totalActualHours)} of {formatNumber(summaryMetrics.totalBaselineHours)} hrs
-              </div>
+                </div>
               </div>
               
               <div className="metric-card" style={{ padding: '1.25rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
@@ -1556,15 +1556,15 @@ function ResourcingPageContent() {
                 >
                   Collapse All
                         </button>
-              </div>
             </div>
+          </div>
             <div className="chart-card-body" style={{ flex: 1, minHeight: 0, padding: '12px' }}>
               {ganttItems.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 16, opacity: 0.5 }}><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                   <p style={{ fontWeight: 600 }}>No Gantt data available</p>
                   <p style={{ fontSize: '0.85rem' }}>Upload an MPP file with tasks that have dates and resource assignments.</p>
-                      </div>
+                    </div>
                     ) : (
                 <ChartWrapper 
                   option={ganttOption} 
@@ -1627,12 +1627,12 @@ function ResourcingPageContent() {
                   </svg>
                   Leveling Configuration
                 </h3>
-                                <button
+                        <button
                   onClick={runLeveling}
                   disabled={isLevelingRunning || !data.tasks?.length}
-                                  style={{
+                          style={{
                     padding: '0.6rem 1.25rem',
-                                    border: 'none',
+                            border: 'none',
                     borderRadius: '8px',
                     background: isLevelingRunning ? 'var(--bg-tertiary)' : 'var(--pinnacle-teal)',
                     color: isLevelingRunning ? 'var(--text-muted)' : '#000',
@@ -1655,8 +1655,8 @@ function ResourcingPageContent() {
                       Run Leveling
                     </>
                   )}
-                </button>
-              </div>
+                        </button>
+                      </div>
               <div className="chart-card-body" style={{ padding: '1.25rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
                   
@@ -1681,8 +1681,8 @@ function ResourcingPageContent() {
                       <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
                         {levelingParams.workdayHours} hrs
                       </span>
-          </div>
-        </div>
+                      </div>
+                    </div>
 
                   {/* Buffer Days */}
                   <div>
@@ -1693,8 +1693,8 @@ function ResourcingPageContent() {
                       {LEVELING_PARAM_LABELS.bufferDays.description}
                     </p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <input
-                        type="range"
+                    <input
+                      type="range"
                         min={LEVELING_PARAM_LABELS.bufferDays.min}
                         max={LEVELING_PARAM_LABELS.bufferDays.max}
                         step={LEVELING_PARAM_LABELS.bufferDays.step}
@@ -1705,8 +1705,8 @@ function ResourcingPageContent() {
                       <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
                         {levelingParams.bufferDays} days
             </span>
-          </div>
                   </div>
+            </div>
 
                   {/* Max Schedule Days */}
                   <div>
@@ -1729,8 +1729,8 @@ function ResourcingPageContent() {
                       <span style={{ fontWeight: 700, fontSize: '1rem', minWidth: '50px', textAlign: 'right', color: 'var(--pinnacle-teal)' }}>
                         {levelingParams.maxScheduleDays} days
                     </span>
-                  </div>
-                    </div>
+          </div>
+        </div>
 
                   {/* Toggle Options */}
                   <div>
@@ -1765,8 +1765,8 @@ function ResourcingPageContent() {
                         />
                         <span style={{ fontSize: '0.85rem' }}>Workdays only (exclude weekends)</span>
                       </label>
-                    </div>
-                  </div>
+          </div>
+              </div>
                 </div>
               </div>
             </div>
@@ -1824,8 +1824,8 @@ function ResourcingPageContent() {
                         </p>
                         <div style={{ overflow: 'auto', maxHeight: '400px' }}>
                           <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
-                            <thead>
-                              <tr>
+                <thead>
+                  <tr>
                                 <th style={{ textAlign: 'left' }}>Task Name</th>
                                 <th style={{ textAlign: 'left' }}>Project</th>
                                 <th style={{ textAlign: 'left' }}>Role Required</th>
@@ -1837,7 +1837,7 @@ function ResourcingPageContent() {
                               {unassignedTasks.map((task) => {
                                 const matchingEmployees = getEmployeesForRole(task.role);
                                 const hasMatches = matchingEmployees.length < availableEmployees.length;
-                                return (
+                      return (
                                   <tr key={task.taskId}>
                                     <td style={{ fontWeight: 500 }}>{task.taskName}</td>
                                     <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{task.projectName}</td>
@@ -1850,14 +1850,14 @@ function ResourcingPageContent() {
                                         color: 'var(--pinnacle-teal)'
                                       }}>
                                         {task.role}
-                                      </span>
+                              </span>
                                     </td>
                                     <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
                                     <td>
                                       <select
                                         value=""
                                         onChange={(e) => e.target.value && assignResourceToTask(task.taskId, e.target.value)}
-                                        style={{
+                              style={{
                                           width: '100%',
                                           padding: '0.5rem',
                                           borderRadius: '6px',
@@ -1889,8 +1889,8 @@ function ResourcingPageContent() {
                                       </select>
                                     </td>
                                   </tr>
-                                );
-                              })}
+                      );
+                    })}
                             </tbody>
                           </table>
                         </div>
@@ -1913,11 +1913,11 @@ function ResourcingPageContent() {
                                 <th style={{ textAlign: 'right' }}>Hours</th>
                                 <th style={{ textAlign: 'left' }}>Assigned To</th>
                                 <th style={{ textAlign: 'center', width: '80px' }}>Action</th>
-                              </tr>
-                            </thead>
-                            <tbody>
+                  </tr>
+                </thead>
+                <tbody>
                               {manuallyAssignedTasks.map((task) => (
-                                <tr key={task.taskId}>
+                    <tr key={task.taskId}>
                                   <td style={{ fontWeight: 500 }}>{task.taskName}</td>
                                   <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{task.projectName}</td>
                                   <td>
@@ -1943,12 +1943,12 @@ function ResourcingPageContent() {
                                       Remove
                                     </button>
                                   </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+          </div>
+        </div>
                     )}
 
                     {/* Assignment tip */}
@@ -1960,8 +1960,8 @@ function ResourcingPageContent() {
                         <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                           <strong>Tip:</strong> Dropdowns with a teal border show employees that match the task's required role. 
                           After assigning, click "Run Leveling" to schedule the tasks.
-                        </span>
-                      </div>
+            </span>
+          </div>
                     )}
                   </div>
                 )}
@@ -2075,7 +2075,7 @@ function ResourcingPageContent() {
                       </h3>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         {isUtilizationExpanded ? 'Click to collapse' : 'Click to expand'}
-                      </span>
+                    </span>
                     </div>
                     {isUtilizationExpanded && (
                       <div className="chart-card-body" style={{ padding: '1rem' }}>
@@ -2086,8 +2086,8 @@ function ResourcingPageContent() {
                                 <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{getResourceName(res.resourceId)}</span>
                                 <span style={{ fontWeight: 700, fontSize: '1rem', color: res.utilizationPct > 80 ? '#10B981' : res.utilizationPct > 50 ? '#F59E0B' : '#E91E63' }}>
                                   {res.utilizationPct.toFixed(0)}%
-                                </span>
-                              </div>
+                    </span>
+                  </div>
                               <div style={{ width: '100%', height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
                                 <div style={{
                                   width: `${Math.min(100, res.utilizationPct)}%`,
@@ -2096,54 +2096,54 @@ function ResourcingPageContent() {
                                   borderRadius: '4px',
                                   transition: 'width 0.3s ease'
                                 }} />
-                              </div>
+                    </div>
                               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                 <span>{formatNumber(res.totalAssigned)} hrs assigned</span>
                                 <span>{formatNumber(res.totalAvailable)} hrs available</span>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                </div>
+              ))}
+            </div>
+          </div>
                     )}
-                  </div>
+        </div>
                 )}
 
                 {/* Delayed Tasks */}
                 {levelingResult.delayedTasks.length > 0 && (
-                  <div className="chart-card">
-                    <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+      <div className="chart-card">
+        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
                       <h3 className="chart-card-title" style={{ color: '#F59E0B' }}>
                         Delayed Tasks ({levelingResult.delayedTasks.length})
                       </h3>
-                    </div>
+        </div>
                     <div className="chart-card-body" style={{ padding: 0 }}>
                       <div style={{ overflow: 'auto', maxHeight: '300px' }}>
                         <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
-                          <thead>
-                            <tr>
+              <thead>
+                <tr>
                               <th style={{ textAlign: 'left' }}>Task</th>
                               <th style={{ textAlign: 'left' }}>Project</th>
                               <th style={{ textAlign: 'right' }}>Delay</th>
                               <th style={{ textAlign: 'right' }}>Hours</th>
                               <th style={{ textAlign: 'left' }}>Scheduled</th>
                               <th style={{ textAlign: 'left' }}>Assigned To</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                </tr>
+              </thead>
+              <tbody>
                             {levelingResult.delayedTasks.map((task) => (
-                              <tr key={task.taskId}>
+                  <tr key={task.taskId}>
                                 <td style={{ fontWeight: 500 }}>{task.name}</td>
                                 <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{getProjectNameByTaskId(task.taskId)}</td>
                                 <td style={{ textAlign: 'right', color: '#F59E0B', fontWeight: 600 }}>{task.delayDays} days</td>
                                 <td style={{ textAlign: 'right' }}>{formatNumber(task.totalHours)}</td>
                                 <td style={{ fontSize: '0.8rem' }}>{task.startDate} → {task.endDate}</td>
                                 <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{getResourceNames(task.assignedResources)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
                     </div>
                   </div>
                 )}
@@ -2152,21 +2152,21 @@ function ResourcingPageContent() {
                 <div className="chart-card">
                   <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <h3 className="chart-card-title">Scheduled Tasks ({Object.keys(levelingResult.schedules).length})</h3>
-                  </div>
+            </div>
                   <div className="chart-card-body" style={{ padding: 0 }}>
                     <div style={{ overflow: 'auto', maxHeight: '400px' }}>
                       <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
-                        <thead>
-                          <tr>
+                <thead>
+                  <tr>
                             <th style={{ textAlign: 'left' }}>Task</th>
                             <th style={{ textAlign: 'left' }}>Project</th>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
                             <th style={{ textAlign: 'right' }}>Hours</th>
                             <th style={{ textAlign: 'left' }}>Assigned To</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                  </tr>
+                </thead>
+                <tbody>
                           {Object.values(levelingResult.schedules)
                             .sort((a, b) => a.startDate.localeCompare(b.startDate))
                             .map((schedule) => (
@@ -2179,13 +2179,13 @@ function ResourcingPageContent() {
                                 <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                   {getResourceNames(schedule.assignedResources)}
                                 </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
               </>
             )}
 
