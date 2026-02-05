@@ -3,90 +3,108 @@
 /**
  * @fileoverview Tasks - Operations Dashboard for PPC V3.
  * 
- * Project-based operations dashboard with drill-down capabilities:
- * - All metrics aggregate based on hierarchy filter
- * - Click any section to see detailed breakdown
- * - Searchable, filterable task management
+ * Comprehensive task management with all charts from hours and QC pages:
+ * - Task status cards with inline expansion
+ * - Task Hours Efficiency chart
+ * - Quality Hours breakdown
+ * - Labor distribution stacked bars
+ * - QC Transaction by Gate
+ * - QC Pass/Fail distribution
+ * - All visuals have click-to-expand inline details
  * 
  * @module app/insights/tasks/page
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import { createPortal } from 'react-dom';
+import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
+import QualityHoursChart from '@/components/charts/QualityHoursChart';
+import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
+import QCTransactionBarChart from '@/components/charts/QCTransactionBarChart';
+import QCStackedBarChart from '@/components/charts/QCStackedBarChart';
+import QCScatterChart from '@/components/charts/QCScatterChart';
 import type { EChartsOption } from 'echarts';
 
-// ===== DETAIL MODAL =====
-function DetailModal({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  title: string; 
-  children: React.ReactNode;
-}) {
-  if (!isOpen || typeof document === 'undefined') return null;
-  
-  return createPortal(
-    <div 
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '2rem',
-      }}
-      onClick={onClose}
-    >
-      <div 
-        style={{
-          background: 'var(--bg-card)',
-          borderRadius: '16px',
-          maxWidth: '1000px',
-          width: '100%',
-          maxHeight: '85vh',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{
-          padding: '1.25rem 1.5rem',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{title}</h2>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '8px', color: 'var(--text-muted)' }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
-          {children}
-        </div>
-      </div>
-    </div>,
-    document.body
+// ===== EXPANDABLE SECTION =====
+function ExpandableSection({ isExpanded, children }: { isExpanded: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{
+      maxHeight: isExpanded ? '1500px' : '0',
+      overflow: 'hidden',
+      transition: 'max-height 0.3s ease-in-out',
+    }}>
+      {children}
+    </div>
   );
 }
 
-// ===== CLICKABLE STATUS CARD =====
+// ===== CLICKABLE CHART CARD =====
+function ChartCardExpandable({ 
+  title, 
+  subtitle,
+  isExpanded,
+  onToggle,
+  children,
+  expandedContent,
+  rightContent,
+}: { 
+  title: string; 
+  subtitle?: string;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  expandedContent?: React.ReactNode;
+  rightContent?: React.ReactNode;
+}) {
+  return (
+    <div style={{ 
+      background: 'var(--bg-card)', 
+      borderRadius: '16px', 
+      border: `1px solid ${isExpanded ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`, 
+      overflow: 'hidden',
+      transition: 'border-color 0.2s',
+    }}>
+      <div 
+        style={{ 
+          padding: '1rem 1.25rem', 
+          borderBottom: '1px solid var(--border-color)', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          cursor: 'pointer',
+        }}
+        onClick={onToggle}
+      >
+        <div>
+          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>{title}</h3>
+          {subtitle && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{subtitle}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {rightContent}
+          <svg 
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"
+            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+          >
+            <polyline points="6,9 12,15 18,9" />
+          </svg>
+        </div>
+      </div>
+      <div style={{ padding: '1rem' }}>
+        {children}
+      </div>
+      <ExpandableSection isExpanded={isExpanded}>
+        {expandedContent && (
+          <div style={{ padding: '0 1rem 1rem', borderTop: '1px solid var(--border-color)' }}>
+            {expandedContent}
+          </div>
+        )}
+      </ExpandableSection>
+    </div>
+  );
+}
+
+// ===== STATUS CARD WITH CLICK =====
 function StatusCard({ 
   title, 
   value, 
@@ -94,6 +112,7 @@ function StatusCard({
   color,
   icon,
   onClick,
+  isActive,
 }: { 
   title: string; 
   value: number; 
@@ -101,6 +120,7 @@ function StatusCard({
   color: string;
   icon: React.ReactNode;
   onClick?: () => void;
+  isActive?: boolean;
 }) {
   return (
     <div 
@@ -108,62 +128,22 @@ function StatusCard({
       style={{
         background: 'var(--bg-card)',
         borderRadius: '16px',
-        padding: '1.5rem',
-        border: '1px solid var(--border-color)',
+        padding: '1.25rem',
+        border: `1px solid ${isActive ? color : 'var(--border-color)'}`,
         borderTop: `4px solid ${color}`,
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 0.2s',
       }}
-      onMouseEnter={e => onClick && (e.currentTarget.style.borderColor = color)}
-      onMouseLeave={e => onClick && (e.currentTarget.style.borderColor = 'var(--border-color)')}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{title}</div>
-          <div style={{ fontSize: '2.25rem', fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-          {subtitle && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{subtitle}</div>}
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{title}</div>
+          <div style={{ fontSize: '2rem', fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+          {subtitle && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{subtitle}</div>}
         </div>
-        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {icon}
         </div>
-      </div>
-      {onClick && <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', marginTop: '0.75rem' }}>Click for details</div>}
-    </div>
-  );
-}
-
-// ===== CLICKABLE CHART CARD =====
-function ChartCard({ 
-  title, 
-  subtitle,
-  children, 
-  onViewDetails,
-  rightContent,
-}: { 
-  title: string; 
-  subtitle?: string;
-  children: React.ReactNode;
-  onViewDetails?: () => void;
-  rightContent?: React.ReactNode;
-}) {
-  return (
-    <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-      <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{title}</h3>
-          {subtitle && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{subtitle}</span>}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {rightContent}
-          {onViewDetails && (
-            <button onClick={onViewDetails} style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '6px 12px', fontSize: '0.75rem', color: 'var(--pinnacle-teal)', cursor: 'pointer', fontWeight: 500 }}>
-              View Details
-            </button>
-          )}
-        </div>
-      </div>
-      <div style={{ padding: '1.25rem' }}>
-        {children}
       </div>
     </div>
   );
@@ -182,53 +162,34 @@ export default function TasksPage() {
   const { filteredData, isLoading, hierarchyFilters } = useData();
   const data = filteredData;
   
-  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedChart, setExpandedChart] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [activeDetail, setActiveDetail] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [laborView, setLaborView] = useState<'chargeCode' | 'project' | 'role'>('chargeCode');
 
   // Context label
   const contextLabel = useMemo(() => {
     if (hierarchyFilters?.project) return `Project: ${hierarchyFilters.project}`;
     if (hierarchyFilters?.seniorManager) return `Portfolio: ${hierarchyFilters.seniorManager}`;
-    if (hierarchyFilters?.department) return `Department: ${hierarchyFilters.department}`;
     return 'All Projects';
   }, [hierarchyFilters]);
 
-  // Task statistics with project breakdown
+  // Task statistics
   const taskStats = useMemo(() => {
     const tasks = data.tasks || [];
     const total = tasks.length;
-    
     let completed = 0, inProgress = 0, blocked = 0, notStarted = 0;
     let totalPlanned = 0, totalActual = 0;
-    const byProject = new Map<string, { total: number; completed: number; inProgress: number; blocked: number; planned: number; actual: number }>();
     
     tasks.forEach((t: any) => {
       const status = (t.status || t.taskStatus || '').toLowerCase();
       const percentComplete = t.percentComplete || 0;
-      const projectName = t.projectName || t.project_name || t.projectId || 'Unknown';
       
-      if (!byProject.has(projectName)) {
-        byProject.set(projectName, { total: 0, completed: 0, inProgress: 0, blocked: 0, planned: 0, actual: 0 });
-      }
-      const proj = byProject.get(projectName)!;
-      proj.total++;
-      proj.planned += t.baselineHours || t.budgetHours || 0;
-      proj.actual += t.actualHours || 0;
-      
-      if (status.includes('complete') || percentComplete >= 100) {
-        completed++;
-        proj.completed++;
-      } else if (status.includes('block') || status.includes('hold')) {
-        blocked++;
-        proj.blocked++;
-      } else if (percentComplete > 0 || status.includes('progress')) {
-        inProgress++;
-        proj.inProgress++;
-      } else {
-        notStarted++;
-      }
+      if (status.includes('complete') || percentComplete >= 100) completed++;
+      else if (status.includes('block') || status.includes('hold')) blocked++;
+      else if (percentComplete > 0 || status.includes('progress')) inProgress++;
+      else notStarted++;
       
       totalPlanned += t.baselineHours || t.budgetHours || 0;
       totalActual += t.actualHours || 0;
@@ -237,77 +198,17 @@ export default function TasksPage() {
     const overallProgress = total > 0 ? Math.round((completed / total) * 100) : 0;
     const hoursEfficiency = totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : 0;
 
-    const projectBreakdown = Array.from(byProject.entries())
-      .filter(([name]) => name !== 'Unknown')
-      .map(([name, stats]) => ({
-        name,
-        ...stats,
-        efficiency: stats.planned > 0 ? Math.round((stats.actual / stats.planned) * 100) : 0,
-      }))
-      .sort((a, b) => b.total - a.total);
-
-    return { total, completed, inProgress, blocked, notStarted, overallProgress, totalPlanned, totalActual, hoursEfficiency, projectBreakdown };
+    return { total, completed, inProgress, blocked, notStarted, overallProgress, totalPlanned, totalActual, hoursEfficiency };
   }, [data.tasks]);
 
-  // Status distribution for donut
-  const statusDistribution = useMemo(() => [
-    { name: 'Completed', value: taskStats.completed, color: '#10B981' },
-    { name: 'In Progress', value: taskStats.inProgress, color: '#3B82F6' },
-    { name: 'Blocked', value: taskStats.blocked, color: '#EF4444' },
-    { name: 'Not Started', value: taskStats.notStarted, color: '#6B7280' },
-  ].filter(d => d.value > 0), [taskStats]);
-
-  // Priority distribution with breakdown
-  const priorityData = useMemo(() => {
-    const tasks = data.tasks || [];
-    let high = 0, medium = 0, low = 0;
-    const byProject = new Map<string, { high: number; medium: number; low: number }>();
-    
-    tasks.forEach((t: any) => {
-      const priority = (t.priority || '').toLowerCase();
-      const projectName = t.projectName || t.project_name || 'Unknown';
-      
-      if (!byProject.has(projectName)) {
-        byProject.set(projectName, { high: 0, medium: 0, low: 0 });
-      }
-      const proj = byProject.get(projectName)!;
-      
-      if (priority.includes('high') || priority.includes('critical')) {
-        high++;
-        proj.high++;
-      } else if (priority.includes('low')) {
-        low++;
-        proj.low++;
-      } else {
-        medium++;
-        proj.medium++;
-      }
-    });
-
-    const distribution = [
-      { name: 'High', value: high, color: '#EF4444' },
-      { name: 'Medium', value: medium, color: '#F59E0B' },
-      { name: 'Low', value: low, color: '#10B981' },
-    ].filter(d => d.value > 0);
-
-    const projectBreakdown = Array.from(byProject.entries())
-      .filter(([name]) => name !== 'Unknown')
-      .map(([name, p]) => ({ name, ...p, total: p.high + p.medium + p.low }))
-      .sort((a, b) => b.high - a.high);
-
-    return { distribution, projectBreakdown, high, medium, low };
-  }, [data.tasks]);
-
-  // Hours by project
+  // Hours by project for breakdown
   const hoursByProject = useMemo(() => {
     const tasks = data.tasks || [];
     const projectMap = new Map<string, { planned: number; actual: number; tasks: number }>();
     
     tasks.forEach((t: any) => {
       const project = t.projectName || t.project_name || t.projectId || 'Unknown';
-      if (!projectMap.has(project)) {
-        projectMap.set(project, { planned: 0, actual: 0, tasks: 0 });
-      }
+      if (!projectMap.has(project)) projectMap.set(project, { planned: 0, actual: 0, tasks: 0 });
       const p = projectMap.get(project)!;
       p.planned += t.baselineHours || t.budgetHours || 0;
       p.actual += t.actualHours || 0;
@@ -322,13 +223,11 @@ export default function TasksPage() {
         actual: Math.round(d.actual), 
         tasks: d.tasks,
         variance: d.planned > 0 ? Math.round(((d.actual - d.planned) / d.planned) * 100) : 0,
-        efficiency: d.planned > 0 ? Math.round((d.actual / d.planned) * 100) : 0,
       }))
-      .filter(p => p.planned > 0 || p.actual > 0)
       .sort((a, b) => b.planned - a.planned);
   }, [data.tasks]);
 
-  // QC data with breakdown
+  // QC data
   const qcData = useMemo(() => {
     const qcByName = data.qcByNameAndRole || [];
     const gates = data.qcTransactionByGate || [];
@@ -337,25 +236,41 @@ export default function TasksPage() {
     const totalPassed = qcByName.reduce((sum: number, q: any) => sum + (q.passCount || 0), 0);
     const passRate = totalClosed > 0 ? Math.round((totalPassed / totalClosed) * 100) : 0;
 
-    const byGate = gates.slice(0, 8).map((g: any) => ({
-      name: g.gate,
-      value: g.count,
-      passed: g.passCount || 0,
-      failed: g.failCount || 0,
-    }));
-
-    const byAnalyst = qcByName.map((q: any) => ({
-      name: q.name || q.analyst,
-      role: q.role,
-      closed: q.closedCount || 0,
-      passed: q.passCount || 0,
-      passRate: q.closedCount > 0 ? Math.round((q.passCount / q.closedCount) * 100) : 0,
-    })).sort((a: any, b: any) => b.closed - a.closed);
-
-    return { passRate, totalClosed, totalPassed, byGate, byAnalyst };
+    return { passRate, totalClosed, totalPassed, gates, byAnalyst: qcByName };
   }, [data.qcByNameAndRole, data.qcTransactionByGate]);
 
-  // Filtered tasks for table
+  // Labor breakdown data
+  const laborData = useMemo(() => {
+    const workers = data.laborBreakdown?.byWorker || [];
+    const weeks = data.laborBreakdown?.weeks || [];
+    
+    if (!workers.length || !weeks.length) return { months: [], dataByCategory: {} };
+    
+    const months = weeks.map((w: string) => {
+      try {
+        return new Date(w).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch { return w; }
+    });
+
+    const groupBy = laborView === 'chargeCode' ? 'chargeCode' : laborView === 'role' ? 'role' : 'project';
+    const categories = [...new Set(workers.map((w: any) => w[groupBy]).filter(Boolean))];
+    
+    const dataByCategory: Record<string, number[]> = {};
+    categories.forEach((cat: string) => {
+      dataByCategory[cat] = new Array(months.length).fill(0);
+      workers.filter((w: any) => w[groupBy] === cat).forEach((w: any) => {
+        (w.data || []).forEach((val: number, idx: number) => {
+          if (idx < dataByCategory[cat].length) {
+            dataByCategory[cat][idx] += val || 0;
+          }
+        });
+      });
+    });
+
+    return { months, dataByCategory };
+  }, [data.laborBreakdown, laborView]);
+
+  // Filtered tasks
   const filteredTasks = useMemo(() => {
     let tasks = data.tasks || [];
     
@@ -382,231 +297,383 @@ export default function TasksPage() {
       });
     }
     
-    if (priorityFilter !== 'all') {
-      tasks = tasks.filter((t: any) => {
-        const priority = (t.priority || '').toLowerCase();
-        switch (priorityFilter) {
-          case 'high': return priority.includes('high') || priority.includes('critical');
-          case 'medium': return !priority.includes('high') && !priority.includes('low');
-          case 'low': return priority.includes('low');
-          default: return true;
-        }
-      });
-    }
-    
     return tasks;
-  }, [data.tasks, searchTerm, statusFilter, priorityFilter]);
+  }, [data.tasks, searchTerm, statusFilter]);
 
-  // Chart options
-  const statusChartOption: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, left: 'center', itemWidth: 12, itemHeight: 12, textStyle: { color: 'var(--text-secondary)', fontSize: 11 } },
-    series: [{
-      type: 'pie',
-      radius: ['45%', '70%'],
-      center: ['50%', '42%'],
-      itemStyle: { borderRadius: 4, borderColor: 'var(--bg-card)', borderWidth: 2 },
-      label: { show: false },
-      data: statusDistribution.map(d => ({ value: d.value, name: d.name, itemStyle: { color: d.color } })),
-    }],
-  }), [statusDistribution]);
+  // Chart click handlers
+  const handleBarClick = useCallback((params: { name: string }) => {
+    const task = (data.tasks || []).find((t: any) => 
+      (t.name || t.taskName) === params.name || t.projectName === params.name
+    );
+    if (task) setSelectedTask(task);
+  }, [data.tasks]);
 
-  const priorityChartOption: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, left: 'center', itemWidth: 12, itemHeight: 12, textStyle: { color: 'var(--text-secondary)', fontSize: 11 } },
-    series: [{
-      type: 'pie',
-      radius: ['45%', '70%'],
-      center: ['50%', '42%'],
-      itemStyle: { borderRadius: 4, borderColor: 'var(--bg-card)', borderWidth: 2 },
-      label: { show: false },
-      data: priorityData.distribution.map(d => ({ value: d.value, name: d.name, itemStyle: { color: d.color } })),
-    }],
-  }), [priorityData.distribution]);
-
-  const hoursChartOption: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    legend: { top: 0, right: 0, itemWidth: 12, itemHeight: 12, textStyle: { color: 'var(--text-secondary)', fontSize: 11 } },
-    grid: { left: 60, right: 20, top: 40, bottom: 40 },
-    xAxis: {
-      type: 'category',
-      data: hoursByProject.slice(0, 8).map(d => d.name),
-      axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 25 },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'Hours',
-      nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-      axisLine: { show: false },
-      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-    },
-    series: [
-      { name: 'Planned', type: 'bar', data: hoursByProject.slice(0, 8).map(d => d.planned), itemStyle: { color: '#40E0D0', borderRadius: [4, 4, 0, 0] }, barGap: '10%' },
-      { name: 'Actual', type: 'bar', data: hoursByProject.slice(0, 8).map(d => d.actual), itemStyle: { color: '#CDDC39', borderRadius: [4, 4, 0, 0] } },
-    ],
-  }), [hoursByProject]);
-
-  const qcGaugeOption: EChartsOption = useMemo(() => {
-    const color = qcData.passRate >= 90 ? '#10B981' : qcData.passRate >= 70 ? '#F59E0B' : '#EF4444';
-    return {
-      backgroundColor: 'transparent',
-      series: [{
-        type: 'gauge',
-        startAngle: 200,
-        endAngle: -20,
-        min: 0,
-        max: 100,
-        radius: '90%',
-        center: ['50%', '60%'],
-        axisLine: { lineStyle: { width: 12, color: [[qcData.passRate / 100, color], [1, 'var(--bg-tertiary)']] } },
-        pointer: { show: false },
-        axisTick: { show: false },
-        splitLine: { show: false },
-        axisLabel: { show: false },
-        detail: { valueAnimation: true, formatter: '{value}%', color, fontSize: 28, fontWeight: 700, offsetCenter: [0, '10%'] },
-        data: [{ value: qcData.passRate }],
-      }],
-    };
-  }, [qcData.passRate]);
-
-  const qcByGateOption: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: 80, right: 20, top: 10, bottom: 20 },
-    xAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
-    yAxis: { type: 'category', data: qcData.byGate.map(g => g.name), axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 11 } },
-    series: [{ type: 'bar', data: qcData.byGate.map(g => g.value), itemStyle: { color: '#40E0D0', borderRadius: [0, 4, 4, 0] }, barWidth: 16 }],
-  }), [qcData.byGate]);
+  const toggleChart = (chartId: string) => {
+    setExpandedChart(expandedChart === chartId ? null : chartId);
+  };
 
   return (
     <div className="page-panel insights-page">
       {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--pinnacle-teal)', fontWeight: 600, marginBottom: '0.25rem' }}>{contextLabel}</div>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Tasks</h1>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-          Operations dashboard - {taskStats.total} tasks across {taskStats.projectBreakdown.length} projects
+      <div style={{ marginBottom: '1.25rem' }}>
+        <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', fontWeight: 600, marginBottom: '0.25rem' }}>{contextLabel}</div>
+        <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Tasks</h1>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+          {taskStats.total} tasks | {taskStats.hoursEfficiency}% efficiency
         </p>
       </div>
 
-      {/* Status Cards - Clickable */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      {/* Status Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
         <StatusCard
           title="Total Tasks"
           value={taskStats.total}
           subtitle={`${taskStats.overallProgress}% complete`}
           color="#3B82F6"
-          icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>}
-          onClick={() => setActiveDetail('tasksByProject')}
+          isActive={statusFilter === 'all'}
+          onClick={() => setStatusFilter('all')}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>}
         />
         <StatusCard
           title="Completed"
           value={taskStats.completed}
           color="#10B981"
-          icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22,4 12,14.01 9,11.01" /></svg>}
-          onClick={() => { setStatusFilter('completed'); setActiveDetail(null); }}
+          isActive={statusFilter === 'completed'}
+          onClick={() => setStatusFilter('completed')}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22,4 12,14.01 9,11.01" /></svg>}
         />
         <StatusCard
           title="In Progress"
           value={taskStats.inProgress}
           color="#F59E0B"
-          icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" /></svg>}
-          onClick={() => { setStatusFilter('inProgress'); setActiveDetail(null); }}
+          isActive={statusFilter === 'inProgress'}
+          onClick={() => setStatusFilter('inProgress')}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" /></svg>}
         />
         <StatusCard
           title="Blocked"
           value={taskStats.blocked}
           color="#EF4444"
-          icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>}
-          onClick={() => { setStatusFilter('blocked'); setActiveDetail(null); }}
+          isActive={statusFilter === 'blocked'}
+          onClick={() => setStatusFilter('blocked')}
+          icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>}
         />
       </div>
 
       {/* Progress Bar */}
-      <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem 1.5rem', border: '1px solid var(--border-color)', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Overall Progress</span>
-          <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{taskStats.overallProgress}%</span>
+      <div style={{ background: 'var(--bg-card)', borderRadius: '10px', padding: '0.75rem 1rem', border: '1px solid var(--border-color)', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Overall Progress</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{taskStats.overallProgress}%</span>
         </div>
         <ProgressBar value={taskStats.overallProgress} />
       </div>
 
-      {/* Distribution Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        <ChartCard title="By Status" onViewDetails={() => setActiveDetail('statusBreakdown')}>
-          <ChartWrapper option={statusChartOption} height="200px" />
-        </ChartCard>
-        <ChartCard title="By Priority" onViewDetails={() => setActiveDetail('priorityBreakdown')}>
-          <ChartWrapper option={priorityChartOption} height="200px" />
-        </ChartCard>
+      {/* Selected Task Detail (Inline) */}
+      {selectedTask && (
+        <div style={{ 
+          background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.1) 0%, rgba(205, 220, 57, 0.05) 100%)', 
+          borderRadius: '12px', 
+          padding: '1rem', 
+          marginBottom: '1.25rem',
+          border: '1px solid var(--pinnacle-teal)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{selectedTask.name || selectedTask.taskName}</h4>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{selectedTask.projectName || 'No Project'}</span>
+            </div>
+            <button onClick={() => setSelectedTask(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', fontSize: '0.8rem' }}>
+            <div><span style={{ color: 'var(--text-muted)' }}>Assignee:</span> <strong>{selectedTask.assignedResource || selectedTask.assignedTo || 'Unassigned'}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Status:</span> <strong>{selectedTask.status || 'N/A'}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Planned:</span> <strong>{selectedTask.baselineHours || selectedTask.budgetHours || 0} hrs</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Actual:</span> <strong style={{ color: (selectedTask.actualHours || 0) > (selectedTask.baselineHours || 0) ? '#EF4444' : '#10B981' }}>{selectedTask.actualHours || 0} hrs</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Progress:</span> <strong>{selectedTask.percentComplete || 0}%</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Start:</span> <strong>{selectedTask.startDate ? new Date(selectedTask.startDate).toLocaleDateString() : 'N/A'}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Finish:</span> <strong>{selectedTask.finishDate ? new Date(selectedTask.finishDate).toLocaleDateString() : 'N/A'}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Priority:</span> <strong>{selectedTask.priority || 'Medium'}</strong></div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Hours Efficiency */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <ChartCardExpandable
+          title="Task Hours Efficiency"
+          subtitle="Actual vs estimated hours by task"
+          isExpanded={expandedChart === 'efficiency'}
+          onToggle={() => toggleChart('efficiency')}
+          rightContent={
+            <span style={{
+              padding: '4px 10px',
+              borderRadius: '12px',
+              background: taskStats.hoursEfficiency <= 100 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+              color: taskStats.hoursEfficiency <= 100 ? '#10B981' : '#EF4444',
+              fontWeight: 700,
+              fontSize: '0.8rem',
+            }}>
+              {taskStats.hoursEfficiency}%
+            </span>
+          }
+          expandedContent={
+            <div style={{ paddingTop: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.75rem' }}>By Project Breakdown</div>
+              <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                <thead><tr><th>Project</th><th className="number">Tasks</th><th className="number">Planned</th><th className="number">Actual</th><th className="number">Variance</th></tr></thead>
+                <tbody>
+                  {hoursByProject.slice(0, 6).map((p, idx) => (
+                    <tr key={idx}>
+                      <td>{p.name}</td>
+                      <td className="number">{p.tasks}</td>
+                      <td className="number">{p.planned.toLocaleString()}</td>
+                      <td className="number">{p.actual.toLocaleString()}</td>
+                      <td className="number" style={{ color: p.variance <= 0 ? '#10B981' : '#EF4444', fontWeight: 600 }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          }
+        >
+          <TaskHoursEfficiencyChart
+            data={data.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
+            height={280}
+            onBarClick={handleBarClick}
+            activeFilters={[]}
+          />
+        </ChartCardExpandable>
       </div>
 
-      {/* Hours Analysis */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <ChartCard 
-          title="Hours Analysis" 
-          subtitle="Planned vs Actual by Project"
-          onViewDetails={() => setActiveDetail('hoursBreakdown')}
-          rightContent={
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <div><span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Planned: </span><span style={{ fontWeight: 700 }}>{taskStats.totalPlanned.toLocaleString()} hrs</span></div>
-              <div><span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Actual: </span><span style={{ fontWeight: 700 }}>{taskStats.totalActual.toLocaleString()} hrs</span></div>
-              <div style={{ padding: '4px 12px', borderRadius: '16px', background: taskStats.hoursEfficiency <= 100 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: taskStats.hoursEfficiency <= 100 ? '#10B981' : '#EF4444', fontWeight: 700, fontSize: '0.85rem' }}>
-                {taskStats.hoursEfficiency}%
+      {/* Quality Hours */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <ChartCardExpandable
+          title="Quality Hours by Charge Code"
+          subtitle="QC hours breakdown per task"
+          isExpanded={expandedChart === 'quality'}
+          onToggle={() => toggleChart('quality')}
+          expandedContent={
+            <div style={{ paddingTop: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.75rem' }}>QC Hours Detail</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Total QC Pass Rate</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: qcData.passRate >= 90 ? '#10B981' : '#F59E0B' }}>{qcData.passRate}%</div>
+                </div>
+                <div style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>QC Transactions</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{qcData.totalClosed}</div>
+                </div>
               </div>
             </div>
           }
         >
-          <ChartWrapper option={hoursChartOption} height="280px" />
-        </ChartCard>
+          <QualityHoursChart
+            data={data.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+            taskOrder={data.taskHoursEfficiency?.tasks}
+            height={280}
+            onBarClick={handleBarClick}
+            activeFilters={[]}
+          />
+        </ChartCardExpandable>
       </div>
 
-      {/* Quality Control */}
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-        <ChartCard title="QC Pass Rate" onViewDetails={() => setActiveDetail('qcAnalysts')}>
-          <ChartWrapper option={qcGaugeOption} height="160px" />
-          <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '-0.5rem' }}>
-            {qcData.passRate >= 90 ? 'Excellent' : qcData.passRate >= 70 ? 'Acceptable' : 'Needs improvement'}
-          </div>
-        </ChartCard>
-        <ChartCard title="QC by Gate" onViewDetails={() => setActiveDetail('qcGates')}>
-          {qcData.byGate.length > 0 ? <ChartWrapper option={qcByGateOption} height="180px" /> : <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>No QC data</div>}
-        </ChartCard>
+      {/* Labor Distribution */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <ChartCardExpandable
+          title="Labor Hours Distribution"
+          subtitle="Weekly hours by category"
+          isExpanded={expandedChart === 'labor'}
+          onToggle={() => toggleChart('labor')}
+          rightContent={
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }} onClick={e => e.stopPropagation()}>
+              {(['chargeCode', 'project', 'role'] as const).map(view => (
+                <button
+                  key={view}
+                  onClick={() => setLaborView(view)}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    background: laborView === view ? 'var(--pinnacle-teal)' : 'transparent',
+                    color: laborView === view ? '#000' : 'var(--text-secondary)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {view === 'chargeCode' ? 'Charge Code' : view === 'project' ? 'Project' : 'Role'}
+                </button>
+              ))}
+            </div>
+          }
+          expandedContent={
+            <div style={{ paddingTop: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.75rem' }}>Category Totals</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {Object.entries(laborData.dataByCategory).slice(0, 8).map(([cat, values]) => {
+                  const total = (values as number[]).reduce((a, b) => a + b, 0);
+                  return (
+                    <div key={cat} style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{cat}</div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{Math.round(total).toLocaleString()} hrs</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          }
+        >
+          <LaborBreakdownChart
+            months={laborData.months}
+            dataByCategory={laborData.dataByCategory}
+            height={280}
+            onBarClick={handleBarClick}
+            activeFilters={[]}
+          />
+        </ChartCardExpandable>
+      </div>
+
+      {/* QC Section */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.25rem' }}>
+        <ChartCardExpandable
+          title="QC Transaction by Gate"
+          subtitle={`${qcData.gates.length} gates`}
+          isExpanded={expandedChart === 'qcGate'}
+          onToggle={() => toggleChart('qcGate')}
+          expandedContent={
+            <div style={{ paddingTop: '1rem' }}>
+              <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                <thead><tr><th>Gate</th><th className="number">Count</th></tr></thead>
+                <tbody>
+                  {(qcData.gates || []).map((g: any, idx: number) => (
+                    <tr key={idx}><td>{g.gate}</td><td className="number">{g.count}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          }
+        >
+          <QCTransactionBarChart
+            data={qcData.gates || []}
+            height="200px"
+            showLabels={true}
+            onBarClick={handleBarClick}
+            activeFilters={[]}
+          />
+        </ChartCardExpandable>
+
+        <ChartCardExpandable
+          title="QC Pass/Fail Distribution"
+          subtitle={`${qcData.passRate}% pass rate`}
+          isExpanded={expandedChart === 'qcStatus'}
+          onToggle={() => toggleChart('qcStatus')}
+          rightContent={
+            <span style={{
+              padding: '4px 10px',
+              borderRadius: '12px',
+              background: qcData.passRate >= 90 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              color: qcData.passRate >= 90 ? '#10B981' : '#F59E0B',
+              fontWeight: 700,
+              fontSize: '0.8rem',
+            }}>
+              {qcData.passRate}%
+            </span>
+          }
+          expandedContent={
+            <div style={{ paddingTop: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+                <div style={{ background: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#10B981' }}>Passed</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10B981' }}>{qcData.totalPassed}</div>
+                </div>
+                <div style={{ background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#EF4444' }}>Failed</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#EF4444' }}>{qcData.totalClosed - qcData.totalPassed}</div>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <QCStackedBarChart
+            data={(data.qcByGateStatus || []).map((g: any) => ({
+              projectId: g.gate,
+              customer: '',
+              site: '',
+              unprocessed: g.unprocessed || 0,
+              pass: g.pass || 0,
+              fail: g.fail || 0,
+              portfolio: '',
+            }))}
+            height="200px"
+            onBarClick={handleBarClick}
+            activeFilters={[]}
+          />
+        </ChartCardExpandable>
+      </div>
+
+      {/* Analyst Performance */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <ChartCardExpandable
+          title="Analyst Performance"
+          subtitle="Records vs Pass Rate"
+          isExpanded={expandedChart === 'analyst'}
+          onToggle={() => toggleChart('analyst')}
+          expandedContent={
+            <div style={{ paddingTop: '1rem' }}>
+              <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                <thead><tr><th>Analyst</th><th>Role</th><th className="number">Closed</th><th className="number">Passed</th><th className="number">Pass Rate</th></tr></thead>
+                <tbody>
+                  {(qcData.byAnalyst || []).slice(0, 8).map((a: any, idx: number) => (
+                    <tr key={idx}>
+                      <td>{a.name}</td>
+                      <td>{a.role || '-'}</td>
+                      <td className="number">{a.closedCount || 0}</td>
+                      <td className="number">{a.passCount || 0}</td>
+                      <td className="number" style={{ fontWeight: 600, color: (a.passRate || 0) >= 90 ? '#10B981' : '#F59E0B' }}>
+                        {typeof a.passRate === 'number' ? `${a.passRate.toFixed(1)}%` : '0%'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          }
+        >
+          <QCScatterChart
+            data={qcData.byAnalyst || []}
+            labelField="name"
+            height="220px"
+            onPointClick={handleBarClick}
+            activeFilters={[]}
+          />
+        </ChartCardExpandable>
       </div>
 
       {/* Task Table */}
       <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
         <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, marginRight: 'auto' }}>Task Details ({filteredTasks.length})</h3>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, marginRight: 'auto' }}>Task Details ({filteredTasks.length})</h3>
           
           <div style={{ position: 'relative' }}>
-            <input type="text" placeholder="Search tasks..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '8px 12px 8px 36px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.85rem', width: '200px' }} />
-            <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '6px 10px 6px 32px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem', width: '160px' }} />
+            <svg style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           </div>
 
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}>
             <option value="all">All Status</option>
             <option value="completed">Completed</option>
             <option value="inProgress">In Progress</option>
             <option value="blocked">Blocked</option>
             <option value="notStarted">Not Started</option>
           </select>
-
-          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
-            <option value="all">All Priority</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
         </div>
 
-        <div style={{ overflowX: 'auto', maxHeight: '500px' }}>
-          <table className="data-table" style={{ fontSize: '0.85rem' }}>
+        <div style={{ overflowX: 'auto', maxHeight: '400px' }}>
+          <table className="data-table" style={{ fontSize: '0.8rem' }}>
             <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)' }}>
               <tr>
                 <th>Task</th>
@@ -616,182 +683,48 @@ export default function TasksPage() {
                 <th className="number">Planned</th>
                 <th className="number">Actual</th>
                 <th className="number">% Complete</th>
-                <th>Due Date</th>
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.slice(0, 100).map((task: any, idx: number) => {
-                const status = task.status || task.taskStatus || 'Not Started';
+              {filteredTasks.slice(0, 50).map((task: any, idx: number) => {
                 const pc = task.percentComplete || 0;
-                const isOverdue = task.finishDate && new Date(task.finishDate) < new Date() && pc < 100;
                 const isOverBudget = (task.actualHours || 0) > (task.baselineHours || task.budgetHours || Infinity);
+                const isSelected = selectedTask?.id === task.id || selectedTask?.name === task.name;
                 
                 return (
-                  <tr key={idx}>
-                    <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name || task.taskName || '-'}</td>
-                    <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.projectName || task.project_name || '-'}</td>
-                    <td>{task.assignedResource || task.assignedTo || task.employeeName || '-'}</td>
+                  <tr 
+                    key={idx} 
+                    onClick={() => setSelectedTask(task)}
+                    style={{ cursor: 'pointer', background: isSelected ? 'rgba(64, 224, 208, 0.1)' : 'transparent' }}
+                  >
+                    <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name || task.taskName || '-'}</td>
+                    <td style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.projectName || task.project_name || '-'}</td>
+                    <td>{task.assignedResource || task.assignedTo || '-'}</td>
                     <td>
-                      <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, background: pc >= 100 ? 'rgba(16, 185, 129, 0.15)' : status.toLowerCase().includes('block') ? 'rgba(239, 68, 68, 0.15)' : pc > 0 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(107, 114, 128, 0.15)', color: pc >= 100 ? '#10B981' : status.toLowerCase().includes('block') ? '#EF4444' : pc > 0 ? '#3B82F6' : '#6B7280' }}>
-                        {pc >= 100 ? 'Completed' : status}
+                      <span style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        background: pc >= 100 ? 'rgba(16, 185, 129, 0.15)' : pc > 0 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(107, 114, 128, 0.15)',
+                        color: pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280',
+                      }}>
+                        {pc >= 100 ? 'Done' : pc > 0 ? 'Active' : 'Pending'}
                       </span>
                     </td>
                     <td className="number">{task.baselineHours || task.budgetHours || 0}</td>
                     <td className="number" style={{ color: isOverBudget ? '#EF4444' : 'inherit' }}>{task.actualHours || 0}</td>
-                    <td className="number">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '50px', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${pc}%`, height: '100%', background: pc >= 100 ? '#10B981' : pc > 50 ? '#3B82F6' : '#F59E0B', borderRadius: '3px' }} />
-                        </div>
-                        <span>{pc}%</span>
-                      </div>
-                    </td>
-                    <td style={{ color: isOverdue ? '#EF4444' : 'inherit' }}>{task.finishDate ? new Date(task.finishDate).toLocaleDateString() : '-'}</td>
+                    <td className="number">{pc}%</td>
                   </tr>
                 );
               })}
               {filteredTasks.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>{isLoading ? 'Loading...' : 'No tasks found'}</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No tasks found</td></tr>
               )}
             </tbody>
           </table>
         </div>
-        
-        {filteredTasks.length > 100 && (
-          <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', borderTop: '1px solid var(--border-color)' }}>
-            Showing 100 of {filteredTasks.length} tasks. Use filters to narrow results.
-          </div>
-        )}
       </div>
-
-      {/* ===== DETAIL MODALS ===== */}
-
-      {/* Tasks by Project */}
-      <DetailModal isOpen={activeDetail === 'tasksByProject'} onClose={() => setActiveDetail(null)} title="Tasks by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Total</th><th className="number">Completed</th><th className="number">In Progress</th><th className="number">Blocked</th><th className="number">Completion</th></tr></thead>
-          <tbody>
-            {taskStats.projectBreakdown.map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.total}</td>
-                <td className="number" style={{ color: '#10B981' }}>{p.completed}</td>
-                <td className="number" style={{ color: '#3B82F6' }}>{p.inProgress}</td>
-                <td className="number" style={{ color: '#EF4444' }}>{p.blocked}</td>
-                <td className="number">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '60px', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0}%`, height: '100%', background: '#10B981', borderRadius: '3px' }} />
-                    </div>
-                    <span>{p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0}%</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Status Breakdown */}
-      <DetailModal isOpen={activeDetail === 'statusBreakdown'} onClose={() => setActiveDetail(null)} title="Task Status by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Total</th><th className="number">Completed</th><th className="number">In Progress</th><th className="number">Blocked</th><th className="number">Not Started</th></tr></thead>
-          <tbody>
-            {taskStats.projectBreakdown.map((p, idx) => {
-              const notStarted = p.total - p.completed - p.inProgress - p.blocked;
-              return (
-                <tr key={idx}>
-                  <td>{p.name}</td>
-                  <td className="number">{p.total}</td>
-                  <td className="number"><span style={{ color: '#10B981', fontWeight: 600 }}>{p.completed}</span></td>
-                  <td className="number"><span style={{ color: '#3B82F6', fontWeight: 600 }}>{p.inProgress}</span></td>
-                  <td className="number"><span style={{ color: '#EF4444', fontWeight: 600 }}>{p.blocked}</span></td>
-                  <td className="number"><span style={{ color: '#6B7280', fontWeight: 600 }}>{notStarted}</span></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Priority Breakdown */}
-      <DetailModal isOpen={activeDetail === 'priorityBreakdown'} onClose={() => setActiveDetail(null)} title="Task Priority by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Total</th><th className="number">High</th><th className="number">Medium</th><th className="number">Low</th></tr></thead>
-          <tbody>
-            {priorityData.projectBreakdown.map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.total}</td>
-                <td className="number"><span style={{ color: '#EF4444', fontWeight: 600 }}>{p.high}</span></td>
-                <td className="number"><span style={{ color: '#F59E0B', fontWeight: 600 }}>{p.medium}</span></td>
-                <td className="number"><span style={{ color: '#10B981', fontWeight: 600 }}>{p.low}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Hours Breakdown */}
-      <DetailModal isOpen={activeDetail === 'hoursBreakdown'} onClose={() => setActiveDetail(null)} title="Hours Analysis by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Tasks</th><th className="number">Planned</th><th className="number">Actual</th><th className="number">Variance</th><th className="number">Efficiency</th><th>Status</th></tr></thead>
-          <tbody>
-            {hoursByProject.map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.tasks}</td>
-                <td className="number">{p.planned.toLocaleString()}</td>
-                <td className="number">{p.actual.toLocaleString()}</td>
-                <td className="number" style={{ color: p.variance > 0 ? '#EF4444' : '#10B981', fontWeight: 600 }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
-                <td className="number" style={{ fontWeight: 700 }}>{p.efficiency}%</td>
-                <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: p.efficiency <= 100 ? 'rgba(16,185,129,0.15)' : p.efficiency <= 110 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.efficiency <= 100 ? '#10B981' : p.efficiency <= 110 ? '#F59E0B' : '#EF4444' }}>{p.efficiency <= 100 ? 'Under' : p.efficiency <= 110 ? 'Watch' : 'Over'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* QC by Analyst */}
-      <DetailModal isOpen={activeDetail === 'qcAnalysts'} onClose={() => setActiveDetail(null)} title="QC Performance by Analyst">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Analyst</th><th>Role</th><th className="number">Closed</th><th className="number">Passed</th><th className="number">Pass Rate</th></tr></thead>
-          <tbody>
-            {qcData.byAnalyst.map((a: any, idx: number) => (
-              <tr key={idx}>
-                <td>{a.name}</td>
-                <td>{a.role || '-'}</td>
-                <td className="number">{a.closed}</td>
-                <td className="number">{a.passed}</td>
-                <td className="number" style={{ fontWeight: 700, color: a.passRate >= 90 ? '#10B981' : a.passRate >= 70 ? '#F59E0B' : '#EF4444' }}>{a.passRate}%</td>
-              </tr>
-            ))}
-            {qcData.byAnalyst.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No QC data</td></tr>}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* QC by Gate */}
-      <DetailModal isOpen={activeDetail === 'qcGates'} onClose={() => setActiveDetail(null)} title="QC Transactions by Gate">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Gate</th><th className="number">Total</th><th className="number">Passed</th><th className="number">Failed</th><th className="number">Pass Rate</th></tr></thead>
-          <tbody>
-            {qcData.byGate.map((g: any, idx: number) => {
-              const passRate = g.value > 0 ? Math.round((g.passed / g.value) * 100) : 0;
-              return (
-                <tr key={idx}>
-                  <td>{g.name}</td>
-                  <td className="number">{g.value}</td>
-                  <td className="number" style={{ color: '#10B981' }}>{g.passed}</td>
-                  <td className="number" style={{ color: '#EF4444' }}>{g.failed}</td>
-                  <td className="number" style={{ fontWeight: 700, color: passRate >= 90 ? '#10B981' : passRate >= 70 ? '#F59E0B' : '#EF4444' }}>{passRate}%</td>
-                </tr>
-              );
-            })}
-            {qcData.byGate.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No QC data</td></tr>}
-          </tbody>
-        </table>
-      </DetailModal>
     </div>
   );
 }

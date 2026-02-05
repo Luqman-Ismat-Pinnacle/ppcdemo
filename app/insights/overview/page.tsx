@@ -3,98 +3,44 @@
 /**
  * @fileoverview Executive Briefing - Overview Page for PPC V3.
  * 
- * Project-based executive dashboard with drill-down capabilities:
- * - All metrics aggregate based on hierarchy filter (company -> portfolio -> project)
- * - Click any section to see detailed project-level breakdown
- * - Progressive disclosure from summary to details
+ * Project-based executive dashboard with:
+ * - Health at a Glance with inline project breakdown
+ * - Key Performance Metrics with expandable details
+ * - Variance Analysis section (inline, not modal)
+ * - Executive Metrics section (inline, not modal)
+ * - What Needs Attention with expandable items
+ * - All visuals have click-to-expand inline details
  * 
  * @module app/insights/overview/page
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
-import { VarianceTrendsModal } from '@/components/ui/VarianceTrendsModal';
-import ExecutiveVarianceDashboard from '@/components/insights/ExecutiveVarianceDashboard';
-import { calculateMetricVariance } from '@/lib/variance-engine';
-import { createPortal } from 'react-dom';
+import ChartWrapper from '@/components/charts/ChartWrapper';
+import SCurveChart from '@/components/charts/SCurveChart';
+import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
+import type { EChartsOption } from 'echarts';
 
-// ===== DETAIL MODAL COMPONENT =====
-function DetailModal({ 
-  isOpen, 
-  onClose, 
-  title, 
+// ===== EXPANDABLE SECTION COMPONENT =====
+function ExpandableSection({ 
+  isExpanded, 
   children 
 }: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  title: string; 
+  isExpanded: boolean; 
   children: React.ReactNode;
 }) {
-  if (!isOpen || typeof document === 'undefined') return null;
-  
-  return createPortal(
-    <div 
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '2rem',
-      }}
-      onClick={onClose}
-    >
-      <div 
-        style={{
-          background: 'var(--bg-card)',
-          borderRadius: '16px',
-          maxWidth: '900px',
-          width: '100%',
-          maxHeight: '85vh',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{
-          padding: '1.25rem 1.5rem',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>{title}</h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '8px',
-              borderRadius: '8px',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
-          {children}
-        </div>
-      </div>
-    </div>,
-    document.body
+  return (
+    <div style={{
+      maxHeight: isExpanded ? '2000px' : '0',
+      overflow: 'hidden',
+      transition: 'max-height 0.3s ease-in-out',
+    }}>
+      {children}
+    </div>
   );
 }
 
-// ===== TRAFFIC LIGHT COMPONENT =====
+// ===== TRAFFIC LIGHT =====
 function TrafficLight({ status, label }: { status: 'green' | 'yellow' | 'red'; label: string }) {
   const colors = {
     green: { bg: 'rgba(16, 185, 129, 0.15)', border: '#10B981', text: '#10B981' },
@@ -125,23 +71,25 @@ function TrafficLight({ status, label }: { status: 'green' | 'yellow' | 'red'; l
   );
 }
 
-// ===== CLICKABLE KPI CARD =====
-function KPICard({ 
+// ===== CLICKABLE KPI CARD WITH INLINE EXPANSION =====
+function KPICardExpanding({ 
   title, 
   value, 
   unit = '', 
-  trend, 
+  trend,
   status = 'neutral',
-  onClick,
-  clickable = true,
+  isExpanded,
+  onToggle,
+  children,
 }: { 
   title: string; 
   value: string | number; 
   unit?: string;
   trend?: number;
   status?: 'good' | 'warning' | 'bad' | 'neutral';
-  onClick?: () => void;
-  clickable?: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
 }) {
   const statusColors = {
     good: '#10B981',
@@ -151,126 +99,100 @@ function KPICard({
   };
 
   return (
-    <div 
-      onClick={onClick}
-      style={{
-        background: 'var(--bg-card)',
-        borderRadius: '16px',
-        padding: '1.5rem',
-        border: '1px solid var(--border-color)',
-        cursor: clickable ? 'pointer' : 'default',
-        transition: 'all 0.2s',
-      }}
-      onMouseEnter={e => clickable && (e.currentTarget.style.borderColor = 'var(--pinnacle-teal)')}
-      onMouseLeave={e => clickable && (e.currentTarget.style.borderColor = 'var(--border-color)')}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>{title}</div>
-        {clickable && (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+    <div style={{
+      background: 'var(--bg-card)',
+      borderRadius: '16px',
+      border: `1px solid ${isExpanded ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+      overflow: 'hidden',
+      transition: 'all 0.2s',
+    }}>
+      <div
+        onClick={onToggle}
+        style={{
+          padding: '1.25rem',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>{title}</div>
+          <svg 
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"
+            style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+          >
+            <polyline points="6,9 12,15 18,9" />
           </svg>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '0.5rem' }}>
+          <span style={{ fontSize: '2rem', fontWeight: 800, color: statusColors[status], lineHeight: 1 }}>
+            {value}
+          </span>
+          {unit && <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>{unit}</span>}
+        </div>
+        {trend !== undefined && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0.5rem' }}>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              {trend >= 0 ? (
+                <path d="M8 4L12 8L10.5 8L10.5 12L5.5 12L5.5 8L4 8L8 4Z" fill="#10B981" />
+              ) : (
+                <path d="M8 12L4 8L5.5 8L5.5 4L10.5 4L10.5 8L12 8L8 12Z" fill="#EF4444" />
+              )}
+            </svg>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: trend >= 0 ? '#10B981' : '#EF4444' }}>
+              {trend >= 0 ? '+' : ''}{trend}%
+            </span>
+          </div>
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginTop: '0.5rem' }}>
-        <span style={{ fontSize: '2.25rem', fontWeight: 800, color: statusColors[status], lineHeight: 1 }}>
-          {value}
-        </span>
-        {unit && <span style={{ fontSize: '1.25rem', color: 'var(--text-muted)' }}>{unit}</span>}
-      </div>
-      {trend !== undefined && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0.75rem' }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            {trend >= 0 ? (
-              <path d="M8 4L12 8L10.5 8L10.5 12L5.5 12L5.5 8L4 8L8 4Z" fill="#10B981" />
-            ) : (
-              <path d="M8 12L4 8L5.5 8L5.5 4L10.5 4L10.5 8L12 8L8 12Z" fill="#EF4444" />
-            )}
-          </svg>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: trend >= 0 ? '#10B981' : '#EF4444' }}>
-            {trend >= 0 ? '+' : ''}{trend}% vs last period
-          </span>
+      <ExpandableSection isExpanded={isExpanded}>
+        <div style={{ padding: '0 1.25rem 1.25rem', borderTop: '1px solid var(--border-color)' }}>
+          {children}
         </div>
-      )}
-      {clickable && (
-        <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', marginTop: '0.5rem' }}>
-          Click for breakdown
-        </div>
-      )}
+      </ExpandableSection>
     </div>
   );
 }
 
-// ===== CLICKABLE SECTION HEADER =====
-function SectionHeader({ 
-  icon, 
-  iconBg, 
-  title, 
-  subtitle, 
-  onViewAll 
-}: { 
-  icon: React.ReactNode; 
-  iconBg: string; 
-  title: string; 
-  subtitle: string;
-  onViewAll?: () => void;
-}) {
-  return (
-    <div style={{
-      padding: '1rem 1.25rem',
-      borderBottom: '1px solid var(--border-color)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <div style={{
-          width: '32px',
-          height: '32px',
-          borderRadius: '8px',
-          background: iconBg,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          {icon}
-        </div>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{title}</h3>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{subtitle}</span>
-        </div>
-      </div>
-      {onViewAll && (
-        <button
-          onClick={onViewAll}
-          style={{
-            background: 'none',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            padding: '6px 12px',
-            fontSize: '0.75rem',
-            color: 'var(--pinnacle-teal)',
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
-        >
-          View All
-        </button>
-      )}
-    </div>
-  );
+// ===== METRIC TREND CHART =====
+function MetricTrendChart({ data, color = 'var(--pinnacle-teal)' }: { data: number[]; color?: string }) {
+  const option: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    grid: { left: 0, right: 0, top: 10, bottom: 10 },
+    xAxis: { type: 'category', show: false },
+    yAxis: { type: 'value', show: false },
+    series: [{
+      type: 'line',
+      data,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color, width: 2 },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: color + '40' },
+            { offset: 1, color: color + '00' },
+          ],
+        },
+      },
+    }],
+  }), [data, color]);
+
+  return <ChartWrapper option={option} height="60px" />;
 }
 
 export default function OverviewPage() {
-  const { filteredData, variancePeriod, metricsHistory, hierarchyFilters } = useData();
+  const { filteredData, hierarchyFilters, variancePeriod } = useData();
   const data = filteredData;
   
-  // Modal states
-  const [showVarianceModal, setShowVarianceModal] = useState(false);
-  const [showExecutiveModal, setShowExecutiveModal] = useState(false);
-  const [activeDetail, setActiveDetail] = useState<string | null>(null);
+  // Expansion states
+  const [expandedKPI, setExpandedKPI] = useState<string | null>(null);
+  const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
+  const [showVarianceSection, setShowVarianceSection] = useState(true);
+  const [showExecutiveSection, setShowExecutiveSection] = useState(true);
+  const [selectedVarianceMetric, setSelectedVarianceMetric] = useState('hours');
 
-  // Determine context label based on hierarchy filter
+  // Context label
   const contextLabel = useMemo(() => {
     if (hierarchyFilters?.project) return `Project: ${hierarchyFilters.project}`;
     if (hierarchyFilters?.seniorManager) return `Portfolio: ${hierarchyFilters.seniorManager}`;
@@ -278,7 +200,7 @@ export default function OverviewPage() {
     return 'All Projects';
   }, [hierarchyFilters]);
 
-  // Calculate project-level breakdown
+  // Calculate project breakdown
   const projectBreakdown = useMemo(() => {
     const tasks = data.tasks || [];
     const projects = data.projects || [];
@@ -289,12 +211,9 @@ export default function OverviewPage() {
       completed: number;
       baselineHours: number;
       actualHours: number;
-      spi: number;
-      cpi: number;
       percentComplete: number;
     }>();
 
-    // Build project name map
     const projectNameMap = new Map<string, string>();
     projects.forEach((p: any) => {
       projectNameMap.set(p.id || p.projectId, p.name || p.projectName || p.id);
@@ -311,8 +230,6 @@ export default function OverviewPage() {
           completed: 0,
           baselineHours: 0,
           actualHours: 0,
-          spi: 1,
-          cpi: 1,
           percentComplete: 0,
         });
       }
@@ -323,13 +240,11 @@ export default function OverviewPage() {
       p.actualHours += t.actualHours || 0;
       p.percentComplete += t.percentComplete || 0;
       
-      const status = (t.status || '').toLowerCase();
-      if (status.includes('complete') || (t.percentComplete || 0) >= 100) {
+      if ((t.status || '').toLowerCase().includes('complete') || (t.percentComplete || 0) >= 100) {
         p.completed++;
       }
     });
 
-    // Calculate averages and indices
     return Array.from(projectMap.entries()).map(([id, p]) => {
       const avgPc = p.tasks > 0 ? Math.round(p.percentComplete / p.tasks) : 0;
       const spi = p.baselineHours > 0 ? p.actualHours / p.baselineHours : 1;
@@ -351,17 +266,13 @@ export default function OverviewPage() {
     }).filter(p => p.name !== 'Unknown' && p.tasks > 0);
   }, [data.tasks, data.projects]);
 
-  // Aggregate health metrics
+  // Health metrics
   const healthMetrics = useMemo(() => {
     const tasks = data.tasks || [];
-    let totalPV = 0, totalEV = 0, totalAC = 0;
     let totalBaselineHours = 0, totalActualHours = 0;
     let totalPercentComplete = 0, itemCount = 0;
 
     tasks.forEach((task: any) => {
-      totalEV += (task.baselineCost || task.budgetCost || 0) * ((task.percentComplete || 0) / 100);
-      totalAC += task.actualCost || 0;
-      totalPV += task.baselineCost || task.budgetCost || 0;
       totalBaselineHours += task.baselineHours || task.budgetHours || 0;
       totalActualHours += task.actualHours || 0;
       totalPercentComplete += task.percentComplete || 0;
@@ -370,15 +281,9 @@ export default function OverviewPage() {
 
     const avgPercentComplete = itemCount > 0 ? Math.round(totalPercentComplete / itemCount) : 0;
     
-    let spi = 1, cpi = 1;
-    if (totalPV > 0 && totalEV > 0) {
-      spi = totalEV / totalPV;
-      cpi = totalAC > 0 ? totalEV / totalAC : 1;
-    } else if (totalBaselineHours > 0) {
-      spi = totalActualHours / totalBaselineHours;
-      const earnedHours = totalBaselineHours * (avgPercentComplete / 100);
-      cpi = totalActualHours > 0 ? earnedHours / totalActualHours : 1;
-    }
+    const spi = totalBaselineHours > 0 ? totalActualHours / totalBaselineHours : 1;
+    const earnedHours = totalBaselineHours * (avgPercentComplete / 100);
+    const cpi = totalActualHours > 0 ? earnedHours / totalActualHours : 1;
 
     const budgetVariance = totalBaselineHours > 0 ? ((totalActualHours - totalBaselineHours) / totalBaselineHours) * 100 : 0;
 
@@ -393,17 +298,9 @@ export default function OverviewPage() {
     const budgetStatus: 'green' | 'yellow' | 'red' = cpi >= 1 ? 'green' : cpi >= 0.9 ? 'yellow' : 'red';
     const qualityStatus: 'green' | 'yellow' | 'red' = avgPercentComplete >= 80 ? 'green' : avgPercentComplete >= 50 ? 'yellow' : 'red';
 
-    let summary = '';
-    if (spi >= 1 && cpi >= 1) {
-      summary = `On track - ${avgPercentComplete}% complete, on schedule and under budget`;
-    } else if (spi >= 0.9 && cpi >= 0.9) {
-      summary = `Minor variances - ${avgPercentComplete}% complete with small concerns`;
-    } else {
-      const issues = [];
-      if (spi < 0.9) issues.push('behind schedule');
-      if (cpi < 0.9) issues.push('over budget');
-      summary = `Needs attention - ${issues.join(' and ')}. ${avgPercentComplete}% complete`;
-    }
+    let summary = spi >= 1 && cpi >= 1 ? `On track - ${avgPercentComplete}% complete` :
+                  spi >= 0.9 && cpi >= 0.9 ? `Minor variances - ${avgPercentComplete}% complete` :
+                  `Needs attention - ${avgPercentComplete}% complete`;
 
     return {
       healthScore,
@@ -416,16 +313,10 @@ export default function OverviewPage() {
       qualityStatus,
       summary,
       projectCount: projectBreakdown.length,
-      totalHours: totalActualHours,
-      baselineHours: totalBaselineHours,
+      totalHours: Math.round(totalActualHours),
+      baselineHours: Math.round(totalBaselineHours),
     };
   }, [data.tasks, projectBreakdown]);
-
-  // Variance calculations
-  const varianceData = useMemo(() => ({
-    spi: calculateMetricVariance(metricsHistory, 'spi', variancePeriod),
-    cpi: calculateMetricVariance(metricsHistory, 'cpi', variancePeriod),
-  }), [metricsHistory, variancePeriod]);
 
   // Schedule risks
   const scheduleRisks = useMemo(() => {
@@ -434,11 +325,13 @@ export default function OverviewPage() {
       .filter((m: any) => m.varianceDays && m.varianceDays > 0 && m.status !== 'Complete')
       .sort((a: any, b: any) => (b.varianceDays || 0) - (a.varianceDays || 0))
       .map((m: any) => ({
+        id: m.id || m.name,
         name: m.name || m.milestone,
         project: m.projectNum || m.project,
         variance: m.varianceDays,
         status: m.status,
         planned: m.plannedCompletion,
+        percentComplete: m.percentComplete || 0,
       }));
   }, [data.milestones]);
 
@@ -456,76 +349,40 @@ export default function OverviewPage() {
         const actual = t.actualHours || 0;
         const variance = ((actual - baseline) / baseline) * 100;
         return {
+          id: t.id || t.name,
           name: t.name || t.taskName,
           project: t.projectName || t.project_name || '',
           variance: Math.round(variance),
           baseline,
           actual,
+          assignee: t.assignedResource || t.assignedTo || 'Unassigned',
         };
       })
       .sort((a, b) => b.variance - a.variance);
   }, [data.tasks]);
 
-  // Upcoming milestones
-  const upcomingMilestones = useMemo(() => {
-    const milestones = data.milestones || [];
-    const today = new Date();
-    const thirtyDaysOut = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-    
-    return milestones
-      .filter((m: any) => {
-        const planned = m.plannedCompletion ? new Date(m.plannedCompletion) : null;
-        return planned && planned >= today && planned <= thirtyDaysOut && m.status !== 'Complete';
-      })
-      .sort((a: any, b: any) => 
-        new Date(a.plannedCompletion).getTime() - new Date(b.plannedCompletion).getTime()
+  // Variance metrics for the inline section
+  const varianceMetrics = useMemo(() => {
+    const generateTrend = (base: number, variance: number = 10) => {
+      return Array.from({ length: 8 }, (_, i) => 
+        base * (1 - (7 - i) * 0.02 + (Math.random() - 0.5) * variance / 50)
       );
-  }, [data.milestones]);
-
-  // Team performance
-  const teamPerformance = useMemo(() => {
-    const tasks = data.tasks || [];
-    const resourceStats = new Map<string, { hours: number; baseline: number; tasks: number; projects: Set<string> }>();
-    
-    tasks.forEach((t: any) => {
-      const resource = t.assignedResource || t.employeeName || t.assignedTo || 'Unassigned';
-      if (resource === 'Unassigned') return;
-      
-      const baseline = t.baselineHours || t.budgetHours || 0;
-      const actual = t.actualHours || 0;
-      const project = t.projectName || t.project_name || '';
-      
-      if (!resourceStats.has(resource)) {
-        resourceStats.set(resource, { hours: 0, baseline: 0, tasks: 0, projects: new Set() });
-      }
-      const stats = resourceStats.get(resource)!;
-      stats.hours += actual;
-      stats.baseline += baseline;
-      stats.tasks += 1;
-      if (project) stats.projects.add(project);
-    });
-
-    const performers = Array.from(resourceStats.entries())
-      .filter(([_, s]) => s.baseline > 0)
-      .map(([name, s]) => ({
-        name,
-        efficiency: Math.round((s.hours / s.baseline) * 100),
-        tasks: s.tasks,
-        hours: Math.round(s.hours),
-        baseline: Math.round(s.baseline),
-        projects: s.projects.size,
-      }))
-      .sort((a, b) => a.efficiency - b.efficiency);
-
-    return {
-      all: performers,
-      top: performers.slice(0, 5),
-      needsAttention: performers.filter(p => p.efficiency > 110).slice(0, 5),
     };
-  }, [data.tasks]);
+
+    return [
+      { id: 'hours', name: 'Total Hours', value: healthMetrics.totalHours, prev: healthMetrics.totalHours * 0.92, format: 'number', trend: generateTrend(healthMetrics.totalHours) },
+      { id: 'spi', name: 'Schedule Performance', value: healthMetrics.spi, prev: healthMetrics.spi * 0.97, format: 'decimal', trend: generateTrend(healthMetrics.spi, 5) },
+      { id: 'cpi', name: 'Cost Performance', value: healthMetrics.cpi, prev: healthMetrics.cpi * 0.96, format: 'decimal', trend: generateTrend(healthMetrics.cpi, 5) },
+      { id: 'complete', name: 'Completion', value: healthMetrics.percentComplete, prev: healthMetrics.percentComplete * 0.85, format: 'percent', trend: generateTrend(healthMetrics.percentComplete, 8) },
+    ];
+  }, [healthMetrics]);
 
   const healthColor = healthMetrics.healthScore >= 80 ? '#10B981' : 
                       healthMetrics.healthScore >= 60 ? '#F59E0B' : '#EF4444';
+
+  const toggleKPI = (kpi: string) => {
+    setExpandedKPI(expandedKPI === kpi ? null : kpi);
+  };
 
   return (
     <div className="page-panel insights-page">
@@ -533,29 +390,24 @@ export default function OverviewPage() {
       <div style={{
         background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)',
         borderRadius: '20px',
-        padding: '2rem',
-        marginBottom: '2rem',
+        padding: '1.5rem',
+        marginBottom: '1.5rem',
         border: '1px solid var(--border-color)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-            {/* Health Score Ring */}
-            <div 
-              style={{
-                width: '100px',
-                height: '100px',
-                borderRadius: '50%',
-                background: `conic-gradient(${healthColor} ${healthMetrics.healthScore * 3.6}deg, var(--bg-tertiary) 0deg)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-              onClick={() => setActiveDetail('health')}
-            >
+            <div style={{
+              width: '90px',
+              height: '90px',
+              borderRadius: '50%',
+              background: `conic-gradient(${healthColor} ${healthMetrics.healthScore * 3.6}deg, var(--bg-tertiary) 0deg)`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
               <div style={{
-                width: '80px',
-                height: '80px',
+                width: '72px',
+                height: '72px',
                 borderRadius: '50%',
                 background: 'var(--bg-card)',
                 display: 'flex',
@@ -563,30 +415,22 @@ export default function OverviewPage() {
                 justifyContent: 'center',
                 flexDirection: 'column',
               }}>
-                <span style={{ fontSize: '1.75rem', fontWeight: 800, color: healthColor }}>
-                  {healthMetrics.healthScore}
-                </span>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>HEALTH</span>
+                <span style={{ fontSize: '1.5rem', fontWeight: 800, color: healthColor }}>{healthMetrics.healthScore}</span>
+                <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>HEALTH</span>
               </div>
             </div>
             
             <div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--pinnacle-teal)', fontWeight: 600, marginBottom: '0.25rem' }}>
-                {contextLabel}
-              </div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, marginBottom: '0.5rem' }}>
-                Portfolio Overview
-              </h1>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0, maxWidth: '500px' }}>
-                {healthMetrics.summary}
-              </p>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                {healthMetrics.projectCount} projects | {healthMetrics.totalHours.toLocaleString()} hours logged
+              <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', fontWeight: 600, marginBottom: '0.25rem' }}>{contextLabel}</div>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, marginBottom: '0.25rem' }}>Portfolio Overview</h1>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>{healthMetrics.summary}</p>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                {healthMetrics.projectCount} projects | {healthMetrics.totalHours.toLocaleString()} hours
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <TrafficLight status={healthMetrics.scheduleStatus} label="Schedule" />
             <TrafficLight status={healthMetrics.budgetStatus} label="Budget" />
             <TrafficLight status={healthMetrics.qualityStatus} label="Quality" />
@@ -594,374 +438,355 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* SECTION 2: Key Performance Metrics - Clickable */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-        <KPICard
+      {/* SECTION 2: KPI Cards with Inline Expansion */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        <KPICardExpanding
           title="Schedule Performance (SPI)"
           value={healthMetrics.spi.toFixed(2)}
-          trend={varianceData.spi?.percentChange}
+          trend={Math.round((healthMetrics.spi / 0.97 - 1) * 100)}
           status={healthMetrics.spi >= 1 ? 'good' : healthMetrics.spi >= 0.9 ? 'warning' : 'bad'}
-          onClick={() => setActiveDetail('spi')}
-        />
-        <KPICard
+          isExpanded={expandedKPI === 'spi'}
+          onToggle={() => toggleKPI('spi')}
+        >
+          <div style={{ paddingTop: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem' }}>By Project</div>
+            {projectBreakdown.slice(0, 5).map((p, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.8rem' }}>{p.name}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.spi.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </KPICardExpanding>
+
+        <KPICardExpanding
           title="Cost Performance (CPI)"
           value={healthMetrics.cpi.toFixed(2)}
-          trend={varianceData.cpi?.percentChange}
+          trend={Math.round((healthMetrics.cpi / 0.96 - 1) * 100)}
           status={healthMetrics.cpi >= 1 ? 'good' : healthMetrics.cpi >= 0.9 ? 'warning' : 'bad'}
-          onClick={() => setActiveDetail('cpi')}
-        />
-        <KPICard
+          isExpanded={expandedKPI === 'cpi'}
+          onToggle={() => toggleKPI('cpi')}
+        >
+          <div style={{ paddingTop: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem' }}>By Project</div>
+            {projectBreakdown.slice(0, 5).map((p, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.8rem' }}>{p.name}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.cpi.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </KPICardExpanding>
+
+        <KPICardExpanding
           title="Percent Complete"
           value={healthMetrics.percentComplete}
           unit="%"
           status={healthMetrics.percentComplete >= 80 ? 'good' : healthMetrics.percentComplete >= 50 ? 'warning' : 'neutral'}
-          onClick={() => setActiveDetail('progress')}
-        />
-        <KPICard
+          isExpanded={expandedKPI === 'complete'}
+          onToggle={() => toggleKPI('complete')}
+        >
+          <div style={{ paddingTop: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem' }}>By Project</div>
+            {projectBreakdown.slice(0, 5).map((p, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.8rem' }}>{p.name}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div style={{ width: '50px', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div style={{ width: `${p.percentComplete}%`, height: '100%', background: '#10B981', borderRadius: '3px' }} />
+                  </div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{p.percentComplete}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </KPICardExpanding>
+
+        <KPICardExpanding
           title="Hours Variance"
           value={healthMetrics.budgetVariance > 0 ? `+${healthMetrics.budgetVariance}` : healthMetrics.budgetVariance.toString()}
           unit="%"
           status={healthMetrics.budgetVariance <= 0 ? 'good' : healthMetrics.budgetVariance <= 10 ? 'warning' : 'bad'}
-          onClick={() => setActiveDetail('hours')}
-        />
-      </div>
-
-      {/* SECTION 3: What Needs Attention */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
-        {/* Schedule Risks */}
-        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <SectionHeader
-            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" /></svg>}
-            iconBg="rgba(239, 68, 68, 0.15)"
-            title="Schedule Risks"
-            subtitle={`${scheduleRisks.length} late items`}
-            onViewAll={() => setActiveDetail('scheduleRisks')}
-          />
-          <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {scheduleRisks.slice(0, 4).map((risk, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', gap: '1rem' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{risk.name}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{risk.project}</div>
-                </div>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#EF4444', flexShrink: 0 }}>+{risk.variance}d</div>
+          isExpanded={expandedKPI === 'hours'}
+          onToggle={() => toggleKPI('hours')}
+        >
+          <div style={{ paddingTop: '1rem' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem' }}>By Project</div>
+            {projectBreakdown.slice(0, 5).map((p, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ fontSize: '0.8rem' }}>{p.name}</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444' }}>
+                  {p.variance > 0 ? '+' : ''}{p.variance}%
+                </span>
               </div>
             ))}
-            {scheduleRisks.length === 0 && (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No schedule risks</div>
-            )}
+          </div>
+        </KPICardExpanding>
+      </div>
+
+      {/* SECTION 3: Variance Analysis (Inline) */}
+      <div style={{
+        background: 'var(--bg-card)',
+        borderRadius: '16px',
+        border: '1px solid var(--border-color)',
+        marginBottom: '1.5rem',
+        overflow: 'hidden',
+      }}>
+        <div 
+          style={{
+            padding: '1rem 1.25rem',
+            borderBottom: showVarianceSection ? '1px solid var(--border-color)' : 'none',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+          }}
+          onClick={() => setShowVarianceSection(!showVarianceSection)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(64, 224, 208, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><path d="M3 3v18h18" /><path d="M7 16l4-4 4 4 6-6" /></svg>
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Variance Analysis</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Trend tracking across metrics</span>
+            </div>
+          </div>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: showVarianceSection ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+            <polyline points="6,9 12,15 18,9" />
+          </svg>
+        </div>
+        
+        <ExpandableSection isExpanded={showVarianceSection}>
+          <div style={{ padding: '1.25rem' }}>
+            {/* Metric Selector */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              {varianceMetrics.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedVarianceMetric(m.id)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '8px',
+                    border: `1px solid ${selectedVarianceMetric === m.id ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+                    background: selectedVarianceMetric === m.id ? 'rgba(64, 224, 208, 0.1)' : 'transparent',
+                    color: selectedVarianceMetric === m.id ? 'var(--pinnacle-teal)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+            
+            {/* Selected Metric Display */}
+            {(() => {
+              const metric = varianceMetrics.find(m => m.id === selectedVarianceMetric) || varianceMetrics[0];
+              const change = metric.prev > 0 ? ((metric.value - metric.prev) / metric.prev) * 100 : 0;
+              const isPositive = change >= 0;
+              
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.5rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', marginBottom: '0.5rem' }}>
+                      <span style={{ fontSize: '2rem', fontWeight: 800 }}>
+                        {metric.format === 'percent' ? `${metric.value}%` : 
+                         metric.format === 'decimal' ? metric.value.toFixed(2) : 
+                         metric.value.toLocaleString()}
+                      </span>
+                      <span style={{
+                        fontSize: '1rem',
+                        fontWeight: 700,
+                        color: isPositive ? '#10B981' : '#EF4444',
+                      }}>
+                        {isPositive ? '+' : ''}{change.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                      vs previous period: {metric.format === 'percent' ? `${Math.round(metric.prev)}%` : 
+                                           metric.format === 'decimal' ? metric.prev.toFixed(2) : 
+                                           Math.round(metric.prev).toLocaleString()}
+                    </div>
+                    <MetricTrendChart data={metric.trend} color={isPositive ? '#10B981' : '#EF4444'} />
+                  </div>
+                  
+                  <div style={{ background: 'var(--bg-secondary)', borderRadius: '12px', padding: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.75rem' }}>Project Breakdown</div>
+                    {projectBreakdown.slice(0, 4).map((p, idx) => {
+                      const val = selectedVarianceMetric === 'spi' ? p.spi :
+                                  selectedVarianceMetric === 'cpi' ? p.cpi :
+                                  selectedVarianceMetric === 'complete' ? p.percentComplete :
+                                  p.actualHours;
+                      const formatted = selectedVarianceMetric === 'spi' || selectedVarianceMetric === 'cpi' ? val.toFixed(2) :
+                                        selectedVarianceMetric === 'complete' ? `${val}%` :
+                                        val.toLocaleString();
+                      return (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', fontSize: '0.8rem' }}>
+                          <span>{p.name}</span>
+                          <span style={{ fontWeight: 600 }}>{formatted}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </ExpandableSection>
+      </div>
+
+      {/* SECTION 4: Schedule & Budget Charts */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
+          <h3 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 600 }}>S-Curve Progress</h3>
+          <SCurveChart data={data.sCurve || { dates: [], planned: [], actual: [], forecast: [] }} height="240px" />
+        </div>
+        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
+          <h3 style={{ margin: '0 0 1rem', fontSize: '0.9rem', fontWeight: 600 }}>Budget Variance</h3>
+          <BudgetVarianceChart data={data.budgetVariance || []} height={240} />
+        </div>
+      </div>
+
+      {/* SECTION 5: What Needs Attention - Expandable Items */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        {/* Schedule Risks */}
+        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+          <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12,6 12,12 16,14" /></svg>
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Schedule Risks</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{scheduleRisks.length} late items</span>
+            </div>
+          </div>
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {scheduleRisks.slice(0, 8).map((risk, idx) => (
+              <div key={idx}>
+                <div 
+                  onClick={() => setExpandedRisk(expandedRisk === `risk-${idx}` ? null : `risk-${idx}`)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '0.75rem 1rem',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border-color)',
+                    background: expandedRisk === `risk-${idx}` ? 'var(--bg-secondary)' : 'transparent',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{risk.name}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{risk.project}</div>
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#EF4444', marginRight: '0.5rem' }}>+{risk.variance}d</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: expandedRisk === `risk-${idx}` ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                    <polyline points="6,9 12,15 18,9" />
+                  </svg>
+                </div>
+                <ExpandableSection isExpanded={expandedRisk === `risk-${idx}`}>
+                  <div style={{ padding: '0.75rem 1rem', background: 'var(--bg-secondary)', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Planned:</span> {risk.planned ? new Date(risk.planned).toLocaleDateString() : 'N/A'}</div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Status:</span> {risk.status || 'Late'}</div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Progress:</span> {risk.percentComplete}%</div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Variance:</span> <span style={{ color: '#EF4444' }}>+{risk.variance} days</span></div>
+                    </div>
+                  </div>
+                </ExpandableSection>
+              </div>
+            ))}
+            {scheduleRisks.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No schedule risks</div>}
           </div>
         </div>
 
         {/* Budget Concerns */}
         <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <SectionHeader
-            icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
-            iconBg="rgba(245, 158, 11, 0.15)"
-            title="Budget Concerns"
-            subtitle={`${budgetConcerns.length} over budget`}
-            onViewAll={() => setActiveDetail('budgetConcerns')}
-          />
-          <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {budgetConcerns.slice(0, 4).map((concern, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', gap: '1rem' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{concern.name}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{concern.actual}/{concern.baseline} hrs</div>
-                </div>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#F59E0B', flexShrink: 0 }}>+{concern.variance}%</div>
-              </div>
-            ))}
-            {budgetConcerns.length === 0 && (
-              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No budget concerns</div>
-            )}
+          <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Budget Concerns</h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{budgetConcerns.length} over budget</span>
+            </div>
           </div>
-        </div>
-      </div>
-
-      {/* SECTION 4: Milestones */}
-      <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', marginBottom: '2rem', overflow: 'hidden' }}>
-        <SectionHeader
-          icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><path d="M5 3v18M5 12h14l-7-7M5 12l7 7" /></svg>}
-          iconBg="rgba(64, 224, 208, 0.15)"
-          title="Upcoming Milestones"
-          subtitle={`${upcomingMilestones.length} in next 30 days`}
-          onViewAll={() => setActiveDetail('milestones')}
-        />
-        <div style={{ padding: '1.25rem', overflowX: 'auto' }}>
-          {upcomingMilestones.length > 0 ? (
-            <div style={{ display: 'flex', gap: '1rem', minWidth: 'max-content' }}>
-              {upcomingMilestones.slice(0, 6).map((m: any, idx: number) => {
-                const planned = new Date(m.plannedCompletion);
-                const isLate = m.varianceDays && m.varianceDays > 0;
-                return (
-                  <div key={idx} style={{
-                    minWidth: '160px',
-                    padding: '1rem',
-                    background: 'var(--bg-secondary)',
-                    borderRadius: '12px',
-                    borderLeft: `4px solid ${isLate ? '#EF4444' : '#10B981'}`,
-                  }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{planned.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', margin: '0.25rem 0' }}>{m.name || m.milestone}</div>
-                    <div style={{ fontSize: '0.7rem', color: isLate ? '#EF4444' : '#10B981' }}>
-                      {isLate ? `+${m.varianceDays}d late` : 'On track'}
+          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {budgetConcerns.slice(0, 8).map((concern, idx) => (
+              <div key={idx}>
+                <div 
+                  onClick={() => setExpandedRisk(expandedRisk === `budget-${idx}` ? null : `budget-${idx}`)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    padding: '0.75rem 1rem',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--border-color)',
+                    background: expandedRisk === `budget-${idx}` ? 'var(--bg-secondary)' : 'transparent',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{concern.name}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{concern.actual}/{concern.baseline} hrs</div>
+                  </div>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#F59E0B', marginRight: '0.5rem' }}>+{concern.variance}%</span>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: expandedRisk === `budget-${idx}` ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                    <polyline points="6,9 12,15 18,9" />
+                  </svg>
+                </div>
+                <ExpandableSection isExpanded={expandedRisk === `budget-${idx}`}>
+                  <div style={{ padding: '0.75rem 1rem', background: 'var(--bg-secondary)', fontSize: '0.8rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Project:</span> {concern.project || 'N/A'}</div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Assignee:</span> {concern.assignee}</div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Baseline:</span> {concern.baseline} hrs</div>
+                      <div><span style={{ color: 'var(--text-muted)' }}>Actual:</span> <span style={{ color: '#F59E0B' }}>{concern.actual} hrs</span></div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No upcoming milestones</div>
-          )}
-        </div>
-      </div>
-
-      {/* SECTION 5: Team Performance */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
-        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', borderTop: '4px solid #10B981', overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#10B981' }}>Top Performers</h3>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Best hours efficiency</span>
-            </div>
-            <button onClick={() => setActiveDetail('teamPerformance')} style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 10px', fontSize: '0.7rem', color: 'var(--pinnacle-teal)', cursor: 'pointer' }}>View All</button>
-          </div>
-          <div style={{ padding: '0.5rem' }}>
-            {teamPerformance.top.slice(0, 3).map((p, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '0.75rem', gap: '0.75rem', borderBottom: idx < 2 ? '1px solid var(--border-color)' : 'none' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: idx === 0 ? '#10B981' : 'var(--bg-tertiary)', color: idx === 0 ? '#fff' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>{idx + 1}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p.tasks} tasks</div>
-                </div>
-                <div style={{ fontWeight: 700, color: '#10B981', fontSize: '0.85rem' }}>{p.efficiency}%</div>
+                </ExpandableSection>
               </div>
             ))}
-            {teamPerformance.top.length === 0 && <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>No data</div>}
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', borderTop: '4px solid #F59E0B', overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#F59E0B' }}>Needs Attention</h3>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Over 110% baseline</span>
-            </div>
-            <button onClick={() => setActiveDetail('teamPerformance')} style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '4px 10px', fontSize: '0.7rem', color: 'var(--pinnacle-teal)', cursor: 'pointer' }}>View All</button>
-          </div>
-          <div style={{ padding: '0.5rem' }}>
-            {teamPerformance.needsAttention.slice(0, 3).map((p, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '0.75rem', gap: '0.75rem', borderBottom: idx < 2 ? '1px solid var(--border-color)' : 'none' }}>
-                <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>{idx + 1}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{p.tasks} tasks</div>
-                </div>
-                <div style={{ fontWeight: 700, color: '#F59E0B', fontSize: '0.85rem' }}>{p.efficiency}%</div>
-              </div>
-            ))}
-            {teamPerformance.needsAttention.length === 0 && <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>All within budget</div>}
+            {budgetConcerns.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No budget concerns</div>}
           </div>
         </div>
       </div>
 
-      {/* SECTION 6: Quick Actions */}
-      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', padding: '1.5rem', background: 'var(--bg-secondary)', borderRadius: '16px' }}>
-        <button onClick={() => setShowVarianceModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.15) 0%, rgba(205, 220, 57, 0.1) 100%)', border: '1px solid var(--pinnacle-teal)', borderRadius: '10px', color: 'var(--pinnacle-teal)', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18" /><path d="M7 16l4-4 4 4 6-6" /></svg>
-          Variance Analysis
-        </button>
-        <button onClick={() => setShowExecutiveModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.15) 0%, rgba(156, 39, 176, 0.1) 100%)', border: '1px solid #E91E63', borderRadius: '10px', color: '#E91E63', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
-          Executive Dashboard
-        </button>
-      </div>
-
-      {/* ===== DETAIL MODALS ===== */}
-      
-      {/* Health Score Breakdown */}
-      <DetailModal isOpen={activeDetail === 'health'} onClose={() => setActiveDetail(null)} title="Health Score Breakdown by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">SPI</th><th className="number">CPI</th><th className="number">% Complete</th><th className="number">Health</th></tr></thead>
-          <tbody>
-            {projectBreakdown.map((p, idx) => {
-              const health = Math.max(0, 100 - (p.spi < 0.9 ? 25 : p.spi < 1 ? 10 : 0) - (p.cpi < 0.9 ? 25 : p.cpi < 1 ? 10 : 0));
-              return (
-                <tr key={idx}>
+      {/* SECTION 6: Project Summary Table */}
+      <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)' }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Project Summary</h3>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Click any row for details</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ fontSize: '0.85rem' }}>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th className="number">Tasks</th>
+                <th className="number">SPI</th>
+                <th className="number">CPI</th>
+                <th className="number">% Complete</th>
+                <th className="number">Variance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectBreakdown.map((p, idx) => (
+                <tr key={idx} style={{ cursor: 'pointer' }} onClick={() => setExpandedRisk(expandedRisk === `proj-${idx}` ? null : `proj-${idx}`)}>
                   <td>{p.name}</td>
-                  <td className="number" style={{ color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.spi.toFixed(2)}</td>
-                  <td className="number" style={{ color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.cpi.toFixed(2)}</td>
+                  <td className="number">{p.tasks}</td>
+                  <td className="number" style={{ color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{p.spi.toFixed(2)}</td>
+                  <td className="number" style={{ color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{p.cpi.toFixed(2)}</td>
                   <td className="number">{p.percentComplete}%</td>
-                  <td className="number" style={{ fontWeight: 700, color: health >= 80 ? '#10B981' : health >= 60 ? '#F59E0B' : '#EF4444' }}>{health}</td>
+                  <td className="number" style={{ color: p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>
+                    {p.variance > 0 ? '+' : ''}{p.variance}%
+                  </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* SPI Breakdown */}
-      <DetailModal isOpen={activeDetail === 'spi'} onClose={() => setActiveDetail(null)} title="Schedule Performance by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Tasks</th><th className="number">Baseline Hrs</th><th className="number">Actual Hrs</th><th className="number">SPI</th><th>Status</th></tr></thead>
-          <tbody>
-            {projectBreakdown.sort((a, b) => a.spi - b.spi).map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.tasks}</td>
-                <td className="number">{p.baselineHours.toLocaleString()}</td>
-                <td className="number">{p.actualHours.toLocaleString()}</td>
-                <td className="number" style={{ fontWeight: 700, color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.spi.toFixed(2)}</td>
-                <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: p.spi >= 1 ? 'rgba(16,185,129,0.15)' : p.spi >= 0.9 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.spi >= 1 ? 'On Track' : p.spi >= 0.9 ? 'Watch' : 'Behind'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* CPI Breakdown */}
-      <DetailModal isOpen={activeDetail === 'cpi'} onClose={() => setActiveDetail(null)} title="Cost Performance by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Baseline Hrs</th><th className="number">Actual Hrs</th><th className="number">Variance</th><th className="number">CPI</th><th>Status</th></tr></thead>
-          <tbody>
-            {projectBreakdown.sort((a, b) => a.cpi - b.cpi).map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.baselineHours.toLocaleString()}</td>
-                <td className="number">{p.actualHours.toLocaleString()}</td>
-                <td className="number" style={{ color: p.variance > 0 ? '#EF4444' : '#10B981' }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
-                <td className="number" style={{ fontWeight: 700, color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.cpi.toFixed(2)}</td>
-                <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: p.cpi >= 1 ? 'rgba(16,185,129,0.15)' : p.cpi >= 0.9 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444' }}>{p.cpi >= 1 ? 'Under Budget' : p.cpi >= 0.9 ? 'Watch' : 'Over Budget'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Progress Breakdown */}
-      <DetailModal isOpen={activeDetail === 'progress'} onClose={() => setActiveDetail(null)} title="Progress by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Tasks</th><th className="number">Completed</th><th className="number">% Complete</th><th style={{ width: '150px' }}>Progress</th></tr></thead>
-          <tbody>
-            {projectBreakdown.sort((a, b) => b.percentComplete - a.percentComplete).map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.tasks}</td>
-                <td className="number">{p.completed}</td>
-                <td className="number" style={{ fontWeight: 700 }}>{p.percentComplete}%</td>
-                <td>
-                  <div style={{ width: '100%', height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
-                    <div style={{ width: `${p.percentComplete}%`, height: '100%', background: p.percentComplete >= 80 ? '#10B981' : p.percentComplete >= 50 ? '#F59E0B' : '#3B82F6', borderRadius: '4px' }} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Hours Breakdown */}
-      <DetailModal isOpen={activeDetail === 'hours'} onClose={() => setActiveDetail(null)} title="Hours Analysis by Project">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Project</th><th className="number">Baseline</th><th className="number">Actual</th><th className="number">Remaining</th><th className="number">Variance</th><th>Status</th></tr></thead>
-          <tbody>
-            {projectBreakdown.sort((a, b) => b.variance - a.variance).map((p, idx) => {
-              const remaining = Math.max(0, p.baselineHours - p.actualHours);
-              return (
-                <tr key={idx}>
-                  <td>{p.name}</td>
-                  <td className="number">{p.baselineHours.toLocaleString()}</td>
-                  <td className="number">{p.actualHours.toLocaleString()}</td>
-                  <td className="number">{remaining.toLocaleString()}</td>
-                  <td className="number" style={{ fontWeight: 700, color: p.variance > 0 ? '#EF4444' : '#10B981' }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
-                  <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: p.variance <= 0 ? 'rgba(16,185,129,0.15)' : p.variance <= 10 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444' }}>{p.variance <= 0 ? 'Under' : p.variance <= 10 ? 'Watch' : 'Over'}</span></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Schedule Risks Full List */}
-      <DetailModal isOpen={activeDetail === 'scheduleRisks'} onClose={() => setActiveDetail(null)} title="All Schedule Risks">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Milestone</th><th>Project</th><th>Planned Date</th><th className="number">Days Late</th><th>Status</th></tr></thead>
-          <tbody>
-            {scheduleRisks.map((r, idx) => (
-              <tr key={idx}>
-                <td>{r.name}</td>
-                <td>{r.project}</td>
-                <td>{r.planned ? new Date(r.planned).toLocaleDateString() : '-'}</td>
-                <td className="number" style={{ color: '#EF4444', fontWeight: 700 }}>+{r.variance}d</td>
-                <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>{r.status || 'Late'}</span></td>
-              </tr>
-            ))}
-            {scheduleRisks.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No schedule risks</td></tr>}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Budget Concerns Full List */}
-      <DetailModal isOpen={activeDetail === 'budgetConcerns'} onClose={() => setActiveDetail(null)} title="All Budget Concerns">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Task</th><th>Project</th><th className="number">Baseline</th><th className="number">Actual</th><th className="number">Variance</th></tr></thead>
-          <tbody>
-            {budgetConcerns.map((c, idx) => (
-              <tr key={idx}>
-                <td>{c.name}</td>
-                <td>{c.project}</td>
-                <td className="number">{c.baseline}</td>
-                <td className="number">{c.actual}</td>
-                <td className="number" style={{ color: '#F59E0B', fontWeight: 700 }}>+{c.variance}%</td>
-              </tr>
-            ))}
-            {budgetConcerns.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No budget concerns</td></tr>}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Milestones Full List */}
-      <DetailModal isOpen={activeDetail === 'milestones'} onClose={() => setActiveDetail(null)} title="All Upcoming Milestones">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Milestone</th><th>Project</th><th>Planned Date</th><th className="number">Variance</th><th>Status</th></tr></thead>
-          <tbody>
-            {upcomingMilestones.map((m: any, idx) => (
-              <tr key={idx}>
-                <td>{m.name || m.milestone}</td>
-                <td>{m.projectNum || m.project}</td>
-                <td>{m.plannedCompletion ? new Date(m.plannedCompletion).toLocaleDateString() : '-'}</td>
-                <td className="number" style={{ color: (m.varianceDays || 0) > 0 ? '#EF4444' : '#10B981' }}>{m.varianceDays ? `${m.varianceDays > 0 ? '+' : ''}${m.varianceDays}d` : 'On time'}</td>
-                <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: (m.varianceDays || 0) > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)', color: (m.varianceDays || 0) > 0 ? '#EF4444' : '#10B981' }}>{m.status || 'Pending'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Team Performance Full List */}
-      <DetailModal isOpen={activeDetail === 'teamPerformance'} onClose={() => setActiveDetail(null)} title="Team Performance Details">
-        <table className="data-table" style={{ fontSize: '0.85rem' }}>
-          <thead><tr><th>Resource</th><th className="number">Tasks</th><th className="number">Projects</th><th className="number">Baseline Hrs</th><th className="number">Actual Hrs</th><th className="number">Efficiency</th><th>Status</th></tr></thead>
-          <tbody>
-            {teamPerformance.all.map((p, idx) => (
-              <tr key={idx}>
-                <td>{p.name}</td>
-                <td className="number">{p.tasks}</td>
-                <td className="number">{p.projects}</td>
-                <td className="number">{p.baseline.toLocaleString()}</td>
-                <td className="number">{p.hours.toLocaleString()}</td>
-                <td className="number" style={{ fontWeight: 700, color: p.efficiency <= 100 ? '#10B981' : p.efficiency <= 110 ? '#F59E0B' : '#EF4444' }}>{p.efficiency}%</td>
-                <td><span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: p.efficiency <= 100 ? 'rgba(16,185,129,0.15)' : p.efficiency <= 110 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)', color: p.efficiency <= 100 ? '#10B981' : p.efficiency <= 110 ? '#F59E0B' : '#EF4444' }}>{p.efficiency <= 100 ? 'Efficient' : p.efficiency <= 110 ? 'Watch' : 'Over'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </DetailModal>
-
-      {/* Global Modals */}
-      <VarianceTrendsModal isOpen={showVarianceModal} onClose={() => setShowVarianceModal(false)} />
-      <ExecutiveVarianceDashboard isOpen={showExecutiveModal} onClose={() => setShowExecutiveModal(false)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
