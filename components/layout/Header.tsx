@@ -27,6 +27,7 @@ import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
 import StatusAndLogsDropdown from './StatusAndLogsDropdown';
 import { PeriodSelector } from '@/components/ui/PeriodSelector';
+import { VarianceTrendsModal } from '@/components/ui/VarianceTrendsModal';
 
 /**
  * Header component displaying the main application header.
@@ -37,6 +38,7 @@ import { PeriodSelector } from '@/components/ui/PeriodSelector';
 export default function Header() {
   const [mounted, setMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showVarianceModal, setShowVarianceModal] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   // Get theme - must be called before any conditional returns
@@ -103,11 +105,45 @@ export default function Header() {
         <HierarchyFilter />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         
-        {/* Variance Period Selector */}
+        {/* Variance Trends Button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
+            onClick={() => setShowVarianceModal(true)}
+            title="View Variance Trends"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.15) 0%, rgba(205, 220, 57, 0.1) 100%)',
+              border: '1px solid rgba(64, 224, 208, 0.4)',
+              borderRadius: '8px',
+              color: 'var(--pinnacle-teal)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(64, 224, 208, 0.25) 0%, rgba(205, 220, 57, 0.15) 100%)';
+              e.currentTarget.style.borderColor = 'var(--pinnacle-teal)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(64, 224, 208, 0.15) 0%, rgba(205, 220, 57, 0.1) 100%)';
+              e.currentTarget.style.borderColor = 'rgba(64, 224, 208, 0.4)';
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3v18h18" />
+              <path d="M7 16l4-4 4 4 6-6" />
+            </svg>
+            <span>Variance Trends</span>
+          </button>
+          
+          {/* Quick Toggle for Inline Indicators */}
+          <button
             onClick={() => setVarianceEnabled(!varianceEnabled)}
-            title={varianceEnabled ? 'Hide variance indicators' : 'Show variance indicators'}
+            title={varianceEnabled ? 'Hide inline variance indicators' : 'Show inline variance indicators'}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -122,11 +158,18 @@ export default function Header() {
               transition: 'all 0.15s',
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 3v18h18" />
-              <path d="M7 16l4-4 4 4 6-6" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {varianceEnabled ? (
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+              ) : (
+                <>
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </>
+              )}
             </svg>
           </button>
+          
           {varianceEnabled && (
             <PeriodSelector
               value={variancePeriod}
@@ -266,6 +309,12 @@ export default function Header() {
           )}
         </div>
       </div>
+      
+      {/* Variance Trends Modal */}
+      <VarianceTrendsModal
+        isOpen={showVarianceModal}
+        onClose={() => setShowVarianceModal(false)}
+      />
     </header>
   );
 }

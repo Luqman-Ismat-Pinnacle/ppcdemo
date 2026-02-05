@@ -15,3 +15,4 @@ export { default as EnhancedTooltip, type TooltipContent } from './EnhancedToolt
 export { VarianceIndicator } from './VarianceIndicator';
 export { VarianceDetailsPanel } from './VarianceDetailsPanel';
 export { PeriodSelector, PeriodPills } from './PeriodSelector';
+export { VarianceTrendsModal } from './VarianceTrendsModal';
