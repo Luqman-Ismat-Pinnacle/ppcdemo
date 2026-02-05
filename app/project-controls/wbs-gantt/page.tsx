@@ -102,6 +102,12 @@ export default function WBSGanttPage() {
   const [wbsSort, setWbsSort] = useState<SortState | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [wbsSearchQuery, setWbsSearchQuery] = useState('');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  
+  // Zoom state for timeline (1 = 100%, 0.5 = 50%, 2 = 200%)
+  const [timelineZoom, setTimelineZoom] = useState(1);
+  const [verticalZoom, setVerticalZoom] = useState(1);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -249,8 +255,8 @@ export default function WBSGanttPage() {
     return columns;
   }, [ganttInterval, projectStart, projectEnd]);
 
-  // Get column width based on interval
-  const columnWidth = useMemo(() => {
+  // Get column width based on interval and zoom
+  const baseColumnWidth = useMemo(() => {
     switch (ganttInterval) {
       case 'week': return 40;
       case 'month': return 80;
@@ -259,6 +265,8 @@ export default function WBSGanttPage() {
       default: return 40;
     }
   }, [ganttInterval]);
+  
+  const columnWidth = Math.round(baseColumnWidth * timelineZoom);
 
   // Find the "today" column index
   const todayColumnIndex = useMemo(() => {
@@ -747,9 +755,55 @@ export default function WBSGanttPage() {
     if (containerRef.current) containerRef.current.scrollTop = 0;
   }, [selectedProjectId]);
 
-  const rowHeight = 30;
+  const baseRowHeight = 30;
+  const rowHeight = Math.round(baseRowHeight * verticalZoom);
   const headerHeight = 36;
   const buffer = 10;
+  
+  // Handle wheel zoom
+  const handleWheelZoom = (e: React.WheelEvent) => {
+    // Ctrl + scroll = horizontal zoom, Shift + scroll = vertical zoom
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setTimelineZoom(prev => Math.max(0.25, Math.min(3, prev + delta)));
+    } else if (e.shiftKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setVerticalZoom(prev => Math.max(0.5, Math.min(2, prev + delta)));
+    }
+  };
+  
+  // Employee options for assignment dropdown - grouped by role
+  const employeeOptions = useMemo(() => {
+    return (employees || []).map((emp: any) => ({
+      id: emp.id || emp.employeeId,
+      name: emp.name || 'Unknown',
+      secondary: emp.role || emp.jobTitle || 'No Role',
+      role: (emp.role || emp.jobTitle || '').toLowerCase()
+    }));
+  }, [employees]);
+  
+  // Handle resource assignment
+  const handleAssignResource = (taskId: string, employeeId: string | null) => {
+    if (!data.wbsData?.items) return;
+    
+    const updateItemsRecursively = (items: any[]): any[] => {
+      return items.map(item => {
+        if (item.id === taskId) {
+          return { ...item, assignedResourceId: employeeId };
+        }
+        if (item.children) {
+          return { ...item, children: updateItemsRecursively(item.children) };
+        }
+        return item;
+      });
+    };
+    
+    const updated = updateItemsRecursively(data.wbsData.items);
+    updateData({ wbsData: { ...data.wbsData, items: updated } });
+    setEditingTaskId(null);
+  };
 
   const totalRowsHeight = flatRows.length * rowHeight;
 
@@ -967,6 +1021,71 @@ export default function WBSGanttPage() {
               </button>
             ))}
           </div>
+          
+          {/* Zoom Controls */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '12px', 
+            alignItems: 'center', 
+            background: 'var(--bg-tertiary)', 
+            borderRadius: '8px', 
+            padding: '4px 12px',
+            border: '1px solid var(--border-color)'
+          }}>
+            {/* Horizontal Zoom */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12H3M21 12l-4-4m4 4l-4 4M3 12l4-4m-4 4l4 4" />
+              </svg>
+              <input
+                type="range"
+                min="0.25"
+                max="3"
+                step="0.1"
+                value={timelineZoom}
+                onChange={(e) => setTimelineZoom(parseFloat(e.target.value))}
+                style={{ width: '60px', accentColor: 'var(--pinnacle-teal)' }}
+                title={`Horizontal zoom: ${Math.round(timelineZoom * 100)}%`}
+              />
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', minWidth: '32px' }}>{Math.round(timelineZoom * 100)}%</span>
+            </div>
+            
+            {/* Vertical Zoom */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 3v18M12 3l-4 4m4-4l4 4M12 21l-4-4m4 4l4-4" />
+              </svg>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={verticalZoom}
+                onChange={(e) => setVerticalZoom(parseFloat(e.target.value))}
+                style={{ width: '60px', accentColor: 'var(--pinnacle-teal)' }}
+                title={`Vertical zoom: ${Math.round(verticalZoom * 100)}%`}
+              />
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', minWidth: '32px' }}>{Math.round(verticalZoom * 100)}%</span>
+            </div>
+            
+            {/* Reset Zoom */}
+            <button
+              onClick={() => { setTimelineZoom(1); setVerticalZoom(1); }}
+              style={{
+                padding: '2px 6px',
+                fontSize: '0.6rem',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer'
+              }}
+              title="Reset zoom to 100%"
+            >
+              Reset
+            </button>
+          </div>
+          
           <button
             className="btn btn-secondary btn-sm"
             onClick={scrollToToday}
@@ -1086,6 +1205,7 @@ export default function WBSGanttPage() {
           style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'scroll', position: 'relative' }}
           ref={containerRef}
           onScroll={handleScroll}
+          onWheel={handleWheelZoom}
         >
           {/* SVG Overlay for Arrows - size set in useEffect from totalRowsHeight */}
           <svg
@@ -1286,7 +1406,72 @@ export default function WBSGanttPage() {
                       </EnhancedTooltip>
                     </td>
                     <td><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
-                    <td style={{ fontSize: '0.65rem' }}>{getEmployeeName(row.assignedResourceId, employees)}</td>
+                    <td style={{ fontSize: '0.65rem', padding: '2px 4px', position: 'relative' }}>
+                      {/* Show dropdown for leaf tasks (no children), show name for rollup rows */}
+                      {!row.hasChildren ? (
+                        editingTaskId === row.id ? (
+                          <div style={{ position: 'relative', zIndex: 100 }}>
+                            <SearchableDropdown
+                              options={employeeOptions}
+                              value={row.assignedResourceId || null}
+                              onChange={(id) => handleAssignResource(row.id, id)}
+                              placeholder="Assign..."
+                              disabled={false}
+                            />
+                            <button
+                              onClick={() => setEditingTaskId(null)}
+                              style={{
+                                position: 'absolute',
+                                top: '50%',
+                                right: '-20px',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: '2px'
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingTaskId(row.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: row.assignedResourceId ? 'var(--text-primary)' : 'var(--pinnacle-teal)',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              borderRadius: '4px',
+                              fontSize: '0.65rem',
+                              textAlign: 'left',
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                            title="Click to assign resource"
+                          >
+                            {row.assignedResourceId ? (
+                              getEmployeeName(row.assignedResourceId, employees)
+                            ) : (
+                              <>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle cx="12" cy="12" r="10" />
+                                  <line x1="12" y1="8" x2="12" y2="16" />
+                                  <line x1="8" y1="12" x2="16" y2="12" />
+                                </svg>
+                                Assign
+                              </>
+                            )}
+                          </button>
+                        )
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>{getEmployeeName(row.assignedResourceId, employees)}</span>
+                      )}
+                    </td>
                     <td style={{ fontSize: '0.65rem' }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '-'}</td>
                     <td style={{ fontSize: '0.65rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.65rem' }}>{row.daysRequired !== undefined && row.daysRequired !== null ? Number(row.daysRequired).toFixed(2) : '-'}</td>
