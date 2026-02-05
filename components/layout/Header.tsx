@@ -28,6 +28,7 @@ import DateFilterControl from './DateFilterControl';
 import StatusAndLogsDropdown from './StatusAndLogsDropdown';
 import { PeriodSelector } from '@/components/ui/PeriodSelector';
 import { VarianceTrendsModal } from '@/components/ui/VarianceTrendsModal';
+import ExecutiveVarianceDashboard from '@/components/insights/ExecutiveVarianceDashboard';
 
 /**
  * Header component displaying the main application header.
@@ -39,6 +40,7 @@ export default function Header() {
   const [mounted, setMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [showVarianceModal, setShowVarianceModal] = useState(false);
+  const [showExecutiveModal, setShowExecutiveModal] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   // Get theme - must be called before any conditional returns
@@ -105,8 +107,45 @@ export default function Header() {
         <HierarchyFilter />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         
-        {/* Variance Trends Button */}
+        {/* Variance & Executive Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Executive View Button */}
+          <button
+            onClick={() => setShowExecutiveModal(true)}
+            title="Open Executive Dashboard"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.15) 0%, rgba(156, 39, 176, 0.1) 100%)',
+              border: '1px solid rgba(233, 30, 99, 0.4)',
+              borderRadius: '8px',
+              color: '#E91E63',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(233, 30, 99, 0.25) 0%, rgba(156, 39, 176, 0.15) 100%)';
+              e.currentTarget.style.borderColor = '#E91E63';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(233, 30, 99, 0.15) 0%, rgba(156, 39, 176, 0.1) 100%)';
+              e.currentTarget.style.borderColor = 'rgba(233, 30, 99, 0.4)';
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+            <span>Executive View</span>
+          </button>
+          
+          {/* Variance Trends Button */}
           <button
             onClick={() => setShowVarianceModal(true)}
             title="View Variance Trends"
@@ -314,6 +353,12 @@ export default function Header() {
       <VarianceTrendsModal
         isOpen={showVarianceModal}
         onClose={() => setShowVarianceModal(false)}
+      />
+      
+      {/* Executive Dashboard Modal */}
+      <ExecutiveVarianceDashboard
+        isOpen={showExecutiveModal}
+        onClose={() => setShowExecutiveModal(false)}
       />
     </header>
   );

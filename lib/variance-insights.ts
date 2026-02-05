@@ -676,3 +676,296 @@ export function getOverallHealth(analyses: Map<string, VarianceAnalysis>): {
   
   return { status, criticalCount, warningCount, summary };
 }
+
+// ============================================================================
+// Executive-Friendly Language Translations
+// ============================================================================
+
+/**
+ * Business-friendly metric translations for executives
+ */
+export interface ExecutiveTranslation {
+  metricLabel: string;          // Plain-language metric name
+  valueLabel: string;           // Plain-language value description
+  impactStatement: string;      // Business impact in dollars/days
+  statusLabel: string;          // Simple status (ahead/behind/on-track)
+  actionableInsight: string;    // What to do about it
+}
+
+/**
+ * Translate SPI (Schedule Performance Index) for executives
+ * @example translateSPI(0.85, 90, 1000000) => "15% behind schedule (1.5 weeks), potential $50K delay cost"
+ */
+export function translateSPI(
+  spi: number,
+  projectDurationDays: number,
+  totalBudget?: number
+): ExecutiveTranslation {
+  const scheduleVariancePercent = (1 - spi) * 100;
+  const scheduleVarianceDays = Math.round((1 - spi) * projectDurationDays);
+  const weeks = Math.abs(scheduleVarianceDays / 7).toFixed(1);
+  
+  // Estimate delay cost (rough approximation: 10% of budget per week of delay)
+  const weeklyDelayCost = totalBudget ? totalBudget * 0.1 / (projectDurationDays / 7) : 0;
+  const potentialDelayCost = Math.abs(scheduleVarianceDays / 7) * weeklyDelayCost;
+  
+  let statusLabel: string;
+  let actionableInsight: string;
+  
+  if (spi >= 1.05) {
+    statusLabel = 'Ahead of schedule';
+    actionableInsight = 'Consider accelerating milestones or reallocating resources';
+  } else if (spi >= 0.95) {
+    statusLabel = 'On schedule';
+    actionableInsight = 'Maintain current pace';
+  } else if (spi >= 0.85) {
+    statusLabel = 'Slightly behind';
+    actionableInsight = 'Identify bottlenecks and add resources to critical path';
+  } else {
+    statusLabel = 'Significantly behind';
+    actionableInsight = 'Immediate intervention required - reassess scope or resources';
+  }
+  
+  return {
+    metricLabel: 'Schedule Performance',
+    valueLabel: spi >= 1 
+      ? `${Math.abs(scheduleVariancePercent).toFixed(0)}% ahead of schedule (${weeks} weeks)`
+      : `${Math.abs(scheduleVariancePercent).toFixed(0)}% behind schedule (${weeks} weeks)`,
+    impactStatement: spi >= 1
+      ? `Potential early completion by ${Math.abs(scheduleVarianceDays)} days`
+      : totalBudget && potentialDelayCost > 1000
+        ? `${Math.abs(scheduleVarianceDays)}-day delay, potential $${formatCompact(potentialDelayCost)} additional cost`
+        : `${Math.abs(scheduleVarianceDays)}-day delay if trend continues`,
+    statusLabel,
+    actionableInsight
+  };
+}
+
+/**
+ * Translate CPI (Cost Performance Index) for executives
+ * @example translateCPI(0.92, 500000) => "8% over budget ($40K)"
+ */
+export function translateCPI(
+  cpi: number,
+  totalBudget: number,
+  actualSpend?: number
+): ExecutiveTranslation {
+  const costVariancePercent = (1 - cpi) * 100;
+  const estimatedOverrun = totalBudget * (1 / cpi - 1);
+  const currentOverrun = actualSpend ? (actualSpend - (actualSpend * cpi)) : estimatedOverrun * (actualSpend || 1) / totalBudget;
+  
+  let statusLabel: string;
+  let actionableInsight: string;
+  
+  if (cpi >= 1.05) {
+    statusLabel = 'Under budget';
+    actionableInsight = 'Cost efficiency achieved - document and replicate practices';
+  } else if (cpi >= 0.95) {
+    statusLabel = 'On budget';
+    actionableInsight = 'Maintain current spending patterns';
+  } else if (cpi >= 0.85) {
+    statusLabel = 'Over budget';
+    actionableInsight = 'Review spending, identify cost reduction opportunities';
+  } else {
+    statusLabel = 'Significantly over budget';
+    actionableInsight = 'Budget review required - consider scope changes or additional funding';
+  }
+  
+  return {
+    metricLabel: 'Cost Performance',
+    valueLabel: cpi >= 1
+      ? `${Math.abs(costVariancePercent).toFixed(0)}% under budget ($${formatCompact(Math.abs(estimatedOverrun))} saved)`
+      : `${Math.abs(costVariancePercent).toFixed(0)}% over budget ($${formatCompact(Math.abs(estimatedOverrun))})`,
+    impactStatement: cpi >= 1
+      ? `Projected savings of $${formatCompact(Math.abs(estimatedOverrun))} at completion`
+      : `Projected $${formatCompact(Math.abs(estimatedOverrun))} overrun at completion`,
+    statusLabel,
+    actionableInsight
+  };
+}
+
+/**
+ * Translate variance percentage for executives
+ * @example translateVariance(-12, 'hours') => "Improved by 12% vs last week"
+ */
+export function translateVariance(
+  percentChange: number,
+  metricType: 'hours' | 'cost' | 'quality' | 'progress' | 'efficiency',
+  period: string = 'last period'
+): ExecutiveTranslation {
+  // Determine if the direction is good or bad based on metric type
+  const isPositiveGood = metricType === 'quality' || metricType === 'progress' || metricType === 'efficiency';
+  const isGood = isPositiveGood ? percentChange > 0 : percentChange < 0;
+  
+  const absChange = Math.abs(percentChange);
+  const direction = percentChange > 0 ? 'increased' : 'decreased';
+  const goodBad = isGood ? 'improved' : 'declined';
+  
+  let statusLabel: string;
+  if (absChange < 2) {
+    statusLabel = 'Stable';
+  } else if (isGood) {
+    statusLabel = absChange > 10 ? 'Strong improvement' : 'Improving';
+  } else {
+    statusLabel = absChange > 10 ? 'Needs attention' : 'Slight decline';
+  }
+  
+  const metricLabels = {
+    hours: 'Labor Hours',
+    cost: 'Spending',
+    quality: 'Quality Score',
+    progress: 'Progress',
+    efficiency: 'Efficiency'
+  };
+  
+  return {
+    metricLabel: metricLabels[metricType],
+    valueLabel: absChange < 2
+      ? `No significant change vs ${period}`
+      : `${goodBad.charAt(0).toUpperCase() + goodBad.slice(1)} by ${absChange.toFixed(0)}% vs ${period}`,
+    impactStatement: absChange < 2
+      ? 'Metrics stable'
+      : isGood
+        ? `Positive trend: ${absChange.toFixed(0)}% ${goodBad}`
+        : `Requires review: ${absChange.toFixed(0)}% ${goodBad}`,
+    statusLabel,
+    actionableInsight: isGood
+      ? 'Continue current approach'
+      : absChange > 10
+        ? 'Investigate cause and implement corrective action'
+        : 'Monitor closely for continued trend'
+  };
+}
+
+/**
+ * Translate z-score (statistical anomaly) for executives
+ * @example translateZScore(2.5) => "Unusual spike requiring attention"
+ */
+export function translateZScore(zScore: number): ExecutiveTranslation {
+  const absZ = Math.abs(zScore);
+  const direction = zScore > 0 ? 'spike' : 'drop';
+  
+  let severity: string;
+  let actionableInsight: string;
+  
+  if (absZ < 1.5) {
+    severity = 'within normal range';
+    actionableInsight = 'No action required';
+  } else if (absZ < 2) {
+    severity = 'slightly unusual';
+    actionableInsight = 'Worth monitoring';
+  } else if (absZ < 3) {
+    severity = 'unusual';
+    actionableInsight = 'Investigate cause';
+  } else {
+    severity = 'highly unusual';
+    actionableInsight = 'Immediate investigation required';
+  }
+  
+  return {
+    metricLabel: 'Statistical Analysis',
+    valueLabel: absZ < 1.5 
+      ? 'Normal variation'
+      : `Unusual ${direction} detected`,
+    impactStatement: absZ < 1.5
+      ? 'Value is within expected range'
+      : `Value is ${severity} - ${absZ.toFixed(1)} standard deviations from normal`,
+    statusLabel: absZ < 2 ? 'Normal' : absZ < 3 ? 'Attention' : 'Critical',
+    actionableInsight
+  };
+}
+
+/**
+ * Format a number in a compact executive-friendly way
+ */
+function formatCompact(num: number): string {
+  const absNum = Math.abs(num);
+  if (absNum >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  }
+  if (absNum >= 1000) {
+    return (num / 1000).toFixed(0) + 'K';
+  }
+  return num.toFixed(0);
+}
+
+/**
+ * Generate executive summary bullet points from variance analysis
+ */
+export function generateExecutiveBullets(
+  analyses: Map<string, VarianceAnalysis>,
+  options: { maxBullets?: number; includeRecommendations?: boolean } = {}
+): string[] {
+  const { maxBullets = 5, includeRecommendations = true } = options;
+  const bullets: Array<{ severity: FlagSeverity; text: string }> = [];
+  
+  for (const [metricName, analysis] of analyses) {
+    // Priority 1: Critical flags
+    const criticalFlags = analysis.flags.filter(f => f.severity === 'critical');
+    if (criticalFlags.length > 0) {
+      const insight = analysis.insights.find(i => i.severity === 'critical');
+      bullets.push({
+        severity: 'critical',
+        text: `${metricName}: ${criticalFlags[0].tooltip}${includeRecommendations && insight?.recommendation ? `. Action: ${insight.recommendation}` : ''}`
+      });
+    }
+    
+    // Priority 2: Warning flags
+    const warningFlags = analysis.flags.filter(f => f.severity === 'warning');
+    if (warningFlags.length > 0 && criticalFlags.length === 0) {
+      bullets.push({
+        severity: 'warning',
+        text: `${metricName}: ${warningFlags[0].tooltip}`
+      });
+    }
+    
+    // Priority 3: Notable trends
+    const trendInsight = analysis.insights.find(i => i.type === 'trend');
+    if (trendInsight && analysis.flags.length === 0) {
+      bullets.push({
+        severity: 'info',
+        text: `${metricName}: ${trendInsight.title}`
+      });
+    }
+  }
+  
+  // Sort by severity and return top bullets
+  const severityOrder = { critical: 3, warning: 2, info: 1 };
+  bullets.sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
+  
+  return bullets.slice(0, maxBullets).map(b => b.text);
+}
+
+/**
+ * Translate technical jargon to plain business language
+ */
+export function translateTechnicalTerm(term: string, value?: number): string {
+  const translations: Record<string, (v?: number) => string> = {
+    'spi': (v) => v !== undefined 
+      ? (v >= 1 ? `${((v - 1) * 100).toFixed(0)}% ahead of schedule` : `${((1 - v) * 100).toFixed(0)}% behind schedule`)
+      : 'Schedule Performance Index',
+    'cpi': (v) => v !== undefined
+      ? (v >= 1 ? `${((v - 1) * 100).toFixed(0)}% under budget` : `${((1 - v) * 100).toFixed(0)}% over budget`)
+      : 'Cost Performance Index',
+    'eac': () => 'Estimated final project cost',
+    'etc': () => 'Remaining cost to complete',
+    'bac': () => 'Original budget',
+    'ev': () => 'Value of work completed',
+    'pv': () => 'Planned value at this point',
+    'ac': () => 'Actual cost incurred',
+    'variance': (v) => v !== undefined && v >= 0 ? 'favorable' : 'unfavorable',
+    'z-score': (v) => v !== undefined
+      ? (Math.abs(v) < 2 ? 'within normal range' : 'unusual variation detected')
+      : 'Statistical deviation measure',
+    'critical path': () => 'Tasks that directly impact project end date',
+    'float': () => 'Buffer time available before delay',
+    'utilization': (v) => v !== undefined
+      ? (v <= 85 ? 'healthy workload' : v <= 100 ? 'fully utilized' : 'overloaded')
+      : 'Percentage of available time being used',
+  };
+  
+  const lowerTerm = term.toLowerCase().replace(/[_-]/g, ' ').trim();
+  const translator = translations[lowerTerm];
+  
+  return translator ? translator(value) : term;
+}
