@@ -11,6 +11,8 @@
  * - Resource names displayed next to bars
  * - Expandable/collapsible hierarchy
  * - Today line marker
+ * - Horizontal and vertical zoom/scroll
+ * - Enhanced tooltips
  * - Responsive sizing
  * 
  * @module components/charts/EChartsGantt
@@ -21,6 +23,19 @@ import ChartWrapper from './ChartWrapper';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 import type { Employee } from '@/types/data';
+
+// ============================================================================
+// COLORS
+// ============================================================================
+
+const COLORS = {
+  TEAL: '#40E0D0',
+  LIME: '#CDDC39',
+  ORANGE: '#FF9800',
+  PINK: '#E91E63',
+  BLUE: '#4A90E2',
+  CRITICAL: '#ef4444',
+};
 
 interface EChartsGanttProps {
   data: any;
@@ -134,13 +149,15 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
     const start = api.coord([api.value(1), categoryIndex]);
     const end = api.coord([api.value(2), categoryIndex]);
     const progress = api.value(3);
+    const itemType = api.value(4);
     const color = api.value(5);
     const isCritical = api.value(6);
     const resourceNames = api.value(8);
     const isMilestone = api.value(9);
 
-    const h = 20; // Task bar height
-    const barWidth = Math.max(end[0] - start[0], 2);
+    // Adjust bar height based on item type (hierarchy level)
+    const h = itemType === 'portfolio' || itemType === 'customer' ? 24 : 20;
+    const barWidth = Math.max(end[0] - start[0], 4);
 
     // Base bar shape
     const rectShape = echarts.graphic.clipRectByRect(
@@ -152,14 +169,14 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
 
     const children: any[] = [];
 
-    // 1. Draw the background bar (planned duration)
+    // 1. Draw the background bar (planned duration) with rounded corners effect
     children.push({
       type: 'rect',
-      shape: rectShape,
+      shape: { ...rectShape, r: 3 },
       style: {
         fill: color,
-        opacity: 0.2,
-        stroke: isCritical ? '#ef4444' : 'rgba(255,255,255,0.1)',
+        opacity: 0.25,
+        stroke: isCritical ? '#ef4444' : 'rgba(255,255,255,0.15)',
         lineWidth: isCritical ? 2 : 1
       }
     });
@@ -175,13 +192,32 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
       if (progressRect) {
         children.push({
           type: 'rect',
-          shape: progressRect,
+          shape: { ...progressRect, r: 3 },
           style: { fill: color, opacity: 1 }
         });
       }
     }
 
-    // 3. Draw Milestone marker and vertical line if applicable
+    // 3. Draw progress text on bar if there's enough space
+    if (barWidth > 50) {
+      children.push({
+        type: 'text',
+        style: {
+          text: `${progress}%`,
+          x: start[0] + 8,
+          y: start[1],
+          fill: '#fff',
+          fontSize: 10,
+          fontWeight: 600,
+          align: 'left',
+          verticalAlign: 'middle',
+          textShadowColor: 'rgba(0,0,0,0.5)',
+          textShadowBlur: 2
+        }
+      });
+    }
+
+    // 4. Draw Milestone marker and vertical line if applicable
     if (isMilestone) {
       const markerSize = 12;
       // Position at the END of the task
@@ -220,7 +256,7 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
       });
     }
 
-    // 4. Draw Resource Text
+    // 5. Draw Resource Text next to bar
     if (resourceNames && barWidth > 10) {
       children.push({
         type: 'text',
@@ -228,7 +264,7 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
           text: resourceNames,
           x: start[0] + barWidth + 10, // Offset from the bar
           y: start[1],
-          fill: '#6b7280', // Text color
+          fill: 'rgba(255,255,255,0.6)',
           fontSize: 10,
           align: 'left',
           verticalAlign: 'middle'
@@ -294,12 +330,33 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
     };
   };
 
+  // Calculate date range for dataZoom
+  const dateRange = useMemo(() => {
+    const allDates = chartData
+      .flatMap(item => [item.startDate, item.endDate])
+      .filter((d): d is string => !!d)
+      .map(d => new Date(d).getTime())
+      .filter(d => !isNaN(d));
+    
+    if (allDates.length === 0) return { min: Date.now(), max: Date.now() };
+    
+    const minTime = Math.min(...allDates);
+    const maxTime = Math.max(...allDates);
+    const padding = (maxTime - minTime) * 0.05;
+    
+    return { min: minTime - padding, max: maxTime + padding };
+  }, [chartData]);
+
+  const today = useMemo(() => new Date().getTime(), []);
+
   const option: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {
         if (params.seriesType === 'custom' && params.seriesName === 'Links') return '';
-        const index = params.value[0];
+        const index = params.value?.[0];
+        if (index === undefined) return '';
         const item = chartData[index];
         if (!item) return '';
 
@@ -307,25 +364,115 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
           ? item.resource_assignments.map((ra: any) => ra.resource_name).join(', ')
           : getEmployeeName(item.resourceId, employeeMap);
 
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                  <span style="font-weight:bold;font-size:14px">${item.name}</span>
-                  ${item.is_milestone ? '<span style="background:#ef4444;color:white;font-size:10px;padding:1px 6px;border-radius:10px;font-weight:bold">MILESTONE</span>' : ''}
-                </div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.7)">
-                  <div>Period: <span style="color:white">${item.startDate}</span> to <span style="color:white">${item.endDate}</span></div>
-                  <div style="margin-top:2px">Progress: <span style="color:white;font-weight:600">${item.percentComplete}%</span></div>
-                  ${resourceNames ? `<div style="margin-top:2px">Assigned: <span style="color:white">${resourceNames}</span></div>` : ''}
-                  ${item.taskEfficiency ? `<div style="margin-top:2px">Efficiency: <span style="color:white">${item.taskEfficiency.toFixed(0)}%</span></div>` : ''}
-                  ${item.isCritical ? '<div style="color:#ef4444;font-weight:bold;margin-top:6px;display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;background:#ef4444;border-radius:50%"></span> Critical Path</div>' : ''}
-                </div>`;
-      }
+        const effColor = item.taskEfficiency >= 100 ? COLORS.TEAL : 
+                         item.taskEfficiency >= 90 ? COLORS.LIME : 
+                         item.taskEfficiency >= 80 ? COLORS.ORANGE : COLORS.PINK;
+
+        return `
+          <div style="padding:8px 12px;">
+            <div style="font-weight:600;color:#40E0D0;margin-bottom:8px;border-bottom:1px solid rgba(64,224,208,0.3);padding-bottom:6px;display:flex;align-items:center;gap:8px;">
+              <span style="font-size:14px;">${item.name}</span>
+              ${item.is_milestone ? '<span style="background:#ef4444;color:white;font-size:9px;padding:2px 6px;border-radius:10px;font-weight:bold;">MILESTONE</span>' : ''}
+            </div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:8px;text-transform:capitalize;">${item.itemType || 'Task'}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);">Start Date</div>
+                <div style="font-weight:600;color:#fff;">${item.startDate || 'N/A'}</div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);">End Date</div>
+                <div style="font-weight:600;color:#fff;">${item.endDate || 'N/A'}</div>
+              </div>
+              <div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);">Progress</div>
+                <div style="font-weight:600;color:#fff;">${item.percentComplete || 0}%</div>
+              </div>
+              ${item.taskEfficiency ? `
+              <div>
+                <div style="font-size:10px;color:rgba(255,255,255,0.5);">Efficiency</div>
+                <div style="font-weight:600;color:${effColor};">${item.taskEfficiency.toFixed(0)}%</div>
+              </div>
+              ` : ''}
+            </div>
+            ${resourceNames ? `
+              <div style="margin-top:8px;font-size:11px;">
+                <span style="color:rgba(255,255,255,0.5);">Assigned:</span>
+                <span style="color:#fff;margin-left:4px;">${resourceNames}</span>
+              </div>
+            ` : ''}
+            ${item.isCritical ? `
+              <div style="margin-top:8px;color:#ef4444;font-weight:600;font-size:11px;display:flex;align-items:center;gap:4px;">
+                ⚠️ Critical Path
+              </div>
+            ` : ''}
+          </div>
+        `;
+      },
+      backgroundColor: 'rgba(20,20,20,0.96)',
+      borderColor: 'rgba(64,224,208,0.3)',
+      borderWidth: 1,
+      textStyle: { color: '#fff' },
+      extraCssText: 'box-shadow:0 6px 24px rgba(0,0,0,0.5);border-radius:10px;'
     },
-    grid: { left: hideLabels ? 0 : 220, right: 150, top: 40, bottom: 20, containLabel: true },
+    grid: { 
+      left: hideLabels ? 30 : 220, 
+      right: 150, 
+      top: 50, 
+      bottom: 50, 
+      containLabel: false 
+    },
+    dataZoom: [
+      // Horizontal slider at bottom
+      {
+        type: 'slider',
+        xAxisIndex: 0,
+        bottom: 10,
+        height: 20,
+        fillerColor: 'rgba(64,224,208,0.2)',
+        borderColor: 'rgba(64,224,208,0.3)',
+        handleStyle: { color: '#40E0D0' },
+        textStyle: { color: 'rgba(255,255,255,0.7)', fontSize: 10 },
+        brushSelect: false
+      },
+      // Horizontal inside (mouse wheel with ctrl)
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        zoomOnMouseWheel: 'ctrl',
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false
+      },
+      // Vertical slider on left
+      {
+        type: 'slider',
+        yAxisIndex: 0,
+        left: hideLabels ? 5 : 5,
+        width: 16,
+        start: 0,
+        end: chartData.length > 25 ? Math.round((25 / chartData.length) * 100) : 100,
+        showDetail: false,
+        fillerColor: 'rgba(64,224,208,0.2)',
+        borderColor: 'rgba(64,224,208,0.3)',
+        handleStyle: { color: '#40E0D0' },
+        brushSelect: false
+      },
+      // Vertical inside (shift + scroll)
+      {
+        type: 'inside',
+        yAxisIndex: 0,
+        zoomOnMouseWheel: 'shift',
+        moveOnMouseMove: false
+      }
+    ],
     xAxis: {
       type: 'time',
       position: 'top',
+      min: dateRange.min,
+      max: dateRange.max,
       splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)', type: 'dashed' } },
-      axisLabel: { color: '#9ca3af', fontSize: 10 }
+      axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+      axisLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10 }
     },
     yAxis: {
       type: 'category',
@@ -335,12 +482,19 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
       axisTick: { show: false },
       axisLabel: {
         show: !hideLabels,
-        color: '#9ca3af',
-        fontSize: 10,
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 11,
+        fontWeight: 500,
         formatter: (id: string) => {
           const item = chartData.find(t => t.id === id);
-          return item ? `${' '.repeat(item.level * 2)}${item.name}` : '';
-        }
+          if (!item) return '';
+          const indent = '  '.repeat(item.level);
+          const icon = item.level === 0 ? '▶ ' : '  ';
+          return `${indent}${icon}${item.name}`;
+        },
+        width: 200,
+        overflow: 'truncate',
+        ellipsis: '...'
       }
     },
     series: [
@@ -359,9 +513,29 @@ const EChartsGantt: React.FC<EChartsGanttProps> = React.memo(({ data, height = '
         data: linkData.map(l => [l.source, l.target]),
         clip: true,
         z: 10
+      },
+      // Today line marker
+      {
+        name: 'Today',
+        type: 'line',
+        markLine: {
+          silent: true,
+          symbol: ['none', 'none'],
+          data: [{
+            xAxis: today,
+            lineStyle: { color: '#ef4444', width: 2, type: 'solid' },
+            label: {
+              formatter: 'Today',
+              position: 'start',
+              color: '#ef4444',
+              fontSize: 10,
+              fontWeight: 'bold'
+            }
+          }]
+        }
       }
     ]
-  }), [chartData, categories, seriesData, linkData, hideLabels, employeeMap]);
+  }), [chartData, categories, seriesData, linkData, hideLabels, employeeMap, dateRange, today]);
 
   return <ChartWrapper option={option} height={height} enableCompare visualId="gantt-chart" visualTitle="Gantt" />;
 });
