@@ -26,7 +26,6 @@ import Navigation from './Navigation';
 import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
 import StatusAndLogsDropdown from './StatusAndLogsDropdown';
-import { PeriodSelector } from '@/components/ui/PeriodSelector';
 
 /**
  * Header component displaying the main application header.
@@ -46,7 +45,6 @@ export default function Header() {
 
   // Get user info from context
   const { user, logout: userLogout } = useUser();
-  const { variancePeriod, setVariancePeriod, varianceEnabled, setVarianceEnabled } = useData();
 
 
   useEffect(() => {
@@ -101,49 +99,6 @@ export default function Header() {
         <DateFilterControl />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <HierarchyFilter />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        
-        {/* Variance Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Quick Toggle for Inline Indicators */}
-          <button
-            onClick={() => setVarianceEnabled(!varianceEnabled)}
-            title={varianceEnabled ? 'Hide inline variance indicators' : 'Show inline variance indicators'}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '32px',
-              height: '32px',
-              background: varianceEnabled ? 'rgba(64, 224, 208, 0.15)' : 'transparent',
-              border: `1px solid ${varianceEnabled ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
-              borderRadius: '6px',
-              color: varianceEnabled ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {varianceEnabled ? (
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
-              ) : (
-                <>
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                  <line x1="1" y1="1" x2="23" y2="23" />
-                </>
-              )}
-            </svg>
-          </button>
-          
-          {varianceEnabled && (
-            <PeriodSelector
-              value={variancePeriod}
-              onChange={setVariancePeriod}
-              size="sm"
-              periods={['day', 'week', 'month', 'quarter']}
-            />
-          )}
-        </div>
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         {/* Profile Dropdown */}
         <div ref={profileRef} style={{ position: 'relative' }}>

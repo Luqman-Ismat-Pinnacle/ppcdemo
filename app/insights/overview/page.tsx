@@ -278,8 +278,10 @@ function PortfolioCommandCenter({
   );
 }
 
-// ===== PORTFOLIO FLOW SANKEY (Enhanced) =====
+// ===== PORTFOLIO FLOW SANKEY (Enhanced with 5-Level Breakdown) =====
 function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
+  const [sankeyDepth, setSankeyDepth] = useState<'simple' | 'detailed' | 'full'>('detailed');
+  
   const option: EChartsOption = useMemo(() => {
     const goodProjects = projectBreakdown.filter(p => p.spi >= 1 && p.cpi >= 1);
     const atRiskProjects = projectBreakdown.filter(p => (p.spi >= 0.9 && p.spi < 1) || (p.cpi >= 0.9 && p.cpi < 1));
@@ -290,6 +292,98 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
     const criticalHours = criticalProjects.reduce((sum, p) => sum + p.actualHours, 0);
     const totalHours = goodHours + atRiskHours + criticalHours || 1;
     
+    // Build nodes and links based on depth
+    const nodes: any[] = [];
+    const links: any[] = [];
+    const nodeSet = new Set<string>();
+    
+    const addNode = (name: string, color: string, borderColor?: string) => {
+      if (!nodeSet.has(name)) {
+        nodes.push({ name, itemStyle: { color, borderWidth: 2, borderColor: borderColor || color } });
+        nodeSet.add(name);
+      }
+    };
+    
+    // Level 1: Portfolio
+    addNode('Portfolio', '#3B82F6', '#60A5FA');
+    
+    // Level 2: Health Status
+    addNode('On Track', '#10B981', '#34D399');
+    addNode('At Risk', '#F59E0B', '#FBBF24');
+    addNode('Critical', '#EF4444', '#F87171');
+    
+    links.push({ source: 'Portfolio', target: 'On Track', value: Math.max(1, goodProjects.length), hours: goodHours });
+    links.push({ source: 'Portfolio', target: 'At Risk', value: Math.max(1, atRiskProjects.length), hours: atRiskHours });
+    links.push({ source: 'Portfolio', target: 'Critical', value: Math.max(1, criticalProjects.length), hours: criticalHours });
+    
+    if (sankeyDepth === 'simple') {
+      // Simple: just portfolio -> status -> outcome
+      addNode('Delivered', '#8B5CF6', '#A78BFA');
+      addNode('In Progress', '#06B6D4', '#22D3EE');
+      
+      links.push({ source: 'On Track', target: 'Delivered', value: Math.max(1, Math.round(goodProjects.length * 0.7)) });
+      links.push({ source: 'On Track', target: 'In Progress', value: Math.max(1, Math.round(goodProjects.length * 0.3)) });
+      links.push({ source: 'At Risk', target: 'Delivered', value: Math.max(1, Math.round(atRiskProjects.length * 0.4)) });
+      links.push({ source: 'At Risk', target: 'In Progress', value: Math.max(1, Math.round(atRiskProjects.length * 0.6)) });
+      links.push({ source: 'Critical', target: 'In Progress', value: Math.max(1, criticalProjects.length) });
+    } else {
+      // Detailed/Full: Add individual projects as middle layer
+      const topGood = goodProjects.slice(0, sankeyDepth === 'full' ? 8 : 4);
+      const topRisk = atRiskProjects.slice(0, sankeyDepth === 'full' ? 6 : 3);
+      const topCrit = criticalProjects.slice(0, sankeyDepth === 'full' ? 4 : 2);
+      
+      // Add project nodes
+      topGood.forEach(p => addNode(p.name.slice(0, 20), '#10B981'));
+      topRisk.forEach(p => addNode(p.name.slice(0, 20), '#F59E0B'));
+      topCrit.forEach(p => addNode(p.name.slice(0, 20), '#EF4444'));
+      
+      // Status -> Projects
+      topGood.forEach(p => {
+        links.push({ source: 'On Track', target: p.name.slice(0, 20), value: Math.max(1, p.actualHours || 10) });
+      });
+      topRisk.forEach(p => {
+        links.push({ source: 'At Risk', target: p.name.slice(0, 20), value: Math.max(1, p.actualHours || 10) });
+      });
+      topCrit.forEach(p => {
+        links.push({ source: 'Critical', target: p.name.slice(0, 20), value: Math.max(1, p.actualHours || 10) });
+      });
+      
+      // Level 4: Work Types
+      addNode('Execution', '#3B82F6');
+      addNode('QC/Review', '#8B5CF6');
+      addNode('Admin', '#6B7280');
+      
+      // Projects -> Work Types (distribute hours)
+      [...topGood, ...topRisk, ...topCrit].forEach(p => {
+        const hrs = p.actualHours || 10;
+        links.push({ source: p.name.slice(0, 20), target: 'Execution', value: Math.max(1, Math.round(hrs * 0.6)) });
+        links.push({ source: p.name.slice(0, 20), target: 'QC/Review', value: Math.max(1, Math.round(hrs * 0.3)) });
+        links.push({ source: p.name.slice(0, 20), target: 'Admin', value: Math.max(1, Math.round(hrs * 0.1)) });
+      });
+      
+      // Level 5: Outcomes
+      addNode('Completed', '#10B981');
+      addNode('In Progress', '#06B6D4');
+      addNode('Pending', '#6B7280');
+      
+      // Work Types -> Outcomes
+      const execTotal = links.filter(l => l.target === 'Execution').reduce((s, l) => s + l.value, 0);
+      const qcTotal = links.filter(l => l.target === 'QC/Review').reduce((s, l) => s + l.value, 0);
+      const adminTotal = links.filter(l => l.target === 'Admin').reduce((s, l) => s + l.value, 0);
+      
+      const completeRatio = healthMetrics.percentComplete / 100;
+      
+      links.push({ source: 'Execution', target: 'Completed', value: Math.max(1, Math.round(execTotal * completeRatio)) });
+      links.push({ source: 'Execution', target: 'In Progress', value: Math.max(1, Math.round(execTotal * (1 - completeRatio) * 0.7)) });
+      links.push({ source: 'Execution', target: 'Pending', value: Math.max(1, Math.round(execTotal * (1 - completeRatio) * 0.3)) });
+      
+      links.push({ source: 'QC/Review', target: 'Completed', value: Math.max(1, Math.round(qcTotal * completeRatio * 0.9)) });
+      links.push({ source: 'QC/Review', target: 'In Progress', value: Math.max(1, Math.round(qcTotal * (1 - completeRatio * 0.9))) });
+      
+      links.push({ source: 'Admin', target: 'Completed', value: Math.max(1, Math.round(adminTotal * 0.8)) });
+      links.push({ source: 'Admin', target: 'In Progress', value: Math.max(1, Math.round(adminTotal * 0.2)) });
+    }
+    
     return {
       backgroundColor: 'transparent',
       tooltip: { 
@@ -297,51 +391,82 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
         backgroundColor: 'rgba(22,27,34,0.95)', 
         borderColor: 'var(--border-color)', 
         textStyle: { color: '#fff', fontSize: 12 },
+        confine: true,
         formatter: (params: any) => {
           if (params.dataType === 'edge') {
-            return `${params.data.source} → ${params.data.target}<br/>Projects: ${params.data.value}<br/>Hours: ${params.data.hours?.toLocaleString() || 'N/A'}`;
+            const pct = totalHours > 0 ? ((params.data.value / totalHours) * 100).toFixed(1) : '0';
+            return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
+              Value: ${params.data.value.toLocaleString()}<br/>
+              ${params.data.hours ? `Hours: ${params.data.hours.toLocaleString()}` : `Share: ${pct}%`}`;
           }
-          return `<strong>${params.name}</strong><br/>Projects: ${params.value || 0}`;
+          return `<strong>${params.name}</strong><br/>Click to filter`;
         },
       },
       series: [{
         type: 'sankey',
         layout: 'none',
-        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.7 } },
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
         nodeAlign: 'justify',
-        nodeWidth: 32,
-        nodeGap: 24,
-        layoutIterations: 32,
+        nodeWidth: 28,
+        nodeGap: 16,
+        layoutIterations: 64,
+        orient: 'horizontal',
+        left: 40,
+        right: 40,
+        top: 20,
+        bottom: 20,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 13, 
+          fontSize: 11, 
           fontWeight: 600,
-          formatter: (p: any) => `${p.name}\n${p.value || 0} projects`,
+          position: 'right',
+          formatter: (p: any) => {
+            const short = p.name.length > 15 ? p.name.slice(0, 15) + '..' : p.name;
+            return short;
+          },
         },
-        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.5 },
-        data: [
-          { name: 'All Projects', itemStyle: { color: '#3B82F6', borderWidth: 2, borderColor: '#60A5FA' } },
-          { name: 'On Track', itemStyle: { color: '#10B981', borderWidth: 2, borderColor: '#34D399' } },
-          { name: 'At Risk', itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#FBBF24' } },
-          { name: 'Critical', itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#F87171' } },
-          { name: 'Completed', itemStyle: { color: '#8B5CF6', borderWidth: 2, borderColor: '#A78BFA' } },
-          { name: 'In Progress', itemStyle: { color: '#06B6D4', borderWidth: 2, borderColor: '#22D3EE' } },
-        ],
-        links: [
-          { source: 'All Projects', target: 'On Track', value: Math.max(1, goodProjects.length), hours: goodHours },
-          { source: 'All Projects', target: 'At Risk', value: Math.max(1, atRiskProjects.length), hours: atRiskHours },
-          { source: 'All Projects', target: 'Critical', value: Math.max(1, criticalProjects.length), hours: criticalHours },
-          { source: 'On Track', target: 'Completed', value: Math.max(1, Math.round(goodProjects.length * 0.7)) },
-          { source: 'On Track', target: 'In Progress', value: Math.max(1, Math.round(goodProjects.length * 0.3)) },
-          { source: 'At Risk', target: 'Completed', value: Math.max(1, Math.round(atRiskProjects.length * 0.4)) },
-          { source: 'At Risk', target: 'In Progress', value: Math.max(1, Math.round(atRiskProjects.length * 0.6)) },
-          { source: 'Critical', target: 'In Progress', value: Math.max(1, criticalProjects.length) },
-        ],
+        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.5 },
+        data: nodes, 
+        links,
       }],
+      dataZoom: [
+        { type: 'inside', orient: 'horizontal' },
+        { type: 'inside', orient: 'vertical' },
+      ],
     };
-  }, [projectBreakdown]);
+  }, [projectBreakdown, healthMetrics, sankeyDepth]);
 
-  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '500px' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexShrink: 0 }}>
+        {(['simple', 'detailed', 'full'] as const).map(depth => (
+          <button
+            key={depth}
+            onClick={() => setSankeyDepth(depth)}
+            style={{
+              padding: '0.3rem 0.75rem',
+              borderRadius: '6px',
+              border: `1px solid ${sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+              background: sankeyDepth === depth ? 'rgba(64,224,208,0.1)' : 'transparent',
+              color: sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {depth}
+          </button>
+        ))}
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
+          Scroll/pinch to zoom
+        </span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <ChartWrapper option={option} height="100%" onClick={onClick} />
+      </div>
+    </div>
+  );
 }
 
 // ===== ENHANCED BUDGET VARIANCE CHART =====

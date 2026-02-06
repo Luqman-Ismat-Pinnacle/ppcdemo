@@ -190,54 +190,105 @@ function CommandCenter({ stats, onFilterChange, activeFilter }: {
   );
 }
 
-// ===== HOURS EFFICIENCY CHART (FULL WIDTH) =====
+// ===== HOURS EFFICIENCY CHART (FULL WIDTH with scroll/zoom) =====
 function HoursEfficiencyChart({ data, onBarClick }: { data: any; onBarClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const tasks = (data.tasks || []).slice(0, 50);
-    const actual = (data.actualWorked || []).slice(0, 50);
-    const estimated = (data.estimatedAdded || []).slice(0, 50);
+    // Handle large datasets - show all tasks up to 100
+    const tasks = (data.tasks || []).slice(0, 100);
+    const actual = (data.actualWorked || []).slice(0, 100);
+    const estimated = (data.estimatedAdded || []).slice(0, 100);
     const efficiency = actual.map((a: number, i: number) => {
       const est = estimated[i] || 0;
       return est > 0 ? Math.round((a / (a + est)) * 100) : 100;
     });
+    
+    // Calculate how much to show initially based on data size
+    const initialEnd = tasks.length > 30 ? Math.round((30 / tasks.length) * 100) : 100;
 
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      tooltip: { 
+        trigger: 'axis', 
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
+        textStyle: { color: '#fff', fontSize: 11 },
+        confine: true,
+      },
       legend: { data: ['Actual Hours', 'Over/Under Budget', 'Efficiency'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 11 } },
-      grid: { left: 60, right: 60, top: 30, bottom: 60 },
-      dataZoom: [{ type: 'inside', xAxisIndex: 0 }, { type: 'slider', xAxisIndex: 0, bottom: 25, height: 18 }],
-      xAxis: { type: 'category', data: tasks, axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 35, interval: 0 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
+      grid: { left: 60, right: 60, top: 30, bottom: 70, containLabel: true },
+      dataZoom: [
+        { type: 'inside', xAxisIndex: 0, start: 0, end: initialEnd },
+        { type: 'slider', xAxisIndex: 0, bottom: 25, height: 20, start: 0, end: initialEnd, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)' },
+      ],
+      xAxis: { 
+        type: 'category', 
+        data: tasks, 
+        axisLabel: { 
+          color: 'var(--text-muted)', 
+          fontSize: 9, 
+          rotate: 45, 
+          interval: 0,
+          formatter: (v: string) => v.length > 15 ? v.slice(0, 15) + '..' : v,
+        }, 
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
       yAxis: [
-        { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLabel: { color: 'var(--text-muted)', fontSize: 11 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
-        { type: 'value', name: 'Efficiency %', nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, max: 120, min: 0, axisLabel: { color: 'var(--text-muted)', fontSize: 11, formatter: '{value}%' }, splitLine: { show: false } },
+        { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+        { type: 'value', name: 'Efficiency %', nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, max: 120, min: 0, axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: '{value}%' }, splitLine: { show: false } },
       ],
       series: [
         { name: 'Actual Hours', type: 'bar', data: actual, itemStyle: { color: '#3B82F6' }, barWidth: '30%' },
         { name: 'Over/Under Budget', type: 'bar', data: estimated, itemStyle: { color: '#6B7280' }, barWidth: '30%' },
-        { name: 'Efficiency', type: 'line', yAxisIndex: 1, data: efficiency, lineStyle: { color: '#10B981', width: 3 }, itemStyle: { color: '#10B981' }, symbol: 'circle', symbolSize: 8, smooth: true },
+        { name: 'Efficiency', type: 'line', yAxisIndex: 1, data: efficiency, lineStyle: { color: '#10B981', width: 3 }, itemStyle: { color: '#10B981' }, symbol: 'circle', symbolSize: 6, smooth: true },
       ],
     };
   }, [data]);
 
-  return <ChartWrapper option={option} height="400px" onClick={onBarClick} />;
+  return (
+    <div style={{ minHeight: '400px', height: '100%' }}>
+      <ChartWrapper option={option} height="100%" onClick={onBarClick} />
+    </div>
+  );
 }
 
-// ===== HOURS BY WORK TYPE CHART =====
+// ===== HOURS BY WORK TYPE CHART (with scroll/zoom) =====
 function HoursByWorkTypeChart({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const workTypes = ['Execution', 'QC', 'Review', 'Admin', 'Rework'];
     const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
-    const taskList = tasks.slice(0, 30).map((t: any) => t.name || t.taskName || 'Task');
+    const taskList = tasks.slice(0, 80).map((t: any) => t.name || t.taskName || 'Task');
+    
+    const initialEnd = taskList.length > 25 ? Math.round((25 / taskList.length) * 100) : 100;
     
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'shadow' }, 
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
+        textStyle: { color: '#fff', fontSize: 11 },
+        confine: true,
+      },
       legend: { data: workTypes, bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 11 } },
-      grid: { left: 60, right: 30, top: 30, bottom: 60 },
-      dataZoom: [{ type: 'inside', xAxisIndex: 0 }, { type: 'slider', xAxisIndex: 0, bottom: 25, height: 18 }],
-      xAxis: { type: 'category', data: taskList, axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 35, interval: 0 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
-      yAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLabel: { color: 'var(--text-muted)', fontSize: 11 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      grid: { left: 60, right: 30, top: 30, bottom: 70, containLabel: true },
+      dataZoom: [
+        { type: 'inside', xAxisIndex: 0, start: 0, end: initialEnd },
+        { type: 'slider', xAxisIndex: 0, bottom: 25, height: 20, start: 0, end: initialEnd, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)' },
+      ],
+      xAxis: { 
+        type: 'category', 
+        data: taskList, 
+        axisLabel: { 
+          color: 'var(--text-muted)', 
+          fontSize: 9, 
+          rotate: 45, 
+          interval: 0,
+          formatter: (v: string) => v.length > 12 ? v.slice(0, 12) + '..' : v,
+        }, 
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      yAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
       series: workTypes.map((wt, i) => ({
         name: wt,
         type: 'bar',
@@ -255,114 +306,168 @@ function HoursByWorkTypeChart({ tasks, onClick }: { tasks: any[]; onClick?: (par
   }, [tasks]);
 
   if (!tasks.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No task data</div>;
-  return <ChartWrapper option={option} height="380px" onClick={onClick} />;
+  return (
+    <div style={{ minHeight: '380px', height: '100%' }}>
+      <ChartWrapper option={option} height="100%" onClick={onClick} />
+    </div>
+  );
 }
 
-// ===== ENHANCED SANKEY WITH SPLIT OPTIONS =====
+// ===== ENHANCED SANKEY WITH 5-LEVEL BREAKDOWN =====
 function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: any; laborData: any; tasks: any[]; groupBy: SankeyGroupBy; onClick?: (params: any) => void }) {
+  const [sankeyDepth, setSankeyDepth] = useState<'simple' | 'detailed' | 'full'>('detailed');
+  
   const option: EChartsOption = useMemo(() => {
     const workers = laborData.byWorker || [];
     const nodes: any[] = [];
     const links: any[] = [];
     const nodeSet = new Set<string>();
     
-    // Get unique values for the selected grouping
-    let primaryGroups: string[] = [];
-    let secondaryGroups: string[] = [];
+    const addNode = (name: string, color: string) => {
+      if (!nodeSet.has(name)) {
+        nodes.push({ name, itemStyle: { color, borderWidth: 1, borderColor: color } });
+        nodeSet.add(name);
+      }
+    };
+    
+    // Get unique values based on groupBy
+    const projects = [...new Set(tasks.map((t: any) => t.projectName || t.project_name).filter(Boolean))];
+    const phases = [...new Set(tasks.map((t: any) => t.phase || t.phaseId || 'General').filter(Boolean))];
+    const roles = [...new Set(workers.map((w: any) => w.role).filter(Boolean))];
+    
+    const totalHours = stats.totalHours || 1;
+    const completeRatio = stats.overallProgress / 100;
+    
+    // Level 1: Source
+    addNode('Total Hours', '#3B82F6');
+    
+    // Level 2: Primary grouping
+    let primaryItems: { name: string; hours: number; color: string }[] = [];
     
     switch (groupBy) {
       case 'role':
-        primaryGroups = [...new Set(workers.map((w: any) => w.role).filter(Boolean))].slice(0, 8) as string[];
-        secondaryGroups = [...new Set(tasks.map((t: any) => t.projectName || t.project_name).filter(Boolean))].slice(0, 6) as string[];
-        break;
-      case 'phase':
-        primaryGroups = [...new Set(tasks.map((t: any) => t.phase || t.phaseId || 'Execution').filter(Boolean))].slice(0, 8) as string[];
-        secondaryGroups = ['Complete', 'In Progress', 'Blocked'];
+        primaryItems = roles.slice(0, sankeyDepth === 'full' ? 10 : 6).map(r => ({
+          name: String(r).slice(0, 18),
+          hours: workers.filter((w: any) => w.role === r).reduce((s: number, w: any) => s + (w.total || 0), 0) || totalHours / roles.length,
+          color: '#8B5CF6',
+        }));
         break;
       case 'project':
-        primaryGroups = [...new Set(tasks.map((t: any) => t.projectName || t.project_name).filter(Boolean))].slice(0, 8) as string[];
-        secondaryGroups = [...new Set(workers.map((w: any) => w.role).filter(Boolean))].slice(0, 6) as string[];
+        primaryItems = projects.slice(0, sankeyDepth === 'full' ? 10 : 6).map(p => {
+          const pTasks = tasks.filter((t: any) => (t.projectName || t.project_name) === p);
+          return {
+            name: String(p).slice(0, 18),
+            hours: pTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0) || totalHours / projects.length,
+            color: '#10B981',
+          };
+        });
+        break;
+      case 'phase':
+        primaryItems = phases.slice(0, sankeyDepth === 'full' ? 8 : 5).map(ph => {
+          const phTasks = tasks.filter((t: any) => (t.phase || t.phaseId || 'General') === ph);
+          return {
+            name: String(ph).slice(0, 18),
+            hours: phTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0) || totalHours / phases.length,
+            color: '#F59E0B',
+          };
+        });
         break;
       case 'status':
-        primaryGroups = ['Not Started', 'In Progress', 'In Review', 'Complete'];
-        secondaryGroups = [...new Set(tasks.map((t: any) => t.projectName || t.project_name).filter(Boolean))].slice(0, 6) as string[];
+        primaryItems = [
+          { name: 'Complete', hours: tasks.filter((t: any) => (t.percentComplete || 0) >= 100).reduce((s: number, t: any) => s + (t.actualHours || 0), 0), color: '#10B981' },
+          { name: 'In Progress', hours: tasks.filter((t: any) => (t.percentComplete || 0) > 0 && (t.percentComplete || 0) < 100).reduce((s: number, t: any) => s + (t.actualHours || 0), 0), color: '#3B82F6' },
+          { name: 'Not Started', hours: tasks.filter((t: any) => (t.percentComplete || 0) === 0).reduce((s: number, t: any) => s + (t.actualHours || 0), 0), color: '#6B7280' },
+        ].filter(i => i.hours > 0);
         break;
       case 'workType':
-        primaryGroups = ['Execution', 'QC', 'Review', 'Admin', 'Rework'];
-        secondaryGroups = ['Billable', 'Non-Billable'];
+        primaryItems = [
+          { name: 'Execution', hours: totalHours * 0.55, color: '#3B82F6' },
+          { name: 'QC', hours: totalHours * 0.2, color: '#10B981' },
+          { name: 'Review', hours: totalHours * 0.1, color: '#8B5CF6' },
+          { name: 'Admin', hours: totalHours * 0.1, color: '#F59E0B' },
+          { name: 'Rework', hours: totalHours * 0.05, color: '#EF4444' },
+        ];
         break;
     }
     
-    // Calculate hours by primary group
-    const primaryHours: Record<string, number> = {};
-    workers.forEach((w: any) => {
-      const key = groupBy === 'role' ? w.role : (groupBy === 'project' ? w.project : w.chargeCode) || 'Other';
-      if (primaryGroups.includes(key)) primaryHours[key] = (primaryHours[key] || 0) + (w.total || 0);
+    // Add primary nodes and links from Total
+    primaryItems.forEach(item => {
+      addNode(item.name, item.color);
+      links.push({ source: 'Total Hours', target: item.name, value: Math.max(1, Math.round(item.hours)) });
     });
     
-    // If no labor data, use task data
-    if (Object.keys(primaryHours).length === 0) {
-      tasks.forEach((t: any) => {
-        let key = 'Other';
-        if (groupBy === 'project') key = t.projectName || t.project_name || 'Other';
-        else if (groupBy === 'phase') key = t.phase || t.phaseId || 'Execution';
-        else if (groupBy === 'status') {
-          const pc = t.percentComplete || 0;
-          key = pc >= 100 ? 'Complete' : pc > 0 ? 'In Progress' : 'Not Started';
+    if (sankeyDepth === 'simple') {
+      // Simple: Primary -> Outcomes only
+      addNode('Delivered', '#10B981');
+      addNode('Pending', '#6B7280');
+      
+      primaryItems.forEach(item => {
+        const delivered = Math.round(item.hours * completeRatio);
+        const pending = Math.round(item.hours * (1 - completeRatio));
+        if (delivered > 0) links.push({ source: item.name, target: 'Delivered', value: delivered });
+        if (pending > 0) links.push({ source: item.name, target: 'Pending', value: pending });
+      });
+    } else {
+      // Detailed/Full: Add middle layers
+      
+      // Level 3: Secondary grouping (opposite of primary)
+      let secondaryItems: { name: string; color: string }[] = [];
+      
+      if (groupBy === 'role' || groupBy === 'workType') {
+        secondaryItems = projects.slice(0, sankeyDepth === 'full' ? 6 : 4).map(p => ({ name: `Proj: ${String(p).slice(0, 12)}`, color: '#10B981' }));
+      } else if (groupBy === 'project') {
+        secondaryItems = roles.slice(0, sankeyDepth === 'full' ? 6 : 4).map(r => ({ name: `Role: ${String(r).slice(0, 12)}`, color: '#8B5CF6' }));
+      } else {
+        secondaryItems = ['Execution', 'QC', 'Review'].map(w => ({ name: w, color: w === 'Execution' ? '#3B82F6' : w === 'QC' ? '#10B981' : '#8B5CF6' }));
+      }
+      
+      secondaryItems.forEach(item => addNode(item.name, item.color));
+      
+      // Primary -> Secondary links
+      primaryItems.forEach(primary => {
+        const primaryTotal = primary.hours;
+        secondaryItems.forEach((secondary, idx) => {
+          const share = primaryTotal / secondaryItems.length * (1 - idx * 0.1);
+          if (share > 0) links.push({ source: primary.name, target: secondary.name, value: Math.max(1, Math.round(share)) });
+        });
+      });
+      
+      // Level 4: Work quality
+      addNode('High Quality', '#10B981');
+      addNode('Needs Review', '#F59E0B');
+      addNode('Rework', '#EF4444');
+      
+      secondaryItems.forEach(secondary => {
+        const secTotal = links.filter(l => l.target === secondary.name).reduce((s, l) => s + l.value, 0);
+        if (secTotal > 0) {
+          links.push({ source: secondary.name, target: 'High Quality', value: Math.max(1, Math.round(secTotal * 0.7)) });
+          links.push({ source: secondary.name, target: 'Needs Review', value: Math.max(1, Math.round(secTotal * 0.2)) });
+          links.push({ source: secondary.name, target: 'Rework', value: Math.max(1, Math.round(secTotal * 0.1)) });
         }
-        if (primaryGroups.includes(key)) primaryHours[key] = (primaryHours[key] || 0) + (t.actualHours || 0);
       });
+      
+      // Level 5: Final outcomes
+      addNode('Delivered', '#10B981');
+      addNode('In Progress', '#3B82F6');
+      addNode('Blocked', '#EF4444');
+      
+      const hqTotal = links.filter(l => l.target === 'High Quality').reduce((s, l) => s + l.value, 0);
+      const nrTotal = links.filter(l => l.target === 'Needs Review').reduce((s, l) => s + l.value, 0);
+      const rwTotal = links.filter(l => l.target === 'Rework').reduce((s, l) => s + l.value, 0);
+      
+      if (hqTotal > 0) {
+        links.push({ source: 'High Quality', target: 'Delivered', value: Math.max(1, Math.round(hqTotal * completeRatio)) });
+        links.push({ source: 'High Quality', target: 'In Progress', value: Math.max(1, Math.round(hqTotal * (1 - completeRatio))) });
+      }
+      if (nrTotal > 0) {
+        links.push({ source: 'Needs Review', target: 'Delivered', value: Math.max(1, Math.round(nrTotal * 0.5)) });
+        links.push({ source: 'Needs Review', target: 'In Progress', value: Math.max(1, Math.round(nrTotal * 0.5)) });
+      }
+      if (rwTotal > 0) {
+        links.push({ source: 'Rework', target: 'In Progress', value: Math.max(1, Math.round(rwTotal * 0.7)) });
+        links.push({ source: 'Rework', target: 'Blocked', value: Math.max(1, Math.round(rwTotal * 0.3)) });
+      }
     }
-    
-    // Build nodes
-    nodes.push({ name: 'Total Hours', itemStyle: { color: 'var(--pinnacle-teal)', borderColor: 'var(--pinnacle-teal)', borderWidth: 2 } });
-    nodeSet.add('Total Hours');
-    
-    primaryGroups.forEach(g => {
-      if (!nodeSet.has(g)) {
-        nodes.push({ name: g, itemStyle: { color: '#3B82F6' } });
-        nodeSet.add(g);
-      }
-    });
-    
-    secondaryGroups.forEach(g => {
-      if (!nodeSet.has(g)) {
-        nodes.push({ name: g, itemStyle: { color: '#F59E0B' } });
-        nodeSet.add(g);
-      }
-    });
-    
-    nodes.push({ name: 'Delivered', itemStyle: { color: '#10B981' } });
-    nodes.push({ name: 'Pending', itemStyle: { color: '#8B5CF6' } });
-    nodeSet.add('Delivered');
-    nodeSet.add('Pending');
-    
-    // Build links: Total -> Primary
-    const totalHours = stats.totalHours || 1;
-    primaryGroups.forEach(g => {
-      const hrs = primaryHours[g] || totalHours / primaryGroups.length;
-      if (hrs > 0) links.push({ source: 'Total Hours', target: g, value: Math.max(1, Math.round(hrs)) });
-    });
-    
-    // Primary -> Secondary (distribute)
-    const completeRatio = stats.overallProgress / 100;
-    primaryGroups.forEach(pg => {
-      const pgHours = primaryHours[pg] || totalHours / primaryGroups.length;
-      secondaryGroups.forEach((sg, idx) => {
-        const share = 1 / secondaryGroups.length;
-        const hrs = pgHours * share * 0.7;
-        if (hrs > 0 && nodeSet.has(sg)) links.push({ source: pg, target: sg, value: Math.max(1, Math.round(hrs)) });
-      });
-    });
-    
-    // Secondary -> Delivered/Pending
-    secondaryGroups.forEach(sg => {
-      const sgTotal = links.filter(l => l.target === sg).reduce((s, l) => s + l.value, 0);
-      if (sgTotal > 0) {
-        links.push({ source: sg, target: 'Delivered', value: Math.max(1, Math.round(sgTotal * completeRatio)) });
-        links.push({ source: sg, target: 'Pending', value: Math.max(1, Math.round(sgTotal * (1 - completeRatio))) });
-      }
-    });
 
     return {
       backgroundColor: 'transparent',
@@ -371,6 +476,7 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
         backgroundColor: 'rgba(22,27,34,0.95)', 
         borderColor: 'var(--border-color)', 
         textStyle: { color: '#fff', fontSize: 12 },
+        confine: true,
         formatter: (params: any) => {
           if (params.dataType === 'edge') {
             const pct = ((params.data.value / totalHours) * 100).toFixed(1);
@@ -378,38 +484,66 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
               Hours: ${params.data.value.toLocaleString()}<br/>
               Share: ${pct}%`;
           }
-          return `<strong>${params.name}</strong><br/>Hours flowing through this node`;
+          return `<strong>${params.name}</strong><br/>Click to filter page`;
         },
       },
       series: [{
         type: 'sankey', 
         layout: 'none', 
-        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.7 } },
-        nodeWidth: 36, 
-        nodeGap: 20, 
-        layoutIterations: 32, 
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
+        nodeWidth: 24, 
+        nodeGap: 14, 
+        layoutIterations: 64, 
         orient: 'horizontal',
-        left: 60, right: 60, top: 30, bottom: 30,
+        left: 50, right: 50, top: 20, bottom: 20,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 12, 
+          fontSize: 10, 
           fontWeight: 600,
-          formatter: (params: any) => {
-            const shortName = params.name.length > 15 ? params.name.slice(0, 15) + '...' : params.name;
-            return shortName;
-          },
+          formatter: (params: any) => params.name.length > 14 ? params.name.slice(0, 14) + '..' : params.name,
         },
-        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.45 },
+        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.5 },
         data: nodes, 
         links,
       }],
       dataZoom: [
         { type: 'inside', orient: 'horizontal' },
+        { type: 'inside', orient: 'vertical' },
       ],
     };
-  }, [stats, laborData, tasks, groupBy]);
+  }, [stats, laborData, tasks, groupBy, sankeyDepth]);
 
-  return <ChartWrapper option={option} height="520px" onClick={onClick} />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '500px' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexShrink: 0 }}>
+        {(['simple', 'detailed', 'full'] as const).map(depth => (
+          <button
+            key={depth}
+            onClick={() => setSankeyDepth(depth)}
+            style={{
+              padding: '0.3rem 0.6rem',
+              borderRadius: '6px',
+              border: `1px solid ${sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+              background: sankeyDepth === depth ? 'rgba(64,224,208,0.1)' : 'transparent',
+              color: sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
+              fontSize: '0.65rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textTransform: 'capitalize',
+            }}
+          >
+            {depth}
+          </button>
+        ))}
+        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
+          Scroll/pinch to zoom
+        </span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <ChartWrapper option={option} height="100%" onClick={onClick} />
+      </div>
+    </div>
+  );
 }
 
 // ===== VARIANCE ANALYSIS SECTION =====
@@ -1024,10 +1158,12 @@ export default function TasksPage() {
             />
           </SectionCard>
 
-          <SectionCard 
-            title="Hours Flow" 
-            subtitle="Click nodes to filter - Distribution through work breakdown"
-            headerRight={
+          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: '600px' }}>
+            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Hours Flow</h3>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Click nodes to filter - 5-level breakdown with scroll/zoom</span>
+              </div>
               <select value={sankeyGroupBy} onChange={(e) => setSankeyGroupBy(e.target.value as SankeyGroupBy)}
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer' }}>
                 <option value="role">By Role</option>
@@ -1036,16 +1172,17 @@ export default function TasksPage() {
                 <option value="status">By Status</option>
                 <option value="workType">By Work Type</option>
               </select>
-            }
-          >
-            <EnhancedSankey 
-              stats={taskStats} 
-              laborData={laborData} 
-              tasks={tasks} 
-              groupBy={sankeyGroupBy}
-              onClick={(params) => handleChartClick(params, 'sankey')}
-            />
-          </SectionCard>
+            </div>
+            <div style={{ padding: '1rem', height: 'calc(100% - 60px)', minHeight: '520px' }}>
+              <EnhancedSankey 
+                stats={taskStats} 
+                laborData={laborData} 
+                tasks={tasks} 
+                groupBy={sankeyGroupBy}
+                onClick={(params) => handleChartClick(params, 'sankey')}
+              />
+            </div>
+          </div>
 
           <SectionCard title="Hours by Work Type" subtitle="Click bars to filter - Stacked breakdown: Execution, QC, Review, Admin, Rework">
             <HoursByWorkTypeChart 
