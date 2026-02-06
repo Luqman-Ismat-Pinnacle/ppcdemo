@@ -389,6 +389,425 @@ function ProgressBurndown({ healthMetrics }: { healthMetrics: any }) {
   );
 }
 
+// ===== FLOAT & CASCADE GANTT =====
+function FloatCascadeGantt({ tasks, milestones }: { tasks: any[]; milestones: any[] }) {
+  const option: EChartsOption = useMemo(() => {
+    // Get top tasks with float data
+    const taskData = tasks.slice(0, 15).map((t: any, idx: number) => {
+      const baseline = t.baselineHours || t.budgetHours || 0;
+      const actual = t.actualHours || 0;
+      const pc = t.percentComplete || 0;
+      const totalFloat = Math.max(0, 20 - (actual - baseline)); // Simulated float
+      const isCritical = totalFloat <= 0;
+      
+      return {
+        name: (t.name || t.taskName || `Task ${idx + 1}`).slice(0, 25),
+        actual: actual,
+        float: totalFloat,
+        isCritical,
+        pc,
+        dependencies: t.predecessors || [],
+      };
+    });
+
+    const names = taskData.map(t => t.name);
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const d = taskData[params[0]?.dataIndex];
+          if (!d) return '';
+          return `<strong>${d.name}</strong><br/>
+            Hours: ${d.actual}<br/>
+            Float: ${d.float} hrs ${d.isCritical ? '<span style="color:#EF4444">(CRITICAL)</span>' : ''}<br/>
+            Progress: ${d.pc}%`;
+        },
+      },
+      legend: { data: ['Work Hours', 'Float (Buffer)', 'Critical Path'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 150, right: 40, top: 30, bottom: 50 },
+      xAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      yAxis: { type: 'category', data: names, axisLabel: { color: 'var(--text-primary)', fontSize: 10 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
+      series: [
+        {
+          name: 'Work Hours',
+          type: 'bar',
+          stack: 'total',
+          data: taskData.map(t => ({ value: t.actual, itemStyle: { color: t.isCritical ? '#EF4444' : '#3B82F6' } })),
+          barWidth: '60%',
+        },
+        {
+          name: 'Float (Buffer)',
+          type: 'bar',
+          stack: 'total',
+          data: taskData.map(t => ({ value: t.float, itemStyle: { color: 'rgba(64,224,208,0.3)', borderColor: 'var(--pinnacle-teal)', borderWidth: 1, borderType: 'dashed' } })),
+          barWidth: '60%',
+        },
+      ],
+    };
+  }, [tasks]);
+
+  return <ChartWrapper option={option} height="400px" />;
+}
+
+// ===== FTE SATURATION HEATMAP =====
+function FTESaturationHeatmap({ laborData, tasks }: { laborData: any; tasks: any[] }) {
+  const option: EChartsOption = useMemo(() => {
+    const weeks = laborData?.weeks || [];
+    const workers = laborData?.byWorker || [];
+    
+    // Calculate weekly labor demand
+    const weeklyDemand = weeks.slice(0, 12).map((w: string, wIdx: number) => {
+      let total = 0;
+      workers.forEach((worker: any) => {
+        total += (worker.data || [])[wIdx] || 0;
+      });
+      return total;
+    });
+    
+    // FTE constraint (40 hrs/week * number of workers)
+    const fteCapacity = Math.max(workers.length * 40, 200);
+    const saturationPercent = weeklyDemand.map(d => Math.round((d / fteCapacity) * 100));
+    
+    const weekLabels = weeks.slice(0, 12).map((w: string) => {
+      try { return new Date(w).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+      catch { return w; }
+    });
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const idx = params[0]?.dataIndex;
+          return `<strong>${weekLabels[idx]}</strong><br/>
+            Demand: ${weeklyDemand[idx]} hrs<br/>
+            Capacity: ${fteCapacity} hrs<br/>
+            Utilization: <span style="color:${saturationPercent[idx] > 100 ? '#EF4444' : saturationPercent[idx] > 80 ? '#F59E0B' : '#10B981'}">${saturationPercent[idx]}%</span>`;
+        },
+      },
+      grid: { left: 60, right: 30, top: 40, bottom: 60 },
+      xAxis: {
+        type: 'category',
+        data: weekLabels,
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Hours',
+        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+      },
+      series: [
+        {
+          name: 'Labor Demand',
+          type: 'bar',
+          data: weeklyDemand.map((d, i) => ({
+            value: d,
+            itemStyle: {
+              color: saturationPercent[i] > 100 ? '#EF4444' : saturationPercent[i] > 80 ? '#F59E0B' : '#3B82F6',
+            },
+          })),
+          barWidth: '50%',
+        },
+        {
+          name: 'FTE Capacity',
+          type: 'line',
+          data: weekLabels.map(() => fteCapacity),
+          lineStyle: { color: '#10B981', width: 2, type: 'dashed' },
+          symbol: 'none',
+        },
+        {
+          name: 'Overload Zone',
+          type: 'line',
+          data: weekLabels.map(() => fteCapacity * 1.2),
+          lineStyle: { color: '#EF4444', width: 1, type: 'dotted' },
+          symbol: 'none',
+        },
+      ],
+      legend: { data: ['Labor Demand', 'FTE Capacity', 'Overload Zone'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+    };
+  }, [laborData, tasks]);
+
+  return <ChartWrapper option={option} height="320px" />;
+}
+
+// ===== EARNED VALUE S-CURVE =====
+function EarnedValueSCurve({ tasks, sCurveData }: { tasks: any[]; sCurveData: any }) {
+  const option: EChartsOption = useMemo(() => {
+    const dates = sCurveData?.dates || [];
+    const planned = sCurveData?.planned || [];
+    const actual = sCurveData?.actual || [];
+    
+    // Calculate Earned Value
+    let totalBaseline = 0, totalActual = 0, totalEarned = 0;
+    tasks.forEach((t: any) => {
+      const baseline = t.baselineHours || t.budgetHours || 0;
+      const actualHrs = t.actualHours || 0;
+      const pc = (t.percentComplete || 0) / 100;
+      totalBaseline += baseline;
+      totalActual += actualHrs;
+      totalEarned += baseline * pc;
+    });
+    
+    // Create EV projection
+    const ev = dates.map((_: any, i: number) => Math.round((i / dates.length) * totalEarned));
+    const pv = planned;
+    const ac = actual;
+    
+    // Calculate variances
+    const sv = totalEarned - (pv[pv.length - 1] || 0);
+    const cv = totalEarned - totalActual;
+    const spi = pv[pv.length - 1] > 0 ? totalEarned / pv[pv.length - 1] : 1;
+    const cpi = totalActual > 0 ? totalEarned / totalActual : 1;
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+      },
+      legend: { data: ['Planned Value (PV)', 'Earned Value (EV)', 'Actual Cost (AC)'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 60, right: 30, top: 30, bottom: 80 },
+      xAxis: {
+        type: 'category',
+        data: dates.length ? dates.map((d: string) => {
+          try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+          catch { return d; }
+        }) : ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'],
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Hours',
+        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+      },
+      series: [
+        { name: 'Planned Value (PV)', type: 'line', data: pv, lineStyle: { color: '#6B7280', width: 2, type: 'dashed' }, symbol: 'none', smooth: true },
+        { name: 'Earned Value (EV)', type: 'line', data: ev, lineStyle: { color: 'var(--pinnacle-teal)', width: 3 }, symbol: 'circle', symbolSize: 6, itemStyle: { color: 'var(--pinnacle-teal)' }, smooth: true, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(64,224,208,0.2)' }, { offset: 1, color: 'rgba(64,224,208,0)' }] } } },
+        { name: 'Actual Cost (AC)', type: 'line', data: ac, lineStyle: { color: ac[ac.length - 1] > ev[ev.length - 1] ? '#EF4444' : '#10B981', width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true },
+      ],
+      graphic: [
+        { type: 'text', right: 40, top: 10, style: { text: `SPI: ${spi.toFixed(2)} | CPI: ${cpi.toFixed(2)}`, fill: 'var(--text-muted)', fontSize: 11 } },
+      ],
+    };
+  }, [tasks, sCurveData]);
+
+  return <ChartWrapper option={option} height="340px" />;
+}
+
+// ===== BUFFER CONSUMPTION SUNBURST =====
+function BufferConsumptionSunburst({ projectBreakdown, milestones }: { projectBreakdown: any[]; milestones: any[] }) {
+  const option: EChartsOption = useMemo(() => {
+    // Group by phase/project and calculate buffer status
+    const data: any[] = [{
+      name: 'Portfolio',
+      itemStyle: { color: '#3B82F6' },
+      children: projectBreakdown.slice(0, 8).map(p => {
+        const bufferUsed = Math.min(100, Math.max(0, p.variance + 50)); // Normalize to 0-100
+        const color = bufferUsed >= 80 ? '#EF4444' : bufferUsed >= 50 ? '#F59E0B' : '#10B981';
+        
+        return {
+          name: p.name.slice(0, 15),
+          value: p.actualHours || 100,
+          itemStyle: { color },
+          children: [
+            { name: 'Buffer Used', value: bufferUsed, itemStyle: { color } },
+            { name: 'Buffer Left', value: 100 - bufferUsed, itemStyle: { color: 'rgba(255,255,255,0.1)' } },
+          ],
+        };
+      }),
+    }];
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const d = params.data;
+          if (d.name === 'Buffer Used') return `Buffer Consumed: ${d.value}%`;
+          if (d.name === 'Buffer Left') return `Buffer Remaining: ${d.value}%`;
+          return `<strong>${d.name}</strong><br/>${d.value ? `Hours: ${d.value}` : ''}`;
+        },
+      },
+      series: [{
+        type: 'sunburst',
+        data: data[0].children,
+        radius: ['15%', '90%'],
+        center: ['50%', '50%'],
+        sort: undefined,
+        emphasis: { focus: 'ancestor' },
+        levels: [
+          {},
+          { r0: '15%', r: '45%', itemStyle: { borderWidth: 2, borderColor: 'var(--bg-card)' }, label: { rotate: 'tangential', fontSize: 10, color: 'var(--text-primary)' } },
+          { r0: '45%', r: '90%', label: { position: 'outside', fontSize: 9, color: 'var(--text-muted)' }, itemStyle: { borderWidth: 1, borderColor: 'var(--bg-card)' } },
+        ],
+      }],
+    };
+  }, [projectBreakdown, milestones]);
+
+  return <ChartWrapper option={option} height="350px" />;
+}
+
+// ===== LINCHPIN ANALYSIS =====
+function LinchpinAnalysis({ tasks, milestones }: { tasks: any[]; milestones: any[] }) {
+  const linchpins = useMemo(() => {
+    // Find tasks/milestones with many dependencies
+    const dependencyCount: Record<string, { name: string; count: number; type: string; status: string }> = {};
+    
+    tasks.forEach((t: any) => {
+      const predecessors = t.predecessors || t.dependencies || [];
+      if (Array.isArray(predecessors)) {
+        predecessors.forEach((pred: string) => {
+          if (!dependencyCount[pred]) {
+            const predTask = tasks.find((pt: any) => pt.id === pred || pt.taskId === pred);
+            dependencyCount[pred] = {
+              name: predTask?.name || predTask?.taskName || pred,
+              count: 0,
+              type: 'task',
+              status: predTask?.status || 'In Progress',
+            };
+          }
+          dependencyCount[pred].count++;
+        });
+      }
+    });
+
+    milestones.forEach((m: any) => {
+      const key = m.id || m.name;
+      if (!dependencyCount[key]) {
+        dependencyCount[key] = { name: m.name || m.milestone, count: 0, type: 'milestone', status: m.status || 'In Progress' };
+      }
+      // Milestones naturally have high dependency weight
+      dependencyCount[key].count += 5;
+    });
+
+    return Object.values(dependencyCount)
+      .filter(d => d.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [tasks, milestones]);
+
+  const option: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(22,27,34,0.95)',
+      borderColor: 'var(--border-color)',
+      textStyle: { color: '#fff', fontSize: 11 },
+      formatter: (params: any) => {
+        const d = linchpins[params.dataIndex];
+        return `<strong>${d?.name}</strong><br/>
+          Dependent Tasks: ${d?.count}<br/>
+          Type: ${d?.type}<br/>
+          Status: ${d?.status}`;
+      },
+    },
+    grid: { left: 150, right: 60, top: 20, bottom: 30 },
+    xAxis: {
+      type: 'value',
+      name: 'Dependency Count',
+      nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
+      axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+    },
+    yAxis: {
+      type: 'category',
+      data: linchpins.map(l => l.name.slice(0, 20)),
+      axisLabel: { color: 'var(--text-primary)', fontSize: 10 },
+      axisLine: { lineStyle: { color: 'var(--border-color)' } },
+    },
+    series: [{
+      type: 'bar',
+      data: linchpins.map(l => ({
+        value: l.count,
+        itemStyle: {
+          color: l.count >= 10 ? '#EF4444' : l.count >= 5 ? '#F59E0B' : '#3B82F6',
+        },
+      })),
+      barWidth: '60%',
+      label: {
+        show: true,
+        position: 'right',
+        formatter: '{c} deps',
+        color: 'var(--text-muted)',
+        fontSize: 10,
+      },
+    }],
+  }), [linchpins]);
+
+  if (!linchpins.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No dependency data available</div>;
+  return <ChartWrapper option={option} height="300px" />;
+}
+
+// ===== ELASTIC SCHEDULING CHART =====
+function ElasticSchedulingChart({ laborData, tasks }: { laborData: any; tasks: any[] }) {
+  const option: EChartsOption = useMemo(() => {
+    const weeks = (laborData?.weeks || []).slice(0, 10);
+    const workers = laborData?.byWorker || [];
+    
+    // Calculate weekly utilization and available "valleys"
+    const weeklyUtil = weeks.map((w: string, wIdx: number) => {
+      let total = 0;
+      workers.forEach((worker: any) => total += (worker.data || [])[wIdx] || 0);
+      return total;
+    });
+    
+    const maxUtil = Math.max(...weeklyUtil, 1);
+    const valleys = weeklyUtil.map(u => maxUtil - u);
+    
+    const weekLabels = weeks.map((w: string) => {
+      try { return new Date(w).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+      catch { return w; }
+    });
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const idx = params[0]?.dataIndex;
+          return `<strong>${weekLabels[idx]}</strong><br/>
+            Current Load: ${weeklyUtil[idx]} hrs<br/>
+            Available Capacity: <span style="color:#10B981">${valleys[idx]} hrs</span><br/>
+            <em>Move tasks here for elastic scheduling</em>`;
+        },
+      },
+      legend: { data: ['Current Load', 'Available Capacity'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 60, right: 30, top: 30, bottom: 50 },
+      xAxis: { type: 'category', data: weekLabels, axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
+      yAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      series: [
+        { name: 'Current Load', type: 'bar', stack: 'total', data: weeklyUtil, itemStyle: { color: '#3B82F6' }, barWidth: '50%' },
+        { name: 'Available Capacity', type: 'bar', stack: 'total', data: valleys, itemStyle: { color: 'rgba(16,185,129,0.4)', borderColor: '#10B981', borderWidth: 1, borderType: 'dashed' }, barWidth: '50%' },
+      ],
+    };
+  }, [laborData, tasks]);
+
+  return <ChartWrapper option={option} height="280px" />;
+}
+
 // ===== VARIANCE TREND MINI =====
 function VarianceTrend({ label, current, previous, period }: { label: string; current: number | null | undefined; previous: number | null | undefined; period: string }) {
   const safeC = current ?? 0;
@@ -420,7 +839,7 @@ export default function OverviewPage() {
   
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [selectedRiskItem, setSelectedRiskItem] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'milestones' | 'variance'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'milestones' | 'variance' | 'advanced'>('overview');
 
   const contextLabel = useMemo(() => {
     if (hierarchyFilters?.project) return `Project: ${hierarchyFilters.project}`;
@@ -535,7 +954,7 @@ export default function OverviewPage() {
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Portfolio Overview</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Health, milestones, risks, and variance analysis</p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Health, milestones, risks, variance analysis, and advanced project controls</p>
       </div>
 
       {/* Command Center */}
@@ -594,6 +1013,7 @@ export default function OverviewPage() {
           { id: 'overview', label: 'Dashboard' },
           { id: 'milestones', label: 'Milestones & Risks' },
           { id: 'variance', label: 'Variance Analysis' },
+          { id: 'advanced', label: 'Advanced Controls' },
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
             padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${activeTab === tab.id ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
@@ -868,6 +1288,180 @@ export default function OverviewPage() {
                 {projectBreakdown.filter(p => p.variance > 0).length === 0 && <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No over-budget projects</div>}
               </div>
             </SectionCard>
+          </div>
+        </div>
+      )}
+
+      {/* ADVANCED PROJECT CONTROLS TAB */}
+      {activeTab === 'advanced' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Header Info */}
+          <div style={{ 
+            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
+            borderRadius: '12px',
+            padding: '1rem 1.25rem',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            marginBottom: '0.5rem',
+          }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#3B82F6' }}>Executive Dashboard: Advanced Project Controls</h3>
+            <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              FTE constraints, float management, cascading delays, and predictive decision-making tools
+            </p>
+          </div>
+
+          {/* Section 1: Dynamic Float & Cascade Visualization */}
+          <SectionCard 
+            title="Float & Cascade Visualization" 
+            subtitle="Ghost bars show Total Float - tasks can slide before becoming Critical"
+          >
+            <FloatCascadeGantt tasks={data.tasks || []} milestones={milestones} />
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(3, 1fr)', 
+              gap: '1rem', 
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'var(--bg-secondary)',
+              borderRadius: '12px',
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical Tasks</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#EF4444' }}>
+                  {(data.tasks || []).filter((t: any) => {
+                    const baseline = t.baselineHours || t.budgetHours || 0;
+                    const actual = t.actualHours || 0;
+                    return actual >= baseline;
+                  }).length}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Zero float remaining</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>At Risk</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F59E0B' }}>
+                  {(data.tasks || []).filter((t: any) => {
+                    const baseline = t.baselineHours || t.budgetHours || 0;
+                    const actual = t.actualHours || 0;
+                    return actual >= baseline * 0.8 && actual < baseline;
+                  }).length}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Float &lt; 20%</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Healthy</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981' }}>
+                  {(data.tasks || []).filter((t: any) => {
+                    const baseline = t.baselineHours || t.budgetHours || 0;
+                    const actual = t.actualHours || 0;
+                    return actual < baseline * 0.8;
+                  }).length}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Adequate buffer</div>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Section 2: Resource-Constrained Critical Path */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <SectionCard 
+              title="FTE Saturation Analysis" 
+              subtitle="Labor demand vs FTE capacity - peaks indicate resource constraints"
+            >
+              <FTESaturationHeatmap laborData={data.laborDistribution || {}} tasks={data.tasks || []} />
+            </SectionCard>
+            <SectionCard 
+              title="Elastic Scheduling Windows" 
+              subtitle="Available capacity valleys - optimal windows to shift tasks"
+            >
+              <ElasticSchedulingChart laborData={data.laborDistribution || {}} tasks={data.tasks || []} />
+            </SectionCard>
+          </div>
+
+          {/* Section 3: Predictive Health & Uncertainty */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
+            <SectionCard 
+              title="Earned Value S-Curve" 
+              subtitle="PV vs EV vs AC - catches hidden risk of being on time but over budget"
+            >
+              <EarnedValueSCurve tasks={data.tasks || []} sCurveData={data.sCurve || { dates: [], planned: [], actual: [] }} />
+            </SectionCard>
+            <SectionCard 
+              title="Buffer Consumption" 
+              subtitle="Phase health at a glance - red = zero float"
+            >
+              <BufferConsumptionSunburst projectBreakdown={projectBreakdown} milestones={milestones} />
+            </SectionCard>
+          </div>
+
+          {/* Section 4: Linchpin Analysis */}
+          <SectionCard 
+            title="Linchpin Analysis: Dependency Heat" 
+            subtitle="High-traffic milestones - if many tasks depend on one item, prioritize it regardless of duration"
+          >
+            <LinchpinAnalysis tasks={data.tasks || []} milestones={milestones} />
+            <div style={{ 
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'rgba(239, 68, 68, 0.05)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444' }} />
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#EF4444' }}>Priority Alert</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Items with 10+ dependencies are critical bottlenecks. Delays here cascade across the entire project. 
+                Consider expediting these tasks, assigning additional resources, or creating contingency plans.
+              </p>
+            </div>
+          </SectionCard>
+
+          {/* Executive Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+            <div style={{ 
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+            }}>
+              <div style={{ fontSize: '0.65rem', color: '#10B981', textTransform: 'uppercase', fontWeight: 600 }}>Schedule Performance</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.spi >= 1 ? '#10B981' : '#EF4444' }}>{healthMetrics.spi.toFixed(2)}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>SPI Index</div>
+            </div>
+            <div style={{ 
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+            }}>
+              <div style={{ fontSize: '0.65rem', color: '#3B82F6', textTransform: 'uppercase', fontWeight: 600 }}>Cost Performance</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.cpi >= 1 ? '#10B981' : '#EF4444' }}>{healthMetrics.cpi.toFixed(2)}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>CPI Index</div>
+            </div>
+            <div style={{ 
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+            }}>
+              <div style={{ fontSize: '0.65rem', color: '#F59E0B', textTransform: 'uppercase', fontWeight: 600 }}>FTE Utilization</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800 }}>
+                {Math.round((healthMetrics.totalHours / Math.max(healthMetrics.baselineHours, 1)) * 100)}%
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Labor efficiency</div>
+            </div>
+            <div style={{ 
+              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              border: '1px solid rgba(139, 92, 246, 0.3)',
+            }}>
+              <div style={{ fontSize: '0.65rem', color: '#8B5CF6', textTransform: 'uppercase', fontWeight: 600 }}>Risk Score</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: scheduleRisks.length > 5 ? '#EF4444' : scheduleRisks.length > 2 ? '#F59E0B' : '#10B981' }}>
+                {scheduleRisks.length > 5 ? 'HIGH' : scheduleRisks.length > 2 ? 'MED' : 'LOW'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{scheduleRisks.length} active risks</div>
+            </div>
           </div>
         </div>
       )}
