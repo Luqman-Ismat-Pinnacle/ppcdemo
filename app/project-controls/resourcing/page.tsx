@@ -382,6 +382,56 @@ function ResourcingPageContent() {
     return data.tasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
   }, [data.tasks]);
 
+  // Role requirements breakdown for unassigned tasks
+  const roleRequirements = useMemo(() => {
+    const requirements: Record<string, { count: number; hours: number; tasks: any[] }> = {};
+    
+    unassignedTasks.forEach((task: any) => {
+      // Get roles from resource column (comma-separated)
+      const resourceStr = task.resource || task.resourceNames || '';
+      const roles = resourceStr.split(',').map((r: string) => r.trim()).filter(Boolean);
+      
+      if (roles.length === 0) {
+        roles.push('Unspecified');
+      }
+      
+      roles.forEach((role: string) => {
+        if (!requirements[role]) {
+          requirements[role] = { count: 0, hours: 0, tasks: [] };
+        }
+        requirements[role].count += 1;
+        requirements[role].hours += (task.baselineHours || 0) / roles.length; // Split hours across roles
+        requirements[role].tasks.push(task);
+      });
+    });
+    
+    return Object.entries(requirements)
+      .map(([role, data]) => ({ role, ...data }))
+      .sort((a, b) => b.count - a.count);
+  }, [unassignedTasks]);
+
+  // Helper to check if employee role matches task requirement
+  const doesRoleMatch = useCallback((employeeRole: string, taskResource: string): boolean => {
+    if (!taskResource || taskResource === 'Unspecified') return true; // Allow any employee for unspecified
+    
+    const empRoleLower = (employeeRole || '').toLowerCase();
+    const taskRoles = taskResource.split(',').map((r: string) => r.trim().toLowerCase());
+    
+    // Check for partial match (e.g., "Engineer" matches "Senior Engineer")
+    return taskRoles.some(tr => 
+      empRoleLower.includes(tr) || 
+      tr.includes(empRoleLower) ||
+      empRoleLower.split(' ').some(word => tr.includes(word) && word.length > 2) ||
+      tr.split(' ').some((word: string) => empRoleLower.includes(word) && word.length > 2)
+    );
+  }, []);
+
+  // Get matching employees for a task
+  const getMatchingEmployees = useCallback((task: any) => {
+    const taskResource = task.resource || task.resourceNames || '';
+    return employeeMetrics.filter(emp => doesRoleMatch(emp.role, taskResource));
+  }, [employeeMetrics, doesRoleMatch]);
+
   // Handle task reassignment
   const handleReassign = useCallback((task: any, newEmployee: any) => {
     console.log('Reassigning task', task.name, 'to', newEmployee.name);
@@ -417,11 +467,18 @@ function ResourcingPageContent() {
   const handleDrop = useCallback((e: React.DragEvent, employee: any) => {
     e.preventDefault();
     if (draggedTask) {
-      handleReassign(draggedTask, employee);
+      const taskResource = draggedTask.resource || draggedTask.resourceNames || '';
+      const isMatch = doesRoleMatch(employee.role, taskResource);
+      
+      if (isMatch) {
+        handleReassign(draggedTask, employee);
+      } else {
+        alert(`Role mismatch: Task requires "${taskResource || 'Unspecified'}" but ${employee.name} is a "${employee.role}"`);
+      }
     }
     setDraggedTask(null);
     setDropTargetEmployee(null);
-  }, [draggedTask, handleReassign]);
+  }, [draggedTask, handleReassign, doesRoleMatch]);
 
   // Run resource leveling
   const runLeveling = useCallback(() => {
@@ -703,7 +760,14 @@ function ResourcingPageContent() {
       {/* Main Content */}
       <div style={{ flex: 1, display: 'flex', gap: '1rem', overflow: 'hidden' }}>
         {/* Organization Chart - Main Area */}
-        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div 
+          style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: draggedTask ? '2px dashed var(--pinnacle-teal)' : '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}
+          onDragOver={(e) => { if (draggedTask) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+          onDrop={(e) => {
+            e.preventDefault();
+            // When dropped on the org chart, we'll keep the side panel for selection
+          }}
+        >
           {/* Legend */}
           <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>Organization Chart</div>
@@ -714,6 +778,157 @@ function ResourcingPageContent() {
               <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444', marginRight: '4px' }}></span>Overloaded (&gt;100%)</span>
             </div>
           </div>
+          
+          {/* Drag Overlay - shows employee cards when dragging */}
+          {draggedTask && (
+            <div 
+              style={{
+                position: 'absolute',
+                top: '50px',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(22,27,34,0.95)',
+                zIndex: 100,
+                padding: '1.5rem',
+                overflow: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {/* Task Info */}
+              <div style={{ 
+                padding: '1rem', 
+                background: 'linear-gradient(135deg, rgba(64,224,208,0.2), rgba(64,224,208,0.05))', 
+                borderRadius: '12px', 
+                marginBottom: '1.5rem',
+                border: '1px solid rgba(64,224,208,0.4)',
+              }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Assigning Task</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{draggedTask.name || draggedTask.taskName}</div>
+                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                  <span><strong>{draggedTask.baselineHours || 0}</strong> hours</span>
+                  <span style={{ color: '#3B82F6' }}>
+                    <strong>Required Role:</strong> {draggedTask.resource || draggedTask.resourceNames || 'Any'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Employee Grid */}
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+                Select Employee to Assign
+              </div>
+              
+              {(() => {
+                const taskResource = draggedTask.resource || draggedTask.resourceNames || '';
+                const matchingEmps = employeeMetrics.filter(e => doesRoleMatch(e.role, taskResource));
+                
+                if (matchingEmps.length === 0 && taskResource) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '3rem', color: '#F59E0B' }}>
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.6 }}>
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      <div style={{ fontSize: '1rem', fontWeight: 600 }}>No Matching Employees</div>
+                      <div style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                        No employees found with role matching "{taskResource}"
+                      </div>
+                    </div>
+                  );
+                }
+                
+                const empsToShow = taskResource ? matchingEmps : employeeMetrics;
+                
+                return (
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+                    gap: '0.75rem',
+                    flex: 1,
+                    alignContent: 'start',
+                  }}>
+                    {empsToShow.map((emp) => (
+                      <div
+                        key={emp.id}
+                        onDragOver={(e) => handleDragOver(e, emp.id)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, emp)}
+                        onClick={() => handleDrop({ preventDefault: () => {} } as any, emp)}
+                        style={{
+                          padding: '1rem',
+                          background: dropTargetEmployee === emp.id ? 'rgba(64,224,208,0.15)' : 'var(--bg-secondary)',
+                          borderRadius: '12px',
+                          border: dropTargetEmployee === emp.id ? '2px solid var(--pinnacle-teal)' : '2px solid var(--border-color)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={() => setDropTargetEmployee(emp.id)}
+                        onMouseLeave={() => setDropTargetEmployee(null)}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                          <div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>{emp.name}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.role}</div>
+                          </div>
+                          <div style={{ 
+                            width: '36px', 
+                            height: '36px', 
+                            borderRadius: '50%', 
+                            background: `${getUtilizationColor(emp.utilization)}20`,
+                            border: `2px solid ${getUtilizationColor(emp.utilization)}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            color: getUtilizationColor(emp.utilization),
+                          }}>
+                            {emp.utilization}%
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.7rem' }}>
+                          <div style={{ padding: '0.4rem', background: 'var(--bg-tertiary)', borderRadius: '6px', textAlign: 'center' }}>
+                            <div style={{ fontWeight: 600 }}>{emp.taskCount}</div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.6rem' }}>Tasks</div>
+                          </div>
+                          <div style={{ padding: '0.4rem', background: 'var(--bg-tertiary)', borderRadius: '6px', textAlign: 'center' }}>
+                            <div style={{ fontWeight: 600, color: '#10B981' }}>{formatNumber(emp.availableHours)}</div>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.6rem' }}>Avail Hrs</div>
+                          </div>
+                        </div>
+                        {emp.status === 'overloaded' && (
+                          <div style={{ marginTop: '0.5rem', padding: '0.25rem 0.5rem', background: 'rgba(239,68,68,0.15)', borderRadius: '4px', fontSize: '0.65rem', color: '#EF4444', textAlign: 'center' }}>
+                            Overloaded
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              
+              {/* Cancel button */}
+              <button
+                onClick={() => setDraggedTask(null)}
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem 1.5rem',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  alignSelf: 'center',
+                }}
+              >
+                Cancel Assignment
+              </button>
+            </div>
+          )}
+          
           <div style={{ flex: 1, padding: '0.5rem' }}>
             {treeData.length > 0 ? (
               <ChartWrapper option={treeOption} height="100%" onClick={handleTreeClick} />
@@ -855,41 +1070,119 @@ function ResourcingPageContent() {
               </div>
             )}
 
+            {/* Role Requirements Summary */}
+            {roleRequirements.length > 0 && !selectedEmployee && !draggedTask && (
+              <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  Role Requirements
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                  Resources needed for unassigned tasks
+                </div>
+                <div style={{ maxHeight: '150px', overflow: 'auto' }}>
+                  {roleRequirements.map((req, idx) => {
+                    const availableEmps = employeeMetrics.filter(e => doesRoleMatch(e.role, req.role) && e.status !== 'overloaded');
+                    const isShortage = availableEmps.length < req.count;
+                    return (
+                      <div 
+                        key={idx}
+                        style={{
+                          padding: '0.5rem',
+                          background: isShortage ? 'rgba(239,68,68,0.1)' : 'var(--bg-secondary)',
+                          borderRadius: '6px',
+                          marginBottom: '0.25rem',
+                          border: isShortage ? '1px solid rgba(239,68,68,0.3)' : '1px solid transparent',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontWeight: 500, fontSize: '0.8rem' }}>{req.role}</div>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <span style={{ 
+                              padding: '0.15rem 0.5rem', 
+                              background: 'var(--bg-tertiary)', 
+                              borderRadius: '4px', 
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                            }}>
+                              {req.count} task{req.count > 1 ? 's' : ''}
+                            </span>
+                            <span style={{ 
+                              padding: '0.15rem 0.5rem', 
+                              background: isShortage ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)', 
+                              borderRadius: '4px', 
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              color: isShortage ? '#EF4444' : '#10B981',
+                            }}>
+                              {availableEmps.length} avail
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                          {formatNumber(req.hours)} hrs total
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Unassigned Tasks - Draggable */}
-            {unassignedTasks.length > 0 && !selectedEmployee && (
+            {unassignedTasks.length > 0 && !selectedEmployee && !draggedTask && (
               <div style={{ background: 'rgba(245,158,11,0.1)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(245,158,11,0.3)' }}>
                 <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: '#F59E0B', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>Unassigned Tasks ({unassignedTasks.length})</span>
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 400 }}>Drag to assign</span>
                 </div>
-                <div style={{ maxHeight: '180px', overflow: 'auto' }}>
-                  {unassignedTasks.slice(0, 12).map((task: any, idx: number) => (
-                    <div 
-                      key={idx} 
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, task)}
-                      onDragEnd={handleDragEnd}
-                      style={{ 
-                        padding: '0.5rem', 
-                        background: draggedTask?.id === task.id ? 'var(--pinnacle-teal)' : 'var(--bg-secondary)', 
-                        borderRadius: '6px', 
-                        marginBottom: '0.25rem', 
-                        fontSize: '0.75rem',
-                        cursor: 'grab',
-                        border: '1px solid transparent',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}>
-                          <circle cx="9" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="19" r="1" />
-                          <circle cx="15" cy="5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="19" r="1" />
-                        </svg>
-                        {task.name || task.taskName}
+                <div style={{ maxHeight: '220px', overflow: 'auto' }}>
+                  {unassignedTasks.slice(0, 20).map((task: any, idx: number) => {
+                    const taskResource = task.resource || task.resourceNames || 'Unspecified';
+                    return (
+                      <div 
+                        key={idx} 
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, task)}
+                        onDragEnd={handleDragEnd}
+                        style={{ 
+                          padding: '0.5rem', 
+                          background: 'var(--bg-secondary)', 
+                          borderRadius: '6px', 
+                          marginBottom: '0.25rem', 
+                          fontSize: '0.75rem',
+                          cursor: 'grab',
+                          border: '1px solid transparent',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}>
+                            <circle cx="9" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="9" cy="19" r="1" />
+                            <circle cx="15" cy="5" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="19" r="1" />
+                          </svg>
+                          {task.name || task.taskName}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem', marginLeft: '1.25rem' }}>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{task.baselineHours || 0} hrs</span>
+                          <span style={{ 
+                            fontSize: '0.6rem', 
+                            padding: '0.1rem 0.35rem', 
+                            background: 'rgba(59,130,246,0.15)', 
+                            borderRadius: '3px',
+                            color: '#3B82F6',
+                          }}>
+                            {taskResource}
+                          </span>
+                        </div>
                       </div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', marginLeft: '1.25rem' }}>{task.baselineHours || 0} hrs</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -897,40 +1190,127 @@ function ResourcingPageContent() {
             {/* Employee Drop Zones - shown when dragging */}
             {draggedTask && (
               <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '2px dashed var(--pinnacle-teal)' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--pinnacle-teal)' }}>
-                  Drop on Employee to Assign
+                {/* Task being dragged info */}
+                <div style={{ 
+                  padding: '0.75rem', 
+                  background: 'var(--bg-secondary)', 
+                  borderRadius: '8px', 
+                  marginBottom: '1rem',
+                  border: '1px solid var(--pinnacle-teal)',
+                }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600 }}>{draggedTask.name || draggedTask.taskName}</div>
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                    <span>{draggedTask.baselineHours || 0} hrs</span>
+                    <span style={{ color: '#3B82F6' }}>
+                      Requires: {draggedTask.resource || draggedTask.resourceNames || 'Any Role'}
+                    </span>
+                  </div>
                 </div>
-                <div style={{ maxHeight: '250px', overflow: 'auto' }}>
-                  {employeeMetrics.slice(0, 20).map((emp) => (
-                    <div
-                      key={emp.id}
-                      onDragOver={(e) => handleDragOver(e, emp.id)}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, emp)}
-                      style={{
-                        padding: '0.6rem', 
-                        background: dropTargetEmployee === emp.id ? 'rgba(64,224,208,0.2)' : 'var(--bg-secondary)', 
-                        borderRadius: '8px', 
-                        marginBottom: '0.35rem',
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        cursor: 'pointer',
-                        border: dropTargetEmployee === emp.id ? '2px solid var(--pinnacle-teal)' : '2px solid transparent',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{emp.name}</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{emp.role}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: getUtilizationColor(emp.utilization) }}>{emp.utilization}%</div>
-                        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{formatNumber(emp.availableHours)} hrs</div>
-                      </div>
-                    </div>
-                  ))}
+
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--pinnacle-teal)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Drop to Assign
                 </div>
+                
+                {/* Matching Employees */}
+                {(() => {
+                  const taskResource = draggedTask.resource || draggedTask.resourceNames || '';
+                  const matchingEmps = employeeMetrics.filter(e => doesRoleMatch(e.role, taskResource));
+                  const nonMatchingEmps = employeeMetrics.filter(e => !doesRoleMatch(e.role, taskResource));
+                  
+                  return (
+                    <>
+                      {matchingEmps.length > 0 && (
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <div style={{ fontSize: '0.7rem', color: '#10B981', marginBottom: '0.35rem', fontWeight: 600 }}>
+                            Matching Roles ({matchingEmps.length})
+                          </div>
+                          <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                            {matchingEmps.map((emp) => (
+                              <div
+                                key={emp.id}
+                                onDragOver={(e) => handleDragOver(e, emp.id)}
+                                onDragLeave={handleDragLeave}
+                                onDrop={(e) => handleDrop(e, emp)}
+                                style={{
+                                  padding: '0.6rem', 
+                                  background: dropTargetEmployee === emp.id ? 'rgba(16,185,129,0.2)' : 'var(--bg-secondary)', 
+                                  borderRadius: '8px', 
+                                  marginBottom: '0.35rem',
+                                  display: 'flex', 
+                                  justifyContent: 'space-between', 
+                                  alignItems: 'center', 
+                                  cursor: 'pointer',
+                                  border: dropTargetEmployee === emp.id ? '2px solid #10B981' : '2px solid transparent',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+                                      <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                    {emp.name}
+                                  </div>
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{emp.role}</div>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: getUtilizationColor(emp.utilization) }}>{emp.utilization}%</div>
+                                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{formatNumber(emp.availableHours)} hrs</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {nonMatchingEmps.length > 0 && taskResource && (
+                        <div>
+                          <div style={{ fontSize: '0.7rem', color: '#EF4444', marginBottom: '0.35rem', fontWeight: 600, opacity: 0.7 }}>
+                            Non-Matching Roles ({nonMatchingEmps.length})
+                          </div>
+                          <div style={{ maxHeight: '120px', overflow: 'auto', opacity: 0.5 }}>
+                            {nonMatchingEmps.slice(0, 10).map((emp) => (
+                              <div
+                                key={emp.id}
+                                style={{
+                                  padding: '0.5rem', 
+                                  background: 'var(--bg-secondary)', 
+                                  borderRadius: '6px', 
+                                  marginBottom: '0.25rem',
+                                  display: 'flex', 
+                                  justifyContent: 'space-between', 
+                                  alignItems: 'center', 
+                                  cursor: 'not-allowed',
+                                  border: '1px dashed rgba(239,68,68,0.3)',
+                                }}
+                              >
+                                <div>
+                                  <div style={{ fontSize: '0.75rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2">
+                                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                    </svg>
+                                    {emp.name}
+                                  </div>
+                                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{emp.role}</div>
+                                </div>
+                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{emp.utilization}%</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {matchingEmps.length === 0 && (
+                        <div style={{ padding: '1rem', textAlign: 'center', color: '#F59E0B', fontSize: '0.8rem' }}>
+                          No employees match the required role: "{taskResource}"
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 

@@ -1073,6 +1073,7 @@ export default function WBSGanttPage() {
                 <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Rem</th>
                 <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">BL Cost</th>
                 <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }} className="number">Act Cost</th>
+                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Rem Cost</th>
                 <th style={{ width: '40px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Eff%</th>
                 <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Prog</th>
                 <th style={{ width: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Pred</th>
@@ -1161,6 +1162,7 @@ export default function WBSGanttPage() {
                     <td className="number" style={{ fontSize: '0.6rem' }}>{(row as any).remainingHours != null ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineCost != null ? formatCurrency(row.baselineCost) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineCost != null ? formatCurrency(Math.max(0, (row.baselineCost || 0) - (row.actualCost || 0))) : '-'}</td>
                     <td className="number" style={{ fontSize: '0.6rem', color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     <td>
                       <div className="progress-bar" style={{ width: '30px', height: '6px' }}>
