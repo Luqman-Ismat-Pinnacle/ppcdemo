@@ -804,8 +804,8 @@ export default function ForecastPage() {
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
             PO vs Costs | FTE Constraints | Cascade Impact | Monte Carlo Scenarios
           </p>
-        </div>
-        
+      </div>
+
         {/* Tab Selector */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
           {[
@@ -816,21 +816,21 @@ export default function ForecastPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              style={{
+                      style={{ 
                 padding: '0.5rem 1rem',
                 borderRadius: '8px',
                 border: 'none',
                 background: activeTab === tab.key ? 'var(--pinnacle-teal)' : 'transparent',
                 color: activeTab === tab.key ? '#000' : 'var(--text-secondary)',
                 fontSize: '0.8rem',
-                fontWeight: 600,
+                        fontWeight: 600,
                 cursor: 'pointer',
-              }}
-            >
+                      }}
+                    >
               {tab.label}
             </button>
           ))}
-        </div>
+                    </div>
       </div>
 
       {/* KPI Row */}
@@ -893,20 +893,20 @@ export default function ForecastPage() {
               headerRight={
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>FTE Limit:</span>
-                  <input
-                    type="number"
+                        <input
+                          type="number"
                     value={fteLimit}
                     onChange={(e) => setFteLimit(parseInt(e.target.value) || 10)}
                     min={1}
                     max={50}
-                    style={{
+                          style={{
                       width: '50px',
                       padding: '0.25rem 0.5rem',
                       fontSize: '0.8rem',
                       background: 'var(--bg-tertiary)',
                       border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'var(--text-primary)',
+                            borderRadius: '6px',
+                            color: 'var(--text-primary)',
                     }}
                   />
                 </div>
@@ -914,7 +914,7 @@ export default function ForecastPage() {
             >
               <FTECapacityChart tasks={data.tasks || []} fteLimit={fteLimit} />
             </SectionCard>
-          </div>
+                      </div>
 
           {/* Middle Row: Float + Burn Rate */}
           <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '1.5rem' }}>
@@ -925,7 +925,7 @@ export default function ForecastPage() {
             <SectionCard title="Burn Rate Trend" subtitle="Cumulative spend vs baseline">
               <BurnRateTrend hours={data.hours || []} projects={data.projects || []} />
             </SectionCard>
-          </div>
+                      </div>
 
           {/* Bottom: Scenario Comparison */}
           <SectionCard title="Scenario Cost Comparison" subtitle="Baseline vs Monte Carlo forecasts" accent="#8B5CF6">
@@ -956,7 +956,7 @@ export default function ForecastPage() {
               <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Critical Tasks</div>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: '#EF4444' }}>{cpmResult?.stats.criticalTasksCount || 0}</div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>zero float</div>
-            </div>
+          </div>
             <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
               <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Average Float</div>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: '#10B981' }}>{(cpmResult?.stats?.averageFloat || 0).toFixed(1)}</div>
@@ -966,11 +966,11 @@ export default function ForecastPage() {
               <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Dangling Logic</div>
               <div style={{ fontSize: '2rem', fontWeight: 800, color: (cpmResult?.stats.danglingTasks?.length || 0) > 0 ? '#F59E0B' : '#10B981' }}>
                 {cpmResult?.stats.danglingTasks?.length || 0}
-              </div>
+          </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>open ends</div>
             </div>
           </div>
-        </div>
+            </div>
       )}
 
       {/* SCENARIOS TAB */}
@@ -982,7 +982,7 @@ export default function ForecastPage() {
               <div style={{ textAlign: 'center', padding: '1.5rem' }}>
                 <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#10B981' }}>
                   {formatCurrency(forecastResult?.monteCarloCost.p10 || 0)}
-                </div>
+          </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                   {Math.round(forecastResult?.monteCarloDuration.p10 || 0)} days
                 </div>
@@ -990,26 +990,26 @@ export default function ForecastPage() {
                   marginTop: '1rem', 
                   padding: '0.75rem', 
                   background: 'rgba(16,185,129,0.1)', 
-                  borderRadius: '10px',
+                    borderRadius: '10px',
                   fontSize: '0.75rem',
                   color: '#10B981'
                 }}>
                   {formatCurrency((forecastResult?.monteCarloCost.p10 || 0) - projectState.bac)} vs BAC
                 </div>
-              </div>
+            </div>
             </SectionCard>
             
             <SectionCard title="P50 Most Likely" subtitle="50% probability" accent="#3B82F6">
               <div style={{ textAlign: 'center', padding: '1.5rem' }}>
                 <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#3B82F6' }}>
                   {formatCurrency(forecastResult?.monteCarloCost.p50 || 0)}
-                </div>
+              </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                   {Math.round(forecastResult?.monteCarloDuration.p50 || 0)} days
-                </div>
+            </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                   Est. Completion: {forecastResult?.completionDateEstimate || '-'}
-                </div>
+          </div>
                 <div style={{ 
                   marginTop: '1rem', 
                   padding: '0.75rem', 
@@ -1019,18 +1019,18 @@ export default function ForecastPage() {
                   color: '#3B82F6'
                 }}>
                   TCPI to BAC: {forecastResult?.tcpi?.toBac?.toFixed(2) || '-'}
-                </div>
-              </div>
+        </div>
+          </div>
             </SectionCard>
             
             <SectionCard title="P90 Worst Case" subtitle="90% probability" accent="#EF4444">
               <div style={{ textAlign: 'center', padding: '1.5rem' }}>
                 <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#EF4444' }}>
                   {formatCurrency(forecastResult?.monteCarloCost.p90 || 0)}
-                </div>
+          </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
                   {Math.round(forecastResult?.monteCarloDuration.p90 || 0)} days
-                </div>
+          </div>
                 <div style={{ 
                   marginTop: '1rem', 
                   padding: '0.75rem', 
@@ -1040,10 +1040,10 @@ export default function ForecastPage() {
                   color: '#EF4444'
                 }}>
                   +{formatCurrency((forecastResult?.monteCarloCost.p90 || 0) - projectState.bac)} overrun risk
-                </div>
-              </div>
-            </SectionCard>
+        </div>
           </div>
+            </SectionCard>
+        </div>
 
           {/* Engine Parameters */}
           <SectionCard title="Simulation Parameters" subtitle="Adjust to model different scenarios">
@@ -1057,7 +1057,7 @@ export default function ForecastPage() {
               ].map(param => (
                 <div key={param.key} style={{ 
                   padding: '1rem', 
-                  background: 'var(--bg-tertiary)', 
+                  background: 'var(--bg-tertiary)',
                   borderRadius: '12px',
                   border: '1px solid var(--border-color)'
                 }}>
@@ -1065,7 +1065,7 @@ export default function ForecastPage() {
                     {param.label}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <input
+              <input
                       type="range"
                       min={param.min}
                       max={param.max}
@@ -1079,11 +1079,11 @@ export default function ForecastPage() {
                         ? `${(((engineParams as any)[param.key] || 0) * 100).toFixed(0)}%`
                         : ((engineParams as any)[param.key] || 0).toFixed(2)
                       }
-                    </span>
-                  </div>
-                </div>
-              ))}
+              </span>
             </div>
+          </div>
+              ))}
+                </div>
           </SectionCard>
 
           {/* IEAC Comparison */}
@@ -1098,11 +1098,11 @@ export default function ForecastPage() {
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Budget Rate (Optimistic)</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10B981' }}>
                   {formatCurrency(forecastResult?.ieac.budgetRate || 0)}
-                </div>
+          </div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   Assumes remaining work at budget rate
-                </div>
-              </div>
+                      </div>
+                  </div>
               <div style={{ 
                 padding: '1.25rem', 
                 background: 'rgba(64,224,208,0.1)', 
@@ -1112,11 +1112,11 @@ export default function ForecastPage() {
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>CPI Method (Status Quo)</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>
                   {formatCurrency(forecastResult?.ieac.cpi || 0)}
-                </div>
+            </div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   Assumes current CPI continues
-                </div>
-              </div>
+          </div>
+        </div>
               <div style={{ 
                 padding: '1.25rem', 
                 background: 'rgba(139,92,246,0.1)', 
@@ -1126,14 +1126,14 @@ export default function ForecastPage() {
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Monte Carlo P50</div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#8B5CF6' }}>
                   {formatCurrency(forecastResult?.monteCarloCost.p50 || 0)}
-                </div>
+                  </div>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
                   Probabilistic simulation result
+                    </div>
                 </div>
-              </div>
             </div>
           </SectionCard>
-        </div>
+          </div>
       )}
     </div>
   );
