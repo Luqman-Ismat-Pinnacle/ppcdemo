@@ -257,19 +257,50 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy }: { stats: any; labo
 
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 12 } },
+      tooltip: { 
+        trigger: 'item', 
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
+        textStyle: { color: '#fff', fontSize: 12 },
+        formatter: (params: any) => {
+          if (params.dataType === 'edge') {
+            const pct = ((params.data.value / totalHours) * 100).toFixed(1);
+            return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
+              Hours: ${params.data.value.toLocaleString()}<br/>
+              Share: ${pct}%`;
+          }
+          return `<strong>${params.name}</strong><br/>Hours flowing through this node`;
+        },
+      },
       series: [{
-        type: 'sankey', layout: 'none', emphasis: { focus: 'adjacency' },
-        nodeWidth: 28, nodeGap: 14, layoutIterations: 32, orient: 'horizontal',
-        left: 50, right: 50, top: 20, bottom: 20,
-        label: { color: 'var(--text-primary)', fontSize: 11, fontWeight: 500 },
-        lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.35 },
-        data: nodes, links,
+        type: 'sankey', 
+        layout: 'none', 
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.7 } },
+        nodeWidth: 36, 
+        nodeGap: 20, 
+        layoutIterations: 32, 
+        orient: 'horizontal',
+        left: 60, right: 60, top: 30, bottom: 30,
+        label: { 
+          color: 'var(--text-primary)', 
+          fontSize: 12, 
+          fontWeight: 600,
+          formatter: (params: any) => {
+            const shortName = params.name.length > 15 ? params.name.slice(0, 15) + '...' : params.name;
+            return shortName;
+          },
+        },
+        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.45 },
+        data: nodes, 
+        links,
       }],
+      dataZoom: [
+        { type: 'inside', orient: 'horizontal' },
+      ],
     };
   }, [stats, laborData, tasks, groupBy]);
 
-  return <ChartWrapper option={option} height="400px" />;
+  return <ChartWrapper option={option} height="520px" />;
 }
 
 // ===== VARIANCE ANALYSIS SECTION =====

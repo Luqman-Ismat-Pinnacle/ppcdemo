@@ -5,16 +5,16 @@
  * 
  * Comprehensive portfolio analytics with ALL legacy data:
  * - Portfolio Command Center with health score, SPI/CPI indicators
- * - Portfolio Flow Sankey (project status distribution)
+ * - Enhanced Portfolio Flow Sankey (full-width, project status distribution)
  * - Project Health Radar (multi-metric comparison)
  * - Risk Matrix (impact vs probability scatter)
  * - Progress Burndown with forecast
- * - S-Curve with planned vs actual
- * - Budget Variance by category
- * - Milestone Tracker (full table with status)
+ * - Enhanced Budget Variance (full-width, baseline vs actual by project)
+ * - Milestone Tab with creative visuals (timeline, status, gauges)
  * - Project Summary Table (detailed breakdown)
  * - Schedule Risks and Budget Concerns lists
  * - Variance Analysis section
+ * - Advanced Project Controls (Float, FTE, Predictive Health, Linchpin)
  * 
  * All visuals sized for large datasets with scroll/zoom.
  * 
@@ -24,8 +24,6 @@
 import React, { useMemo, useState } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import SCurveChart from '@/components/charts/SCurveChart';
-import BudgetVarianceChart from '@/components/charts/BudgetVarianceChart';
 import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
 import type { EChartsOption } from 'echarts';
 
@@ -171,45 +169,166 @@ function PortfolioCommandCenter({
   );
 }
 
-// ===== PORTFOLIO FLOW SANKEY =====
+// ===== PORTFOLIO FLOW SANKEY (Enhanced) =====
 function PortfolioFlowSankey({ healthMetrics, projectBreakdown }: { healthMetrics: any; projectBreakdown: any[] }) {
   const option: EChartsOption = useMemo(() => {
-    const goodProjects = projectBreakdown.filter(p => p.spi >= 1 && p.cpi >= 1).length;
-    const atRiskProjects = projectBreakdown.filter(p => (p.spi >= 0.9 && p.spi < 1) || (p.cpi >= 0.9 && p.cpi < 1)).length;
-    const criticalProjects = projectBreakdown.filter(p => p.spi < 0.9 || p.cpi < 0.9).length;
+    const goodProjects = projectBreakdown.filter(p => p.spi >= 1 && p.cpi >= 1);
+    const atRiskProjects = projectBreakdown.filter(p => (p.spi >= 0.9 && p.spi < 1) || (p.cpi >= 0.9 && p.cpi < 1));
+    const criticalProjects = projectBreakdown.filter(p => p.spi < 0.9 || p.cpi < 0.9);
+    
+    const goodHours = goodProjects.reduce((sum, p) => sum + p.actualHours, 0);
+    const atRiskHours = atRiskProjects.reduce((sum, p) => sum + p.actualHours, 0);
+    const criticalHours = criticalProjects.reduce((sum, p) => sum + p.actualHours, 0);
+    const totalHours = goodHours + atRiskHours + criticalHours || 1;
     
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 12 } },
+      tooltip: { 
+        trigger: 'item', 
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
+        textStyle: { color: '#fff', fontSize: 12 },
+        formatter: (params: any) => {
+          if (params.dataType === 'edge') {
+            return `${params.data.source} → ${params.data.target}<br/>Projects: ${params.data.value}<br/>Hours: ${params.data.hours?.toLocaleString() || 'N/A'}`;
+          }
+          return `<strong>${params.name}</strong><br/>Projects: ${params.value || 0}`;
+        },
+      },
       series: [{
         type: 'sankey',
         layout: 'none',
-        emphasis: { focus: 'adjacency' },
-        nodeAlign: 'left',
-        nodeWidth: 24,
-        nodeGap: 18,
-        layoutIterations: 0,
-        label: { color: 'var(--text-primary)', fontSize: 12, formatter: (p: any) => `${p.name}\n${p.value || 0}` },
-        lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.4 },
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.7 } },
+        nodeAlign: 'justify',
+        nodeWidth: 32,
+        nodeGap: 24,
+        layoutIterations: 32,
+        label: { 
+          color: 'var(--text-primary)', 
+          fontSize: 13, 
+          fontWeight: 600,
+          formatter: (p: any) => `${p.name}\n${p.value || 0} projects`,
+        },
+        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.5 },
         data: [
-          { name: 'Portfolio', itemStyle: { color: '#3B82F6' } },
-          { name: 'On Track', itemStyle: { color: '#10B981' } },
-          { name: 'At Risk', itemStyle: { color: '#F59E0B' } },
-          { name: 'Critical', itemStyle: { color: '#EF4444' } },
-          { name: 'Delivered', itemStyle: { color: '#8B5CF6' } },
+          { name: 'All Projects', itemStyle: { color: '#3B82F6', borderWidth: 2, borderColor: '#60A5FA' } },
+          { name: 'On Track', itemStyle: { color: '#10B981', borderWidth: 2, borderColor: '#34D399' } },
+          { name: 'At Risk', itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#FBBF24' } },
+          { name: 'Critical', itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#F87171' } },
+          { name: 'Completed', itemStyle: { color: '#8B5CF6', borderWidth: 2, borderColor: '#A78BFA' } },
+          { name: 'In Progress', itemStyle: { color: '#06B6D4', borderWidth: 2, borderColor: '#22D3EE' } },
         ],
         links: [
-          { source: 'Portfolio', target: 'On Track', value: Math.max(1, goodProjects) },
-          { source: 'Portfolio', target: 'At Risk', value: Math.max(1, atRiskProjects) },
-          { source: 'Portfolio', target: 'Critical', value: Math.max(1, criticalProjects) },
-          { source: 'On Track', target: 'Delivered', value: Math.max(1, Math.round(goodProjects * 0.8)) },
-          { source: 'At Risk', target: 'Delivered', value: Math.max(1, Math.round(atRiskProjects * 0.5)) },
+          { source: 'All Projects', target: 'On Track', value: Math.max(1, goodProjects.length), hours: goodHours },
+          { source: 'All Projects', target: 'At Risk', value: Math.max(1, atRiskProjects.length), hours: atRiskHours },
+          { source: 'All Projects', target: 'Critical', value: Math.max(1, criticalProjects.length), hours: criticalHours },
+          { source: 'On Track', target: 'Completed', value: Math.max(1, Math.round(goodProjects.length * 0.7)) },
+          { source: 'On Track', target: 'In Progress', value: Math.max(1, Math.round(goodProjects.length * 0.3)) },
+          { source: 'At Risk', target: 'Completed', value: Math.max(1, Math.round(atRiskProjects.length * 0.4)) },
+          { source: 'At Risk', target: 'In Progress', value: Math.max(1, Math.round(atRiskProjects.length * 0.6)) },
+          { source: 'Critical', target: 'In Progress', value: Math.max(1, criticalProjects.length) },
         ],
       }],
     };
   }, [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="340px" />;
+  return <ChartWrapper option={option} height="420px" />;
+}
+
+// ===== ENHANCED BUDGET VARIANCE CHART =====
+function EnhancedBudgetVarianceChart({ projectBreakdown }: { projectBreakdown: any[] }) {
+  const option: EChartsOption = useMemo(() => {
+    const sorted = [...projectBreakdown].sort((a, b) => b.variance - a.variance).slice(0, 15);
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const p = sorted[params[0]?.dataIndex];
+          if (!p) return '';
+          const diff = p.actualHours - p.baselineHours;
+          return `<strong>${p.name}</strong><br/>
+            Baseline: ${p.baselineHours.toLocaleString()} hrs<br/>
+            Actual: ${p.actualHours.toLocaleString()} hrs<br/>
+            Variance: <span style="color:${diff <= 0 ? '#10B981' : '#EF4444'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</span><br/>
+            Progress: ${p.percentComplete}%`;
+        },
+      },
+      legend: { 
+        data: ['Baseline Hours', 'Actual Hours', 'Variance %'], 
+        bottom: 0, 
+        textStyle: { color: 'var(--text-muted)', fontSize: 11 } 
+      },
+      grid: { left: 150, right: 80, top: 30, bottom: 50 },
+      xAxis: [
+        { 
+          type: 'value', 
+          name: 'Hours',
+          nameLocation: 'center',
+          nameGap: 25,
+          nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
+          axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v },
+          splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+          position: 'bottom',
+        },
+      ],
+      yAxis: { 
+        type: 'category', 
+        data: sorted.map(p => p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name),
+        axisLabel: { color: 'var(--text-primary)', fontSize: 11 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      series: [
+        {
+          name: 'Baseline Hours',
+          type: 'bar',
+          data: sorted.map(p => ({
+            value: p.baselineHours,
+            itemStyle: { color: 'rgba(59,130,246,0.4)', borderColor: '#3B82F6', borderWidth: 1 },
+          })),
+          barWidth: '35%',
+          barGap: '-100%',
+          z: 1,
+        },
+        {
+          name: 'Actual Hours',
+          type: 'bar',
+          data: sorted.map(p => ({
+            value: p.actualHours,
+            itemStyle: { 
+              color: p.actualHours <= p.baselineHours ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444',
+              borderRadius: [0, 4, 4, 0],
+            },
+          })),
+          barWidth: '35%',
+          z: 2,
+          label: {
+            show: true,
+            position: 'right',
+            formatter: (params: any) => {
+              const p = sorted[params.dataIndex];
+              return `${p.variance > 0 ? '+' : ''}${p.variance}%`;
+            },
+            color: (params: any) => {
+              const p = sorted[params.dataIndex];
+              return p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444';
+            },
+            fontSize: 11,
+            fontWeight: 600,
+          },
+        },
+      ],
+      dataZoom: [
+        { type: 'inside', yAxisIndex: 0, start: 0, end: 100 },
+      ],
+    };
+  }, [projectBreakdown]);
+
+  return <ChartWrapper option={option} height="480px" />;
 }
 
 // ===== PROJECT HEALTH RADAR =====
@@ -915,6 +1034,182 @@ function ElasticSchedulingChart({ tasks }: { tasks: any[] }) {
   return <ChartWrapper option={option} height="340px" />;
 }
 
+// ===== MILESTONE TIMELINE CHART =====
+function MilestoneTimelineChart({ milestones }: { milestones: any[] }) {
+  const option: EChartsOption = useMemo(() => {
+    // Sort milestones by planned date
+    const sorted = [...milestones].slice(0, 20).map((m, idx) => ({
+      name: m.name || m.milestone || `Milestone ${idx + 1}`,
+      planned: m.plannedCompletion || '',
+      forecast: m.forecastCompletion || m.plannedCompletion || '',
+      variance: m.varianceDays || 0,
+      status: m.status || 'In Progress',
+      percentComplete: m.percentComplete || 0,
+    }));
+    
+    const categories = sorted.map(m => m.name.slice(0, 18));
+    const plannedDates = sorted.map((m, idx) => idx);
+    const variances = sorted.map(m => m.variance);
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const m = sorted[params[0]?.dataIndex];
+          if (!m) return '';
+          return `<strong>${m.name}</strong><br/>
+            Planned: ${m.planned}<br/>
+            Forecast: ${m.forecast}<br/>
+            Variance: <span style="color:${m.variance <= 0 ? '#10B981' : m.variance <= 7 ? '#F59E0B' : '#EF4444'}">${m.variance > 0 ? '+' : ''}${m.variance} days</span><br/>
+            Status: ${m.status}<br/>
+            Progress: ${m.percentComplete}%`;
+        },
+      },
+      legend: { data: ['On Time', 'Delayed'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 160, right: 60, top: 30, bottom: 50 },
+      xAxis: {
+        type: 'value',
+        name: 'Delay (Days)',
+        nameLocation: 'center',
+        nameGap: 30,
+        nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v > 0 ? `+${v}` : v },
+        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+      },
+      yAxis: {
+        type: 'category',
+        data: categories,
+        axisLabel: { color: 'var(--text-primary)', fontSize: 10 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      series: [{
+        type: 'bar',
+        data: variances.map((v, i) => ({
+          value: v,
+          itemStyle: {
+            color: v <= 0 ? '#10B981' : v <= 7 ? '#F59E0B' : '#EF4444',
+            borderRadius: v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
+          },
+        })),
+        barWidth: '60%',
+        label: {
+          show: true,
+          position: (params: any) => variances[params.dataIndex] >= 0 ? 'right' : 'left',
+          formatter: (params: any) => {
+            const v = variances[params.dataIndex];
+            return v === 0 ? 'On Time' : `${v > 0 ? '+' : ''}${v}d`;
+          },
+          color: 'var(--text-muted)',
+          fontSize: 10,
+        },
+      }],
+      dataZoom: [{ type: 'inside', yAxisIndex: 0 }],
+    };
+  }, [milestones]);
+
+  if (!milestones.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No milestone data available</div>;
+  return <ChartWrapper option={option} height="450px" />;
+}
+
+// ===== MILESTONE STATUS DISTRIBUTION =====
+function MilestoneStatusChart({ milestones }: { milestones: any[] }) {
+  const statusData = useMemo(() => {
+    const complete = milestones.filter(m => m.status === 'Complete' || m.percentComplete >= 100).length;
+    const onTime = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) <= 0).length;
+    const delayed = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) > 0 && (m.varianceDays || 0) <= 7).length;
+    const critical = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) > 7).length;
+    
+    return [
+      { name: 'Completed', value: complete, color: '#8B5CF6' },
+      { name: 'On Time', value: onTime, color: '#10B981' },
+      { name: 'Slightly Delayed', value: delayed, color: '#F59E0B' },
+      { name: 'Critical Delay', value: critical, color: '#EF4444' },
+    ].filter(d => d.value > 0);
+  }, [milestones]);
+
+  const option: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: 'rgba(22,27,34,0.95)',
+      borderColor: 'var(--border-color)',
+      textStyle: { color: '#fff', fontSize: 11 },
+      formatter: (params: any) => `${params.name}: ${params.value} milestones (${params.percent}%)`,
+    },
+    legend: { 
+      orient: 'vertical', 
+      right: 20, 
+      top: 'center', 
+      textStyle: { color: 'var(--text-muted)', fontSize: 11 },
+    },
+    series: [{
+      type: 'pie',
+      radius: ['50%', '80%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: true,
+      itemStyle: { borderRadius: 8, borderColor: 'var(--bg-card)', borderWidth: 3 },
+      label: {
+        show: true,
+        position: 'center',
+        formatter: () => `${milestones.length}\nTotal`,
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: 'var(--text-primary)',
+        lineHeight: 24,
+      },
+      emphasis: {
+        label: { show: true, fontSize: 20, fontWeight: 'bold' },
+      },
+      labelLine: { show: false },
+      data: statusData.map(d => ({
+        value: d.value,
+        name: d.name,
+        itemStyle: { color: d.color },
+      })),
+    }],
+  }), [statusData, milestones.length]);
+
+  return <ChartWrapper option={option} height="320px" />;
+}
+
+// ===== MILESTONE PROGRESS GAUGE =====
+function MilestoneProgressGauge({ milestones }: { milestones: any[] }) {
+  const stats = useMemo(() => {
+    const total = milestones.length || 1;
+    const complete = milestones.filter(m => m.status === 'Complete' || m.percentComplete >= 100).length;
+    const avgProgress = milestones.reduce((sum, m) => sum + (m.percentComplete || 0), 0) / total;
+    const avgDelay = milestones.reduce((sum, m) => sum + (m.varianceDays || 0), 0) / total;
+    
+    return { total, complete, avgProgress: Math.round(avgProgress), avgDelay: Math.round(avgDelay * 10) / 10 };
+  }, [milestones]);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', padding: '1rem 0' }}>
+      <div style={{ textAlign: 'center', padding: '1.5rem', background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(139,92,246,0.05))', borderRadius: '16px', border: '1px solid rgba(139,92,246,0.3)' }}>
+        <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#8B5CF6' }}>{stats.complete}</div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Completed</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>of {stats.total} milestones</div>
+      </div>
+      <div style={{ textAlign: 'center', padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05))', borderRadius: '16px', border: '1px solid rgba(16,185,129,0.3)' }}>
+        <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#10B981' }}>{stats.avgProgress}%</div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Avg Progress</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>across all milestones</div>
+      </div>
+      <div style={{ textAlign: 'center', padding: '1.5rem', background: `linear-gradient(135deg, rgba(${stats.avgDelay <= 0 ? '16,185,129' : stats.avgDelay <= 5 ? '245,158,11' : '239,68,68'},0.1), rgba(${stats.avgDelay <= 0 ? '16,185,129' : stats.avgDelay <= 5 ? '245,158,11' : '239,68,68'},0.05))`, borderRadius: '16px', border: `1px solid rgba(${stats.avgDelay <= 0 ? '16,185,129' : stats.avgDelay <= 5 ? '245,158,11' : '239,68,68'},0.3)` }}>
+        <div style={{ fontSize: '2.5rem', fontWeight: 900, color: stats.avgDelay <= 0 ? '#10B981' : stats.avgDelay <= 5 ? '#F59E0B' : '#EF4444' }}>
+          {stats.avgDelay > 0 ? '+' : ''}{stats.avgDelay}
+        </div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Avg Delay (days)</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>{stats.avgDelay <= 0 ? 'On schedule' : 'Behind schedule'}</div>
+      </div>
+    </div>
+  );
+}
+
 // ===== VARIANCE TREND MINI =====
 function VarianceTrend({ label, current, previous, period }: { label: string; current: number | null | undefined; previous: number | null | undefined; period: string }) {
   const safeC = current ?? 0;
@@ -1425,39 +1720,31 @@ export default function OverviewPage() {
       {/* DASHBOARD TAB */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Top Row: Sankey + Radar */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Portfolio Flow" subtitle="Project status distribution">
-              <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} />
-            </SectionCard>
+          {/* Full Width: Enhanced Sankey */}
+          <SectionCard title="Portfolio Flow" subtitle="Project distribution by health status - hover for details">
+            <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} />
+          </SectionCard>
+
+          {/* Row: Radar + Risk Matrix */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <SectionCard title="Project Health Radar" subtitle="Top projects comparison">
               <ProjectHealthRadar projects={projectBreakdown} />
             </SectionCard>
-          </div>
 
-          {/* Middle Row: Risk Matrix + Burndown */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget items`}>
+          <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget items`}>
               <RiskMatrix scheduleRisks={scheduleRisks} budgetConcerns={budgetConcerns} onItemSelect={setSelectedRiskItem} />
             </SectionCard>
-            <SectionCard title="Progress Burndown" subtitle="Completion trajectory">
-              <ProgressBurndown healthMetrics={healthMetrics} />
-            </SectionCard>
           </div>
 
-          {/* Bottom Row: S-Curve + Budget Variance */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
-            <SectionCard title="S-Curve Progress" subtitle="Planned vs Actual over time">
-              <div style={{ height: '280px' }}>
-                <SCurveChart data={data.sCurve || { dates: [], planned: [], actual: [], forecast: [] }} height="260px" />
-              </div>
-            </SectionCard>
-            <SectionCard title="Budget Variance" subtitle="By category">
-              <div style={{ height: '280px' }}>
-                <BudgetVarianceChart data={data.budgetVariance || []} height={260} />
-              </div>
-            </SectionCard>
-          </div>
+          {/* Progress Burndown - Full Width */}
+          <SectionCard title="Progress Burndown" subtitle="Completion trajectory">
+            <ProgressBurndown healthMetrics={healthMetrics} />
+          </SectionCard>
+
+          {/* Full Width: Enhanced Budget Variance */}
+          <SectionCard title="Budget Variance Analysis" subtitle="Baseline vs Actual hours by project - hover for details">
+            <EnhancedBudgetVarianceChart projectBreakdown={projectBreakdown} />
+          </SectionCard>
 
           {/* Project Summary Table */}
           <SectionCard title={`Project Summary (${projectBreakdown.length})`} subtitle="Click any row for details" noPadding>
@@ -1504,9 +1791,22 @@ export default function OverviewPage() {
       {/* MILESTONES & RISKS TAB */}
       {activeTab === 'milestones' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Milestone Tracker */}
-          <SectionCard title={`Milestone Tracker (${milestones.length})`} subtitle="Project milestones and deadlines" noPadding>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {/* Milestone Summary Cards */}
+          <MilestoneProgressGauge milestones={milestones} />
+
+          {/* Milestone Visuals Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
+            <SectionCard title="Milestone Delay Analysis" subtitle="Variance by milestone (days)">
+              <MilestoneTimelineChart milestones={milestones} />
+            </SectionCard>
+            <SectionCard title="Milestone Status" subtitle="Distribution breakdown">
+              <MilestoneStatusChart milestones={milestones} />
+            </SectionCard>
+          </div>
+
+          {/* Milestone Tracker Table */}
+          <SectionCard title={`All Milestones (${milestones.length})`} subtitle="Click for details" noPadding>
+            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
               <table className="data-table" style={{ fontSize: '0.8rem' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
                   <tr>
@@ -1515,7 +1815,7 @@ export default function OverviewPage() {
                     <th>Status</th>
                     <th>Planned</th>
                     <th>Forecast</th>
-                    <th className="number">Variance (days)</th>
+                    <th className="number">Variance</th>
                     <th className="number">Progress</th>
                   </tr>
                 </thead>
@@ -1533,7 +1833,7 @@ export default function OverviewPage() {
                         </td>
                         <td>{m.plannedCompletion || '-'}</td>
                         <td>{m.forecastCompletion || '-'}</td>
-                        <td className="number" style={{ color: variance > 7 ? '#EF4444' : variance > 0 ? '#F59E0B' : '#10B981', fontWeight: 600 }}>{variance > 0 ? `+${variance}` : variance}</td>
+                        <td className="number" style={{ color: variance > 7 ? '#EF4444' : variance > 0 ? '#F59E0B' : '#10B981', fontWeight: 600 }}>{variance > 0 ? `+${variance}d` : `${variance}d`}</td>
                         <td className="number">{m.percentComplete || 0}%</td>
                       </tr>
                     );
@@ -1544,65 +1844,56 @@ export default function OverviewPage() {
             </div>
           </SectionCard>
 
-          {/* Schedule Risks */}
-          <SectionCard title={`Schedule Risks (${scheduleRisks.length})`} subtitle="Delayed milestones requiring attention" noPadding>
-            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  <tr>
-                    <th>Milestone</th>
-                    <th>Project</th>
-                    <th className="number">Delay (days)</th>
-                    <th>Planned Date</th>
-                    <th className="number">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scheduleRisks.map((r: any, idx: number) => (
-                    <tr key={idx} onClick={() => setSelectedRiskItem({ ...r, type: 'schedule', impact: r.variance > 14 ? 90 : 60, probability: 75 })} style={{ cursor: 'pointer' }}>
-                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{r.name}</td>
-                      <td>{r.project || '-'}</td>
-                      <td className="number" style={{ color: r.variance > 14 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>+{r.variance}</td>
-                      <td>{r.planned || '-'}</td>
-                      <td className="number">{r.percentComplete}%</td>
+          {/* Schedule Risks + Budget Concerns Side by Side */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <SectionCard title={`Schedule Risks (${scheduleRisks.length})`} subtitle="Delayed milestones" noPadding>
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+                    <tr>
+                      <th>Milestone</th>
+                      <th className="number">Delay</th>
+                      <th className="number">Progress</th>
                     </tr>
-                  ))}
-                  {scheduleRisks.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No schedule risks</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
+                  </thead>
+                  <tbody>
+                    {scheduleRisks.slice(0, 10).map((r: any, idx: number) => (
+                      <tr key={idx} onClick={() => setSelectedRiskItem({ ...r, type: 'schedule', impact: r.variance > 14 ? 90 : 60, probability: 75 })} style={{ cursor: 'pointer' }}>
+                        <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{r.name}</td>
+                        <td className="number" style={{ color: r.variance > 14 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>+{r.variance}d</td>
+                        <td className="number">{r.percentComplete}%</td>
+                      </tr>
+                    ))}
+                    {scheduleRisks.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No schedule risks</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
 
-          {/* Budget Concerns */}
-          <SectionCard title={`Budget Concerns (${budgetConcerns.length})`} subtitle="Tasks exceeding baseline hours" noPadding>
-            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  <tr>
-                    <th>Task</th>
-                    <th>Project</th>
-                    <th>Assignee</th>
-                    <th className="number">Baseline</th>
-                    <th className="number">Actual</th>
-                    <th className="number">Overage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {budgetConcerns.slice(0, 50).map((b: any, idx: number) => (
-                    <tr key={idx} onClick={() => setSelectedRiskItem({ ...b, type: 'budget', impact: b.variance > 50 ? 85 : 55, probability: 65 })} style={{ cursor: 'pointer' }}>
-                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{b.name}</td>
-                      <td>{b.project || '-'}</td>
-                      <td>{b.assignee}</td>
-                      <td className="number">{b.baseline}</td>
-                      <td className="number" style={{ fontWeight: 600 }}>{b.actual}</td>
-                      <td className="number" style={{ color: b.variance > 50 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>+{b.variance}%</td>
+            <SectionCard title={`Budget Concerns (${budgetConcerns.length})`} subtitle="Over budget tasks" noPadding>
+              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+                    <tr>
+                      <th>Task</th>
+                      <th className="number">Baseline</th>
+                      <th className="number">Overage</th>
                     </tr>
-                  ))}
-                  {budgetConcerns.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No budget concerns</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
+                  </thead>
+                  <tbody>
+                    {budgetConcerns.slice(0, 10).map((b: any, idx: number) => (
+                      <tr key={idx} onClick={() => setSelectedRiskItem({ ...b, type: 'budget', impact: b.variance > 50 ? 85 : 55, probability: 65 })} style={{ cursor: 'pointer' }}>
+                        <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{b.name}</td>
+                        <td className="number">{b.baseline}</td>
+                        <td className="number" style={{ color: b.variance > 50 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>+{b.variance}%</td>
+                      </tr>
+                    ))}
+                    {budgetConcerns.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No budget concerns</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          </div>
         </div>
       )}
 
