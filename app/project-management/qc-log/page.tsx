@@ -1,19 +1,14 @@
 'use client';
 
 /**
- * @fileoverview Quality Control Management Page - Microsoft Dynamics Style
+ * @fileoverview Quality Control Management Page
  * 
- * Comprehensive QC management with enhanced features:
+ * QC management with:
  * - Quality Command Center with health metrics
- * - Quality Orders (create/track inspections)
- * - Non-conformance Management with severity tracking
+ * - Quality Orders tracking
+ * - Non-conformance Management
  * - CAPA (Corrective and Preventive Actions)
- * - Test Results with pass/fail and detailed scoring
  * - Quality Analytics with trending charts
- * - Inspector assignment and workload tracking
- * - Sampling plans and inspection triggers
- * 
- * Inspired by Microsoft Dynamics 365 Quality Management
  * 
  * @module app/project-management/qc-log/page
  */
@@ -21,7 +16,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import type { QCTask, ChangeLogEntry } from '@/types/data';
+import type { QCTask } from '@/types/data';
 import {
   type SortState,
   formatSortIndicator,
@@ -35,48 +30,6 @@ import type { EChartsOption } from 'echarts';
 // ============================================================================
 
 type ViewType = 'dashboard' | 'orders' | 'nonconformance' | 'capa';
-
-interface QualityOrder {
-  id: string;
-  taskId: string;
-  taskName: string;
-  type: 'Inspection' | 'Audit' | 'Verification' | 'Certification';
-  priority: 'Critical' | 'High' | 'Medium' | 'Low';
-  status: 'Pending' | 'In Progress' | 'Complete' | 'Failed' | 'On Hold';
-  inspector: string;
-  scheduledDate: string;
-  completedDate?: string;
-  testCount: number;
-  passCount: number;
-  failCount: number;
-  score: number;
-  comments: string;
-}
-
-interface NonConformance {
-  id: string;
-  orderId: string;
-  severity: 'Critical' | 'Major' | 'Minor' | 'Observation';
-  category: string;
-  description: string;
-  rootCause?: string;
-  status: 'Open' | 'Under Review' | 'Resolved' | 'Closed';
-  detectedDate: string;
-  dueDate?: string;
-  assignedTo?: string;
-}
-
-interface CAPA {
-  id: string;
-  ncId: string;
-  type: 'Corrective' | 'Preventive';
-  action: string;
-  status: 'Planned' | 'In Progress' | 'Verification' | 'Complete';
-  owner: string;
-  dueDate: string;
-  completedDate?: string;
-  effectiveness?: 'Effective' | 'Partially Effective' | 'Not Effective';
-}
 
 // ============================================================================
 // SECTION CARD COMPONENT
@@ -123,26 +76,26 @@ function QualityCommandCenter({ stats }: { stats: any }) {
   
   return (
     <div style={{
-      background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)',
-      borderRadius: '20px',
+      background: 'var(--bg-card)',
+      borderRadius: '16px',
       padding: '1.25rem',
       border: '1px solid var(--border-color)',
       display: 'grid',
-      gridTemplateColumns: '160px 1fr auto',
+      gridTemplateColumns: '140px 1fr',
       alignItems: 'center',
       gap: '1.5rem',
     }}>
       {/* Quality Score Ring */}
-      <div style={{ position: 'relative', width: '160px', height: '160px' }}>
+      <div style={{ position: 'relative', width: '140px', height: '140px' }}>
         <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
           <circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg-tertiary)" strokeWidth="8" />
           <circle cx="50" cy="50" r="42" fill="none" stroke={healthColor} strokeWidth="8"
             strokeDasharray={`${stats.passRate * 2.64} 264`} strokeLinecap="round"
-            transform="rotate(-90 50 50)" style={{ filter: `drop-shadow(0 0 8px ${healthColor})` }} />
+            transform="rotate(-90 50 50)" />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: '2rem', fontWeight: 900, color: healthColor }}>{stats.passRate.toFixed(0)}%</span>
-          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pass Rate</span>
+          <span style={{ fontSize: '1.75rem', fontWeight: 800, color: healthColor }}>{stats.passRate.toFixed(0)}%</span>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pass Rate</span>
         </div>
       </div>
 
@@ -153,10 +106,10 @@ function QualityCommandCenter({ stats }: { stats: any }) {
           { label: 'Completed', value: stats.completed, color: '#10B981' },
           { label: 'In Progress', value: stats.inProgress, color: '#F59E0B' },
           { label: 'Pending', value: stats.pending, color: '#6B7280' },
-          { label: 'Critical NC', value: stats.criticalNC, color: '#EF4444' },
-          { label: 'Open CAPA', value: stats.openCAPA, color: '#8B5CF6' },
+          { label: 'Critical Errors', value: stats.criticalNC, color: '#EF4444' },
+          { label: 'Non-Critical', value: stats.minorNC, color: '#F59E0B' },
           { label: 'Avg Score', value: stats.avgScore.toFixed(1), color: '#40E0D0' },
-          { label: 'Hours', value: stats.totalHours.toFixed(0), color: '#06B6D4' },
+          { label: 'Total Hours', value: stats.totalHours.toFixed(0), color: '#06B6D4' },
         ].map((item, idx) => (
           <div key={idx} style={{
             background: `${item.color}10`,
@@ -169,31 +122,6 @@ function QualityCommandCenter({ stats }: { stats: any }) {
           </div>
         ))}
       </div>
-
-      {/* Quick Actions */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <button style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0.6rem 1rem', background: 'var(--pinnacle-teal)', borderRadius: '8px',
-          color: '#000', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          New Quality Order
-        </button>
-        <button style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0.6rem 1rem', background: 'var(--bg-tertiary)', borderRadius: '8px',
-          color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 500, border: '1px solid var(--border-color)', cursor: 'pointer',
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
-            <rect x="9" y="3" width="6" height="4" rx="1" />
-          </svg>
-          Log Non-conformance
-        </button>
-      </div>
     </div>
   );
 }
@@ -204,35 +132,32 @@ function QualityCommandCenter({ stats }: { stats: any }) {
 
 function QualityTrendChart({ qcTasks }: { qcTasks: any[] }) {
   const option: EChartsOption = useMemo(() => {
-    // Group by week
-    const weeklyData = new Map<string, { pass: number; fail: number; total: number }>();
-    const now = new Date();
-    
-    for (let i = 11; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(now.getDate() - (i * 7));
-      const key = `W${12 - i}`;
-      weeklyData.set(key, { pass: 0, fail: 0, total: 0 });
-    }
-    
-    // Simulate trend data from QC tasks
-    qcTasks.forEach((qc, idx) => {
-      const weekIdx = idx % 12;
-      const key = `W${weekIdx + 1}`;
-      const data = weeklyData.get(key);
-      if (data) {
-        data.total++;
-        if (qc.qcStatus === 'Complete') {
-          if ((qc.qcScore || 0) >= 80) data.pass++;
-          else data.fail++;
-        }
-      }
+    // Group tasks by status for a simple breakdown
+    const statusCounts = new Map<string, number>();
+    qcTasks.forEach(qc => {
+      const status = qc.qcStatus || 'Unknown';
+      statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
     });
-
-    const weeks = Array.from(weeklyData.keys());
-    const passRates = weeks.map(w => {
-      const d = weeklyData.get(w)!;
-      return d.total > 0 ? Math.round((d.pass / d.total) * 100) : 85 + Math.random() * 10;
+    
+    // Calculate pass rate from completed tasks
+    const completedTasks = qcTasks.filter(t => t.qcStatus === 'Complete');
+    const passedTasks = completedTasks.filter(t => (t.qcScore || 0) >= 80);
+    const passRate = completedTasks.length > 0 ? Math.round((passedTasks.length / completedTasks.length) * 100) : 0;
+    
+    // Group by score ranges
+    const scoreRanges = [
+      { range: '0-59', count: 0, color: '#EF4444' },
+      { range: '60-79', count: 0, color: '#F59E0B' },
+      { range: '80-89', count: 0, color: '#3B82F6' },
+      { range: '90-100', count: 0, color: '#10B981' },
+    ];
+    
+    qcTasks.forEach(qc => {
+      const score = qc.qcScore || 0;
+      if (score < 60) scoreRanges[0].count++;
+      else if (score < 80) scoreRanges[1].count++;
+      else if (score < 90) scoreRanges[2].count++;
+      else scoreRanges[3].count++;
     });
     
     return {
@@ -246,33 +171,29 @@ function QualityTrendChart({ qcTasks }: { qcTasks: any[] }) {
       grid: { left: 50, right: 20, top: 30, bottom: 30 },
       xAxis: {
         type: 'category',
-        data: weeks,
+        data: scoreRanges.map(r => r.range),
         axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
         axisLine: { lineStyle: { color: 'var(--border-color)' } }
       },
       yAxis: {
         type: 'value',
-        min: 60,
-        max: 100,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: '{value}%' },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
         splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }
       },
       series: [{
-        name: 'Pass Rate',
-        type: 'line',
-        data: passRates,
-        smooth: true,
-        lineStyle: { color: '#10B981', width: 3 },
-        areaStyle: { color: 'rgba(16,185,129,0.15)' },
-        symbol: 'circle',
-        symbolSize: 6,
-        itemStyle: { color: '#10B981' },
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          lineStyle: { color: '#F59E0B', type: 'dashed', width: 2 },
-          label: { show: true, formatter: 'Target 95%', position: 'end', color: '#F59E0B', fontSize: 10 },
-          data: [{ yAxis: 95 }]
+        name: 'Tasks',
+        type: 'bar',
+        data: scoreRanges.map(r => ({
+          value: r.count,
+          itemStyle: { color: r.color }
+        })),
+        barWidth: '60%',
+        label: {
+          show: true,
+          position: 'top',
+          formatter: '{c}',
+          color: 'var(--text-muted)',
+          fontSize: 10
         }
       }]
     };
@@ -316,24 +237,31 @@ function DefectDistributionChart({ qcTasks }: { qcTasks: any[] }) {
 }
 
 // ============================================================================
-// INSPECTOR WORKLOAD CHART
+// STATUS BREAKDOWN CHART
 // ============================================================================
 
-function InspectorWorkloadChart({ qcTasks }: { qcTasks: any[] }) {
+function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
   const option: EChartsOption = useMemo(() => {
-    // Group by inspector (simulated from task IDs)
-    const inspectors = ['John D.', 'Sarah M.', 'Mike T.', 'Lisa K.', 'Tom R.'];
-    const workload = inspectors.map(() => ({
-      completed: Math.floor(Math.random() * 15) + 5,
-      inProgress: Math.floor(Math.random() * 8) + 2,
-      pending: Math.floor(Math.random() * 5) + 1,
-    }));
+    // Group by status
+    const statusCounts = new Map<string, number>();
+    qcTasks.forEach(qc => {
+      const status = qc.qcStatus || 'Unknown';
+      statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+    });
+    
+    const statuses = Array.from(statusCounts.entries()).sort((a, b) => b[1] - a[1]);
+    const statusColors: Record<string, string> = {
+      'Complete': '#10B981',
+      'In Progress': '#F59E0B',
+      'Not Started': '#6B7280',
+      'On Hold': '#EF4444',
+      'Failed': '#EF4444',
+    };
     
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis', backgroundColor: 'rgba(22,27,34,0.95)', textStyle: { color: '#fff' } },
-      legend: { bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 80, right: 20, top: 20, bottom: 50 },
+      grid: { left: 100, right: 30, top: 20, bottom: 30 },
       xAxis: {
         type: 'value',
         axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
@@ -341,36 +269,26 @@ function InspectorWorkloadChart({ qcTasks }: { qcTasks: any[] }) {
       },
       yAxis: {
         type: 'category',
-        data: inspectors,
+        data: statuses.map(s => s[0]),
         axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
         axisLine: { lineStyle: { color: 'var(--border-color)' } }
       },
-      series: [
-        {
-          name: 'Completed',
-          type: 'bar',
-          stack: 'total',
-          data: workload.map(w => w.completed),
-          itemStyle: { color: '#10B981', borderRadius: [0, 0, 0, 0] },
-          barMaxWidth: 20
-        },
-        {
-          name: 'In Progress',
-          type: 'bar',
-          stack: 'total',
-          data: workload.map(w => w.inProgress),
-          itemStyle: { color: '#F59E0B' },
-          barMaxWidth: 20
-        },
-        {
-          name: 'Pending',
-          type: 'bar',
-          stack: 'total',
-          data: workload.map(w => w.pending),
-          itemStyle: { color: '#6B7280', borderRadius: [0, 4, 4, 0] },
-          barMaxWidth: 20
+      series: [{
+        name: 'Tasks',
+        type: 'bar',
+        data: statuses.map(s => ({
+          value: s[1],
+          itemStyle: { color: statusColors[s[0]] || '#6B7280' }
+        })),
+        barMaxWidth: 24,
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '{c}',
+          color: 'var(--text-muted)',
+          fontSize: 10
         }
-      ]
+      }]
     };
   }, [qcTasks]);
 
@@ -426,7 +344,7 @@ export default function QCLogPage() {
     return [...new Set((data.qctasks || []).map((qc) => qc.qcStatus))];
   }, [data.qctasks]);
 
-  // Calculate comprehensive stats
+  // Calculate comprehensive stats from real data
   const stats = useMemo(() => {
     const tasks = filteredQCTasks;
     const completedTasks = tasks.filter(t => t.qcStatus === 'Complete');
@@ -442,7 +360,6 @@ export default function QCLogPage() {
       totalHours: tasks.reduce((sum, t) => sum + (t.qcHours || 0), 0),
       criticalNC: tasks.reduce((sum, t) => sum + (t.qcCriticalErrors || 0), 0),
       minorNC: tasks.reduce((sum, t) => sum + (t.qcNonCriticalErrors || 0), 0),
-      openCAPA: Math.floor(tasks.reduce((sum, t) => sum + (t.qcCriticalErrors || 0), 0) * 0.8),
     };
   }, [filteredQCTasks]);
 
@@ -503,32 +420,20 @@ export default function QCLogPage() {
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflow: 'auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            width: '48px', height: '48px', borderRadius: '12px',
-            background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <path d="M9 11l3 3L22 4" />
-              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-            </svg>
-          </div>
-          <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>Quality Control</h1>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-              Inspections | Non-conformance | CAPA | Analytics
-            </p>
-          </div>
+        <div>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Quality Control</h1>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+            Track inspections, manage non-conformance, and corrective actions
+          </p>
         </div>
 
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '10px' }}>
           {[
-            { key: 'dashboard', label: 'Dashboard', icon: 'grid' },
-            { key: 'orders', label: 'Quality Orders', icon: 'list' },
-            { key: 'nonconformance', label: 'Non-conformance', icon: 'alert' },
-            { key: 'capa', label: 'CAPA', icon: 'tool' },
+            { key: 'dashboard', label: 'Dashboard' },
+            { key: 'orders', label: 'Quality Orders' },
+            { key: 'nonconformance', label: 'Non-conformance' },
+            { key: 'capa', label: 'CAPA' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -538,7 +443,6 @@ export default function QCLogPage() {
                 background: activeView === tab.key ? 'var(--pinnacle-teal)' : 'transparent',
                 color: activeView === tab.key ? '#000' : 'var(--text-secondary)',
                 fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
               }}
             >
               {tab.label}
@@ -555,14 +459,14 @@ export default function QCLogPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Charts Row */}
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Quality Trend" subtitle="Pass rate over time" accent="#10B981">
+            <SectionCard title="Score Distribution" subtitle="Tasks by QC score range">
               <QualityTrendChart qcTasks={filteredQCTasks} />
             </SectionCard>
             <SectionCard title="Defect Distribution" subtitle="By severity">
               <DefectDistributionChart qcTasks={filteredQCTasks} />
             </SectionCard>
-            <SectionCard title="Inspector Workload" subtitle="Tasks by inspector">
-              <InspectorWorkloadChart qcTasks={filteredQCTasks} />
+            <SectionCard title="Status Breakdown" subtitle="Tasks by status">
+              <StatusBreakdownChart qcTasks={filteredQCTasks} />
             </SectionCard>
           </div>
 
@@ -618,12 +522,9 @@ export default function QCLogPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
           {/* Filters */}
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '280px' }}>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}>
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+            <div style={{ flex: '1 1 200px', maxWidth: '280px' }}>
               <input type="text" placeholder="Search orders..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.75rem 0.5rem 2rem', fontSize: '0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }} />
+                style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }} />
             </div>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer', minWidth: '140px' }}>
@@ -642,19 +543,17 @@ export default function QCLogPage() {
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px' }}>Click cells to edit</span>
             </div>
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <table style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
                     {[
                       { key: 'qcTaskId', label: 'Order ID', align: 'left' },
                       { key: 'parentTask', label: 'Task', align: 'left' },
-                      { key: 'type', label: 'Type', align: 'center' },
-                      { key: 'priority', label: 'Priority', align: 'center' },
                       { key: 'qcHours', label: 'Hours', align: 'center' },
                       { key: 'qcScore', label: 'Score', align: 'center' },
                       { key: 'qcStatus', label: 'Status', align: 'center' },
                       { key: 'qcCriticalErrors', label: 'Critical', align: 'center' },
-                      { key: 'qcNonCriticalErrors', label: 'Minor', align: 'center' },
+                      { key: 'qcNonCriticalErrors', label: 'Non-Critical', align: 'center' },
                       { key: 'qcComments', label: 'Comments', align: 'left' },
                     ].map((col) => (
                       <th key={col.key} style={{ padding: '10px 12px', textAlign: col.align as any, fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.7rem', textTransform: 'uppercase', position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 1 }}>
@@ -671,22 +570,11 @@ export default function QCLogPage() {
                     const colors = getStatusColor(qc.qcStatus);
                     const score = qc.qcScore || 0;
                     const scoreColor = score >= 90 ? '#10B981' : score >= 80 ? '#F59E0B' : '#EF4444';
-                    const types = ['Inspection', 'Audit', 'Verification', 'Certification'];
-                    const priorities = ['Critical', 'High', 'Medium', 'Low'];
-                    const simType = types[idx % types.length];
-                    const simPriority = priorities[idx % priorities.length];
-                    const priorityColor = simPriority === 'Critical' ? '#EF4444' : simPriority === 'High' ? '#F59E0B' : simPriority === 'Medium' ? '#3B82F6' : '#6B7280';
                     
                     return (
                       <tr key={qc.qcTaskId} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: 'var(--pinnacle-teal)', fontWeight: 500 }}>{qc.qcTaskId}</td>
-                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={getTaskName(qc.parentTaskId)}>{getTaskName(qc.parentTaskId)}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 500, background: 'rgba(59,130,246,0.1)', color: '#3B82F6' }}>{simType}</span>
-                        </td>
-                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '2px 8px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: 500, background: `${priorityColor}15`, color: priorityColor }}>{simPriority}</span>
-                        </td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={getTaskName(qc.parentTaskId)}>{getTaskName(qc.parentTaskId)}</td>
                         <td onClick={() => startEdit(qc.qcTaskId, 'qcHours', qc.qcHours)} style={{ padding: '8px 12px', textAlign: 'center', cursor: 'pointer' }}>
                           {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcHours' ? (
                             <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '50px', padding: '4px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
@@ -714,7 +602,7 @@ export default function QCLogPage() {
                             <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '50px', padding: '4px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
                           ) : <span style={{ background: (qc.qcNonCriticalErrors || 0) > 0 ? 'rgba(245,158,11,0.15)' : 'transparent', padding: '2px 8px', borderRadius: '8px' }}>{qc.qcNonCriticalErrors ?? 0}</span>}
                         </td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcComments', qc.qcComments)} style={{ padding: '8px 12px', cursor: 'pointer', color: 'var(--text-secondary)', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <td onClick={() => startEdit(qc.qcTaskId, 'qcComments', qc.qcComments)} style={{ padding: '8px 12px', cursor: 'pointer', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcComments' ? (
                             <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '100%', padding: '4px 8px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)' }} />
                           ) : (qc.qcComments || '—')}
@@ -723,7 +611,7 @@ export default function QCLogPage() {
                     );
                   })}
                   {sortedQCTasks.length === 0 && (
-                    <tr><td colSpan={10} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No quality orders found</td></tr>
+                    <tr><td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No quality orders found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -736,60 +624,61 @@ export default function QCLogPage() {
       {activeView === 'nonconformance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* NC Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
             {[
-              { label: 'Critical', value: stats.criticalNC, color: '#EF4444', icon: '!' },
-              { label: 'Major', value: Math.floor(stats.minorNC * 0.6), color: '#F59E0B', icon: '' },
-              { label: 'Minor', value: Math.floor(stats.minorNC * 0.4), color: '#3B82F6', icon: '' },
-              { label: 'Open Total', value: stats.criticalNC + stats.minorNC, color: '#8B5CF6', icon: '' },
+              { label: 'Critical Errors', value: stats.criticalNC, color: '#EF4444' },
+              { label: 'Non-Critical Errors', value: stats.minorNC, color: '#F59E0B' },
+              { label: 'Total Issues', value: stats.criticalNC + stats.minorNC, color: '#8B5CF6' },
             ].map((item, idx) => (
-              <div key={idx} style={{ background: `linear-gradient(135deg, ${item.color}15 0%, var(--bg-card) 100%)`, borderRadius: '16px', padding: '1.25rem', border: `1px solid ${item.color}30` }}>
+              <div key={idx} style={{ background: `${item.color}10`, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${item.color}30` }}>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{item.label}</div>
                 <div style={{ fontSize: '2rem', fontWeight: 800, color: item.color }}>{item.value}</div>
               </div>
             ))}
           </div>
 
-          {/* NC Table */}
-          <SectionCard title="Non-conformance Log" subtitle="Track and manage quality issues" noPadding>
+          {/* NC Table - Tasks with errors */}
+          <SectionCard title="Tasks with Errors" subtitle="Quality issues by task" noPadding>
             <div style={{ maxHeight: '400px', overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>NC ID</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Order</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Severity</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Category</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>QC Task ID</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Parent Task</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Non-Critical</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Score</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assigned</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Due Date</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || (q.qcNonCriticalErrors || 0) > 0).slice(0, 15).map((qc, idx) => {
-                    const severity = (qc.qcCriticalErrors || 0) > 0 ? 'Critical' : 'Minor';
-                    const sevColor = getSeverityColor(severity);
-                    const categories = ['Process', 'Documentation', 'Equipment', 'Training', 'Material'];
-                    const statuses = ['Open', 'Under Review', 'Resolved'];
-                    const assignees = ['John D.', 'Sarah M.', 'Mike T.'];
+                  {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || (q.qcNonCriticalErrors || 0) > 0).map((qc, idx) => {
+                    const hasCritical = (qc.qcCriticalErrors || 0) > 0;
+                    const colors = getStatusColor(qc.qcStatus);
+                    const score = qc.qcScore || 0;
+                    const scoreColor = score >= 90 ? '#10B981' : score >= 80 ? '#F59E0B' : '#EF4444';
                     return (
                       <tr key={`nc-${qc.qcTaskId}`} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: sevColor, fontWeight: 500 }}>NC-{String(idx + 1).padStart(4, '0')}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--pinnacle-teal)' }}>{qc.qcTaskId}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: `${sevColor}15`, color: sevColor }}>{severity}</span>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: hasCritical ? '#EF4444' : '#F59E0B', fontWeight: 500 }}>{qc.qcTaskId}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getTaskName(qc.parentTaskId)}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: hasCritical ? '#EF4444' : 'var(--text-muted)' }}>
+                          {qc.qcCriticalErrors ?? 0}
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{categories[idx % categories.length]}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: 'rgba(245,158,11,0.15)', color: '#F59E0B' }}>{statuses[idx % statuses.length]}</span>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: (qc.qcNonCriticalErrors || 0) > 0 ? '#F59E0B' : 'var(--text-muted)' }}>
+                          {qc.qcNonCriticalErrors ?? 0}
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{assignees[idx % assignees.length]}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                          {new Date(Date.now() + (7 + idx) * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: colors.bg, color: colors.color }}>{qc.qcStatus}</span>
                         </td>
                       </tr>
                     );
                   })}
+                  {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || (q.qcNonCriticalErrors || 0) > 0).length === 0 && (
+                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No tasks with errors</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -800,72 +689,62 @@ export default function QCLogPage() {
       {/* CAPA VIEW */}
       {activeView === 'capa' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* CAPA Summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+          {/* CAPA Summary - based on real data */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
             {[
-              { label: 'Planned', value: Math.floor(stats.openCAPA * 0.2), color: '#6B7280' },
-              { label: 'In Progress', value: Math.floor(stats.openCAPA * 0.4), color: '#3B82F6' },
-              { label: 'Verification', value: Math.floor(stats.openCAPA * 0.2), color: '#F59E0B' },
-              { label: 'Complete', value: Math.floor(stats.openCAPA * 0.15), color: '#10B981' },
-              { label: 'Overdue', value: Math.floor(stats.openCAPA * 0.05), color: '#EF4444' },
+              { label: 'Tasks Needing Action', value: sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || (q.qcScore || 0) < 80).length, color: '#EF4444' },
+              { label: 'Tasks with Low Score', value: sortedQCTasks.filter(q => (q.qcScore || 0) < 80 && (q.qcScore || 0) > 0).length, color: '#F59E0B' },
+              { label: 'Pending QC', value: sortedQCTasks.filter(q => q.qcStatus === 'Not Started').length, color: '#6B7280' },
             ].map((item, idx) => (
-              <div key={idx} style={{ background: `linear-gradient(135deg, ${item.color}15 0%, var(--bg-card) 100%)`, borderRadius: '16px', padding: '1rem', border: `1px solid ${item.color}30`, textAlign: 'center' }}>
-                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: item.color }}>{item.value}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginTop: '0.25rem' }}>{item.label}</div>
+              <div key={idx} style={{ background: `${item.color}10`, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${item.color}30` }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{item.label}</div>
+                <div style={{ fontSize: '2rem', fontWeight: 800, color: item.color }}>{item.value}</div>
               </div>
             ))}
           </div>
 
-          {/* CAPA Table */}
-          <SectionCard title="Corrective & Preventive Actions" subtitle="Track resolution of quality issues" noPadding>
+          {/* Tasks requiring corrective action */}
+          <SectionCard title="Tasks Requiring Corrective Action" subtitle="Tasks with critical errors or low scores" noPadding>
             <div style={{ maxHeight: '400px', overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>CAPA ID</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>NC Reference</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Type</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Action</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>QC Task ID</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Parent Task</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Score</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical Errors</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Owner</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Due Date</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Effectiveness</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Issue</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: Math.max(stats.openCAPA, 8) }).map((_, idx) => {
-                    const types = ['Corrective', 'Preventive'];
-                    const statuses = ['Planned', 'In Progress', 'Verification', 'Complete'];
-                    const actions = ['Update procedure', 'Retrain staff', 'Replace equipment', 'Implement check', 'Review process'];
-                    const owners = ['John D.', 'Sarah M.', 'Mike T.', 'Lisa K.'];
-                    const effectiveness = ['Effective', 'Partially Effective', 'Pending'];
-                    const type = types[idx % types.length];
-                    const status = statuses[idx % statuses.length];
-                    const statusColor = status === 'Complete' ? '#10B981' : status === 'Verification' ? '#F59E0B' : status === 'In Progress' ? '#3B82F6' : '#6B7280';
-                    const eff = status === 'Complete' ? effectiveness[idx % 2] : 'Pending';
-                    const effColor = eff === 'Effective' ? '#10B981' : eff === 'Partially Effective' ? '#F59E0B' : '#6B7280';
+                  {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || ((q.qcScore || 0) < 80 && (q.qcScore || 0) > 0)).map((qc, idx) => {
+                    const colors = getStatusColor(qc.qcStatus);
+                    const score = qc.qcScore || 0;
+                    const scoreColor = score >= 90 ? '#10B981' : score >= 80 ? '#F59E0B' : '#EF4444';
+                    const hasCritical = (qc.qcCriticalErrors || 0) > 0;
+                    const issue = hasCritical ? 'Critical errors found' : 'Score below 80%';
                     
                     return (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#8B5CF6', fontWeight: 500 }}>CAPA-{String(idx + 1).padStart(4, '0')}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>NC-{String((idx % 10) + 1).padStart(4, '0')}</td>
+                      <tr key={qc.qcTaskId} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#8B5CF6', fontWeight: 500 }}>{qc.qcTaskId}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getTaskName(qc.parentTaskId)}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: type === 'Corrective' ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)', color: type === 'Corrective' ? '#EF4444' : '#3B82F6' }}>{type}</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>
                         </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{actions[idx % actions.length]}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: `${statusColor}15`, color: statusColor }}>{status}</span>
-                        </td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{owners[idx % owners.length]}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                          {new Date(Date.now() + (14 + idx * 3) * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: hasCritical ? '#EF4444' : 'var(--text-muted)' }}>
+                          {qc.qcCriticalErrors ?? 0}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: `${effColor}15`, color: effColor }}>{eff}</span>
+                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: colors.bg, color: colors.color }}>{qc.qcStatus}</span>
                         </td>
+                        <td style={{ padding: '10px 12px', color: hasCritical ? '#EF4444' : '#F59E0B', fontSize: '0.75rem' }}>{issue}</td>
                       </tr>
                     );
                   })}
+                  {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || ((q.qcScore || 0) < 80 && (q.qcScore || 0) > 0)).length === 0 && (
+                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No tasks requiring corrective action</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
