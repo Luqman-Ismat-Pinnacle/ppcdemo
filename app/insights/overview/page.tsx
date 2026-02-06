@@ -437,8 +437,8 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
   }, [projectBreakdown, healthMetrics, sankeyDepth]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '500px' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexShrink: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
         {(['simple', 'detailed', 'full'] as const).map(depth => (
           <button
             key={depth}
@@ -462,9 +462,7 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
           Scroll/pinch to zoom
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <ChartWrapper option={option} height="100%" onClick={onClick} />
-      </div>
+      <ChartWrapper option={option} height="480px" onClick={onClick} />
     </div>
   );
 }

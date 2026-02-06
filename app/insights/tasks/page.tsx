@@ -244,11 +244,7 @@ function HoursEfficiencyChart({ data, onBarClick }: { data: any; onBarClick?: (p
     };
   }, [data]);
 
-  return (
-    <div style={{ minHeight: '400px', height: '100%' }}>
-      <ChartWrapper option={option} height="100%" onClick={onBarClick} />
-    </div>
-  );
+  return <ChartWrapper option={option} height="400px" onClick={onBarClick} />;
 }
 
 // ===== HOURS BY WORK TYPE CHART (with scroll/zoom) =====
@@ -306,11 +302,7 @@ function HoursByWorkTypeChart({ tasks, onClick }: { tasks: any[]; onClick?: (par
   }, [tasks]);
 
   if (!tasks.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No task data</div>;
-  return (
-    <div style={{ minHeight: '380px', height: '100%' }}>
-      <ChartWrapper option={option} height="100%" onClick={onClick} />
-    </div>
-  );
+  return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
 // ===== ENHANCED SANKEY WITH 5-LEVEL BREAKDOWN =====
@@ -514,8 +506,8 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
   }, [stats, laborData, tasks, groupBy, sankeyDepth]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '500px' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexShrink: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
         {(['simple', 'detailed', 'full'] as const).map(depth => (
           <button
             key={depth}
@@ -539,9 +531,7 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
           Scroll/pinch to zoom
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <ChartWrapper option={option} height="100%" onClick={onClick} />
-      </div>
+      <ChartWrapper option={option} height="480px" onClick={onClick} />
     </div>
   );
 }
@@ -1158,12 +1148,10 @@ export default function TasksPage() {
             />
           </SectionCard>
 
-          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: '600px' }}>
-            <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Hours Flow</h3>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Click nodes to filter - 5-level breakdown with scroll/zoom</span>
-              </div>
+          <SectionCard 
+            title="Hours Flow" 
+            subtitle="Click nodes to filter - 5-level breakdown with scroll/zoom"
+            headerRight={
               <select value={sankeyGroupBy} onChange={(e) => setSankeyGroupBy(e.target.value as SankeyGroupBy)}
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer' }}>
                 <option value="role">By Role</option>
@@ -1172,17 +1160,16 @@ export default function TasksPage() {
                 <option value="status">By Status</option>
                 <option value="workType">By Work Type</option>
               </select>
-            </div>
-            <div style={{ padding: '1rem', height: 'calc(100% - 60px)', minHeight: '520px' }}>
-              <EnhancedSankey 
-                stats={taskStats} 
-                laborData={laborData} 
-                tasks={tasks} 
-                groupBy={sankeyGroupBy}
-                onClick={(params) => handleChartClick(params, 'sankey')}
-              />
-            </div>
-          </div>
+            }
+          >
+            <EnhancedSankey 
+              stats={taskStats} 
+              laborData={laborData} 
+              tasks={tasks} 
+              groupBy={sankeyGroupBy}
+              onClick={(params) => handleChartClick(params, 'sankey')}
+            />
+          </SectionCard>
 
           <SectionCard title="Hours by Work Type" subtitle="Click bars to filter - Stacked breakdown: Execution, QC, Review, Admin, Rework">
             <HoursByWorkTypeChart 
