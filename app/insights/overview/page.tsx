@@ -34,15 +34,15 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
   title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode; noPadding?: boolean;
 }) {
   return (
-    <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-      <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>{title}</h3>
           {subtitle && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{subtitle}</span>}
         </div>
         {headerRight}
       </div>
-      <div style={{ padding: noPadding ? 0 : '1rem' }}>{children}</div>
+      <div style={{ padding: noPadding ? 0 : '1rem', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{children}</div>
     </div>
   );
 }
@@ -209,7 +209,7 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown }: { healthMetric
     };
   }, [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="220px" />;
+  return <ChartWrapper option={option} height="340px" />;
 }
 
 // ===== PROJECT HEALTH RADAR =====
@@ -253,7 +253,7 @@ function ProjectHealthRadar({ projects }: { projects: any[] }) {
     };
   }, [projects]);
 
-  return <ChartWrapper option={option} height="300px" />;
+  return <ChartWrapper option={option} height="340px" />;
 }
 
 // ===== RISK MATRIX =====
@@ -329,7 +329,7 @@ function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect }: { scheduleR
     ],
   }), [matrixData]);
 
-  return <ChartWrapper option={option} height="280px" onEvents={{ click: (params: any) => matrixData[params.dataIndex] && onItemSelect(matrixData[params.dataIndex]) }} />;
+  return <ChartWrapper option={option} height="340px" onEvents={{ click: (params: any) => matrixData[params.dataIndex] && onItemSelect(matrixData[params.dataIndex]) }} />;
 }
 
 // ===== PROGRESS BURNDOWN =====
@@ -544,7 +544,7 @@ function FTESaturationHeatmap({ tasks }: { tasks: any[] }) {
     };
   }, [tasks]);
 
-  return <ChartWrapper option={option} height="320px" />;
+  return <ChartWrapper option={option} height="380px" />;
 }
 
 // ===== EARNED VALUE S-CURVE =====
@@ -669,7 +669,7 @@ function BufferConsumptionSunburst({ projectBreakdown, milestones }: { projectBr
     };
   }, [projectBreakdown, milestones]);
 
-  return <ChartWrapper option={option} height="350px" />;
+  return <ChartWrapper option={option} height="420px" />;
 }
 
 // ===== LINCHPIN ANALYSIS - Network Graph =====
@@ -850,12 +850,12 @@ function LinchpinAnalysis({ tasks, milestones }: { tasks: any[]; milestones: any
           }],
           legend: { data: ['Critical', 'Important', 'Standard'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
         }} 
-        height="350px" 
+        height="420px" 
       />
     );
   }
   
-  return <ChartWrapper option={option} height="350px" />;
+  return <ChartWrapper option={option} height="420px" />;
 }
 
 // ===== ELASTIC SCHEDULING CHART =====
@@ -912,7 +912,7 @@ function ElasticSchedulingChart({ tasks }: { tasks: any[] }) {
     };
   }, [tasks]);
 
-  return <ChartWrapper option={option} height="280px" />;
+  return <ChartWrapper option={option} height="340px" />;
 }
 
 // ===== VARIANCE TREND MINI =====
@@ -1018,7 +1018,7 @@ function VarianceWaterfallChart({ projectBreakdown }: { projectBreakdown: any[] 
     };
   }, [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="350px" />;
+  return <ChartWrapper option={option} height="420px" />;
 }
 
 // ===== VARIANCE DISTRIBUTION CHART =====
@@ -1052,18 +1052,23 @@ function VarianceDistributionChart({ projectBreakdown }: { projectBreakdown: any
     },
     series: [{
       type: 'pie',
-      radius: ['45%', '75%'],
-      center: ['50%', '50%'],
+      radius: ['35%', '65%'],
+      center: ['50%', '45%'],
       avoidLabelOverlap: true,
       itemStyle: { borderRadius: 6, borderColor: 'var(--bg-card)', borderWidth: 2 },
       label: {
         show: true,
         position: 'outside',
         color: 'var(--text-primary)',
-        fontSize: 10,
+        fontSize: 11,
         formatter: '{b}\n{c}',
+        distanceToLabelLine: 5,
       },
-      labelLine: { lineStyle: { color: 'var(--border-color)' } },
+      labelLine: { 
+        length: 15,
+        length2: 10,
+        lineStyle: { color: 'var(--border-color)' } 
+      },
       data: distribution.filter(d => d.count > 0).map(d => ({
         value: d.count,
         name: d.label,
@@ -1072,7 +1077,7 @@ function VarianceDistributionChart({ projectBreakdown }: { projectBreakdown: any
     }],
   }), [distribution]);
 
-  return <ChartWrapper option={option} height="280px" />;
+  return <ChartWrapper option={option} height="380px" />;
 }
 
 // ===== PERFORMANCE QUADRANT CHART =====
@@ -1090,7 +1095,7 @@ function PerformanceQuadrantChart({ projectBreakdown }: { projectBreakdown: any[
         return `<strong>${p.name}</strong><br/>SPI: ${p.spi.toFixed(2)}<br/>CPI: ${p.cpi.toFixed(2)}`;
       },
     },
-    grid: { left: 50, right: 30, top: 30, bottom: 50 },
+    grid: { left: 55, right: 35, top: 40, bottom: 60 },
     xAxis: {
       type: 'value',
       name: 'SPI',
@@ -1138,7 +1143,7 @@ function PerformanceQuadrantChart({ projectBreakdown }: { projectBreakdown: any[
     ],
   }), [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="280px" />;
+  return <ChartWrapper option={option} height="380px" />;
 }
 
 // ===== VARIANCE TIMELINE CHART =====
@@ -1222,7 +1227,7 @@ function VarianceTimelineChart({ varianceData, healthMetrics }: { varianceData: 
     };
   }, [varianceData, healthMetrics]);
 
-  return <ChartWrapper option={option} height="280px" />;
+  return <ChartWrapper option={option} height="340px" />;
 }
 
 // ===== MAIN PAGE =====
