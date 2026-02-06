@@ -367,21 +367,33 @@ export default function WBSGanttPage() {
   const chartOption: EChartsOption = useMemo(() => {
     if (flatRows.length === 0) {
       return {
-        title: { text: 'No WBS Data', left: 'center', top: 'center', textStyle: { color: 'var(--text-muted)' } }
+        title: { text: 'No WBS Data - Upload an MPP file', left: 'center', top: 'center', textStyle: { color: '#888', fontSize: 14 } },
+        xAxis: { show: false },
+        yAxis: { show: false },
+        series: []
       };
     }
 
-    const categories = flatRows.map((row, idx) => {
+    const categories = flatRows.map((row) => {
       const indent = '  '.repeat(row.level);
-      const prefix = row.hasChildren ? (row.isExpanded ? '▼ ' : '▶ ') : '  ';
+      const prefix = row.hasChildren ? (row.isExpanded ? '- ' : '+ ') : '  ';
       return `${indent}${prefix}${row.wbsCode || ''} ${row.name || ''}`.slice(0, 50);
     });
 
-    // Task bars data
-    const taskData: any[] = [];
-    const baselineData: any[] = [];
-    const progressData: any[] = [];
-    const milestoneData: any[] = [];
+    // Helper for color based on progress
+    const getColor = (pct: number, isCritical: boolean) => {
+      if (isCritical) return '#EF4444';
+      if (pct >= 75) return '#22C55E';
+      if (pct >= 50) return '#EAB308';
+      if (pct >= 25) return '#F97316';
+      return '#EF4444';
+    };
+
+    // Build bar data: [start, end, rowIndex, name, progress, isCritical, row]
+    const barData: any[] = [];
+    const progressBars: any[] = [];
+    const baselineBars: any[] = [];
+    const milestonePts: any[] = [];
 
     flatRows.forEach((row, idx) => {
       if (!row.startDate || !row.endDate) return;
@@ -391,110 +403,102 @@ export default function WBSGanttPage() {
       const isCritical = row.isCritical || row.is_critical;
       const isMilestone = row.is_milestone || row.isMilestone;
       const progress = row.percentComplete || 0;
-
-      // Progress color
-      const getColor = (pct: number) => {
-        if (pct >= 100) return '#22C55E';
-        if (pct >= 75) return '#22C55E';
-        if (pct >= 50) return '#EAB308';
-        if (pct >= 25) return '#F97316';
-        return '#EF4444';
-      };
-
-      const barColor = row.worstColor || (isCritical ? '#EF4444' : getColor(progress));
+      const color = row.worstColor || getColor(progress, isCritical);
 
       if (isMilestone) {
-        milestoneData.push({
-          value: [idx, start, start, row.name],
+        milestonePts.push({
+          value: [start, idx],
           itemStyle: { color: '#EF4444' },
-          taskId: row.id
+          symbol: 'diamond',
+          symbolSize: 14
         });
       } else {
-        // Background bar (full duration)
-        taskData.push({
-          value: [idx, start, end, row.name],
+        // Main task bar
+        barData.push({
+          value: [start, end, idx],
           itemStyle: { 
-            color: progress === 0 ? barColor : 'rgba(55, 65, 81, 0.6)',
+            color: progress > 0 ? 'rgba(75, 85, 99, 0.5)' : color,
             borderColor: isCritical ? '#EF4444' : 'transparent',
-            borderWidth: isCritical ? 2 : 0,
-            borderRadius: 3
+            borderWidth: isCritical ? 2 : 0
           },
-          taskId: row.id,
-          row: row
+          row
         });
 
         // Progress fill
         if (progress > 0) {
           const progressEnd = start + ((end - start) * (progress / 100));
-          progressData.push({
-            value: [idx, start, progressEnd, `${progress}%`],
-            itemStyle: { color: barColor, borderRadius: 3 },
-            taskId: row.id
+          progressBars.push({
+            value: [start, progressEnd, idx],
+            itemStyle: { color }
           });
         }
       }
 
-      // Baseline ghost bar
+      // Baseline ghost
       if (showBaseline && row.baselineStart && row.baselineEnd) {
         const blStart = new Date(row.baselineStart).getTime();
         const blEnd = new Date(row.baselineEnd).getTime();
-        baselineData.push({
-          value: [idx, blStart, blEnd, 'Baseline'],
-          itemStyle: { 
-            color: 'rgba(107, 114, 128, 0.3)',
-            borderColor: 'rgba(107, 114, 128, 0.6)',
-            borderWidth: 1,
-            borderRadius: 2
-          }
+        baselineBars.push({
+          value: [blStart, blEnd, idx],
+          itemStyle: { color: 'rgba(107, 114, 128, 0.35)' }
         });
       }
     });
 
-    // Dependency arrows data for custom rendering
-    const dependencyArrows: any[] = [];
-    const rowIndexMap = new Map(flatRows.map((r, i) => [r.id, i]));
+    // Custom renderItem for horizontal bars
+    const renderBar = (params: any, api: any) => {
+      const startVal = api.value(0);
+      const endVal = api.value(1);
+      const categoryIndex = api.value(2);
+      
+      const start = api.coord([startVal, categoryIndex]);
+      const end = api.coord([endVal, categoryIndex]);
+      
+      const barHeight = 14;
+      const rectShape = {
+        x: start[0],
+        y: start[1] - barHeight / 2,
+        width: Math.max(end[0] - start[0], 3),
+        height: barHeight
+      };
 
-    if (showDependencies) {
-      flatRows.forEach((row, targetIdx) => {
-        if (!row.predecessors || row.predecessors.length === 0) return;
-        if (!row.startDate) return;
+      return {
+        type: 'rect',
+        shape: rectShape,
+        style: api.style()
+      };
+    };
 
-        const targetStart = new Date(row.startDate).getTime();
+    // Baseline bar (thinner, below)
+    const renderBaseline = (params: any, api: any) => {
+      const startVal = api.value(0);
+      const endVal = api.value(1);
+      const categoryIndex = api.value(2);
+      
+      const start = api.coord([startVal, categoryIndex]);
+      const end = api.coord([endVal, categoryIndex]);
+      
+      const barHeight = 6;
+      return {
+        type: 'rect',
+        shape: {
+          x: start[0],
+          y: start[1] + 10,
+          width: Math.max(end[0] - start[0], 2),
+          height: barHeight
+        },
+        style: api.style()
+      };
+    };
 
-        row.predecessors.forEach((pred: any) => {
-          const sourceIdx = rowIndexMap.get(pred.taskId);
-          if (sourceIdx === undefined) return;
-
-          const sourceRow = flatRows[sourceIdx];
-          if (!sourceRow.endDate) return;
-
-          const sourceEnd = new Date(sourceRow.endDate).getTime();
-          const isCritical = row.isCritical || row.is_critical;
-          const isCausingDelay = sourceEnd > targetStart;
-
-          dependencyArrows.push({
-            sourceEnd,
-            sourceIdx,
-            targetStart,
-            targetIdx,
-            color: isCritical ? '#EF4444' : isCausingDelay ? '#F97316' : '#6B7280',
-            width: isCritical ? 2 : 1,
-            dashed: isCausingDelay
-          });
-        });
-      });
-    }
-
-    // Inazuma (Progress deviation line)
-    const inazumaPoints: any[] = [];
+    // Inazuma points
+    const inazumaData: [number, number][] = [];
     if (showInazuma) {
       const todayTime = today.getTime();
       flatRows.forEach((row, idx) => {
         if (!row.startDate || !row.endDate) return;
-
         const start = new Date(row.startDate).getTime();
         const end = new Date(row.endDate).getTime();
-
         if (start > todayTime || end < start) return;
 
         const taskDuration = end - start;
@@ -502,13 +506,36 @@ export default function WBSGanttPage() {
         const expectedProgress = Math.min(100, (elapsed / taskDuration) * 100);
         const actualProgress = row.percentComplete || 0;
         const deviation = actualProgress - expectedProgress;
-
-        // Convert deviation to time offset (max +/- 7 days)
         const maxOffset = 7 * 24 * 60 * 60 * 1000;
-        const timeOffset = (deviation / 100) * maxOffset;
-        const xPos = todayTime + timeOffset;
+        const xPos = todayTime + (deviation / 100) * maxOffset;
+        inazumaData.push([xPos, idx]);
+      });
+    }
 
-        inazumaPoints.push([xPos, idx]);
+    // Dependency lines data
+    const rowIndexMap = new Map(flatRows.map((r, i) => [r.id, i]));
+    const depMarkLines: any[] = [];
+    
+    if (showDependencies) {
+      flatRows.forEach((row, targetIdx) => {
+        if (!row.predecessors?.length || !row.startDate) return;
+        const targetStart = new Date(row.startDate).getTime();
+
+        row.predecessors.forEach((pred: any) => {
+          const sourceIdx = rowIndexMap.get(pred.taskId);
+          if (sourceIdx === undefined) return;
+          const sourceRow = flatRows[sourceIdx];
+          if (!sourceRow?.endDate) return;
+
+          const sourceEnd = new Date(sourceRow.endDate).getTime();
+          const isCritical = row.isCritical || row.is_critical;
+          const isDelay = sourceEnd > targetStart;
+
+          depMarkLines.push([
+            { coord: [sourceEnd, sourceIdx] },
+            { coord: [targetStart, targetIdx] }
+          ]);
+        });
       });
     }
 
@@ -517,278 +544,128 @@ export default function WBSGanttPage() {
       tooltip: {
         trigger: 'item',
         backgroundColor: 'rgba(22, 27, 34, 0.95)',
-        borderColor: 'var(--border-color)',
+        borderColor: '#333',
         textStyle: { color: '#fff', fontSize: 11 },
         formatter: (params: any) => {
-          if (params.seriesName === 'Tasks' && params.data?.row) {
-            const r = params.data.row;
-            const slipped = r.baselineEnd && new Date(r.baselineEnd) < new Date(r.endDate);
-            return `<strong>${r.name}</strong><br/>
-              WBS: ${r.wbsCode || '-'}<br/>
-              ${r.startDate} - ${r.endDate}<br/>
-              Progress: ${r.percentComplete || 0}%<br/>
-              ${r.baselineHours ? `Baseline: ${r.baselineHours}h | ` : ''}${r.actualHours ? `Actual: ${r.actualHours}h` : ''}<br/>
-              ${r.isCritical ? '<span style="color:#EF4444">CRITICAL PATH</span>' : ''}
-              ${slipped ? '<span style="color:#F59E0B">SLIPPED FROM BASELINE</span>' : ''}`;
-          }
-          return '';
+          const row = params.data?.row;
+          if (!row) return params.name || '';
+          return `<b>${row.name}</b><br/>
+            WBS: ${row.wbsCode || '-'}<br/>
+            ${row.startDate} → ${row.endDate}<br/>
+            Progress: ${row.percentComplete || 0}%
+            ${row.isCritical ? '<br/><span style="color:#EF4444">CRITICAL</span>' : ''}`;
         }
       },
       grid: {
-        left: 350,
-        right: 50,
-        top: 40,
-        bottom: 60,
+        left: 320,
+        right: 40,
+        top: 30,
+        bottom: 50,
         containLabel: false
       },
       xAxis: {
         type: 'time',
         min: minDate.getTime(),
         max: maxDate.getTime(),
-        axisLabel: {
-          color: 'var(--text-muted)',
-          fontSize: 10,
-          formatter: (value: number) => {
-            const d = new Date(value);
-            return `${d.getMonth() + 1}/${d.getDate()}`;
-          }
-        },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }
+        axisLabel: { color: '#888', fontSize: 10 },
+        axisLine: { lineStyle: { color: '#444' } },
+        splitLine: { lineStyle: { color: '#333', type: 'dashed' } }
       },
       yAxis: {
         type: 'category',
         data: categories,
         inverse: true,
         axisLabel: {
-          color: 'var(--text-primary)',
+          color: '#ccc',
           fontSize: 10,
-          width: 340,
+          width: 300,
           overflow: 'truncate',
-          align: 'left',
-          formatter: (value: string) => value
+          align: 'left'
         },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-        splitLine: { show: false }
+        axisLine: { lineStyle: { color: '#444' } },
+        splitLine: { show: false },
+        triggerEvent: true
       },
       dataZoom: [
-        { type: 'slider', xAxisIndex: 0, height: 20, bottom: 10, borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' },
+        { type: 'slider', xAxisIndex: 0, height: 18, bottom: 5, borderColor: '#444', backgroundColor: '#1a1a1a' },
         { type: 'inside', xAxisIndex: 0 },
-        { type: 'slider', yAxisIndex: 0, width: 20, right: 10, borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-tertiary)' },
+        { type: 'slider', yAxisIndex: 0, width: 18, right: 5, borderColor: '#444', backgroundColor: '#1a1a1a' },
         { type: 'inside', yAxisIndex: 0 }
       ],
       series: [
-        // Baseline bars (rendered first, behind)
+        // Baseline bars
         {
           name: 'Baseline',
           type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const idx = api.value(0);
-            const start = api.coord([api.value(1), idx]);
-            const end = api.coord([api.value(2), idx]);
-            const height = 8;
-            const y = start[1] + 8; // Below main bar
-
-            return {
-              type: 'rect',
-              shape: { x: start[0], y: y, width: end[0] - start[0], height: height },
-              style: api.style()
-            };
-          },
-          encode: { x: [1, 2], y: 0 },
-          data: baselineData,
+          renderItem: renderBaseline,
+          encode: { x: [0, 1], y: 2 },
+          data: baselineBars,
           z: 1
         },
-        // Task bars
+        // Task background bars
         {
           name: 'Tasks',
           type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const idx = api.value(0);
-            const start = api.coord([api.value(1), idx]);
-            const end = api.coord([api.value(2), idx]);
-            const height = 16;
-            const y = start[1] - height / 2;
-
-            return {
-              type: 'rect',
-              shape: { x: start[0], y: y, width: Math.max(end[0] - start[0], 2), height: height, r: 3 },
-              style: api.style()
-            };
-          },
-          encode: { x: [1, 2], y: 0 },
-          data: taskData,
+          renderItem: renderBar,
+          encode: { x: [0, 1], y: 2 },
+          data: barData,
           z: 2
         },
-        // Progress fill
+        // Progress overlay
         {
           name: 'Progress',
           type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const idx = api.value(0);
-            const start = api.coord([api.value(1), idx]);
-            const end = api.coord([api.value(2), idx]);
-            const height = 16;
-            const y = start[1] - height / 2;
-
-            return {
-              type: 'rect',
-              shape: { x: start[0], y: y, width: Math.max(end[0] - start[0], 1), height: height, r: 3 },
-              style: api.style()
-            };
-          },
-          encode: { x: [1, 2], y: 0 },
-          data: progressData,
+          renderItem: renderBar,
+          encode: { x: [0, 1], y: 2 },
+          data: progressBars,
           z: 3
         },
-        // Milestones
+        // Milestones as scatter
         {
           name: 'Milestones',
-          type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const idx = api.value(0);
-            const pos = api.coord([api.value(1), idx]);
-
-            return {
-              type: 'path',
-              shape: {
-                pathData: 'M0,-8 L6,0 L0,8 L-6,0 Z',
-                x: pos[0],
-                y: pos[1]
-              },
-              style: { fill: '#EF4444' }
-            };
-          },
-          encode: { x: 1, y: 0 },
-          data: milestoneData,
+          type: 'scatter',
+          data: milestonePts,
           z: 4
         },
-        // Today line
+        // Today line using markLine
         {
-          name: 'Today',
-          type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const todayX = api.coord([today.getTime(), 0])[0];
-            const height = api.getHeight();
-
-            return {
-              type: 'group',
-              children: [
-                {
-                  type: 'line',
-                  shape: { x1: todayX, y1: 0, x2: todayX, y2: height },
-                  style: { stroke: '#40E0D0', lineWidth: 2, lineDash: [4, 4] }
-                },
-                {
-                  type: 'text',
-                  style: {
-                    text: 'TODAY',
-                    x: todayX + 4,
-                    y: 20,
-                    fill: '#40E0D0',
-                    fontSize: 10,
-                    fontWeight: 'bold'
-                  }
-                }
-              ]
-            };
+          name: 'TodayLine',
+          type: 'scatter',
+          data: [],
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: '#40E0D0', width: 2, type: 'dashed' },
+            label: { show: true, formatter: 'TODAY', position: 'start', color: '#40E0D0', fontSize: 10 },
+            data: [{ xAxis: today.getTime() }]
           },
-          data: [{ value: [0] }],
           z: 10
         },
-        // Dependency arrows (custom series)
-        {
+        // Dependencies as markLine on a scatter series
+        ...(depMarkLines.length > 0 ? [{
           name: 'Dependencies',
-          type: 'custom',
-          renderItem: (params: any, api: any) => {
-            const arrow = dependencyArrows[params.dataIndex];
-            if (!arrow) return null;
-            
-            const startPoint = api.coord([arrow.sourceEnd, arrow.sourceIdx]);
-            const endPoint = api.coord([arrow.targetStart, arrow.targetIdx]);
-            
-            // Calculate control points for bezier curve
-            const midX = (startPoint[0] + endPoint[0]) / 2;
-            const cp1 = [midX, startPoint[1]];
-            const cp2 = [midX, endPoint[1]];
-            
-            // Arrow head size
-            const arrowSize = 6;
-            const angle = Math.atan2(endPoint[1] - cp2[1], endPoint[0] - cp2[0]);
-            
-            return {
-              type: 'group',
-              children: [
-                // Bezier curve
-                {
-                  type: 'bezierCurve',
-                  shape: {
-                    x1: startPoint[0], y1: startPoint[1],
-                    x2: endPoint[0] - arrowSize, y2: endPoint[1],
-                    cpx1: cp1[0], cpy1: cp1[1],
-                    cpx2: cp2[0], cpy2: cp2[1]
-                  },
-                  style: {
-                    stroke: arrow.color,
-                    lineWidth: arrow.width,
-                    lineDash: arrow.dashed ? [4, 4] : undefined
-                  }
-                },
-                // Arrow head
-                {
-                  type: 'polygon',
-                  shape: {
-                    points: [
-                      [endPoint[0], endPoint[1]],
-                      [endPoint[0] - arrowSize, endPoint[1] - arrowSize / 2],
-                      [endPoint[0] - arrowSize, endPoint[1] + arrowSize / 2]
-                    ]
-                  },
-                  style: { fill: arrow.color }
-                }
-              ]
-            };
+          type: 'scatter',
+          data: [],
+          markLine: {
+            silent: true,
+            symbol: ['none', 'arrow'],
+            symbolSize: 6,
+            lineStyle: { color: '#6B7280', width: 1, curveness: 0.2 },
+            label: { show: false },
+            data: depMarkLines
           },
-          data: dependencyArrows.map((_, i) => ({ value: [i] })),
           z: 5
-        },
-        // Inazuma line (custom series for proper rendering)
-        ...(showInazuma && inazumaPoints.length > 1 ? [{
+        }] : []),
+        // Inazuma progress line
+        ...(showInazuma && inazumaData.length > 1 ? [{
           name: 'Inazuma',
-          type: 'custom',
-          renderItem: (params: any, api: any) => {
-            if (params.dataIndex === 0 && inazumaPoints.length > 1) {
-              const points = inazumaPoints.map(([x, y]: [number, number]) => {
-                const coord = api.coord([x, y]);
-                return coord;
-              });
-              
-              return {
-                type: 'polyline',
-                shape: { points },
-                style: {
-                  stroke: '#EF4444',
-                  lineWidth: 3,
-                  lineCap: 'round',
-                  lineJoin: 'round'
-                },
-                z: 15
-              };
-            }
-            return null;
-          },
-          data: [{ value: [0] }],
+          type: 'line',
+          smooth: false,
+          lineStyle: { color: '#EF4444', width: 3 },
+          symbol: 'none',
+          data: inazumaData,
           z: 15
         }] : [])
-      ],
-      // Mark today with vertical line using graphic
-      graphic: [
-        {
-          type: 'line',
-          left: 'center',
-          shape: { x1: 0, y1: 0, x2: 0, y2: 0 },
-          invisible: true
-        }
       ]
     };
   }, [flatRows, minDate, maxDate, today, showBaseline, showDependencies, showInazuma]);
