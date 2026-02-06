@@ -450,8 +450,8 @@ export default function WBSGanttPage() {
       }
     });
 
-    // Dependency arrows using markLine
-    const dependencyLines: any[] = [];
+    // Dependency arrows data for custom rendering
+    const dependencyArrows: any[] = [];
     const rowIndexMap = new Map(flatRows.map((r, i) => [r.id, i]));
 
     if (showDependencies) {
@@ -472,17 +472,14 @@ export default function WBSGanttPage() {
           const isCritical = row.isCritical || row.is_critical;
           const isCausingDelay = sourceEnd > targetStart;
 
-          dependencyLines.push({
-            coords: [
-              [sourceEnd, sourceIdx],
-              [targetStart, targetIdx]
-            ],
-            lineStyle: {
-              color: isCritical ? '#EF4444' : isCausingDelay ? '#F97316' : '#6B7280',
-              width: isCritical ? 2 : 1,
-              type: isCausingDelay ? 'dashed' : 'solid',
-              curveness: 0.3
-            }
+          dependencyArrows.push({
+            sourceEnd,
+            sourceIdx,
+            targetStart,
+            targetIdx,
+            color: isCritical ? '#EF4444' : isCausingDelay ? '#F97316' : '#6B7280',
+            width: isCritical ? 2 : 1,
+            dashed: isCausingDelay
           });
         });
       });
@@ -699,27 +696,88 @@ export default function WBSGanttPage() {
           data: [{ value: [0] }],
           z: 10
         },
-        // Dependency arrows
+        // Dependency arrows (custom series)
         {
           name: 'Dependencies',
-          type: 'lines',
-          coordinateSystem: 'cartesian2d',
-          polyline: false,
-          lineStyle: { curveness: 0.3 },
-          effect: { show: false },
-          symbol: ['none', 'arrow'],
-          symbolSize: 8,
-          data: dependencyLines,
+          type: 'custom',
+          renderItem: (params: any, api: any) => {
+            const arrow = dependencyArrows[params.dataIndex];
+            if (!arrow) return null;
+            
+            const startPoint = api.coord([arrow.sourceEnd, arrow.sourceIdx]);
+            const endPoint = api.coord([arrow.targetStart, arrow.targetIdx]);
+            
+            // Calculate control points for bezier curve
+            const midX = (startPoint[0] + endPoint[0]) / 2;
+            const cp1 = [midX, startPoint[1]];
+            const cp2 = [midX, endPoint[1]];
+            
+            // Arrow head size
+            const arrowSize = 6;
+            const angle = Math.atan2(endPoint[1] - cp2[1], endPoint[0] - cp2[0]);
+            
+            return {
+              type: 'group',
+              children: [
+                // Bezier curve
+                {
+                  type: 'bezierCurve',
+                  shape: {
+                    x1: startPoint[0], y1: startPoint[1],
+                    x2: endPoint[0] - arrowSize, y2: endPoint[1],
+                    cpx1: cp1[0], cpy1: cp1[1],
+                    cpx2: cp2[0], cpy2: cp2[1]
+                  },
+                  style: {
+                    stroke: arrow.color,
+                    lineWidth: arrow.width,
+                    lineDash: arrow.dashed ? [4, 4] : undefined
+                  }
+                },
+                // Arrow head
+                {
+                  type: 'polygon',
+                  shape: {
+                    points: [
+                      [endPoint[0], endPoint[1]],
+                      [endPoint[0] - arrowSize, endPoint[1] - arrowSize / 2],
+                      [endPoint[0] - arrowSize, endPoint[1] + arrowSize / 2]
+                    ]
+                  },
+                  style: { fill: arrow.color }
+                }
+              ]
+            };
+          },
+          data: dependencyArrows.map((_, i) => ({ value: [i] })),
           z: 5
         },
-        // Inazuma line
+        // Inazuma line (custom series for proper rendering)
         ...(showInazuma && inazumaPoints.length > 1 ? [{
           name: 'Inazuma',
-          type: 'line',
-          smooth: false,
-          lineStyle: { color: '#EF4444', width: 3 },
-          symbol: 'none',
-          data: inazumaPoints,
+          type: 'custom',
+          renderItem: (params: any, api: any) => {
+            if (params.dataIndex === 0 && inazumaPoints.length > 1) {
+              const points = inazumaPoints.map(([x, y]: [number, number]) => {
+                const coord = api.coord([x, y]);
+                return coord;
+              });
+              
+              return {
+                type: 'polyline',
+                shape: { points },
+                style: {
+                  stroke: '#EF4444',
+                  lineWidth: 3,
+                  lineCap: 'round',
+                  lineJoin: 'round'
+                },
+                z: 15
+              };
+            }
+            return null;
+          },
+          data: [{ value: [0] }],
           z: 15
         }] : [])
       ],
