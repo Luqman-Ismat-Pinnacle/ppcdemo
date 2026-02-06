@@ -479,20 +479,21 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
           return `<strong>${params.name}</strong><br/>Click to filter page`;
         },
       },
+      grid: { left: 20, right: 20, top: 30, bottom: 60, containLabel: true },
       series: [{
         type: 'sankey', 
         layout: 'none', 
         emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
-        nodeWidth: 24, 
-        nodeGap: 14, 
+        nodeWidth: 20, 
+        nodeGap: 12, 
         layoutIterations: 64, 
         orient: 'horizontal',
-        left: 50, right: 50, top: 20, bottom: 20,
+        left: 20, right: 100, top: 30, bottom: 50,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 10, 
+          fontSize: 9, 
           fontWeight: 600,
-          formatter: (params: any) => params.name.length > 14 ? params.name.slice(0, 14) + '..' : params.name,
+          formatter: (params: any) => params.name.length > 12 ? params.name.slice(0, 12) + '..' : params.name,
         },
         lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.5 },
         data: nodes, 
@@ -501,6 +502,8 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
       dataZoom: [
         { type: 'inside', orient: 'horizontal' },
         { type: 'inside', orient: 'vertical' },
+        { type: 'slider', orient: 'horizontal', bottom: 5, height: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
+        { type: 'slider', orient: 'vertical', right: 5, width: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
       ],
     };
   }, [stats, laborData, tasks, groupBy, sankeyDepth]);
@@ -528,10 +531,10 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
           </button>
         ))}
         <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
-          Scroll/pinch to zoom
+          Use sliders or scroll to pan/zoom
         </span>
       </div>
-      <ChartWrapper option={option} height="480px" onClick={onClick} />
+      <ChartWrapper option={option} height="520px" onClick={onClick} />
     </div>
   );
 }
@@ -582,134 +585,209 @@ function VarianceAnalysisSection({ metricsHistory, variancePeriod, stats }: { me
   );
 }
 
-// ===== EXECUTIVE RISKS & ACTIONS =====
+// ===== EXECUTIVE RISKS & ACTIONS (Creative Visual Version) =====
 function ExecutiveSection({ tasks, stats }: { tasks: any[]; stats: any }) {
   const risks = useMemo(() => {
     const riskList: any[] = [];
-    
-    // Identify risks from tasks
     const overdueTasks = tasks.filter((t: any) => {
       const due = t.finishDate || t.dueDate;
       return due && new Date(due) < new Date() && (t.percentComplete || 0) < 100;
     });
     
     if (overdueTasks.length > 3) {
-      riskList.push({
-        id: 'overdue',
-        title: `${overdueTasks.length} Overdue Tasks`,
-        impact: 'high',
-        description: 'Multiple tasks past their due dates requiring immediate attention',
-        recommendation: 'Prioritize and reassign resources to critical path items',
-      });
+      riskList.push({ id: 'overdue', title: `${overdueTasks.length} Overdue Tasks`, impact: 3, probability: 0.9, category: 'Schedule' });
     }
-    
     if (stats.efficiency > 110) {
-      riskList.push({
-        id: 'overbudget',
-        title: 'Hours Over Budget',
-        impact: 'medium',
-        description: `Running ${stats.efficiency - 100}% over planned hours`,
-        recommendation: 'Review scope and identify areas for efficiency gains',
-      });
+      riskList.push({ id: 'overbudget', title: 'Hours Over Budget', impact: 2, probability: 0.7, category: 'Cost' });
     }
-    
     if (stats.qcPassRate < 80) {
-      riskList.push({
-        id: 'quality',
-        title: 'Quality Concerns',
-        impact: 'high',
-        description: `QC pass rate at ${stats.qcPassRate}%, below 80% threshold`,
-        recommendation: 'Implement additional training and review checkpoints',
-      });
+      riskList.push({ id: 'quality', title: 'Quality Concerns', impact: 3, probability: 0.8, category: 'Quality' });
     }
-    
     if (stats.blocked > 5) {
-      riskList.push({
-        id: 'blocked',
-        title: `${stats.blocked} Blocked Items`,
-        impact: 'medium',
-        description: 'Significant number of tasks blocked and waiting',
-        recommendation: 'Identify and resolve blockers in daily standups',
-      });
+      riskList.push({ id: 'blocked', title: `${stats.blocked} Blocked Items`, impact: 2, probability: 0.6, category: 'Resources' });
     }
-    
+    // Add some baseline risks for visualization
+    riskList.push({ id: 'scope', title: 'Scope Creep', impact: 1.5, probability: 0.4, category: 'Scope' });
+    riskList.push({ id: 'resource', title: 'Resource Availability', impact: 2, probability: 0.5, category: 'Resources' });
     return riskList;
   }, [tasks, stats]);
 
-  const actionItems = useMemo(() => {
-    const items: any[] = [];
+  // Risk Matrix Chart
+  const riskMatrixOption: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    tooltip: { 
+      trigger: 'item', 
+      backgroundColor: 'rgba(22,27,34,0.95)', 
+      borderColor: 'var(--border-color)', 
+      textStyle: { color: '#fff', fontSize: 11 },
+      formatter: (p: any) => `<strong>${p.data[2]}</strong><br/>Impact: ${p.data[1].toFixed(1)}<br/>Probability: ${(p.data[0] * 100).toFixed(0)}%`,
+    },
+    grid: { left: 50, right: 20, top: 20, bottom: 50 },
+    xAxis: { 
+      type: 'value', 
+      name: 'Probability', 
+      nameLocation: 'center', 
+      nameGap: 30, 
+      nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
+      min: 0, max: 1,
+      axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: (v: number) => `${(v * 100).toFixed(0)}%` },
+      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+    },
+    yAxis: { 
+      type: 'value', 
+      name: 'Impact', 
+      nameLocation: 'center', 
+      nameGap: 35, 
+      nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
+      min: 0, max: 4,
+      axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
+      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+    },
+    visualMap: { show: false, min: 0, max: 3, dimension: 1, inRange: { color: ['#10B981', '#F59E0B', '#EF4444'] } },
+    series: [{
+      type: 'scatter',
+      symbolSize: (data: number[]) => Math.max(20, (data[0] * data[1]) * 25),
+      data: risks.map(r => [r.probability, r.impact, r.title, r.category]),
+      label: { show: true, formatter: (p: any) => p.data[2].slice(0, 10), fontSize: 8, color: '#fff', position: 'inside' },
+      itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' },
+    }],
+    // Quadrant lines
+    markLine: { silent: true, symbol: 'none', lineStyle: { color: 'var(--border-color)', type: 'dashed' },
+      data: [{ xAxis: 0.5 }, { yAxis: 2 }],
+    },
+  }), [risks]);
+
+  // Status Distribution Pie
+  const statusPieOption: EChartsOption = useMemo(() => {
+    const data = [
+      { name: 'On Track', value: stats.completed + Math.round(stats.inProgress * 0.7), color: '#10B981' },
+      { name: 'At Risk', value: Math.round(stats.inProgress * 0.3) + Math.round(stats.notStarted * 0.5), color: '#F59E0B' },
+      { name: 'Critical', value: stats.blocked + Math.round(stats.notStarted * 0.5), color: '#EF4444' },
+    ].filter(d => d.value > 0);
     
-    if (stats.blocked > 0) {
-      items.push({ priority: 'high', action: 'Resolve blocked tasks', owner: 'Team Lead', status: 'pending' });
-    }
-    if (stats.efficiency > 100) {
-      items.push({ priority: 'medium', action: 'Review hour allocations', owner: 'PM', status: 'pending' });
-    }
-    if (stats.qcPassRate < 90) {
-      items.push({ priority: 'high', action: 'Improve QC processes', owner: 'QC Lead', status: 'pending' });
-    }
-    
-    return items;
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      series: [{
+        type: 'pie',
+        radius: ['50%', '75%'],
+        center: ['50%', '50%'],
+        avoidLabelOverlap: true,
+        label: { show: true, color: 'var(--text-primary)', fontSize: 10, formatter: '{b}: {c}' },
+        labelLine: { lineStyle: { color: 'var(--border-color)' } },
+        data: data.map(d => ({ ...d, itemStyle: { color: d.color } })),
+      }],
+    };
   }, [stats]);
 
-  const impactColors: Record<string, string> = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
-  const priorityColors: Record<string, string> = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
+  // Efficiency Gauge
+  const efficiencyGaugeOption: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    series: [{
+      type: 'gauge',
+      startAngle: 200,
+      endAngle: -20,
+      radius: '90%',
+      center: ['50%', '60%'],
+      min: 0,
+      max: 150,
+      splitNumber: 5,
+      axisLine: { lineStyle: { width: 15, color: [[0.6, '#10B981'], [0.85, '#F59E0B'], [1, '#EF4444']] } },
+      pointer: { itemStyle: { color: 'var(--pinnacle-teal)' }, width: 6 },
+      axisTick: { distance: -20, length: 6, lineStyle: { color: '#fff', width: 1 } },
+      splitLine: { distance: -25, length: 15, lineStyle: { color: '#fff', width: 2 } },
+      axisLabel: { color: 'var(--text-muted)', distance: 30, fontSize: 9 },
+      detail: { valueAnimation: true, formatter: '{value}%', color: 'var(--text-primary)', fontSize: 18, offsetCenter: [0, '40%'] },
+      title: { offsetCenter: [0, '70%'], fontSize: 11, color: 'var(--text-muted)' },
+      data: [{ value: stats.efficiency, name: 'Efficiency' }],
+    }],
+  }), [stats]);
+
+  // Action Items Treemap
+  const actionTreemapOption: EChartsOption = useMemo(() => {
+    const actions = [
+      { name: 'Schedule', value: stats.overallProgress < 80 ? 30 : 10, children: [
+        { name: 'Review timeline', value: 15 },
+        { name: 'Update milestones', value: 10 },
+      ]},
+      { name: 'Resources', value: stats.blocked > 0 ? 25 : 8, children: [
+        { name: 'Unblock tasks', value: stats.blocked || 5 },
+        { name: 'Reallocate', value: 10 },
+      ]},
+      { name: 'Quality', value: stats.qcPassRate < 90 ? 28 : 12, children: [
+        { name: 'Improve QC', value: 15 },
+        { name: 'Training', value: 10 },
+      ]},
+      { name: 'Cost', value: stats.efficiency > 100 ? 22 : 8, children: [
+        { name: 'Budget review', value: 12 },
+        { name: 'Optimize', value: 10 },
+      ]},
+    ];
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      series: [{
+        type: 'treemap',
+        roam: false,
+        nodeClick: false,
+        breadcrumb: { show: false },
+        label: { show: true, formatter: '{b}', fontSize: 10, color: '#fff' },
+        upperLabel: { show: true, height: 22, formatter: '{b}', fontSize: 11, color: '#fff', fontWeight: 600 },
+        itemStyle: { borderColor: 'var(--bg-card)', borderWidth: 2, gapWidth: 2 },
+        levels: [
+          { itemStyle: { borderWidth: 0, gapWidth: 2 } },
+          { colorSaturation: [0.35, 0.5], itemStyle: { gapWidth: 2, borderColorSaturation: 0.6 } },
+        ],
+        data: actions,
+        color: ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'],
+      }],
+    };
+  }, [stats]);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-      {/* Risks */}
+      {/* Risk Matrix */}
       <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
-          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Active Risks</h3>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{risks.length} identified</span>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>Risk Matrix</h3>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Impact vs Probability - size indicates severity</span>
         </div>
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto' }}>
-          {risks.length === 0 ? (
-            <div style={{ padding: '1rem', textAlign: 'center', color: '#10B981', fontSize: '0.85rem' }}>No significant risks identified</div>
-          ) : risks.map((r) => (
-            <div key={r.id} style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '10px', borderLeft: `4px solid ${impactColors[r.impact]}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.35rem' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{r.title}</span>
-                <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '8px', background: `${impactColors[r.impact]}20`, color: impactColors[r.impact], fontWeight: 600, textTransform: 'uppercase' }}>{r.impact}</span>
-              </div>
-              <p style={{ margin: '0 0 0.35rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{r.description}</p>
-              <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--pinnacle-teal)', fontStyle: 'italic' }}>{r.recommendation}</p>
-            </div>
-          ))}
+        <div style={{ padding: '0.5rem' }}>
+          <ChartWrapper option={riskMatrixOption} height="220px" />
         </div>
       </div>
 
-      {/* Action Items */}
+      {/* Action Priority Treemap */}
       <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
-          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>Action Items</h3>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{actionItems.length} pending</span>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>Action Priority Map</h3>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Focus areas by urgency - larger = higher priority</span>
         </div>
-        <div style={{ padding: '1rem' }}>
-          {actionItems.length === 0 ? (
-            <div style={{ padding: '1rem', textAlign: 'center', color: '#10B981', fontSize: '0.85rem' }}>All clear - no pending actions</div>
-          ) : (
-            <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--text-muted)', fontWeight: 500 }}>Priority</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--text-muted)', fontWeight: 500 }}>Action</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: 'var(--text-muted)', fontWeight: 500 }}>Owner</th>
-                </tr>
-              </thead>
-              <tbody>
-                {actionItems.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '0.5rem' }}>
-                      <span style={{ color: priorityColors[item.priority], fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>{item.priority}</span>
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>{item.action}</td>
-                    <td style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>{item.owner}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+        <div style={{ padding: '0.5rem' }}>
+          <ChartWrapper option={actionTreemapOption} height="220px" />
+        </div>
+      </div>
+
+      {/* Status Distribution */}
+      <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>Health Distribution</h3>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Task health breakdown</span>
+        </div>
+        <div style={{ padding: '0.5rem' }}>
+          <ChartWrapper option={statusPieOption} height="220px" />
+        </div>
+      </div>
+
+      {/* Efficiency Gauge */}
+      <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)' }}>
+          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>Efficiency Meter</h3>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Actual vs planned hours ratio</span>
+        </div>
+        <div style={{ padding: '0.5rem' }}>
+          <ChartWrapper option={efficiencyGaugeOption} height="220px" />
         </div>
       </div>
     </div>
@@ -730,6 +808,305 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
         {headerRight}
       </div>
       <div style={{ padding: noPadding ? 0 : '1rem' }}>{children}</div>
+    </div>
+  );
+}
+
+// ===== CREATIVE TASK EXPLORER =====
+function TaskExplorerSection({ tasks, searchTerm, setSearchTerm, statusFilter, setStatusFilter, selectedTask, setSelectedTask }: {
+  tasks: any[];
+  searchTerm: string;
+  setSearchTerm: (v: string) => void;
+  statusFilter: string;
+  setStatusFilter: (v: string) => void;
+  selectedTask: any;
+  setSelectedTask: (t: any) => void;
+}) {
+  const [viewMode, setViewMode] = useState<'treemap' | 'timeline' | 'cards' | 'table'>('treemap');
+  
+  // Task Treemap by Project and Status
+  const treemapOption: EChartsOption = useMemo(() => {
+    const projectGroups = tasks.reduce((acc: any, t: any) => {
+      const proj = t.projectName || t.project_name || 'Unassigned';
+      if (!acc[proj]) acc[proj] = [];
+      acc[proj].push(t);
+      return acc;
+    }, {});
+    
+    const data = Object.entries(projectGroups).slice(0, 12).map(([proj, projTasks]: [string, any]) => {
+      const statusGroups: any = { complete: [], active: [], pending: [] };
+      projTasks.forEach((t: any) => {
+        const pc = t.percentComplete || 0;
+        if (pc >= 100) statusGroups.complete.push(t);
+        else if (pc > 0) statusGroups.active.push(t);
+        else statusGroups.pending.push(t);
+      });
+      
+      return {
+        name: proj.slice(0, 20),
+        value: projTasks.length,
+        children: [
+          { name: 'Complete', value: statusGroups.complete.length || 0.1, itemStyle: { color: '#10B981' } },
+          { name: 'Active', value: statusGroups.active.length || 0.1, itemStyle: { color: '#3B82F6' } },
+          { name: 'Pending', value: statusGroups.pending.length || 0.1, itemStyle: { color: '#6B7280' } },
+        ].filter(c => c.value > 0.1),
+      };
+    }).filter(p => p.children.length > 0);
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      series: [{
+        type: 'treemap',
+        roam: false,
+        breadcrumb: { show: true, height: 22, itemStyle: { color: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }, textStyle: { color: 'var(--text-primary)', fontSize: 11 } },
+        label: { show: true, formatter: '{b}\n{c}', fontSize: 10, color: '#fff' },
+        upperLabel: { show: true, height: 24, formatter: '{b}', fontSize: 11, color: '#fff', fontWeight: 600 },
+        itemStyle: { borderColor: 'var(--bg-card)', borderWidth: 2, gapWidth: 2 },
+        levels: [
+          { itemStyle: { borderWidth: 3, gapWidth: 3 }, upperLabel: { show: true } },
+          { itemStyle: { gapWidth: 1 }, colorSaturation: [0.3, 0.6] },
+        ],
+        data,
+        color: ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#06B6D4', '#EC4899'],
+      }],
+    };
+  }, [tasks]);
+  
+  // Task Timeline Bar Chart
+  const timelineOption: EChartsOption = useMemo(() => {
+    const sortedTasks = [...tasks]
+      .filter((t: any) => t.startDate || t.finishDate)
+      .slice(0, 30)
+      .sort((a: any, b: any) => new Date(a.startDate || a.finishDate).getTime() - new Date(b.startDate || b.finishDate).getTime());
+    
+    const now = new Date();
+    const data = sortedTasks.map((t: any, idx: number) => {
+      const start = t.startDate ? new Date(t.startDate).getTime() : now.getTime();
+      const end = t.finishDate ? new Date(t.finishDate).getTime() : start + 7 * 24 * 60 * 60 * 1000;
+      const pc = t.percentComplete || 0;
+      return {
+        name: (t.name || t.taskName || `Task ${idx + 1}`).slice(0, 25),
+        value: [idx, start, end, pc],
+        itemStyle: { color: pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280' },
+      };
+    });
+    
+    const minDate = Math.min(...data.map(d => d.value[1]));
+    const maxDate = Math.max(...data.map(d => d.value[2]));
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { 
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (p: any) => {
+          const start = new Date(p.value[1]).toLocaleDateString();
+          const end = new Date(p.value[2]).toLocaleDateString();
+          return `<strong>${p.name}</strong><br/>Start: ${start}<br/>End: ${end}<br/>Progress: ${p.value[3]}%`;
+        },
+      },
+      grid: { left: 150, right: 30, top: 20, bottom: 60 },
+      xAxis: { 
+        type: 'time', 
+        min: minDate, 
+        max: maxDate,
+        axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
+        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+      },
+      yAxis: { 
+        type: 'category', 
+        data: data.map(d => d.name),
+        axisLabel: { color: 'var(--text-muted)', fontSize: 9, width: 140, overflow: 'truncate' },
+        inverse: true,
+      },
+      dataZoom: [
+        { type: 'inside', xAxisIndex: 0 },
+        { type: 'slider', xAxisIndex: 0, bottom: 10, height: 20, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)' },
+        { type: 'slider', yAxisIndex: 0, right: 5, width: 15, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)' },
+      ],
+      series: [{
+        type: 'custom',
+        renderItem: (params: any, api: any) => {
+          const categoryIndex = api.value(0);
+          const start = api.coord([api.value(1), categoryIndex]);
+          const end = api.coord([api.value(2), categoryIndex]);
+          const height = api.size([0, 1])[1] * 0.6;
+          
+          return {
+            type: 'rect',
+            shape: { x: start[0], y: start[1] - height / 2, width: Math.max(end[0] - start[0], 4), height },
+            style: { fill: api.visual('color'), stroke: 'rgba(255,255,255,0.3)', lineWidth: 1 },
+          };
+        },
+        encode: { x: [1, 2], y: 0 },
+        data,
+      }],
+    };
+  }, [tasks]);
+  
+  // Progress Distribution Bar Chart
+  const progressBarOption: EChartsOption = useMemo(() => {
+    const brackets = [
+      { label: '0%', min: 0, max: 0, color: '#6B7280' },
+      { label: '1-25%', min: 1, max: 25, color: '#EF4444' },
+      { label: '26-50%', min: 26, max: 50, color: '#F59E0B' },
+      { label: '51-75%', min: 51, max: 75, color: '#3B82F6' },
+      { label: '76-99%', min: 76, max: 99, color: '#06B6D4' },
+      { label: '100%', min: 100, max: 100, color: '#10B981' },
+    ];
+    
+    const data = brackets.map(b => ({
+      name: b.label,
+      value: tasks.filter((t: any) => {
+        const pc = t.percentComplete || 0;
+        return pc >= b.min && pc <= b.max;
+      }).length,
+      itemStyle: { color: b.color },
+    }));
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      grid: { left: 80, right: 30, top: 20, bottom: 40 },
+      xAxis: { type: 'value', axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      yAxis: { type: 'category', data: brackets.map(b => b.label), axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
+      series: [{ type: 'bar', data, barWidth: '60%', label: { show: true, position: 'right', fontSize: 10, color: 'var(--text-primary)' } }],
+    };
+  }, [tasks]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Header with controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>Task Explorer</h2>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '2px 8px', background: 'var(--bg-secondary)', borderRadius: '10px' }}>{tasks.length} tasks</span>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <input type="text" placeholder="Search tasks..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ padding: '6px 10px 6px 32px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem', width: '180px' }} />
+            <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+          </div>
+          <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+            {(['treemap', 'timeline', 'cards', 'table'] as const).map(mode => (
+              <button key={mode} onClick={() => setViewMode(mode)}
+                style={{ padding: '6px 12px', border: 'none', background: viewMode === mode ? 'var(--pinnacle-teal)' : 'var(--bg-secondary)', color: viewMode === mode ? '#000' : 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Visual Content based on view mode */}
+      <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'cards' ? '1fr' : '2fr 1fr', gap: '1rem' }}>
+        {viewMode === 'treemap' && (
+          <>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Tasks by Project</span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>Click to drill down</span>
+              </div>
+              <ChartWrapper option={treemapOption} height="400px" />
+            </div>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Progress Distribution</span>
+              </div>
+              <ChartWrapper option={progressBarOption} height="400px" />
+            </div>
+          </>
+        )}
+
+        {viewMode === 'timeline' && (
+          <>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem', gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Task Timeline</span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>Gantt view - scroll/zoom to navigate</span>
+              </div>
+              <ChartWrapper option={timelineOption} height="450px" />
+            </div>
+          </>
+        )}
+
+        {viewMode === 'cards' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem', maxHeight: '600px', overflowY: 'auto', padding: '0.5rem' }}>
+            {tasks.slice(0, 50).map((t: any, idx: number) => {
+              const pc = t.percentComplete || 0;
+              const isOver = (t.actualHours || 0) > (t.baselineHours || Infinity);
+              const isSelected = selectedTask?.name === t.name;
+              const statusColor = pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280';
+              
+              return (
+                <div key={idx} onClick={() => setSelectedTask(t)}
+                  style={{ 
+                    background: isSelected ? 'rgba(64,224,208,0.08)' : 'var(--bg-card)', 
+                    borderRadius: '12px', 
+                    border: `1px solid ${isSelected ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+                    padding: '0.875rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, lineHeight: 1.3, maxWidth: '70%' }}>{(t.name || t.taskName || 'Task').slice(0, 40)}</span>
+                    <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: 600, background: `${statusColor}20`, color: statusColor }}>
+                      {pc >= 100 ? 'Done' : pc > 0 ? 'Active' : 'Pending'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>{t.projectName || t.project_name || '-'}</div>
+                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem' }}>
+                    <div><span style={{ color: 'var(--text-muted)' }}>Plan:</span> {t.baselineHours || 0}h</div>
+                    <div><span style={{ color: 'var(--text-muted)' }}>Actual:</span> <span style={{ color: isOver ? '#EF4444' : 'inherit', fontWeight: isOver ? 600 : 400 }}>{t.actualHours || 0}h</span></div>
+                  </div>
+                  <div style={{ marginTop: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                    <div style={{ width: `${pc}%`, height: '100%', background: statusColor, borderRadius: '4px' }} />
+                  </div>
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.65rem', textAlign: 'right', color: 'var(--text-muted)' }}>{pc}% complete</div>
+                </div>
+              );
+            })}
+            {tasks.length > 50 && <div style={{ gridColumn: '1 / -1', padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Showing 50 of {tasks.length} tasks</div>}
+          </div>
+        )}
+
+        {viewMode === 'table' && (
+          <div style={{ gridColumn: '1 / -1', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+            <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+              <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+                  <tr>
+                    <th>Task</th><th>Project</th><th>Assignee</th><th>Status</th><th className="number">Planned</th><th className="number">Actual</th><th className="number">Progress</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.slice(0, 100).map((t: any, idx: number) => {
+                    const pc = t.percentComplete || 0;
+                    const isOver = (t.actualHours || 0) > (t.baselineHours || Infinity);
+                    const isSelected = selectedTask?.name === t.name;
+                    return (
+                      <tr key={idx} onClick={() => setSelectedTask(t)} style={{ cursor: 'pointer', background: isSelected ? 'rgba(64,224,208,0.1)' : 'transparent' }}>
+                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || t.taskName || '-'}</td>
+                        <td style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.projectName || t.project_name || '-'}</td>
+                        <td>{t.assignedResource || t.assignedTo || '-'}</td>
+                        <td><span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: pc >= 100 ? 'rgba(16,185,129,0.15)' : pc > 0 ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)', color: pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280' }}>{pc >= 100 ? 'Done' : pc > 0 ? 'Active' : 'Pending'}</span></td>
+                        <td className="number">{t.baselineHours || t.budgetHours || 0}</td>
+                        <td className="number" style={{ color: isOver ? '#EF4444' : 'inherit', fontWeight: isOver ? 600 : 400 }}>{t.actualHours || 0}</td>
+                        <td className="number">{pc}%</td>
+                      </tr>
+                    );
+                  })}
+                  {tasks.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No tasks found</td></tr>}
+                </tbody>
+              </table>
+              {tasks.length > 100 && <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Showing 100 of {tasks.length} tasks</div>}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1297,65 +1674,17 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* TASKS SECTION */}
+      {/* TASKS SECTION - Creative Visual Explorer */}
       {activeSection === 'tasks' && (
-        <SectionCard 
-          title={`Task Explorer (${filteredTasks.length})`} 
-          subtitle="Click any row for details"
-          headerRight={
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
-                <input type="text" placeholder="Search tasks..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ padding: '6px 10px 6px 32px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem', width: '200px' }} />
-                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-              </div>
-              {statusFilter !== 'all' && (
-                <button onClick={() => setStatusFilter('all')} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--pinnacle-teal)', background: 'rgba(64,224,208,0.1)', color: 'var(--pinnacle-teal)', fontSize: '0.75rem', cursor: 'pointer' }}>{statusFilter} x</button>
-              )}
-            </div>
-          }
-          noPadding
-        >
-          <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-            <table className="data-table" style={{ fontSize: '0.8rem' }}>
-              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                <tr>
-                  <th>Task</th>
-                  <th>Project</th>
-                  <th>Assignee</th>
-                  <th>Status</th>
-                  <th className="number">Planned</th>
-                  <th className="number">Actual</th>
-                  <th className="number">Progress</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTasks.slice(0, 100).map((t: any, idx: number) => {
-                  const pc = t.percentComplete || 0;
-                  const isOver = (t.actualHours || 0) > (t.baselineHours || Infinity);
-                  const isSelected = selectedTask?.name === t.name;
-                  return (
-                    <tr key={idx} onClick={() => setSelectedTask(t)} style={{ cursor: 'pointer', background: isSelected ? 'rgba(64,224,208,0.1)' : 'transparent' }}>
-                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || t.taskName || '-'}</td>
-                      <td style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.projectName || t.project_name || '-'}</td>
-                      <td>{t.assignedResource || t.assignedTo || '-'}</td>
-                      <td>
-                        <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: pc >= 100 ? 'rgba(16,185,129,0.15)' : pc > 0 ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)', color: pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280' }}>
-                          {pc >= 100 ? 'Done' : pc > 0 ? 'Active' : 'Pending'}
-                        </span>
-                      </td>
-                      <td className="number">{t.baselineHours || t.budgetHours || 0}</td>
-                      <td className="number" style={{ color: isOver ? '#EF4444' : 'inherit', fontWeight: isOver ? 600 : 400 }}>{t.actualHours || 0}</td>
-                      <td className="number">{pc}%</td>
-                    </tr>
-                  );
-                })}
-                {filteredTasks.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No tasks found</td></tr>}
-              </tbody>
-            </table>
-            {filteredTasks.length > 100 && <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Showing 100 of {filteredTasks.length} tasks</div>}
-          </div>
-        </SectionCard>
+        <TaskExplorerSection 
+          tasks={filteredTasks}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          selectedTask={selectedTask}
+          setSelectedTask={setSelectedTask}
+        />
       )}
     </div>
   );

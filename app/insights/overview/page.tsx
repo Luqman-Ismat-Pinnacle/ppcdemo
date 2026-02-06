@@ -402,26 +402,27 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
           return `<strong>${params.name}</strong><br/>Click to filter`;
         },
       },
+      grid: { left: 20, right: 20, top: 30, bottom: 60, containLabel: true },
       series: [{
         type: 'sankey',
         layout: 'none',
         emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
         nodeAlign: 'justify',
-        nodeWidth: 28,
-        nodeGap: 16,
+        nodeWidth: 22,
+        nodeGap: 14,
         layoutIterations: 64,
         orient: 'horizontal',
-        left: 40,
-        right: 40,
-        top: 20,
-        bottom: 20,
+        left: 20,
+        right: 100,
+        top: 30,
+        bottom: 50,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 11, 
+          fontSize: 10, 
           fontWeight: 600,
           position: 'right',
           formatter: (p: any) => {
-            const short = p.name.length > 15 ? p.name.slice(0, 15) + '..' : p.name;
+            const short = p.name.length > 12 ? p.name.slice(0, 12) + '..' : p.name;
             return short;
           },
         },
@@ -432,6 +433,8 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
       dataZoom: [
         { type: 'inside', orient: 'horizontal' },
         { type: 'inside', orient: 'vertical' },
+        { type: 'slider', orient: 'horizontal', bottom: 5, height: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
+        { type: 'slider', orient: 'vertical', right: 5, width: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
       ],
     };
   }, [projectBreakdown, healthMetrics, sankeyDepth]);
@@ -459,10 +462,10 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
           </button>
         ))}
         <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
-          Scroll/pinch to zoom
+          Use sliders or scroll to pan/zoom
         </span>
       </div>
-      <ChartWrapper option={option} height="480px" onClick={onClick} />
+      <ChartWrapper option={option} height="520px" onClick={onClick} />
     </div>
   );
 }
