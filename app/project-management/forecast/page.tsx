@@ -22,6 +22,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
+import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import {
   EngineParams,
   DEFAULT_ENGINE_PARAMS,
@@ -31,6 +32,16 @@ import {
 } from '@/lib/forecasting-engine';
 import { CPMEngine } from '@/lib/cpm-engine';
 import type { EChartsOption } from 'echarts';
+
+// ===== INFO ICON FOR TOOLTIPS =====
+function InfoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.6, cursor: 'help' }}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8h.01" />
+    </svg>
+  );
+}
 
 // ===== SECTION CARD =====
 function SectionCard({ title, subtitle, children, headerRight, noPadding = false, accent }: { 
@@ -954,35 +965,70 @@ function ProfitMarginSection({
 
       {/* Main Metrics Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
-        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Contract Value</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10B981' }}>{formatCurrency(calculations.impliedRevenue)}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Total PO</div>
-        </div>
-        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Forecast Cost</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#3B82F6' }}>{formatCurrency(calculations.forecastCost)}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>P50 estimate</div>
-        </div>
-        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Gross Profit</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.financeGrossProfit > 0 ? '#10B981' : '#EF4444' }}>{formatCurrency(calculations.financeGrossProfit)}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Revenue - Cost</div>
-        </div>
-        <div style={{ background: calculations.isAboveTarget ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: '12px', padding: '1rem', border: `1px solid ${calculations.isAboveTarget ? '#10B98140' : '#EF444440'}`, textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Profit Margin</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.isAboveTarget ? '#10B981' : '#EF4444' }}>{calculations.forecastProfitMargin.toFixed(1)}%</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>vs {calculations.targetMargin}% target</div>
-        </div>
-        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Cost Buffer to Target</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.costVarianceToTarget > 0 ? '#EF4444' : '#10B981' }}>
-            {calculations.costVarianceToTarget > 0 ? '+' : ''}{formatCurrency(calculations.costVarianceToTarget)}
+        <EnhancedTooltip content={{
+          title: 'Contract Value',
+          description: 'The total Purchase Order (PO) value representing revenue from the client.',
+          calculation: 'Contract Value = Total PO Amount',
+          details: ['This is the maximum revenue that can be recognized', 'Used as denominator for profit margin calculation']
+        }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center', cursor: 'help' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>Contract Value <InfoIcon /></div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10B981' }}>{formatCurrency(calculations.impliedRevenue)}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Total PO</div>
           </div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-            {calculations.costVarianceToTarget > 0 ? 'Over budget limit' : 'Under budget limit'}
+        </EnhancedTooltip>
+        <EnhancedTooltip content={{
+          title: 'Forecast Cost (P50)',
+          description: 'The most likely total project cost based on Monte Carlo simulation.',
+          calculation: 'P50 = 50th percentile of 1000+ simulated scenarios\nBased on current CPI, SPI, and risk factors',
+          details: ['P50 means 50% chance of being at or below this value', 'Used for profit margin and gross profit calculations']
+        }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center', cursor: 'help' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>Forecast Cost <InfoIcon /></div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#3B82F6' }}>{formatCurrency(calculations.forecastCost)}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>P50 estimate</div>
           </div>
-        </div>
+        </EnhancedTooltip>
+        <EnhancedTooltip content={{
+          title: 'Gross Profit',
+          description: 'The expected profit at project completion.',
+          calculation: 'Gross Profit = Contract Value - Forecast Cost\n= Revenue - Total Expected Costs',
+          details: ['Positive = profitable project', 'Negative = loss-making project', 'This is what finance will book as profit']
+        }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center', cursor: 'help' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>Gross Profit <InfoIcon /></div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.financeGrossProfit > 0 ? '#10B981' : '#EF4444' }}>{formatCurrency(calculations.financeGrossProfit)}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Revenue - Cost</div>
+          </div>
+        </EnhancedTooltip>
+        <EnhancedTooltip content={{
+          title: 'Profit Margin',
+          description: 'The percentage of revenue that becomes profit. This is the key metric finance uses for revenue declaration.',
+          calculation: 'Profit Margin = (Gross Profit / Revenue) × 100%\n= ((Revenue - Cost) / Revenue) × 100%',
+          details: ['Green = above finance target', 'Red = below finance target', 'Finance uses this to determine how much profit to book']
+        }}>
+          <div style={{ background: calculations.isAboveTarget ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: '12px', padding: '1rem', border: `1px solid ${calculations.isAboveTarget ? '#10B98140' : '#EF444440'}`, textAlign: 'center', cursor: 'help' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>Profit Margin <InfoIcon /></div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.isAboveTarget ? '#10B981' : '#EF4444' }}>{calculations.forecastProfitMargin.toFixed(1)}%</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>vs {calculations.targetMargin}% target</div>
+          </div>
+        </EnhancedTooltip>
+        <EnhancedTooltip content={{
+          title: 'Cost Buffer to Target',
+          description: 'How much the forecast cost exceeds or is under the maximum allowable cost to achieve the target margin.',
+          calculation: 'Required Cost = Revenue × (1 - Target Margin%)\nBuffer = Forecast Cost - Required Cost',
+          details: ['Negative (green) = under budget, can absorb cost overruns', 'Positive (red) = over budget limit, need to reduce costs', 'Zero = exactly at target margin']
+        }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center', cursor: 'help' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>Cost Buffer <InfoIcon /></div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.costVarianceToTarget > 0 ? '#EF4444' : '#10B981' }}>
+              {calculations.costVarianceToTarget > 0 ? '+' : ''}{formatCurrency(calculations.costVarianceToTarget)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+              {calculations.costVarianceToTarget > 0 ? 'Over budget limit' : 'Under budget limit'}
+            </div>
+          </div>
+        </EnhancedTooltip>
       </div>
 
       {/* Gauge + Revenue Declaration */}
@@ -1001,10 +1047,17 @@ function ProfitMarginSection({
               border: '1px solid var(--border-color)'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Percent Complete Method (POC)</div>
-                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Based on Cost-to-Cost calculation</div>
-                </div>
+                <EnhancedTooltip content={{
+                  title: 'Percent Complete Method (POC)',
+                  description: 'Revenue recognition method based on the Cost-to-Cost approach, a common accounting standard.',
+                  calculation: '% Complete = (Actual Cost / Forecast Cost) × 100%\nRecognizable Revenue = Contract Value × % Complete',
+                  details: ['Used for GAAP-compliant revenue recognition', 'Determines how much revenue can be booked each period', 'Ties project progress to financial reporting']
+                }}>
+                  <div style={{ cursor: 'help' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>Percent Complete Method (POC) <InfoIcon /></div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Based on Cost-to-Cost calculation</div>
+                  </div>
+                </EnhancedTooltip>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{calculations.percentComplete.toFixed(1)}%</div>
               </div>
               <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
@@ -1014,29 +1067,50 @@ function ProfitMarginSection({
 
             {/* Recognition amounts */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', flex: 1 }}>
-              <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Recognizable Revenue</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10B981' }}>{formatCurrency(calculations.recognizableRevenue)}</div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  {calculations.percentComplete.toFixed(0)}% of {formatCurrency(calculations.impliedRevenue)}
+              <EnhancedTooltip content={{
+                title: 'Recognizable Revenue',
+                description: 'The amount of contract value that can be recognized as revenue based on project progress.',
+                calculation: 'Recognizable Revenue = Contract Value × % Complete\n= ' + formatCurrency(calculations.impliedRevenue) + ' × ' + calculations.percentComplete.toFixed(1) + '%',
+                details: ['This is what finance will book as revenue this period', 'Based on Cost-to-Cost POC method']
+              }}>
+                <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'help' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>Recognizable Revenue <InfoIcon /></div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10B981' }}>{formatCurrency(calculations.recognizableRevenue)}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                    {calculations.percentComplete.toFixed(0)}% of {formatCurrency(calculations.impliedRevenue)}
+                  </div>
                 </div>
-              </div>
-              <div style={{ background: 'rgba(59,130,246,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Cost Incurred</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#3B82F6' }}>{formatCurrency(calculations.actualCost)}</div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Actual spend to date
+              </EnhancedTooltip>
+              <EnhancedTooltip content={{
+                title: 'Cost Incurred',
+                description: 'Total actual costs spent on the project to date.',
+                calculation: 'Cost Incurred = Sum of all actual labor and material costs',
+                details: ['Includes labor hours × rate', 'Used in POC calculation as numerator', 'Compared against revenue to calculate margin']
+              }}>
+                <div style={{ background: 'rgba(59,130,246,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'help' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>Cost Incurred <InfoIcon /></div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#3B82F6' }}>{formatCurrency(calculations.actualCost)}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                    Actual spend to date
+                  </div>
                 </div>
-              </div>
-              <div style={{ background: 'rgba(139,92,246,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Recognized Margin</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#8B5CF6' }}>
-                  {formatCurrency(calculations.recognizableRevenue - calculations.actualCost)}
+              </EnhancedTooltip>
+              <EnhancedTooltip content={{
+                title: 'Recognized Margin',
+                description: 'The gross profit that can be recognized based on current progress.',
+                calculation: 'Recognized Margin = Recognizable Revenue - Cost Incurred\nMargin % = (Margin / Revenue) × 100%',
+                details: ['This is the profit finance will book to date', 'Should track close to forecast profit margin', 'Large deviation indicates cost or progress issues']
+              }}>
+                <div style={{ background: 'rgba(139,92,246,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'help' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>Recognized Margin <InfoIcon /></div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#8B5CF6' }}>
+                    {formatCurrency(calculations.recognizableRevenue - calculations.actualCost)}
+                  </div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                    {((calculations.recognizableRevenue - calculations.actualCost) / (calculations.recognizableRevenue || 1) * 100).toFixed(1)}% margin to date
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  {((calculations.recognizableRevenue - calculations.actualCost) / (calculations.recognizableRevenue || 1) * 100).toFixed(1)}% margin to date
-                </div>
-              </div>
+              </EnhancedTooltip>
             </div>
           </div>
         </SectionCard>
