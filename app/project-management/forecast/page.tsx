@@ -738,12 +738,7 @@ function ProfitMarginSection({
         fontWeight: 'bold',
         offsetCenter: [0, '25%']
       },
-      data: [{ value: calculations.forecastProfitMargin }],
-      markLine: {
-        silent: true,
-        symbol: ['none', 'none'],
-        data: [{ yAxis: calculations.targetMargin }]
-      }
+      data: [{ value: calculations.forecastProfitMargin }]
     }, {
       // Target indicator ring
       type: 'gauge',
