@@ -895,10 +895,18 @@ export default function DocumentsPage() {
 
       let hoursWithWorkday: any[];
       try {
+        // Try with all columns including charge_code
         hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, workday_phase, workday_task, description, charge_code');
-      } catch (e) {
-        addLog('info', '[Matching] workday_phase/workday_task columns not available, using phase_id fallback');
-        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, description, charge_code');
+      } catch (e1) {
+        addLog('info', '[Matching] Some columns not available, trying without charge_code...');
+        try {
+          // Try without charge_code
+          hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, workday_phase, workday_task, description');
+        } catch (e2) {
+          addLog('info', '[Matching] workday columns not available, using minimal columns');
+          // Fallback to minimal columns
+          hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, description');
+        }
       }
       
       if (!hoursWithWorkday || hoursWithWorkday.length === 0) {
