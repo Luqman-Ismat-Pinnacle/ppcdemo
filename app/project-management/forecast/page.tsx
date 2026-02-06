@@ -606,6 +606,494 @@ function FloatConsumptionGauge({ cpmResult }: { cpmResult: any }) {
   );
 }
 
+// ===== PROFIT MARGIN CALCULATOR =====
+function ProfitMarginSection({ 
+  poAmount, 
+  actualCost, 
+  forecastCost, 
+  hours,
+  projects,
+  formatCurrency 
+}: { 
+  poAmount: number; 
+  actualCost: number; 
+  forecastCost: number;
+  hours: any[];
+  projects: any[];
+  formatCurrency: (v: number) => string;
+}) {
+  const [targetMargin, setTargetMargin] = useState(30); // Finance's target profit margin %
+  const [billingMultiplier, setBillingMultiplier] = useState(1.5); // Cost to billing multiplier
+  const [declaredRevenueOverride, setDeclaredRevenueOverride] = useState<number | null>(null);
+
+  // Calculate revenue and margins
+  const calculations = useMemo(() => {
+    // Implied Revenue = PO Amount (what client is paying)
+    const impliedRevenue = poAmount;
+    
+    // Calculate monthly breakdown from hours
+    const monthlyData: { month: string; hours: number; cost: number; revenue: number }[] = [];
+    const monthMap = new Map<string, { hours: number; cost: number }>();
+    
+    hours.forEach(h => {
+      const d = new Date(h.date);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const curr = monthMap.get(key) || { hours: 0, cost: 0 };
+      const hrs = h.hours || 0;
+      curr.hours += hrs;
+      curr.cost += hrs * 75; // Avg hourly rate
+      monthMap.set(key, curr);
+    });
+    
+    const sortedMonths = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const totalMonths = sortedMonths.length || 1;
+    const revenuePerMonth = impliedRevenue / totalMonths;
+    
+    sortedMonths.forEach(([month, data]) => {
+      monthlyData.push({
+        month,
+        hours: data.hours,
+        cost: data.cost,
+        revenue: revenuePerMonth,
+      });
+    });
+    
+    // Current profit margin (using actual costs)
+    const currentProfitMargin = impliedRevenue > 0 ? ((impliedRevenue - actualCost) / impliedRevenue) * 100 : 0;
+    
+    // Forecast profit margin (using P50 forecast)
+    const forecastProfitMargin = impliedRevenue > 0 ? ((impliedRevenue - forecastCost) / impliedRevenue) * 100 : 0;
+    
+    // Required cost to hit target margin
+    const requiredCostForTarget = impliedRevenue * (1 - targetMargin / 100);
+    const costVarianceToTarget = forecastCost - requiredCostForTarget;
+    
+    // Finance declared revenue (what finance would book)
+    const financeGrossProfit = impliedRevenue - forecastCost;
+    const financeProfitMargin = forecastProfitMargin;
+    
+    // Monthly revenue recognition using percentage completion
+    const percentComplete = actualCost > 0 && forecastCost > 0 ? Math.min(100, (actualCost / forecastCost) * 100) : 0;
+    const recognizableRevenue = impliedRevenue * (percentComplete / 100);
+    const overriddenRevenue = declaredRevenueOverride !== null ? declaredRevenueOverride : recognizableRevenue;
+    
+    return {
+      impliedRevenue,
+      actualCost,
+      forecastCost,
+      currentProfitMargin,
+      forecastProfitMargin,
+      targetMargin,
+      requiredCostForTarget,
+      costVarianceToTarget,
+      financeGrossProfit,
+      financeProfitMargin,
+      percentComplete,
+      recognizableRevenue,
+      overriddenRevenue,
+      monthlyData,
+      isAboveTarget: forecastProfitMargin >= targetMargin,
+      marginGap: forecastProfitMargin - targetMargin,
+    };
+  }, [poAmount, actualCost, forecastCost, hours, targetMargin, declaredRevenueOverride]);
+
+  // Profit Margin Gauge
+  const marginGaugeOption: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    series: [{
+      type: 'gauge',
+      startAngle: 200,
+      endAngle: -20,
+      min: -10,
+      max: 50,
+      splitNumber: 6,
+      center: ['50%', '60%'],
+      radius: '90%',
+      axisLine: {
+        lineStyle: {
+          width: 20,
+          color: [
+            [0.2, '#EF4444'], // -10 to 0 (negative margin)
+            [0.4, '#F59E0B'], // 0 to 15
+            [0.6, '#CDDC39'], // 15 to 25
+            [0.8, '#10B981'], // 25 to 35
+            [1, '#059669']    // 35 to 50
+          ]
+        }
+      },
+      pointer: {
+        itemStyle: { color: 'auto' },
+        length: '60%',
+        width: 5
+      },
+      axisTick: { distance: -20, length: 6, lineStyle: { color: '#fff', width: 1 } },
+      splitLine: { distance: -25, length: 12, lineStyle: { color: '#fff', width: 2 } },
+      axisLabel: { color: 'var(--text-muted)', distance: 30, fontSize: 10, formatter: (v: number) => `${v}%` },
+      detail: {
+        valueAnimation: true,
+        formatter: (v: number) => `${v.toFixed(1)}%`,
+        color: 'inherit',
+        fontSize: 28,
+        fontWeight: 'bold',
+        offsetCenter: [0, '25%']
+      },
+      data: [{ value: calculations.forecastProfitMargin }],
+      markLine: {
+        silent: true,
+        symbol: ['none', 'none'],
+        data: [{ yAxis: calculations.targetMargin }]
+      }
+    }, {
+      // Target indicator ring
+      type: 'gauge',
+      startAngle: 200,
+      endAngle: -20,
+      min: -10,
+      max: 50,
+      center: ['50%', '60%'],
+      radius: '70%',
+      pointer: { show: false },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      axisLabel: { show: false },
+      progress: {
+        show: true,
+        width: 8,
+        itemStyle: { color: 'rgba(64,224,208,0.5)' }
+      },
+      detail: { 
+        show: true, 
+        offsetCenter: [0, '55%'], 
+        fontSize: 11, 
+        color: 'var(--pinnacle-teal)',
+        formatter: () => `Target: ${calculations.targetMargin}%`
+      },
+      data: [{ value: calculations.targetMargin }]
+    }]
+  }), [calculations.forecastProfitMargin, calculations.targetMargin]);
+
+  // Monthly Revenue vs Cost Trend
+  const monthlyTrendOption: EChartsOption = useMemo(() => {
+    const months = calculations.monthlyData.map(d => {
+      const [y, m] = d.month.split('-');
+      return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m) - 1]} '${y.slice(2)}`;
+    });
+    
+    // Calculate cumulative
+    let cumRevenue = 0;
+    let cumCost = 0;
+    const cumulativeRevenue: number[] = [];
+    const cumulativeCost: number[] = [];
+    const cumulativeMargin: number[] = [];
+    
+    calculations.monthlyData.forEach(d => {
+      cumRevenue += d.revenue;
+      cumCost += d.cost;
+      cumulativeRevenue.push(cumRevenue);
+      cumulativeCost.push(cumCost);
+      cumulativeMargin.push(cumRevenue > 0 ? ((cumRevenue - cumCost) / cumRevenue) * 100 : 0);
+    });
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          let html = `<b>${params[0].axisValue}</b><br/>`;
+          params.forEach((p: any) => {
+            const val = p.seriesName === 'Margin %' ? `${p.value.toFixed(1)}%` : formatCurrency(p.value);
+            html += `${p.marker} ${p.seriesName}: ${val}<br/>`;
+          });
+          return html;
+        }
+      },
+      legend: { data: ['Revenue', 'Cost', 'Margin %'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 60, right: 60, top: 30, bottom: 50 },
+      xAxis: {
+        type: 'category',
+        data: months,
+        axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } }
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: 'Amount',
+          nameTextStyle: { color: 'var(--text-muted)', fontSize: 9 },
+          axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: (v: number) => `${(v/1000).toFixed(0)}K` },
+          splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }
+        },
+        {
+          type: 'value',
+          name: 'Margin',
+          nameTextStyle: { color: 'var(--text-muted)', fontSize: 9 },
+          min: 0,
+          max: 60,
+          axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: '{value}%' },
+          splitLine: { show: false }
+        }
+      ],
+      series: [
+        {
+          name: 'Revenue',
+          type: 'bar',
+          data: cumulativeRevenue,
+          itemStyle: { color: '#10B981', borderRadius: [4, 4, 0, 0] },
+          barWidth: '30%'
+        },
+        {
+          name: 'Cost',
+          type: 'bar',
+          data: cumulativeCost,
+          itemStyle: { color: '#3B82F6', borderRadius: [4, 4, 0, 0] },
+          barWidth: '30%'
+        },
+        {
+          name: 'Margin %',
+          type: 'line',
+          yAxisIndex: 1,
+          data: cumulativeMargin,
+          smooth: true,
+          lineStyle: { color: 'var(--pinnacle-teal)', width: 3 },
+          symbol: 'circle',
+          symbolSize: 8,
+          itemStyle: { color: 'var(--pinnacle-teal)' },
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: '#F59E0B', type: 'dashed', width: 2 },
+            label: { formatter: `Target ${calculations.targetMargin}%`, color: '#F59E0B', fontSize: 10 },
+            data: [{ yAxis: calculations.targetMargin }]
+          }
+        }
+      ]
+    };
+  }, [calculations, formatCurrency]);
+
+  // Cost breakdown waterfall
+  const costBreakdownOption: EChartsOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: 'rgba(22,27,34,0.95)',
+      borderColor: 'var(--border-color)',
+      textStyle: { color: '#fff', fontSize: 11 },
+    },
+    grid: { left: 80, right: 20, top: 30, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: ['Revenue', 'Labor', 'Overhead', 'Contingency', 'Gross Profit'],
+      axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+      axisLine: { lineStyle: { color: 'var(--border-color)' } }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: (v: number) => `$${(v/1000).toFixed(0)}K` },
+      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }
+    },
+    series: [{
+      type: 'bar',
+      data: [
+        { value: calculations.impliedRevenue, itemStyle: { color: '#10B981', borderRadius: [4, 4, 0, 0] } },
+        { value: -calculations.forecastCost * 0.7, itemStyle: { color: '#EF4444', borderRadius: [0, 0, 4, 4] } },
+        { value: -calculations.forecastCost * 0.2, itemStyle: { color: '#F59E0B', borderRadius: [0, 0, 4, 4] } },
+        { value: -calculations.forecastCost * 0.1, itemStyle: { color: '#8B5CF6', borderRadius: [0, 0, 4, 4] } },
+        { value: calculations.financeGrossProfit, itemStyle: { color: calculations.financeGrossProfit > 0 ? '#10B981' : '#EF4444', borderRadius: [4, 4, 4, 4] } },
+      ],
+      barMaxWidth: 50,
+      label: {
+        show: true,
+        position: 'top',
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'var(--text-secondary)',
+        formatter: (p: any) => p.value >= 0 ? `$${(p.value/1000).toFixed(0)}K` : `-$${(Math.abs(p.value)/1000).toFixed(0)}K`
+      }
+    }]
+  }), [calculations]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Header with Target Margin Control */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        padding: '1rem 1.25rem',
+        background: calculations.isAboveTarget ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+        borderRadius: '12px',
+        border: `1px solid ${calculations.isAboveTarget ? '#10B98140' : '#EF444440'}`,
+      }}>
+        <div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>FINANCE ALIGNMENT STATUS</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: calculations.isAboveTarget ? '#10B981' : '#EF4444' }}>
+            {calculations.isAboveTarget ? 'On Track for Target Margin' : 'Below Target Margin'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+            Current forecast is {Math.abs(calculations.marginGap).toFixed(1)}% {calculations.isAboveTarget ? 'above' : 'below'} finance target
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Finance Target Margin</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <input
+                type="range"
+                min={10}
+                max={50}
+                value={targetMargin}
+                onChange={(e) => setTargetMargin(parseInt(e.target.value))}
+                style={{ width: '100px', accentColor: 'var(--pinnacle-teal)' }}
+              />
+              <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)', minWidth: '50px' }}>{targetMargin}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Metrics Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Contract Value</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10B981' }}>{formatCurrency(calculations.impliedRevenue)}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Total PO</div>
+        </div>
+        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Forecast Cost</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#3B82F6' }}>{formatCurrency(calculations.forecastCost)}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>P50 estimate</div>
+        </div>
+        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Gross Profit</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.financeGrossProfit > 0 ? '#10B981' : '#EF4444' }}>{formatCurrency(calculations.financeGrossProfit)}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Revenue - Cost</div>
+        </div>
+        <div style={{ background: calculations.isAboveTarget ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: '12px', padding: '1rem', border: `1px solid ${calculations.isAboveTarget ? '#10B98140' : '#EF444440'}`, textAlign: 'center' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Profit Margin</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.isAboveTarget ? '#10B981' : '#EF4444' }}>{calculations.forecastProfitMargin.toFixed(1)}%</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>vs {calculations.targetMargin}% target</div>
+        </div>
+        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Cost Buffer to Target</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: calculations.costVarianceToTarget > 0 ? '#EF4444' : '#10B981' }}>
+            {calculations.costVarianceToTarget > 0 ? '+' : ''}{formatCurrency(calculations.costVarianceToTarget)}
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+            {calculations.costVarianceToTarget > 0 ? 'Over budget limit' : 'Under budget limit'}
+          </div>
+        </div>
+      </div>
+
+      {/* Gauge + Revenue Declaration */}
+      <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '1.5rem' }}>
+        <SectionCard title="Forecast Profit Margin" subtitle="Current trajectory vs finance target" accent="var(--pinnacle-teal)">
+          <ChartWrapper option={marginGaugeOption} height="280px" />
+        </SectionCard>
+
+        <SectionCard title="Monthly Revenue Declaration" subtitle="What finance will book each period">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%' }}>
+            {/* Progress-based recognition */}
+            <div style={{ 
+              padding: '1rem', 
+              background: 'var(--bg-tertiary)', 
+              borderRadius: '10px',
+              border: '1px solid var(--border-color)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Percent Complete Method (POC)</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Based on Cost-to-Cost calculation</div>
+                </div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{calculations.percentComplete.toFixed(1)}%</div>
+              </div>
+              <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', height: '8px', overflow: 'hidden' }}>
+                <div style={{ width: `${calculations.percentComplete}%`, height: '100%', background: 'var(--pinnacle-teal)', borderRadius: '6px' }} />
+              </div>
+            </div>
+
+            {/* Recognition amounts */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', flex: 1 }}>
+              <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Recognizable Revenue</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10B981' }}>{formatCurrency(calculations.recognizableRevenue)}</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  {calculations.percentComplete.toFixed(0)}% of {formatCurrency(calculations.impliedRevenue)}
+                </div>
+              </div>
+              <div style={{ background: 'rgba(59,130,246,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Cost Incurred</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#3B82F6' }}>{formatCurrency(calculations.actualCost)}</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Actual spend to date
+                </div>
+              </div>
+              <div style={{ background: 'rgba(139,92,246,0.1)', borderRadius: '10px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Recognized Margin</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#8B5CF6' }}>
+                  {formatCurrency(calculations.recognizableRevenue - calculations.actualCost)}
+                </div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  {((calculations.recognizableRevenue - calculations.actualCost) / (calculations.recognizableRevenue || 1) * 100).toFixed(1)}% margin to date
+                </div>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+
+      {/* Charts Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1.5rem' }}>
+        <SectionCard title="Revenue vs Cost Trend" subtitle="Cumulative with profit margin trajectory">
+          <ChartWrapper option={monthlyTrendOption} height="300px" />
+        </SectionCard>
+        
+        <SectionCard title="Cost Waterfall" subtitle="Revenue to profit breakdown">
+          <ChartWrapper option={costBreakdownOption} height="300px" />
+        </SectionCard>
+      </div>
+
+      {/* Finance Communication Box */}
+      <div style={{ 
+        padding: '1.25rem', 
+        background: 'linear-gradient(135deg, rgba(64,224,208,0.1), rgba(59,130,246,0.05))', 
+        borderRadius: '16px', 
+        border: '1px solid rgba(64,224,208,0.3)',
+      }}>
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--pinnacle-teal)' }}>Finance Declaration Summary</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Contract Value</div>
+            <div style={{ fontSize: '1rem', fontWeight: 600 }}>{formatCurrency(calculations.impliedRevenue)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Revenue to Recognize</div>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#10B981' }}>{formatCurrency(calculations.recognizableRevenue)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Gross Profit to Date</div>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#8B5CF6' }}>{formatCurrency(calculations.recognizableRevenue - calculations.actualCost)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Profit Margin</div>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: calculations.isAboveTarget ? '#10B981' : '#EF4444' }}>
+              {((calculations.recognizableRevenue - calculations.actualCost) / (calculations.recognizableRevenue || 1) * 100).toFixed(1)}%
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                (target: {calculations.targetMargin}%)
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== BURN RATE TREND =====
 function BurnRateTrend({ hours, projects }: { hours: any[]; projects: any[] }) {
   const option: EChartsOption = useMemo(() => {
@@ -709,7 +1197,7 @@ export default function ForecastPage() {
   const data = filteredData;
   const [fteLimit, setFteLimit] = useState(10);
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
-  const [activeTab, setActiveTab] = useState<'overview' | 'cascade' | 'scenarios'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'margin' | 'cascade' | 'scenarios'>('margin');
 
   // Derive project state
   const projectState: ProjectState = useMemo(() => {
@@ -809,8 +1297,9 @@ export default function ForecastPage() {
         {/* Tab Selector */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
           {[
-            { key: 'overview', label: 'Financial Overview' },
-            { key: 'cascade', label: 'Cascade Analysis' },
+            { key: 'margin', label: 'Profit Margin' },
+            { key: 'overview', label: 'Cost Analysis' },
+            { key: 'cascade', label: 'Cascade Impact' },
             { key: 'scenarios', label: 'Scenarios' },
           ].map(tab => (
             <button
@@ -876,6 +1365,18 @@ export default function ForecastPage() {
           icon="!"
         />
       </div>
+
+      {/* PROFIT MARGIN TAB */}
+      {activeTab === 'margin' && (
+        <ProfitMarginSection 
+          poAmount={poAmount} 
+          actualCost={projectState.ac} 
+          forecastCost={forecastResult?.monteCarloCost.p50 || 0}
+          hours={data.hours || []}
+          projects={data.projects || []}
+          formatCurrency={formatCurrency}
+        />
+      )}
 
       {/* FINANCIAL OVERVIEW TAB */}
       {activeTab === 'overview' && (
