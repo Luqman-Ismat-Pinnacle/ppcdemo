@@ -14,6 +14,7 @@
  * - Zoom and pan controls
  * 
  * @module app/project-controls/wbs-gantt/page
+ * @version 2.0.0 - ECharts rewrite
  */
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
