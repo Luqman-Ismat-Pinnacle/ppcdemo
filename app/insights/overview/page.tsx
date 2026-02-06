@@ -390,9 +390,11 @@ function ProgressBurndown({ healthMetrics }: { healthMetrics: any }) {
 }
 
 // ===== VARIANCE TREND MINI =====
-function VarianceTrend({ label, current, previous, period }: { label: string; current: number; previous: number; period: string }) {
-  const change = current - previous;
-  const percentChange = previous !== 0 ? Math.round((change / Math.abs(previous)) * 100) : 0;
+function VarianceTrend({ label, current, previous, period }: { label: string; current: number | null | undefined; previous: number | null | undefined; period: string }) {
+  const safeC = current ?? 0;
+  const safeP = previous ?? safeC;
+  const change = safeC - safeP;
+  const percentChange = safeP !== 0 ? Math.round((change / Math.abs(safeP)) * 100) : 0;
   const isPositive = label.includes('CPI') || label.includes('SPI') ? change >= 0 : change <= 0;
   
   return (
@@ -404,8 +406,8 @@ function VarianceTrend({ label, current, previous, period }: { label: string; cu
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-        <span style={{ fontSize: '1.3rem', fontWeight: 700 }}>{typeof current === 'number' ? current.toFixed(2) : current}</span>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>from {typeof previous === 'number' ? previous.toFixed(2) : previous}</span>
+        <span style={{ fontSize: '1.3rem', fontWeight: 700 }}>{typeof safeC === 'number' ? safeC.toFixed(2) : safeC}</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>from {typeof safeP === 'number' ? safeP.toFixed(2) : safeP}</span>
       </div>
     </div>
   );
@@ -518,14 +520,14 @@ export default function OverviewPage() {
       .sort((a: any, b: any) => b.variance - a.variance);
   }, [data.tasks]);
 
-  // Variance calculations
+  // Variance calculations - with null safety
   const varianceData = useMemo(() => {
-    const spiVar = calculateMetricVariance(metricsHistory, 'spi', variancePeriod);
-    const cpiVar = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod);
-    const hoursVar = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod);
-    const progressVar = calculateMetricVariance(metricsHistory, 'percent_complete', variancePeriod);
+    const spiVar = calculateMetricVariance(metricsHistory, 'spi', variancePeriod) || { currentValue: healthMetrics.spi, previousValue: healthMetrics.spi, change: 0, percentChange: 0 };
+    const cpiVar = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod) || { currentValue: healthMetrics.cpi, previousValue: healthMetrics.cpi, change: 0, percentChange: 0 };
+    const hoursVar = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod) || { currentValue: healthMetrics.totalHours, previousValue: healthMetrics.totalHours, change: 0, percentChange: 0 };
+    const progressVar = calculateMetricVariance(metricsHistory, 'percent_complete', variancePeriod) || { currentValue: healthMetrics.percentComplete, previousValue: healthMetrics.percentComplete, change: 0, percentChange: 0 };
     return { spi: spiVar, cpi: cpiVar, hours: hoursVar, progress: progressVar };
-  }, [metricsHistory, variancePeriod]);
+  }, [metricsHistory, variancePeriod, healthMetrics]);
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
