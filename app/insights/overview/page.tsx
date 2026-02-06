@@ -15,17 +15,126 @@
  * - Schedule Risks and Budget Concerns lists
  * - Variance Analysis section
  * - Advanced Project Controls (Float, FTE, Predictive Health, Linchpin)
+ * - Cross-sync filtering - click any visual to filter entire page
+ * - Drill-down panels for detailed breakdowns
  * 
  * All visuals sized for large datasets with scroll/zoom.
  * 
  * @module app/insights/overview/page
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
+import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
+
+// ===== CROSS-FILTER BAR =====
+function CrossFilterBar({ 
+  filters, 
+  drillPath,
+  onRemove, 
+  onClear,
+  onDrillToLevel,
+}: { 
+  filters: CrossFilter[];
+  drillPath: { id: string; label: string }[];
+  onRemove: (type: string, value?: string) => void;
+  onClear: () => void;
+  onDrillToLevel: (id: string) => void;
+}) {
+  if (filters.length === 0 && drillPath.length === 0) return null;
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.75rem',
+      padding: '0.75rem 1rem',
+      background: 'linear-gradient(90deg, rgba(64,224,208,0.08), rgba(205,220,57,0.05))',
+      borderRadius: '12px',
+      border: '1px solid rgba(64,224,208,0.2)',
+      marginBottom: '1rem',
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+          <polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46" />
+        </svg>
+        <span style={{ fontSize: '0.75rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>FILTERED</span>
+      </div>
+
+      {/* Drill path breadcrumbs */}
+      {drillPath.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          {drillPath.map((level, idx) => (
+            <React.Fragment key={level.id}>
+              {idx > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>/</span>}
+              <button
+                onClick={() => onDrillToLevel(level.id)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: idx === drillPath.length - 1 ? 'rgba(64,224,208,0.15)' : 'transparent',
+                  color: 'var(--pinnacle-teal)',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {level.label}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
+      {/* Active filter pills */}
+      {filters.map((f) => (
+        <div
+          key={`${f.type}-${f.value}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.35rem 0.75rem',
+            background: 'var(--bg-secondary)',
+            borderRadius: '20px',
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{f.type}:</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{f.label}</span>
+          <button
+            onClick={() => onRemove(f.type, f.value)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      ))}
+
+      <button
+        onClick={onClear}
+        style={{
+          marginLeft: 'auto',
+          padding: '0.35rem 0.75rem',
+          borderRadius: '6px',
+          border: '1px solid var(--border-color)',
+          background: 'transparent',
+          color: 'var(--text-secondary)',
+          fontSize: '0.75rem',
+          cursor: 'pointer',
+        }}
+      >
+        Clear All
+      </button>
+    </div>
+  );
+}
 
 // ===== SECTION CARD =====
 function SectionCard({ title, subtitle, children, headerRight, noPadding = false }: { 
@@ -170,7 +279,7 @@ function PortfolioCommandCenter({
 }
 
 // ===== PORTFOLIO FLOW SANKEY (Enhanced) =====
-function PortfolioFlowSankey({ healthMetrics, projectBreakdown }: { healthMetrics: any; projectBreakdown: any[] }) {
+function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const goodProjects = projectBreakdown.filter(p => p.spi >= 1 && p.cpi >= 1);
     const atRiskProjects = projectBreakdown.filter(p => (p.spi >= 0.9 && p.spi < 1) || (p.cpi >= 0.9 && p.cpi < 1));
@@ -232,11 +341,11 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown }: { healthMetric
     };
   }, [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="420px" />;
+  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
 }
 
 // ===== ENHANCED BUDGET VARIANCE CHART =====
-function EnhancedBudgetVarianceChart({ projectBreakdown }: { projectBreakdown: any[] }) {
+function EnhancedBudgetVarianceChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const sorted = [...projectBreakdown].sort((a, b) => b.variance - a.variance).slice(0, 15);
     
@@ -328,11 +437,11 @@ function EnhancedBudgetVarianceChart({ projectBreakdown }: { projectBreakdown: a
     };
   }, [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="480px" />;
+  return <ChartWrapper option={option} height="480px" onClick={onClick} />;
 }
 
 // ===== PROJECT HEALTH RADAR =====
-function ProjectHealthRadar({ projects }: { projects: any[] }) {
+function ProjectHealthRadar({ projects, onClick }: { projects: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const indicators = [
       { name: 'Schedule (SPI)', max: 1.5 },
@@ -372,11 +481,11 @@ function ProjectHealthRadar({ projects }: { projects: any[] }) {
     };
   }, [projects]);
 
-  return <ChartWrapper option={option} height="340px" />;
+  return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
 // ===== RISK MATRIX =====
-function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect }: { scheduleRisks: any[]; budgetConcerns: any[]; onItemSelect: (item: any) => void }) {
+function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect, onClick }: { scheduleRisks: any[]; budgetConcerns: any[]; onItemSelect: (item: any) => void; onClick?: (params: any) => void }) {
   const matrixData = useMemo(() => {
     const items: any[] = [];
     
@@ -448,11 +557,11 @@ function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect }: { scheduleR
     ],
   }), [matrixData]);
 
-  return <ChartWrapper option={option} height="340px" onEvents={{ click: (params: any) => matrixData[params.dataIndex] && onItemSelect(matrixData[params.dataIndex]) }} />;
+  return <ChartWrapper option={option} height="340px" onEvents={{ click: (params: any) => { matrixData[params.dataIndex] && onItemSelect(matrixData[params.dataIndex]); onClick?.(params); } }} />;
 }
 
 // ===== PROGRESS BURNDOWN =====
-function ProgressBurndown({ healthMetrics }: { healthMetrics: any }) {
+function ProgressBurndown({ healthMetrics, onClick }: { healthMetrics: any; onClick?: (params: any) => void }) {
   const burndownData = useMemo(() => {
     const target = 100;
     const current = healthMetrics.percentComplete;
@@ -509,7 +618,7 @@ function ProgressBurndown({ healthMetrics }: { healthMetrics: any }) {
 }
 
 // ===== FLOAT & CASCADE GANTT =====
-function FloatCascadeGantt({ tasks, milestones }: { tasks: any[]; milestones: any[] }) {
+function FloatCascadeGantt({ tasks, milestones, onClick }: { tasks: any[]; milestones: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     // Get top tasks with float data
     const taskData = tasks.slice(0, 15).map((t: any, idx: number) => {
@@ -571,11 +680,11 @@ function FloatCascadeGantt({ tasks, milestones }: { tasks: any[]; milestones: an
     };
   }, [tasks]);
 
-  return <ChartWrapper option={option} height="400px" />;
+  return <ChartWrapper option={option} height="400px" onClick={onClick} />;
 }
 
 // ===== FTE SATURATION HEATMAP =====
-function FTESaturationHeatmap({ tasks }: { tasks: any[] }) {
+function FTESaturationHeatmap({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     // Group tasks by week based on their dates or simulate weekly distribution
     const totalHours = tasks.reduce((sum, t) => sum + (t.actualHours || 0), 0);
@@ -663,11 +772,11 @@ function FTESaturationHeatmap({ tasks }: { tasks: any[] }) {
     };
   }, [tasks]);
 
-  return <ChartWrapper option={option} height="380px" />;
+  return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
 // ===== EARNED VALUE S-CURVE =====
-function EarnedValueSCurve({ tasks, sCurveData }: { tasks: any[]; sCurveData: any }) {
+function EarnedValueSCurve({ tasks, sCurveData, onClick }: { tasks: any[]; sCurveData: any; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const dates = sCurveData?.dates || [];
     const planned = sCurveData?.planned || [];
@@ -732,11 +841,11 @@ function EarnedValueSCurve({ tasks, sCurveData }: { tasks: any[]; sCurveData: an
     };
   }, [tasks, sCurveData]);
 
-  return <ChartWrapper option={option} height="340px" />;
+  return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
 // ===== BUFFER CONSUMPTION SUNBURST =====
-function BufferConsumptionSunburst({ projectBreakdown, milestones }: { projectBreakdown: any[]; milestones: any[] }) {
+function BufferConsumptionSunburst({ projectBreakdown, milestones, onClick }: { projectBreakdown: any[]; milestones: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     // Group by phase/project and calculate buffer status
     const data: any[] = [{
@@ -788,11 +897,11 @@ function BufferConsumptionSunburst({ projectBreakdown, milestones }: { projectBr
     };
   }, [projectBreakdown, milestones]);
 
-  return <ChartWrapper option={option} height="420px" />;
+  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
 }
 
 // ===== LINCHPIN ANALYSIS - Network Graph =====
-function LinchpinAnalysis({ tasks, milestones }: { tasks: any[]; milestones: any[] }) {
+function LinchpinAnalysis({ tasks, milestones, onClick }: { tasks: any[]; milestones: any[]; onClick?: (params: any) => void }) {
   const { nodes, links, maxCount } = useMemo(() => {
     // Build dependency network
     const dependencyCount: Record<string, { name: string; count: number; type: string; status: string; id: string }> = {};
@@ -969,16 +1078,17 @@ function LinchpinAnalysis({ tasks, milestones }: { tasks: any[]; milestones: any
           }],
           legend: { data: ['Critical', 'Important', 'Standard'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
         }} 
-        height="420px" 
+        height="420px"
+        onClick={onClick}
       />
     );
   }
   
-  return <ChartWrapper option={option} height="420px" />;
+  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
 }
 
 // ===== ELASTIC SCHEDULING CHART =====
-function ElasticSchedulingChart({ tasks }: { tasks: any[] }) {
+function ElasticSchedulingChart({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const totalHours = tasks.reduce((sum, t) => sum + (t.actualHours || 0), 0);
     const uniqueResources = new Set(tasks.map(t => t.assignedResource || t.resource).filter(Boolean));
@@ -1031,11 +1141,11 @@ function ElasticSchedulingChart({ tasks }: { tasks: any[] }) {
     };
   }, [tasks]);
 
-  return <ChartWrapper option={option} height="340px" />;
+  return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
 // ===== MILESTONE TIMELINE CHART =====
-function MilestoneTimelineChart({ milestones }: { milestones: any[] }) {
+function MilestoneTimelineChart({ milestones, onClick }: { milestones: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     // Sort milestones by planned date
     const sorted = [...milestones].slice(0, 20).map((m, idx) => ({
@@ -1112,11 +1222,11 @@ function MilestoneTimelineChart({ milestones }: { milestones: any[] }) {
   }, [milestones]);
 
   if (!milestones.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No milestone data available</div>;
-  return <ChartWrapper option={option} height="450px" />;
+  return <ChartWrapper option={option} height="450px" onClick={onClick} />;
 }
 
 // ===== MILESTONE STATUS DISTRIBUTION =====
-function MilestoneStatusChart({ milestones }: { milestones: any[] }) {
+function MilestoneStatusChart({ milestones, onClick }: { milestones: any[]; onClick?: (params: any) => void }) {
   const statusData = useMemo(() => {
     const complete = milestones.filter(m => m.status === 'Complete' || m.percentComplete >= 100).length;
     const onTime = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) <= 0).length;
@@ -1173,7 +1283,7 @@ function MilestoneStatusChart({ milestones }: { milestones: any[] }) {
     }],
   }), [statusData, milestones.length]);
 
-  return <ChartWrapper option={option} height="320px" />;
+  return <ChartWrapper option={option} height="320px" onClick={onClick} />;
 }
 
 // ===== MILESTONE PROGRESS GAUGE =====
@@ -1251,7 +1361,7 @@ function VarianceTrend({ label, current, previous, period }: { label: string; cu
 }
 
 // ===== VARIANCE WATERFALL CHART =====
-function VarianceWaterfallChart({ projectBreakdown }: { projectBreakdown: any[] }) {
+function VarianceWaterfallChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const sorted = [...projectBreakdown].sort((a, b) => a.variance - b.variance).slice(0, 12);
     const names = sorted.map(p => p.name.slice(0, 15));
@@ -1313,11 +1423,11 @@ function VarianceWaterfallChart({ projectBreakdown }: { projectBreakdown: any[] 
     };
   }, [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="420px" />;
+  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
 }
 
 // ===== VARIANCE DISTRIBUTION CHART =====
-function VarianceDistributionChart({ projectBreakdown }: { projectBreakdown: any[] }) {
+function VarianceDistributionChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const distribution = useMemo(() => {
     const ranges = [
       { label: '< -20%', min: -Infinity, max: -20, color: '#10B981', count: 0 },
@@ -1372,11 +1482,11 @@ function VarianceDistributionChart({ projectBreakdown }: { projectBreakdown: any
     }],
   }), [distribution]);
 
-  return <ChartWrapper option={option} height="380px" />;
+  return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
 // ===== PERFORMANCE QUADRANT CHART =====
-function PerformanceQuadrantChart({ projectBreakdown }: { projectBreakdown: any[] }) {
+function PerformanceQuadrantChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => ({
     backgroundColor: 'transparent',
     tooltip: {
@@ -1438,11 +1548,11 @@ function PerformanceQuadrantChart({ projectBreakdown }: { projectBreakdown: any[
     ],
   }), [projectBreakdown]);
 
-  return <ChartWrapper option={option} height="380px" />;
+  return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
 // ===== VARIANCE TIMELINE CHART =====
-function VarianceTimelineChart({ varianceData, healthMetrics }: { varianceData: any; healthMetrics: any }) {
+function VarianceTimelineChart({ varianceData, healthMetrics, onClick }: { varianceData: any; healthMetrics: any; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     // Generate 8 weeks of simulated trend data
     const weeks = Array.from({ length: 8 }, (_, i) => {
@@ -1522,7 +1632,7 @@ function VarianceTimelineChart({ varianceData, healthMetrics }: { varianceData: 
     };
   }, [varianceData, healthMetrics]);
 
-  return <ChartWrapper option={option} height="340px" />;
+  return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
 // ===== MAIN PAGE =====
@@ -1530,9 +1640,13 @@ export default function OverviewPage() {
   const { filteredData, hierarchyFilters, variancePeriod, varianceEnabled, metricsHistory } = useData();
   const data = filteredData;
   
+  // Cross-filter state
+  const crossFilter = useCrossFilter();
+  
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [selectedRiskItem, setSelectedRiskItem] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'milestones' | 'variance' | 'advanced'>('overview');
+  const [drillDownItem, setDrillDownItem] = useState<{ item: any; type: string; relatedData?: any } | null>(null);
 
   const contextLabel = useMemo(() => {
     if (hierarchyFilters?.project) return `Project: ${hierarchyFilters.project}`;
@@ -1617,6 +1731,50 @@ export default function OverviewPage() {
 
   // Schedule risks (milestones)
   const milestones = useMemo(() => data.milestones || [], [data.milestones]);
+  
+  // Chart click handler for cross-filtering (defined after data dependencies)
+  const handleChartClick = useCallback((params: any, chartType: string) => {
+    if (!params || !params.name) return;
+    
+    const name = params.name;
+    let filterType: CrossFilter['type'] = 'custom';
+    
+    // Determine filter type based on chart
+    if (chartType === 'sankey') {
+      if (['On Track', 'At Risk', 'Critical', 'Completed', 'In Progress'].includes(name)) {
+        filterType = 'status';
+      } else {
+        filterType = 'project';
+      }
+    } else if (chartType === 'radar' || chartType === 'project') {
+      filterType = 'project';
+    } else if (chartType === 'risk') {
+      filterType = 'risk';
+    } else if (chartType === 'milestone') {
+      filterType = 'milestone';
+    } else if (chartType === 'variance') {
+      filterType = 'project';
+    }
+    
+    // Toggle filter
+    crossFilter.toggleFilter({
+      type: filterType,
+      value: name,
+      label: name,
+      source: chartType,
+    });
+    
+    // Find related data for drill-down
+    const projectData = projectBreakdown.find(p => p.name === name);
+    const milestoneData = milestones.find((m: any) => (m.name || m.milestone) === name);
+    
+    setDrillDownItem({
+      item: { name, ...params.data, ...projectData, ...milestoneData },
+      type: filterType,
+      relatedData: projectData || milestoneData,
+    });
+  }, [crossFilter, projectBreakdown, milestones]);
+
   const scheduleRisks = useMemo(() => {
     return milestones
       .filter((m: any) => m.varianceDays && m.varianceDays > 0 && m.status !== 'Complete')
@@ -1647,15 +1805,122 @@ export default function OverviewPage() {
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Portfolio Overview</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Health, milestones, risks, variance analysis, and advanced project controls</p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+          Health, milestones, risks, variance analysis - Click any chart element to filter
+        </p>
       </div>
+
+      {/* Cross-Filter Bar */}
+      <CrossFilterBar
+        filters={crossFilter.activeFilters}
+        drillPath={crossFilter.drillDownPath}
+        onRemove={(type, value) => {
+          crossFilter.removeFilter(type, value);
+          setDrillDownItem(null);
+        }}
+        onClear={() => {
+          crossFilter.clearFilters();
+          setDrillDownItem(null);
+          setSelectedProject(null);
+        }}
+        onDrillToLevel={crossFilter.drillToLevel}
+      />
+
+      {/* Drill-Down Panel */}
+      {drillDownItem && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(205,220,57,0.05) 100%)',
+          borderRadius: '16px',
+          padding: '1.25rem',
+          marginBottom: '1rem',
+          border: '1px solid var(--pinnacle-teal)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+            <div>
+              <span style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', textTransform: 'uppercase', fontWeight: 600 }}>
+                {drillDownItem.type} Details
+              </span>
+              <h3 style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: 700 }}>
+                {drillDownItem.item.name || 'Details'}
+              </h3>
+            </div>
+            <button onClick={() => { setDrillDownItem(null); crossFilter.clearFilters(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
+            {drillDownItem.relatedData && (
+              <>
+                {drillDownItem.relatedData.tasks !== undefined && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(59,130,246,0.1)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#3B82F6', marginBottom: '0.25rem' }}>Tasks</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3B82F6' }}>{drillDownItem.relatedData.tasks}</div>
+                  </div>
+                )}
+                {drillDownItem.relatedData.completed !== undefined && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#10B981', marginBottom: '0.25rem' }}>Completed</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981' }}>{drillDownItem.relatedData.completed}</div>
+                  </div>
+                )}
+                {drillDownItem.relatedData.spi !== undefined && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>SPI</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: drillDownItem.relatedData.spi >= 1 ? '#10B981' : '#EF4444' }}>
+                      {drillDownItem.relatedData.spi.toFixed(2)}
+                    </div>
+                  </div>
+                )}
+                {drillDownItem.relatedData.cpi !== undefined && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>CPI</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: drillDownItem.relatedData.cpi >= 1 ? '#10B981' : '#EF4444' }}>
+                      {drillDownItem.relatedData.cpi.toFixed(2)}
+                    </div>
+                  </div>
+                )}
+                {drillDownItem.relatedData.actualHours !== undefined && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Actual Hours</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{drillDownItem.relatedData.actualHours.toLocaleString()}</div>
+                  </div>
+                )}
+                {drillDownItem.relatedData.variance !== undefined && (
+                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Variance</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: drillDownItem.relatedData.variance <= 0 ? '#10B981' : '#EF4444' }}>
+                      {drillDownItem.relatedData.variance > 0 ? '+' : ''}{drillDownItem.relatedData.variance}%
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Command Center */}
       <div style={{ marginBottom: '1.25rem' }}>
         <PortfolioCommandCenter 
           healthMetrics={healthMetrics} 
           projectBreakdown={projectBreakdown}
-          onProjectSelect={setSelectedProject}
+          onProjectSelect={(p) => {
+            setSelectedProject(p);
+            if (p) {
+              crossFilter.toggleFilter({
+                type: 'project',
+                value: p.name,
+                label: p.name,
+                source: 'commandCenter',
+              });
+              setDrillDownItem({ item: p, type: 'project', relatedData: p });
+            } else {
+              crossFilter.clearFilters();
+              setDrillDownItem(null);
+            }
+          }}
           selectedProject={selectedProject}
         />
       </div>
@@ -1721,29 +1986,29 @@ export default function OverviewPage() {
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Full Width: Enhanced Sankey */}
-          <SectionCard title="Portfolio Flow" subtitle="Project distribution by health status - hover for details">
-            <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} />
+          <SectionCard title="Portfolio Flow" subtitle="Click any node to filter - hover for details">
+            <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'sankey')} />
           </SectionCard>
 
           {/* Row: Radar + Risk Matrix */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Project Health Radar" subtitle="Top projects comparison">
-              <ProjectHealthRadar projects={projectBreakdown} />
+            <SectionCard title="Project Health Radar" subtitle="Click project to filter">
+              <ProjectHealthRadar projects={projectBreakdown} onClick={(params) => handleChartClick(params, 'radar')} />
             </SectionCard>
 
           <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget items`}>
-              <RiskMatrix scheduleRisks={scheduleRisks} budgetConcerns={budgetConcerns} onItemSelect={setSelectedRiskItem} />
+              <RiskMatrix scheduleRisks={scheduleRisks} budgetConcerns={budgetConcerns} onItemSelect={setSelectedRiskItem} onClick={(params) => handleChartClick(params, 'risk')} />
             </SectionCard>
           </div>
 
           {/* Progress Burndown - Full Width */}
           <SectionCard title="Progress Burndown" subtitle="Completion trajectory">
-            <ProgressBurndown healthMetrics={healthMetrics} />
+            <ProgressBurndown healthMetrics={healthMetrics} onClick={(params) => handleChartClick(params, 'burndown')} />
           </SectionCard>
 
           {/* Full Width: Enhanced Budget Variance */}
-          <SectionCard title="Budget Variance Analysis" subtitle="Baseline vs Actual hours by project - hover for details">
-            <EnhancedBudgetVarianceChart projectBreakdown={projectBreakdown} />
+          <SectionCard title="Budget Variance Analysis" subtitle="Click bar to filter by project - hover for details">
+            <EnhancedBudgetVarianceChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
 
           {/* Project Summary Table */}
@@ -1796,11 +2061,11 @@ export default function OverviewPage() {
 
           {/* Milestone Visuals Row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Milestone Delay Analysis" subtitle="Variance by milestone (days)">
-              <MilestoneTimelineChart milestones={milestones} />
+            <SectionCard title="Milestone Delay Analysis" subtitle="Click bar to filter by milestone">
+              <MilestoneTimelineChart milestones={milestones} onClick={(params) => handleChartClick(params, 'milestone')} />
             </SectionCard>
-            <SectionCard title="Milestone Status" subtitle="Distribution breakdown">
-              <MilestoneStatusChart milestones={milestones} />
+            <SectionCard title="Milestone Status" subtitle="Click segment to filter by status">
+              <MilestoneStatusChart milestones={milestones} onClick={(params) => handleChartClick(params, 'milestoneStatus')} />
             </SectionCard>
           </div>
 
@@ -1909,17 +2174,17 @@ export default function OverviewPage() {
           </div>
 
           {/* Variance Waterfall Chart */}
-          <SectionCard title="Budget Variance Waterfall" subtitle="Visual breakdown of variance by project">
-            <VarianceWaterfallChart projectBreakdown={projectBreakdown} />
+          <SectionCard title="Budget Variance Waterfall" subtitle="Click bar to filter by project">
+            <VarianceWaterfallChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
 
           {/* Variance Distribution + Trend */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Variance Distribution" subtitle="Projects by variance range">
-              <VarianceDistributionChart projectBreakdown={projectBreakdown} />
+            <SectionCard title="Variance Distribution" subtitle="Click bar to filter by range">
+              <VarianceDistributionChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
             </SectionCard>
-            <SectionCard title="Performance Quadrant" subtitle="SPI vs CPI analysis">
-              <PerformanceQuadrantChart projectBreakdown={projectBreakdown} />
+            <SectionCard title="Performance Quadrant" subtitle="Click dot to filter by project">
+              <PerformanceQuadrantChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'project')} />
             </SectionCard>
           </div>
 
@@ -1972,8 +2237,8 @@ export default function OverviewPage() {
           </div>
 
           {/* Variance Timeline */}
-          <SectionCard title="Variance Trend Over Time" subtitle="How variance has evolved">
-            <VarianceTimelineChart varianceData={varianceData} healthMetrics={healthMetrics} />
+          <SectionCard title="Variance Trend Over Time" subtitle="Click to drill into trends">
+            <VarianceTimelineChart varianceData={varianceData} healthMetrics={healthMetrics} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
         </div>
       )}
@@ -2032,9 +2297,9 @@ export default function OverviewPage() {
           {/* Section 1: Dynamic Float & Cascade Visualization */}
           <SectionCard 
             title="Float & Cascade Visualization" 
-            subtitle="Ghost bars show Total Float - tasks can slide before becoming Critical"
+            subtitle="Click bar to filter by task - ghost bars show Total Float"
           >
-            <FloatCascadeGantt tasks={data.tasks || []} milestones={milestones} />
+            <FloatCascadeGantt tasks={data.tasks || []} milestones={milestones} onClick={(params) => handleChartClick(params, 'task')} />
             <div style={{ 
               display: 'grid', 
               gridTemplateColumns: 'repeat(3, 1fr)', 
@@ -2084,15 +2349,15 @@ export default function OverviewPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <SectionCard 
               title="FTE Saturation Analysis" 
-              subtitle="Labor demand vs FTE capacity - peaks indicate resource constraints"
+              subtitle="Click to filter by week - peaks indicate resource constraints"
             >
-              <FTESaturationHeatmap tasks={data.tasks || []} />
+              <FTESaturationHeatmap tasks={data.tasks || []} onClick={(params) => handleChartClick(params, 'resource')} />
             </SectionCard>
             <SectionCard 
               title="Elastic Scheduling Windows" 
-              subtitle="Available capacity valleys - optimal windows to shift tasks"
+              subtitle="Click to identify optimal scheduling windows"
             >
-              <ElasticSchedulingChart tasks={data.tasks || []} />
+              <ElasticSchedulingChart tasks={data.tasks || []} onClick={(params) => handleChartClick(params, 'schedule')} />
             </SectionCard>
           </div>
 
@@ -2100,24 +2365,24 @@ export default function OverviewPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
             <SectionCard 
               title="Earned Value S-Curve" 
-              subtitle="PV vs EV vs AC - catches hidden risk of being on time but over budget"
+              subtitle="Click to drill into performance metrics"
             >
-              <EarnedValueSCurve tasks={data.tasks || []} sCurveData={data.sCurve || { dates: [], planned: [], actual: [] }} />
+              <EarnedValueSCurve tasks={data.tasks || []} sCurveData={data.sCurve || { dates: [], planned: [], actual: [] }} onClick={(params) => handleChartClick(params, 'performance')} />
             </SectionCard>
             <SectionCard 
               title="Buffer Consumption" 
-              subtitle="Phase health at a glance - red = zero float"
+              subtitle="Click segment to filter by phase"
             >
-              <BufferConsumptionSunburst projectBreakdown={projectBreakdown} milestones={milestones} />
+              <BufferConsumptionSunburst projectBreakdown={projectBreakdown} milestones={milestones} onClick={(params) => handleChartClick(params, 'phase')} />
             </SectionCard>
           </div>
 
           {/* Section 4: Linchpin Analysis */}
           <SectionCard 
             title="Dependency Network" 
-            subtitle="Critical bottlenecks - larger nodes have more downstream dependencies"
+            subtitle="Click node to filter by dependency - larger = more downstream impact"
           >
-            <LinchpinAnalysis tasks={data.tasks || []} milestones={milestones} />
+            <LinchpinAnalysis tasks={data.tasks || []} milestones={milestones} onClick={(params) => handleChartClick(params, 'dependency')} />
           </SectionCard>
         </div>
       )}

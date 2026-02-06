@@ -4,22 +4,131 @@
  * @fileoverview Tasks - Operations Dashboard with Executive Features
  * 
  * Full-width visualizations with executive dashboard and variance analysis:
- * - Hours vs Efficiency dual-axis chart (full width, data zoom)
+ * - Hours vs Efficiency dual-axis chart (full width, data zoom, click-to-filter)
  * - Hours flow Sankey with split options (phase/task/project/role)
- * - Hours by Work Type stacked bar
+ * - Hours by Work Type stacked bar (click nodes to filter)
+ * - Cross-sync filtering across all charts
+ * - Drill-down functionality for detailed breakdowns
  * - Variance Analysis section with trend charts
  * - Executive Summary with risks and action items
  * 
  * @module app/insights/tasks/page
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
+import useCrossFilter, { CrossFilter, applyCrossFilters } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
 
 type SankeyGroupBy = 'role' | 'phase' | 'project' | 'status' | 'workType';
+
+// ===== CROSS-FILTER BAR =====
+function CrossFilterBar({ 
+  filters, 
+  drillPath,
+  onRemove, 
+  onClear,
+  onDrillToLevel,
+}: { 
+  filters: CrossFilter[];
+  drillPath: { id: string; label: string }[];
+  onRemove: (type: string, value?: string) => void;
+  onClear: () => void;
+  onDrillToLevel: (id: string) => void;
+}) {
+  if (filters.length === 0 && drillPath.length === 0) return null;
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.75rem',
+      padding: '0.75rem 1rem',
+      background: 'linear-gradient(90deg, rgba(64,224,208,0.08), rgba(205,220,57,0.05))',
+      borderRadius: '12px',
+      border: '1px solid rgba(64,224,208,0.2)',
+      marginBottom: '1rem',
+      flexWrap: 'wrap',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
+          <polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46" />
+        </svg>
+        <span style={{ fontSize: '0.75rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>FILTERED</span>
+      </div>
+
+      {/* Drill path breadcrumbs */}
+      {drillPath.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          {drillPath.map((level, idx) => (
+            <React.Fragment key={level.id}>
+              {idx > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>/</span>}
+              <button
+                onClick={() => onDrillToLevel(level.id)}
+                style={{
+                  padding: '0.25rem 0.5rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: idx === drillPath.length - 1 ? 'rgba(64,224,208,0.15)' : 'transparent',
+                  color: 'var(--pinnacle-teal)',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {level.label}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
+      {/* Active filter pills */}
+      {filters.map((f) => (
+        <div
+          key={`${f.type}-${f.value}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.35rem 0.75rem',
+            background: 'var(--bg-secondary)',
+            borderRadius: '20px',
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{f.type}:</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{f.label}</span>
+          <button
+            onClick={() => onRemove(f.type, f.value)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      ))}
+
+      <button
+        onClick={onClear}
+        style={{
+          marginLeft: 'auto',
+          padding: '0.35rem 0.75rem',
+          borderRadius: '6px',
+          border: '1px solid var(--border-color)',
+          background: 'transparent',
+          color: 'var(--text-secondary)',
+          fontSize: '0.75rem',
+          cursor: 'pointer',
+        }}
+      >
+        Clear All
+      </button>
+    </div>
+  );
+}
 
 // ===== COMMAND CENTER =====
 function CommandCenter({ stats, onFilterChange, activeFilter }: { 
@@ -82,7 +191,7 @@ function CommandCenter({ stats, onFilterChange, activeFilter }: {
 }
 
 // ===== HOURS EFFICIENCY CHART (FULL WIDTH) =====
-function HoursEfficiencyChart({ data }: { data: any }) {
+function HoursEfficiencyChart({ data, onBarClick }: { data: any; onBarClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const tasks = (data.tasks || []).slice(0, 50);
     const actual = (data.actualWorked || []).slice(0, 50);
@@ -111,11 +220,11 @@ function HoursEfficiencyChart({ data }: { data: any }) {
     };
   }, [data]);
 
-  return <ChartWrapper option={option} height="400px" />;
+  return <ChartWrapper option={option} height="400px" onClick={onBarClick} />;
 }
 
 // ===== HOURS BY WORK TYPE CHART =====
-function HoursByWorkTypeChart({ tasks }: { tasks: any[] }) {
+function HoursByWorkTypeChart({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const workTypes = ['Execution', 'QC', 'Review', 'Admin', 'Rework'];
     const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
@@ -146,11 +255,11 @@ function HoursByWorkTypeChart({ tasks }: { tasks: any[] }) {
   }, [tasks]);
 
   if (!tasks.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No task data</div>;
-  return <ChartWrapper option={option} height="380px" />;
+  return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
 // ===== ENHANCED SANKEY WITH SPLIT OPTIONS =====
-function EnhancedSankey({ stats, laborData, tasks, groupBy }: { stats: any; laborData: any; tasks: any[]; groupBy: SankeyGroupBy }) {
+function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: any; laborData: any; tasks: any[]; groupBy: SankeyGroupBy; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const workers = laborData.byWorker || [];
     const nodes: any[] = [];
@@ -300,7 +409,7 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy }: { stats: any; labo
     };
   }, [stats, laborData, tasks, groupBy]);
 
-  return <ChartWrapper option={option} height="520px" />;
+  return <ChartWrapper option={option} height="520px" onClick={onClick} />;
 }
 
 // ===== VARIANCE ANALYSIS SECTION =====
@@ -502,7 +611,7 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
 }
 
 // ===== QC RADAR =====
-function QCPerformanceRadar({ qcData }: { qcData: any[] }) {
+function QCPerformanceRadar({ qcData, onClick }: { qcData: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
     const topAnalysts = [...qcData].sort((a, b) => (b.closedCount || 0) - (a.closedCount || 0)).slice(0, 5);
     const maxClosed = Math.max(...topAnalysts.map(a => a.closedCount || 0), 1);
@@ -531,7 +640,116 @@ function QCPerformanceRadar({ qcData }: { qcData: any[] }) {
   }, [qcData]);
 
   if (!qcData.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No QC data</div>;
-  return <ChartWrapper option={option} height="320px" />;
+  return <ChartWrapper option={option} height="320px" onClick={onClick} />;
+}
+
+// ===== DRILL-DOWN DETAIL PANEL =====
+function DrillDownPanel({ 
+  item, 
+  type,
+  onClose,
+  relatedData,
+}: { 
+  item: any;
+  type: string;
+  onClose: () => void;
+  relatedData?: { tasks: any[]; hours: number; workers: any[] };
+}) {
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(205,220,57,0.05) 100%)',
+      borderRadius: '16px',
+      padding: '1.25rem',
+      marginBottom: '1rem',
+      border: '1px solid var(--pinnacle-teal)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+        <div>
+          <span style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', textTransform: 'uppercase', fontWeight: 600 }}>
+            {type} Drill-Down
+          </span>
+          <h3 style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: 700 }}>
+            {item.name || item.taskName || item.label || 'Details'}
+          </h3>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+        {item.projectName && (
+          <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Project</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.projectName}</div>
+          </div>
+        )}
+        {item.status && (
+          <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Status</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.status}</div>
+          </div>
+        )}
+        {item.actualHours !== undefined && (
+          <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Actual Hours</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{item.actualHours}h</div>
+          </div>
+        )}
+        {item.baselineHours !== undefined && (
+          <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Baseline Hours</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.baselineHours}h</div>
+          </div>
+        )}
+        {item.percentComplete !== undefined && (
+          <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Progress</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.percentComplete}%</div>
+          </div>
+        )}
+        {item.assignedResource && (
+          <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Assigned To</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{item.assignedResource}</div>
+          </div>
+        )}
+        {relatedData && (
+          <>
+            <div style={{ padding: '0.75rem', background: 'rgba(59,130,246,0.1)', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.65rem', color: '#3B82F6', marginBottom: '0.25rem' }}>Related Tasks</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#3B82F6' }}>{relatedData.tasks.length}</div>
+            </div>
+            <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.65rem', color: '#10B981', marginBottom: '0.25rem' }}>Total Hours</div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10B981' }}>{relatedData.hours.toLocaleString()}</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {relatedData && relatedData.tasks.length > 0 && (
+        <div style={{ marginTop: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>
+            Related Tasks ({Math.min(5, relatedData.tasks.length)} of {relatedData.tasks.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {relatedData.tasks.slice(0, 5).map((t: any, idx: number) => (
+              <div key={idx} style={{ 
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '8px',
+              }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>{t.name || t.taskName}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.actualHours || 0}h</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ===== MAIN PAGE =====
@@ -539,11 +757,15 @@ export default function TasksPage() {
   const { filteredData, hierarchyFilters, metricsHistory, variancePeriod } = useData();
   const data = filteredData;
   
+  // Cross-filter state
+  const crossFilter = useCrossFilter();
+  
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [activeSection, setActiveSection] = useState<string>('hours');
   const [sankeyGroupBy, setSankeyGroupBy] = useState<SankeyGroupBy>('role');
+  const [drillDownItem, setDrillDownItem] = useState<{ item: any; type: string } | null>(null);
 
   const contextLabel = useMemo(() => {
     if (hierarchyFilters?.project) return `Project: ${hierarchyFilters.project}`;
@@ -551,10 +773,53 @@ export default function TasksPage() {
     return 'All Projects';
   }, [hierarchyFilters]);
 
+  // Apply cross-filters to tasks - MUST be defined first
+  const crossFilteredTasks = useMemo(() => {
+    let taskList = data.tasks || [];
+    
+    // Apply cross-filters
+    crossFilter.activeFilters.forEach(filter => {
+      switch (filter.type) {
+        case 'project':
+          taskList = taskList.filter((t: any) => 
+            (t.projectName || t.project_name || '').toLowerCase().includes(filter.value.toLowerCase())
+          );
+          break;
+        case 'status':
+          taskList = taskList.filter((t: any) => {
+            const status = (t.status || '').toLowerCase();
+            const pc = t.percentComplete || 0;
+            const filterVal = filter.value.toLowerCase();
+            if (filterVal === 'complete' || filterVal === 'completed') return status.includes('complete') || pc >= 100;
+            if (filterVal === 'inprogress' || filterVal === 'in progress' || filterVal === 'active') return pc > 0 && pc < 100;
+            if (filterVal === 'blocked') return status.includes('block') || status.includes('hold');
+            return true;
+          });
+          break;
+        case 'resource':
+          taskList = taskList.filter((t: any) => 
+            (t.assignedResource || t.assignedTo || '').toLowerCase().includes(filter.value.toLowerCase())
+          );
+          break;
+        case 'phase':
+          taskList = taskList.filter((t: any) => 
+            (t.phase || t.phaseId || '').toLowerCase().includes(filter.value.toLowerCase())
+          );
+          break;
+        case 'workType':
+          // Filter by work type would require additional field
+          break;
+      }
+    });
+    
+    return taskList;
+  }, [data.tasks, crossFilter.activeFilters]);
+
+  // Task stats - uses cross-filtered tasks when filters are active
   const taskStats = useMemo(() => {
-    const tasks = data.tasks || [];
+    const taskList = crossFilter.activeFilters.length > 0 ? crossFilteredTasks : (data.tasks || []);
     let completed = 0, inProgress = 0, blocked = 0, notStarted = 0, totalPlanned = 0, totalActual = 0;
-    tasks.forEach((t: any) => {
+    taskList.forEach((t: any) => {
       const status = (t.status || '').toLowerCase();
       const pc = t.percentComplete || 0;
       if (status.includes('complete') || pc >= 100) completed++;
@@ -568,20 +833,23 @@ export default function TasksPage() {
     const totalClosed = qcByName.reduce((s: number, q: any) => s + (q.closedCount || 0), 0);
     const totalPassed = qcByName.reduce((s: number, q: any) => s + (q.passCount || 0), 0);
     return { 
-      total: tasks.length, completed, inProgress, blocked, notStarted, 
-      overallProgress: tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0,
+      total: taskList.length, completed, inProgress, blocked, notStarted, 
+      overallProgress: taskList.length > 0 ? Math.round((completed / taskList.length) * 100) : 0,
       efficiency: totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : 100,
       totalHours: Math.round(totalActual),
       qcPassRate: totalClosed > 0 ? Math.round((totalPassed / totalClosed) * 100) : 0,
     };
-  }, [data.tasks, data.qcByNameAndRole]);
+  }, [data.tasks, data.qcByNameAndRole, crossFilteredTasks, crossFilter.activeFilters]);
 
   const laborData = useMemo(() => data.laborBreakdown || { byWorker: [], weeks: [] }, [data.laborBreakdown]);
   const qcByAnalyst = useMemo(() => data.qcByNameAndRole || [], [data.qcByNameAndRole]);
-  const tasks = useMemo(() => data.tasks || [], [data.tasks]);
+  // Use cross-filtered tasks for charts when filters are active
+  const tasks = useMemo(() => {
+    return crossFilter.activeFilters.length > 0 ? crossFilteredTasks : (data.tasks || []);
+  }, [data.tasks, crossFilteredTasks, crossFilter.activeFilters]);
 
   const filteredTasks = useMemo(() => {
-    let taskList = data.tasks || [];
+    let taskList = crossFilteredTasks;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       taskList = taskList.filter((t: any) => (t.name || t.taskName || '').toLowerCase().includes(term) || (t.assignedResource || t.assignedTo || '').toLowerCase().includes(term));
@@ -600,15 +868,117 @@ export default function TasksPage() {
       });
     }
     return taskList;
-  }, [data.tasks, searchTerm, statusFilter]);
+  }, [crossFilteredTasks, searchTerm, statusFilter]);
+
+  // Get drill-down related data
+  const drillDownRelatedData = useMemo(() => {
+    if (!drillDownItem) return undefined;
+    
+    const item = drillDownItem.item;
+    let relatedTasks: any[] = [];
+    
+    if (drillDownItem.type === 'project') {
+      relatedTasks = (data.tasks || []).filter((t: any) => 
+        (t.projectName || t.project_name) === item.name || t.projectId === item.id
+      );
+    } else if (drillDownItem.type === 'resource') {
+      relatedTasks = (data.tasks || []).filter((t: any) => 
+        (t.assignedResource || t.assignedTo) === item.name
+      );
+    } else if (drillDownItem.type === 'status') {
+      const statusVal = (item.name || '').toLowerCase();
+      relatedTasks = (data.tasks || []).filter((t: any) => {
+        const pc = t.percentComplete || 0;
+        if (statusVal.includes('complete')) return pc >= 100;
+        if (statusVal.includes('progress') || statusVal.includes('active')) return pc > 0 && pc < 100;
+        return true;
+      });
+    }
+    
+    return {
+      tasks: relatedTasks,
+      hours: relatedTasks.reduce((sum: number, t: any) => sum + (t.actualHours || 0), 0),
+      workers: [...new Set(relatedTasks.map((t: any) => t.assignedResource || t.assignedTo).filter(Boolean))],
+    };
+  }, [drillDownItem, data.tasks]);
+
+  // Chart click handler for cross-filtering
+  const handleChartClick = useCallback((params: any, chartType: string) => {
+    if (!params || !params.name) return;
+    
+    const name = params.name;
+    let filterType: CrossFilter['type'] = 'custom';
+    let filterValue = name;
+    
+    // Determine filter type based on chart and data
+    if (chartType === 'sankey') {
+      if (['Complete', 'In Progress', 'Not Started', 'Blocked'].includes(name)) {
+        filterType = 'status';
+      } else if (sankeyGroupBy === 'project') {
+        filterType = 'project';
+      } else if (sankeyGroupBy === 'role') {
+        filterType = 'resource';
+      } else if (sankeyGroupBy === 'phase') {
+        filterType = 'phase';
+      }
+    } else if (chartType === 'status') {
+      filterType = 'status';
+    } else if (chartType === 'workType') {
+      filterType = 'workType';
+    }
+    
+    // Toggle or set filter
+    crossFilter.toggleFilter({
+      type: filterType,
+      value: filterValue,
+      label: name,
+      source: chartType,
+    });
+    
+    // Set drill-down item
+    setDrillDownItem({
+      item: { name, ...params.data },
+      type: filterType,
+    });
+  }, [crossFilter, sankeyGroupBy]);
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Task Operations</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Hours, labor, quality control, variance analysis, and executive insights</p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+          Hours, labor, quality control, variance analysis - Click any chart element to filter
+        </p>
       </div>
+
+      {/* Cross-Filter Bar */}
+      <CrossFilterBar
+        filters={crossFilter.activeFilters}
+        drillPath={crossFilter.drillDownPath}
+        onRemove={(type, value) => {
+          crossFilter.removeFilter(type, value);
+          setDrillDownItem(null);
+        }}
+        onClear={() => {
+          crossFilter.clearFilters();
+          setDrillDownItem(null);
+        }}
+        onDrillToLevel={crossFilter.drillToLevel}
+      />
+
+      {/* Drill-Down Panel */}
+      {drillDownItem && (
+        <DrillDownPanel
+          item={drillDownItem.item}
+          type={drillDownItem.type}
+          onClose={() => {
+            setDrillDownItem(null);
+            crossFilter.clearFilters();
+          }}
+          relatedData={drillDownRelatedData}
+        />
+      )}
 
       <div style={{ marginBottom: '1.25rem' }}>
         <CommandCenter stats={taskStats} onFilterChange={setStatusFilter} activeFilter={statusFilter} />
@@ -644,13 +1014,19 @@ export default function TasksPage() {
       {/* HOURS & LABOR */}
       {activeSection === 'hours' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <SectionCard title="Hours vs Efficiency" subtitle="Actual hours, over/under budget, and efficiency trend per task">
-            <HoursEfficiencyChart data={data.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [] }} />
+          <SectionCard 
+            title="Hours vs Efficiency" 
+            subtitle="Click any bar to filter by task - Actual hours, over/under budget, and efficiency trend"
+          >
+            <HoursEfficiencyChart 
+              data={data.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [] }} 
+              onBarClick={(params) => handleChartClick(params, 'efficiency')}
+            />
           </SectionCard>
 
           <SectionCard 
             title="Hours Flow" 
-            subtitle="Distribution through work breakdown"
+            subtitle="Click nodes to filter - Distribution through work breakdown"
             headerRight={
               <select value={sankeyGroupBy} onChange={(e) => setSankeyGroupBy(e.target.value as SankeyGroupBy)}
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer' }}>
@@ -662,11 +1038,20 @@ export default function TasksPage() {
               </select>
             }
           >
-            <EnhancedSankey stats={taskStats} laborData={laborData} tasks={tasks} groupBy={sankeyGroupBy} />
+            <EnhancedSankey 
+              stats={taskStats} 
+              laborData={laborData} 
+              tasks={tasks} 
+              groupBy={sankeyGroupBy}
+              onClick={(params) => handleChartClick(params, 'sankey')}
+            />
           </SectionCard>
 
-          <SectionCard title="Hours by Work Type" subtitle="Stacked breakdown: Execution, QC, Review, Admin, Rework">
-            <HoursByWorkTypeChart tasks={tasks} />
+          <SectionCard title="Hours by Work Type" subtitle="Click bars to filter - Stacked breakdown: Execution, QC, Review, Admin, Rework">
+            <HoursByWorkTypeChart 
+              tasks={tasks}
+              onClick={(params) => handleChartClick(params, 'workType')}
+            />
           </SectionCard>
         </div>
       )}
@@ -731,8 +1116,20 @@ export default function TasksPage() {
       {/* QC SECTION */}
       {activeSection === 'qc' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <SectionCard title="Analyst Performance Comparison" subtitle="Top analysts by volume and pass rate">
-            <QCPerformanceRadar qcData={qcByAnalyst} />
+          <SectionCard title="Analyst Performance Comparison" subtitle="Click to filter by analyst - Top analysts by volume and pass rate">
+            <QCPerformanceRadar 
+              qcData={qcByAnalyst}
+              onClick={(params) => {
+                if (params.name) {
+                  crossFilter.toggleFilter({
+                    type: 'resource',
+                    value: params.name,
+                    label: params.name,
+                    source: 'qcRadar',
+                  });
+                }
+              }}
+            />
           </SectionCard>
 
           <SectionCard title="Individual QC Performance" subtitle={`${qcByAnalyst.length} analysts`} noPadding>
