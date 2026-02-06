@@ -55,7 +55,7 @@ function ResourcingPageContent() {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [showCapacityPanel, setShowCapacityPanel] = useState(true);
-  const [viewMode, setViewMode] = useState<'team' | 'role' | 'project'>('team');
+  const [viewMode, setViewMode] = useState<'portfolio' | 'role' | 'project'>('portfolio');
   const [levelingParams, setLevelingParams] = useState<LevelingParams>(DEFAULT_LEVELING_PARAMS);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [reassignMode, setReassignMode] = useState(false);
@@ -87,6 +87,50 @@ function ResourcingPageContent() {
     return project?.name || project?.projectName || projectId;
   };
 
+  // Get portfolio for an employee based on their manager chain or tasks
+  const getEmployeePortfolio = useCallback((emp: any): string => {
+    // Check if employee's tasks link to a project that has a portfolio
+    const empTasks = data.tasks.filter((t: any) => 
+      (t.employeeId || t.employee_id) === (emp.id || emp.employeeId) || 
+      (t.assignedTo || '').toLowerCase().includes((emp.name || '').toLowerCase())
+    );
+    
+    for (const task of empTasks) {
+      const projectId = task.projectId || task.project_id;
+      if (projectId) {
+        const project = data.projects.find((p: any) => p.id === projectId || p.projectId === projectId);
+        if (project) {
+          // Find portfolio through site -> customer -> portfolio chain
+          const siteId = project.siteId || project.site_id;
+          // For now, use first portfolio or derive from project name
+          if (data.portfolios.length > 0) {
+            // Try to match by checking if portfolio manager matches employee's manager chain
+            for (const portfolio of data.portfolios) {
+              if (portfolio.manager === emp.manager || portfolio.name) {
+                return portfolio.name || 'Unknown Portfolio';
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Fallback: use management level to assign portfolio
+    if (emp.managementLevel) {
+      const level = emp.managementLevel.toLowerCase();
+      if (level.includes('senior') || level.includes('sr')) return 'Senior Management';
+      if (level.includes('lead') || level.includes('pl')) return 'Project Leadership';
+      if (level.includes('manager') || level.includes('pm')) return 'Management';
+    }
+    
+    // Use first available portfolio or create default based on role
+    if (data.portfolios.length > 0) {
+      return data.portfolios[0].name || 'Portfolio 1';
+    }
+    
+    return 'General';
+  }, [data.tasks, data.projects, data.portfolios]);
+
   // Calculate employee metrics
   const employeeMetrics = useMemo(() => {
     return data.employees.map((emp: any) => {
@@ -115,10 +159,12 @@ function ResourcingPageContent() {
       ).length;
       const qcPassRate = totalQcTasks > 0 ? Math.round((passedQcTasks / totalQcTasks) * 100) : null;
       
-      // Utilization
+      // Utilization - use actual hours if available, otherwise use a base capacity
       const annualCapacity = HOURS_PER_YEAR;
-      const utilization = Math.round((allocatedHours / annualCapacity) * 100);
-      const availableHours = Math.max(0, annualCapacity - allocatedHours);
+      // Calculate utilization based on actual allocated work
+      const workHours = allocatedHours > 0 ? allocatedHours : (actualHours > 0 ? actualHours : 0);
+      const utilization = annualCapacity > 0 ? Math.round((workHours / annualCapacity) * 100) : 0;
+      const availableHours = Math.max(0, annualCapacity - workHours);
       
       // Status
       let status: 'available' | 'optimal' | 'busy' | 'overloaded' = 'available';
@@ -126,12 +172,16 @@ function ResourcingPageContent() {
       else if (utilization > 85) status = 'busy';
       else if (utilization > 50) status = 'optimal';
       
+      // Get portfolio for this employee
+      const portfolio = getEmployeePortfolio(emp);
+      
       return {
         id: emp.id || emp.employeeId,
         name: emp.name || 'Unknown',
         role: emp.jobTitle || emp.role || 'N/A',
         manager: emp.manager || '',
         managementLevel: emp.managementLevel || '',
+        portfolio,
         allocatedHours,
         actualHours,
         taskCount,
@@ -147,7 +197,29 @@ function ResourcingPageContent() {
         projects: [...new Set(empTasks.map((t: any) => getProjectName(t.projectId || t.project_id)))],
       };
     }).sort((a, b) => b.allocatedHours - a.allocatedHours);
-  }, [data.employees, data.tasks, data.qctasks, getProjectName]);
+  }, [data.employees, data.tasks, data.qctasks, getProjectName, getEmployeePortfolio]);
+
+  // Build portfolio -> manager -> employee hierarchy
+  const portfolioHierarchy = useMemo(() => {
+    const hierarchy = new Map<string, Map<string, any[]>>();
+    
+    employeeMetrics.forEach(emp => {
+      const portfolio = emp.portfolio || 'General';
+      const manager = emp.manager || 'No Manager';
+      
+      if (!hierarchy.has(portfolio)) {
+        hierarchy.set(portfolio, new Map());
+      }
+      const portfolioMap = hierarchy.get(portfolio)!;
+      
+      if (!portfolioMap.has(manager)) {
+        portfolioMap.set(manager, []);
+      }
+      portfolioMap.get(manager)!.push(emp);
+    });
+    
+    return hierarchy;
+  }, [employeeMetrics]);
 
   // Group by role for treemap
   const roleGroups = useMemo(() => {
@@ -204,12 +276,27 @@ function ResourcingPageContent() {
     };
   }, [employeeMetrics, data.tasks]);
 
-  // Treemap data
+  // Treemap data - Portfolio > Manager > Employee hierarchy
   const treemapData = useMemo(() => {
+    // Ensure we have data to display
+    if (employeeMetrics.length === 0) {
+      // Return placeholder data if no employees
+      return [{
+        name: 'No Employees',
+        value: 100,
+        children: [{
+          name: 'Import employee data',
+          value: 100,
+          itemStyle: { color: '#6B7280' },
+        }],
+      }];
+    }
+
     if (viewMode === 'role') {
+      // Group by role
       return Array.from(roleGroups.entries()).map(([role, employees]) => ({
-        name: role,
-        value: employees.reduce((s, e) => s + e.allocatedHours, 0),
+        name: role || 'Unknown Role',
+        value: Math.max(employees.reduce((s, e) => s + Math.max(e.allocatedHours, 100), 0), 100),
         children: employees.map(emp => ({
           name: emp.name,
           value: Math.max(emp.allocatedHours, 100),
@@ -218,16 +305,22 @@ function ResourcingPageContent() {
         })),
       }));
     } else if (viewMode === 'project') {
+      // Group by project
       const projectGroups = new Map<string, any[]>();
       employeeMetrics.forEach(emp => {
-        emp.projects.forEach((proj: string) => {
-          if (!projectGroups.has(proj)) projectGroups.set(proj, []);
-          projectGroups.get(proj)!.push(emp);
-        });
+        if (emp.projects.length === 0) {
+          if (!projectGroups.has('Unassigned')) projectGroups.set('Unassigned', []);
+          projectGroups.get('Unassigned')!.push(emp);
+        } else {
+          emp.projects.forEach((proj: string) => {
+            if (!projectGroups.has(proj)) projectGroups.set(proj, []);
+            projectGroups.get(proj)!.push(emp);
+          });
+        }
       });
       return Array.from(projectGroups.entries()).map(([proj, employees]) => ({
-        name: proj,
-        value: employees.reduce((s, e) => s + e.allocatedHours, 0),
+        name: proj || 'Unknown Project',
+        value: Math.max(employees.reduce((s, e) => s + Math.max(e.allocatedHours, 100), 0), 100),
         children: employees.map(emp => ({
           name: emp.name,
           value: Math.max(emp.allocatedHours, 100),
@@ -236,19 +329,26 @@ function ResourcingPageContent() {
         })),
       }));
     } else {
-      // Team view - group by manager
-      return Array.from(managerGroups.entries()).map(([manager, employees]) => ({
-        name: manager || 'Team',
-        value: employees.reduce((s, e) => s + e.allocatedHours, 0),
-        children: employees.map(emp => ({
-          name: emp.name,
-          value: Math.max(emp.allocatedHours, 100),
-          emp,
-          itemStyle: { color: getUtilizationColor(emp.utilization) },
+      // Portfolio view - Portfolio > Manager > Employee hierarchy
+      return Array.from(portfolioHierarchy.entries()).map(([portfolio, managerMap]) => ({
+        name: portfolio || 'General Portfolio',
+        value: Math.max(
+          Array.from(managerMap.values()).flat().reduce((s, e) => s + Math.max(e.allocatedHours, 100), 0),
+          100
+        ),
+        children: Array.from(managerMap.entries()).map(([manager, employees]) => ({
+          name: manager || 'Direct Reports',
+          value: Math.max(employees.reduce((s, e) => s + Math.max(e.allocatedHours, 100), 0), 100),
+          children: employees.map(emp => ({
+            name: emp.name,
+            value: Math.max(emp.allocatedHours, 100),
+            emp,
+            itemStyle: { color: getUtilizationColor(emp.utilization) },
+          })),
         })),
       }));
     }
-  }, [viewMode, roleGroups, managerGroups, employeeMetrics]);
+  }, [viewMode, roleGroups, portfolioHierarchy, employeeMetrics]);
 
   // Treemap option
   const treemapOption: EChartsOption = useMemo(() => ({
@@ -325,11 +425,19 @@ function ResourcingPageContent() {
       },
       levels: [
         {
-          itemStyle: { borderWidth: 3, gapWidth: 3 },
-          upperLabel: { show: true },
+          // Level 0: Portfolio (top level)
+          itemStyle: { borderWidth: 4, gapWidth: 4, borderColor: '#1f2937' },
+          upperLabel: { show: true, height: 32, fontSize: 13, fontWeight: 700 },
+          color: ['#1E40AF', '#065F46', '#92400E', '#5B21B6', '#991B1B', '#0E7490'],
+        },
+        {
+          // Level 1: Manager (middle level)
+          itemStyle: { borderWidth: 2, gapWidth: 2, borderColor: '#374151' },
+          upperLabel: { show: true, height: 26, fontSize: 11, fontWeight: 600 },
           color: ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4'],
         },
         {
+          // Level 2: Employee (leaf level) - colored by utilization
           itemStyle: { borderWidth: 1, gapWidth: 1 },
           colorMappingBy: 'value',
         },
@@ -456,7 +564,7 @@ function ResourcingPageContent() {
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {/* View Mode Toggle */}
           <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-            {(['team', 'role', 'project'] as const).map(mode => (
+            {(['portfolio', 'role', 'project'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
