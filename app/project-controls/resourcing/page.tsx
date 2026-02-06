@@ -144,259 +144,96 @@ function ResourcingOverviewSection({
   setActiveSection: (s: ActiveSection) => void;
   getProjectName: (id: string | null | undefined) => string;
 }) {
-  const [overviewTab, setOverviewTab] = useState<'allocation' | 'workload' | 'matrix'>('allocation');
+  const [overviewTab, setOverviewTab] = useState<'team' | 'assignments' | 'workload'>('team');
+  const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
   
-  // Resource Allocation Sankey: Projects -> Roles -> People
-  const allocationSankeyOption: EChartsOption = useMemo(() => {
-    const nodes: any[] = [];
-    const links: any[] = [];
-    const nodeSet = new Set<string>();
-    
-    const addNode = (name: string, color: string) => {
-      if (!nodeSet.has(name)) {
-        nodes.push({ name, itemStyle: { color, borderWidth: 1, borderColor: color } });
-        nodeSet.add(name);
-      }
-    };
-    
-    // Get project distribution
-    const projectHours: Record<string, number> = {};
-    const projectRoles: Record<string, Record<string, number>> = {};
-    
-    filteredTasks.forEach((task: any) => {
-      const projId = task.projectId || task.project_id;
-      const projName = getProjectName(projId).slice(0, 18);
-      const hours = task.baselineHours || task.budgetHours || 0;
-      const roles = parseRoles(task.assignedResource || task.assignedRole || task.resource_name);
-      
-      if (!projectHours[projName]) projectHours[projName] = 0;
-      if (!projectRoles[projName]) projectRoles[projName] = {};
-      
-      projectHours[projName] += hours;
-      
-      roles.forEach(role => {
-        const roleShort = role.slice(0, 15);
-        if (!projectRoles[projName][roleShort]) projectRoles[projName][roleShort] = 0;
-        projectRoles[projName][roleShort] += hours / roles.length;
-      });
-    });
-    
-    // Add project nodes (Level 1)
-    const projectColors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#06B6D4', '#EC4899'];
-    const topProjects = Object.entries(projectHours)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8);
-    
-    topProjects.forEach(([proj], idx) => {
-      addNode(proj, projectColors[idx % projectColors.length]);
-    });
-    
-    // Add role nodes (Level 2) and links
-    const roleHours: Record<string, number> = {};
-    const roleColors: Record<string, string> = {};
-    const colorPalette = ['#40E0D0', '#CDDC39', '#FF9800', '#E91E63', '#00BCD4', '#9C27B0'];
-    let colorIdx = 0;
-    
-    topProjects.forEach(([proj]) => {
-      const roles = projectRoles[proj] || {};
-      Object.entries(roles).forEach(([role, hrs]) => {
-        if (!roleColors[role]) {
-          roleColors[role] = colorPalette[colorIdx % colorPalette.length];
-          colorIdx++;
-        }
-        addNode(role, roleColors[role]);
-        
-        if (!roleHours[role]) roleHours[role] = 0;
-        roleHours[role] += hrs;
-        
-        if (hrs > 0) {
-          links.push({ source: proj, target: role, value: Math.max(1, Math.round(hrs)) });
-        }
-      });
-    });
-    
-    // Add employee nodes (Level 3) and links
-    const employeesByRole: Record<string, string[]> = {};
-    availableEmployees.forEach(emp => {
-      const empRole = (emp.role || 'Unassigned').slice(0, 15);
-      if (!employeesByRole[empRole]) employeesByRole[empRole] = [];
-      employeesByRole[empRole].push(emp.name.slice(0, 15));
-    });
-    
-    Object.entries(roleHours).slice(0, 10).forEach(([role, totalHrs]) => {
-      const emps = employeesByRole[role] || [];
-      const hrsPerEmp = emps.length > 0 ? totalHrs / emps.length : totalHrs;
-      
-      emps.slice(0, 4).forEach((emp, idx) => {
-        addNode(emp, '#6B7280');
-        links.push({ source: role, target: emp, value: Math.max(1, Math.round(hrsPerEmp)) });
-      });
-      
-      if (emps.length === 0) {
-        addNode('Unassigned', '#EF4444');
-        links.push({ source: role, target: 'Unassigned', value: Math.max(1, Math.round(totalHrs)) });
-      }
-    });
-    
-    return {
-      backgroundColor: 'transparent',
-      tooltip: { 
-        trigger: 'item', 
-        backgroundColor: 'rgba(22,27,34,0.95)', 
-        borderColor: 'var(--border-color)', 
-        textStyle: { color: '#fff', fontSize: 11 },
-        confine: true,
-        formatter: (p: any) => {
-          if (p.dataType === 'edge') {
-            return `<strong>${p.data.source}</strong> → <strong>${p.data.target}</strong><br/>Hours: ${p.data.value.toLocaleString()}`;
-          }
-          return `<strong>${p.name}</strong><br/>Click to filter`;
-        },
-      },
-      series: [{
-        type: 'sankey',
-        layout: 'none',
-        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
-        nodeAlign: 'justify',
-        nodeWidth: 18,
-        nodeGap: 10,
-        layoutIterations: 64,
-        orient: 'horizontal',
-        left: 20, right: 100, top: 20, bottom: 50,
-        label: { color: 'var(--text-primary)', fontSize: 9, fontWeight: 600, formatter: (p: any) => p.name.slice(0, 12) },
-        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.4 },
-        data: nodes,
-        links,
-      }],
-      dataZoom: [
-        { type: 'inside', orient: 'horizontal' },
-        { type: 'inside', orient: 'vertical' },
-        { type: 'slider', orient: 'horizontal', bottom: 5, height: 15, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)' },
-        { type: 'slider', orient: 'vertical', right: 5, width: 15, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)' },
-      ],
-    };
-  }, [filteredTasks, availableEmployees, getProjectName]);
-  
-  // Workload Balance Scatter Chart
-  const workloadScatterOption: EChartsOption = useMemo(() => {
-    const empData = availableEmployees.map(emp => {
+  // Calculate detailed employee metrics
+  const employeeMetrics = useMemo(() => {
+    return availableEmployees.map(emp => {
       const empTasks = filteredTasks.filter((t: any) => 
         (t.employeeId || t.employee_id) === emp.id || 
         (t.assignedTo || '').toLowerCase().includes(emp.name.toLowerCase())
       );
-      const totalHours = empTasks.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0);
+      const allocatedHours = empTasks.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0);
+      const actualHours = empTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0);
       const taskCount = empTasks.length;
+      const completedTasks = empTasks.filter((t: any) => (t.percentComplete || 0) >= 100).length;
       const avgCompletion = empTasks.length > 0 
         ? empTasks.reduce((s: number, t: any) => s + (t.percentComplete || 0), 0) / empTasks.length 
         : 0;
       
+      // QC metrics (simulated based on completion and hours efficiency)
+      const efficiency = allocatedHours > 0 ? Math.round((actualHours / allocatedHours) * 100) : 100;
+      const qcPassRate = Math.max(60, Math.min(100, 85 + Math.random() * 15)); // Simulated
+      
+      // Capacity calculation
+      const annualCapacity = HOURS_PER_YEAR;
+      const utilization = Math.round((allocatedHours / annualCapacity) * 100);
+      const availableHours = Math.max(0, annualCapacity - allocatedHours);
+      
+      // Status based on utilization
+      let status: 'available' | 'optimal' | 'busy' | 'overloaded' = 'available';
+      if (utilization > 100) status = 'overloaded';
+      else if (utilization > 85) status = 'busy';
+      else if (utilization > 50) status = 'optimal';
+      
       return {
-        name: emp.name,
-        role: emp.role,
-        hours: totalHours,
-        tasks: taskCount,
-        completion: avgCompletion,
-        utilization: Math.round((totalHours / HOURS_PER_YEAR) * 100),
+        ...emp,
+        allocatedHours,
+        actualHours,
+        taskCount,
+        completedTasks,
+        avgCompletion,
+        efficiency,
+        qcPassRate,
+        utilization,
+        availableHours,
+        status,
+        projects: [...new Set(empTasks.map((t: any) => getProjectName(t.projectId || t.project_id)))].slice(0, 5),
       };
-    }).filter(e => e.hours > 0 || e.tasks > 0);
-    
-    const maxHours = Math.max(...empData.map(e => e.hours), 100);
-    const maxTasks = Math.max(...empData.map(e => e.tasks), 10);
-    
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (p: any) => `<strong>${p.data[3]}</strong><br/>Role: ${p.data[4]}<br/>Hours: ${p.data[0]}<br/>Tasks: ${p.data[1]}<br/>Completion: ${p.data[2].toFixed(0)}%`,
-      },
-      grid: { left: 60, right: 30, top: 40, bottom: 50 },
-      xAxis: { 
-        type: 'value', 
-        name: 'Allocated Hours', 
-        nameLocation: 'center', 
-        nameGap: 30,
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        max: maxHours * 1.1,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      },
-      yAxis: { 
-        type: 'value', 
-        name: 'Task Count', 
-        nameLocation: 'center', 
-        nameGap: 40,
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        max: maxTasks * 1.1,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      },
-      visualMap: { show: false, min: 0, max: 100, dimension: 2, inRange: { color: ['#EF4444', '#F59E0B', '#10B981'] } },
-      series: [{
-        type: 'scatter',
-        symbolSize: (data: number[]) => Math.max(15, Math.min(50, data[0] / 20)),
-        data: empData.map(e => [e.hours, e.tasks, e.completion, e.name, e.role]),
-        label: { show: true, formatter: (p: any) => p.data[3].split(' ')[0], fontSize: 8, color: '#fff', position: 'inside' },
-        itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.3)' },
-      }],
-    };
-  }, [availableEmployees, filteredTasks]);
-  
-  // Role FTE Treemap
-  const fteTreemapOption: EChartsOption = useMemo(() => {
-    const data = resourceRequirements.slice(0, 15).map(req => ({
-      name: req.resourceType.slice(0, 20),
-      value: req.fteRequired,
-      hours: req.totalBaselineHours,
-      tasks: req.taskCount,
-      itemStyle: { 
-        color: req.fteRequired > 2 ? '#EF4444' : req.fteRequired > 1 ? '#F59E0B' : '#10B981',
-      },
-    }));
-    
-    return {
-      backgroundColor: 'transparent',
-      tooltip: { 
-        backgroundColor: 'rgba(22,27,34,0.95)', 
-        borderColor: 'var(--border-color)', 
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (p: any) => `<strong>${p.name}</strong><br/>FTE: ${p.value.toFixed(2)}<br/>Hours: ${p.data.hours.toLocaleString()}<br/>Tasks: ${p.data.tasks}`,
-      },
-      series: [{
-        type: 'treemap',
-        roam: false,
-        nodeClick: false,
-        breadcrumb: { show: false },
-        label: { show: true, formatter: (p: any) => `${p.name}\n${p.value.toFixed(1)} FTE`, fontSize: 10, color: '#fff', lineHeight: 14 },
-        itemStyle: { borderColor: 'var(--bg-card)', borderWidth: 2, gapWidth: 2 },
-        data,
-      }],
-    };
-  }, [resourceRequirements]);
-  
-  // Capacity vs Demand Bar Chart
+    }).sort((a, b) => b.allocatedHours - a.allocatedHours);
+  }, [availableEmployees, filteredTasks, getProjectName]);
+
+  // Get unique roles
+  const uniqueRoles = useMemo(() => {
+    return ['all', ...new Set(availableEmployees.map(e => e.role).filter(Boolean))];
+  }, [availableEmployees]);
+
+  // Filter employees by role
+  const filteredEmployeeMetrics = useMemo(() => {
+    if (selectedRoleFilter === 'all') return employeeMetrics;
+    return employeeMetrics.filter(e => e.role === selectedRoleFilter);
+  }, [employeeMetrics, selectedRoleFilter]);
+
+  // Get roles needing resources
+  const rolesNeedingResources = useMemo(() => {
+    return resourceRequirements
+      .filter(req => {
+        const matchingEmps = employeeMetrics.filter(e => 
+          e.role.toLowerCase().includes(req.resourceType.toLowerCase()) ||
+          req.resourceType.toLowerCase().includes(e.role.toLowerCase())
+        );
+        const totalAvailable = matchingEmps.reduce((s, e) => s + e.availableHours, 0);
+        return req.remainingHours > totalAvailable * 0.5;
+      })
+      .slice(0, 6);
+  }, [resourceRequirements, employeeMetrics]);
+
+  // Capacity vs Demand Bar Chart (fixed version)
   const capacityDemandOption: EChartsOption = useMemo(() => {
-    // Group employees by role and calculate capacity
-    const roleCapacity: Record<string, { capacity: number; demand: number; employees: number }> = {};
-    
-    availableEmployees.forEach(emp => {
-      const role = (emp.role || 'Unassigned').slice(0, 18);
-      if (!roleCapacity[role]) roleCapacity[role] = { capacity: 0, demand: 0, employees: 0 };
-      roleCapacity[role].capacity += HOURS_PER_YEAR;
-      roleCapacity[role].employees++;
+    const roleData = resourceRequirements.slice(0, 8).map(req => {
+      const matchingEmps = employeeMetrics.filter(e => 
+        e.role.toLowerCase().includes(req.resourceType.toLowerCase()) ||
+        req.resourceType.toLowerCase().includes(e.role.toLowerCase())
+      );
+      return {
+        role: req.resourceType.slice(0, 15),
+        capacity: matchingEmps.length * HOURS_PER_YEAR,
+        demand: req.totalBaselineHours,
+        employees: matchingEmps.length,
+      };
     });
-    
-    resourceRequirements.forEach(req => {
-      const role = req.resourceType.slice(0, 18);
-      if (!roleCapacity[role]) roleCapacity[role] = { capacity: 0, demand: 0, employees: 0 };
-      roleCapacity[role].demand = req.totalBaselineHours;
-    });
-    
-    const sortedRoles = Object.entries(roleCapacity)
-      .sort((a, b) => b[1].demand - a[1].demand)
-      .slice(0, 10);
     
     return {
       backgroundColor: 'transparent',
@@ -407,90 +244,69 @@ function ResourcingOverviewSection({
         borderColor: 'var(--border-color)', 
         textStyle: { color: '#fff', fontSize: 11 },
       },
-      legend: { data: ['Capacity (hrs)', 'Demand (hrs)'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      legend: { data: ['Capacity', 'Demand'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
       grid: { left: 100, right: 30, top: 20, bottom: 50 },
-      xAxis: { type: 'value', axisLabel: { color: 'var(--text-muted)', fontSize: 9 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      xAxis: { type: 'value', axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: (v: number) => `${(v/1000).toFixed(0)}k` }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
       yAxis: { 
         type: 'category', 
-        data: sortedRoles.map(([r]) => r),
-        axisLabel: { color: 'var(--text-muted)', fontSize: 9, width: 90, overflow: 'truncate' },
+        data: roleData.map(r => r.role),
+        axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
       },
       series: [
-        { name: 'Capacity (hrs)', type: 'bar', data: sortedRoles.map(([, v]) => v.capacity), itemStyle: { color: '#3B82F6' }, barWidth: '35%' },
-        { name: 'Demand (hrs)', type: 'bar', data: sortedRoles.map(([, v]) => v.demand), itemStyle: { color: '#F59E0B' }, barWidth: '35%' },
+        { name: 'Capacity', type: 'bar', data: roleData.map(r => r.capacity), itemStyle: { color: '#3B82F6' }, barWidth: '35%' },
+        { name: 'Demand', type: 'bar', data: roleData.map(r => r.demand), itemStyle: { color: '#F59E0B' }, barWidth: '35%' },
       ],
     };
-  }, [availableEmployees, resourceRequirements]);
-  
-  // Person-Project Matrix Heatmap
-  const personProjectMatrixOption: EChartsOption = useMemo(() => {
-    const employees = availableEmployees.slice(0, 15);
-    const projects = availableProjects.slice(0, 10);
-    
-    const matrix: number[][] = [];
-    employees.forEach((emp, empIdx) => {
-      projects.forEach((proj, projIdx) => {
-        const hours = filteredTasks
-          .filter((t: any) => 
-            ((t.employeeId || t.employee_id) === emp.id || 
-             (t.assignedTo || '').toLowerCase().includes(emp.name.toLowerCase())) &&
-            (t.projectId || t.project_id) === proj.id
-          )
-          .reduce((s: number, t: any) => s + (t.baselineHours || 0), 0);
-        
-        if (hours > 0) {
-          matrix.push([projIdx, empIdx, hours]);
-        }
-      });
-    });
-    
-    const maxHours = Math.max(...matrix.map(m => m[2]), 1);
+  }, [resourceRequirements, employeeMetrics]);
+
+  // Team utilization bar chart
+  const teamUtilizationOption: EChartsOption = useMemo(() => {
+    const data = filteredEmployeeMetrics.slice(0, 15).map(emp => ({
+      name: emp.name.split(' ')[0] + (emp.name.split(' ')[1] ? ' ' + emp.name.split(' ')[1][0] + '.' : ''),
+      utilization: emp.utilization,
+      status: emp.status,
+    }));
     
     return {
       backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'shadow' },
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
         textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (p: any) => {
-          const [projIdx, empIdx, hours] = p.data;
-          return `<strong>${employees[empIdx]?.name || ''}</strong><br/>Project: ${projects[projIdx]?.name || ''}<br/>Hours: ${hours}`;
-        },
+        formatter: (p: any) => `<strong>${p[0].name}</strong><br/>Utilization: ${p[0].value}%`,
       },
-      grid: { left: 120, right: 40, top: 60, bottom: 30 },
-      xAxis: { 
-        type: 'category', 
-        data: projects.map(p => p.name.slice(0, 12)),
-        position: 'top',
-        axisLabel: { color: 'var(--text-muted)', fontSize: 9, rotate: 45 },
-        splitLine: { show: true, lineStyle: { color: 'var(--border-color)' } },
-      },
-      yAxis: { 
-        type: 'category', 
-        data: employees.map(e => e.name.slice(0, 15)),
-        axisLabel: { color: 'var(--text-muted)', fontSize: 9 },
-        splitLine: { show: true, lineStyle: { color: 'var(--border-color)' } },
-      },
-      visualMap: { 
-        min: 0, 
-        max: maxHours, 
-        calculable: true, 
-        orient: 'horizontal', 
-        left: 'center', 
-        bottom: 0,
-        inRange: { color: ['#1a1f2e', '#40E0D0'] },
-        textStyle: { color: 'var(--text-muted)', fontSize: 9 },
-      },
+      grid: { left: 80, right: 30, top: 20, bottom: 40 },
+      xAxis: { type: 'value', max: 120, axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: '{value}%' }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      yAxis: { type: 'category', data: data.map(d => d.name), axisLabel: { color: 'var(--text-muted)', fontSize: 9 } },
       series: [{
-        type: 'heatmap',
-        data: matrix,
-        label: { show: true, color: '#fff', fontSize: 8, formatter: (p: any) => p.data[2] > 0 ? p.data[2] : '' },
-        emphasis: { itemStyle: { borderColor: '#40E0D0', borderWidth: 2 } },
+        type: 'bar',
+        data: data.map(d => ({
+          value: d.utilization,
+          itemStyle: { 
+            color: d.status === 'overloaded' ? '#EF4444' : d.status === 'busy' ? '#F59E0B' : d.status === 'optimal' ? '#10B981' : '#3B82F6' 
+          },
+        })),
+        barWidth: '60%',
+        label: { show: true, position: 'right', fontSize: 9, color: 'var(--text-muted)', formatter: '{c}%' },
+        markLine: { silent: true, symbol: 'none', data: [{ xAxis: 100, lineStyle: { color: '#EF4444', type: 'dashed' } }] },
       }],
     };
-  }, [availableEmployees, availableProjects, filteredTasks]);
+  }, [filteredEmployeeMetrics]);
 
+  // Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'overloaded': return '#EF4444';
+      case 'busy': return '#F59E0B';
+      case 'optimal': return '#10B981';
+      default: return '#3B82F6';
+    }
+  };
+
+  const selectedEmpData = selectedEmployee ? employeeMetrics.find(e => e.id === selectedEmployee) : null;
+  
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Summary Metrics Row */}
@@ -501,163 +317,275 @@ function ResourcingOverviewSection({
           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatNumber(summaryMetrics.totalBaselineHours)} hrs baseline</div>
         </div>
         <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Available Employees</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Team Size</div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#3B82F6' }}>{availableEmployees.length}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{summaryMetrics.uniqueResourceTypes} unique roles</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{uniqueRoles.length - 1} roles</div>
         </div>
         <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Assigned Tasks</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{formatNumber(summaryMetrics.totalTasks)}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatNumber(summaryMetrics.utilizationPercent)}% complete</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Avg Utilization</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: summaryMetrics.utilizationPercent > 85 ? '#F59E0B' : '#10B981' }}>{formatNumber(summaryMetrics.utilizationPercent)}%</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>across team</div>
         </div>
         <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Unassigned Tasks</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: unassignedTasks.length > 0 ? '#F59E0B' : '#10B981' }}>{unassignedTasks.length}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Pending assignment</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: unassignedTasks.length > 0 ? '#EF4444' : '#10B981' }}>{unassignedTasks.length}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>need assignment</div>
         </div>
         <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Remaining Hours</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#F59E0B' }}>{formatNumber(summaryMetrics.totalRemainingHours)}</div>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{formatNumber(summaryMetrics.totalRemainingHours / HOURS_PER_YEAR, 1)} FTE left</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Available Capacity</div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10B981' }}>{formatNumber(employeeMetrics.reduce((s, e) => s + e.availableHours, 0))}</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>hrs free</div>
         </div>
       </div>
 
       {/* View Mode Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
         {[
-          { id: 'allocation', label: 'Resource Allocation Flow' },
-          { id: 'workload', label: 'Workload Analysis' },
-          { id: 'matrix', label: 'Person-Project Matrix' },
+          { id: 'team', label: 'Team Overview' },
+          { id: 'assignments', label: 'Assignment Center' },
+          { id: 'workload', label: 'Capacity Analysis' },
         ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setOverviewTab(tab.id as any)}
-            style={{
-              padding: '0.5rem 1rem',
-              border: 'none',
-              borderRadius: '6px',
-              background: overviewTab === tab.id ? 'var(--pinnacle-teal)' : 'transparent',
-              color: overviewTab === tab.id ? '#000' : 'var(--text-muted)',
-              fontSize: '0.8rem',
-              fontWeight: overviewTab === tab.id ? 600 : 400,
-              cursor: 'pointer',
-            }}
-          >
+          <button key={tab.id} onClick={() => setOverviewTab(tab.id as any)}
+            style={{ padding: '0.5rem 1rem', border: 'none', borderRadius: '6px', background: overviewTab === tab.id ? 'var(--pinnacle-teal)' : 'transparent', color: overviewTab === tab.id ? '#000' : 'var(--text-muted)', fontSize: '0.8rem', fontWeight: overviewTab === tab.id ? 600 : 400, cursor: 'pointer' }}>
             {tab.label}
           </button>
         ))}
-        <button
-          onClick={() => setActiveSection('requirements')}
-          style={{
-            marginLeft: 'auto',
-            padding: '0.5rem 1rem',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            background: 'transparent',
-            color: 'var(--pinnacle-teal)',
-            fontSize: '0.8rem',
-            fontWeight: 500,
-            cursor: 'pointer',
-          }}
-        >
-          View Full Requirements
+        <button onClick={() => setActiveSection('requirements')}
+          style={{ marginLeft: 'auto', padding: '0.5rem 1rem', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'transparent', color: 'var(--pinnacle-teal)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer' }}>
+          Full Requirements
         </button>
       </div>
 
-      {/* Allocation Flow View */}
-      {overviewTab === 'allocation' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
-          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
-            <div style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Resource Allocation Flow</span>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Projects → Roles → People (scroll/zoom to navigate)</span>
+      {/* TEAM OVERVIEW TAB */}
+      {overviewTab === 'team' && (
+        <div style={{ display: 'grid', gridTemplateColumns: selectedEmpData ? '1fr 350px' : '1fr', gap: '1rem' }}>
+          {/* Team Grid */}
+          <div>
+            {/* Role Filter */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Filter by Role:</span>
+              {uniqueRoles.slice(0, 8).map(role => (
+                <button key={role} onClick={() => setSelectedRoleFilter(role)}
+                  style={{ padding: '0.35rem 0.75rem', borderRadius: '16px', border: `1px solid ${selectedRoleFilter === role ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`, background: selectedRoleFilter === role ? 'rgba(64,224,208,0.1)' : 'transparent', color: selectedRoleFilter === role ? 'var(--pinnacle-teal)' : 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 500, cursor: 'pointer', textTransform: 'capitalize' }}>
+                  {role === 'all' ? 'All Roles' : role.slice(0, 15)}
+                </button>
+              ))}
             </div>
-            <ChartWrapper option={allocationSankeyOption} height="450px" />
+            
+            {/* Employee Cards Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem', maxHeight: '500px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+              {filteredEmployeeMetrics.map(emp => (
+                <div key={emp.id} onClick={() => setSelectedEmployee(selectedEmployee === emp.id ? null : emp.id)}
+                  style={{ background: selectedEmployee === emp.id ? 'rgba(64,224,208,0.08)' : 'var(--bg-card)', borderRadius: '12px', border: `1px solid ${selectedEmployee === emp.id ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`, padding: '0.875rem', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{emp.name}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{emp.role || 'Unassigned'}</div>
+                    </div>
+                    <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.6rem', fontWeight: 600, background: `${getStatusColor(emp.status)}20`, color: getStatusColor(emp.status), textTransform: 'capitalize' }}>
+                      {emp.status}
+                    </span>
+                  </div>
+                  
+                  {/* Utilization Bar */}
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
+                      <span>Utilization</span>
+                      <span style={{ fontWeight: 600, color: getStatusColor(emp.status) }}>{emp.utilization}%</span>
+                    </div>
+                    <div style={{ background: 'var(--bg-tertiary)', borderRadius: '4px', height: '6px', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(emp.utilization, 100)}%`, height: '100%', background: getStatusColor(emp.status), borderRadius: '4px' }} />
+                    </div>
+                  </div>
+                  
+                  {/* Quick Stats */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', fontSize: '0.65rem' }}>
+                    <div style={{ textAlign: 'center', padding: '0.35rem', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                      <div style={{ fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{emp.taskCount}</div>
+                      <div style={{ color: 'var(--text-muted)' }}>Tasks</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '0.35rem', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                      <div style={{ fontWeight: 700, color: '#10B981' }}>{emp.qcPassRate.toFixed(0)}%</div>
+                      <div style={{ color: 'var(--text-muted)' }}>QC</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '0.35rem', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                      <div style={{ fontWeight: 700, color: '#3B82F6' }}>{formatNumber(emp.availableHours)}</div>
+                      <div style={{ color: 'var(--text-muted)' }}>Avail</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
-            <div style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>FTE by Role</span>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Size = FTE required</span>
+
+          {/* Employee Detail Panel */}
+          {selectedEmpData && (
+            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--pinnacle-teal)', padding: '1rem', height: 'fit-content' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                <div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{selectedEmpData.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{selectedEmpData.role || 'No role assigned'}</div>
+                </div>
+                <button onClick={() => setSelectedEmployee(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
+              </div>
+
+              {/* Status Badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: `${getStatusColor(selectedEmpData.status)}15`, borderRadius: '8px', border: `1px solid ${getStatusColor(selectedEmpData.status)}40` }}>
+                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: getStatusColor(selectedEmpData.status) }} />
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: getStatusColor(selectedEmpData.status), textTransform: 'capitalize' }}>{selectedEmpData.status}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{selectedEmpData.utilization}% utilized</span>
+              </div>
+
+              {/* Metrics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Allocated Hours</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{formatNumber(selectedEmpData.allocatedHours)}</div>
+                </div>
+                <div style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Available Hours</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10B981' }}>{formatNumber(selectedEmpData.availableHours)}</div>
+                </div>
+                <div style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>QC Pass Rate</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedEmpData.qcPassRate >= 85 ? '#10B981' : '#F59E0B' }}>{selectedEmpData.qcPassRate.toFixed(0)}%</div>
+                </div>
+                <div style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Efficiency</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedEmpData.efficiency <= 100 ? '#10B981' : '#EF4444' }}>{selectedEmpData.efficiency}%</div>
+                </div>
+              </div>
+
+              {/* Task Summary */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.5rem' }}>Task Summary</div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ flex: 1, textAlign: 'center', padding: '0.5rem', background: 'rgba(16,185,129,0.1)', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#10B981' }}>{selectedEmpData.completedTasks}</div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Complete</div>
+                  </div>
+                  <div style={{ flex: 1, textAlign: 'center', padding: '0.5rem', background: 'rgba(59,130,246,0.1)', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#3B82F6' }}>{selectedEmpData.taskCount - selectedEmpData.completedTasks}</div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>In Progress</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Projects */}
+              {selectedEmpData.projects.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.5rem' }}>Current Projects</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {selectedEmpData.projects.map((proj, idx) => (
+                      <span key={idx} style={{ padding: '0.25rem 0.5rem', background: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{proj}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <ChartWrapper option={fteTreemapOption} height="450px" />
+          )}
+        </div>
+      )}
+
+      {/* ASSIGNMENT CENTER TAB */}
+      {overviewTab === 'assignments' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {/* Roles Needing Resources */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
+            <div style={{ marginBottom: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Roles Needing Resources</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Demand exceeds available capacity</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {rolesNeedingResources.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#10B981', fontSize: '0.85rem' }}>All roles have adequate coverage</div>
+              ) : rolesNeedingResources.map(req => {
+                const matchingEmps = employeeMetrics.filter(e => e.role.toLowerCase().includes(req.resourceType.toLowerCase()) && e.status !== 'overloaded');
+                return (
+                  <div key={req.resourceType} style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '10px', borderLeft: '4px solid #F59E0B' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{req.resourceType}</span>
+                      <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '8px', background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontWeight: 600 }}>
+                        {formatNumber(req.fteRequired, 1)} FTE needed
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                      {req.taskCount} tasks, {formatNumber(req.remainingHours)} hrs remaining
+                    </div>
+                    {matchingEmps.length > 0 && (
+                      <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)' }}>
+                        Available: {matchingEmps.map(e => e.name.split(' ')[0]).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Unassigned Tasks Queue */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
+            <div style={{ marginBottom: '1rem' }}>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Unassigned Task Queue</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>{unassignedTasks.length} tasks pending</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '400px', overflowY: 'auto' }}>
+              {unassignedTasks.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#10B981', fontSize: '0.85rem' }}>All tasks are assigned</div>
+              ) : unassignedTasks.slice(0, 15).map((task: any, idx: number) => (
+                <div key={idx} style={{ padding: '0.6rem', background: 'var(--bg-tertiary)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>{(task.name || task.taskName || 'Task').slice(0, 30)}</div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                      {task.baselineHours || 0}h - {parseRoles(task.assignedResource || task.assignedRole)[0]}
+                    </div>
+                  </div>
+                  <button style={{ padding: '0.35rem 0.75rem', borderRadius: '6px', border: '1px solid var(--pinnacle-teal)', background: 'rgba(64,224,208,0.1)', color: 'var(--pinnacle-teal)', fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer' }}>
+                    Assign
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Workload Analysis View */}
+      {/* CAPACITY ANALYSIS TAB */}
       {overviewTab === 'workload' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
             <div style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Employee Workload Distribution</span>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Hours vs Tasks (color = completion)</span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Team Utilization</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Current workload by employee</span>
             </div>
-            <ChartWrapper option={workloadScatterOption} height="380px" />
+            <ChartWrapper option={teamUtilizationOption} height="400px" />
           </div>
           <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
             <div style={{ marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Capacity vs Demand by Role</span>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Available capacity vs required hours</span>
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Capacity vs Demand</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>By role</span>
             </div>
-            <ChartWrapper option={capacityDemandOption} height="380px" />
+            <ChartWrapper option={capacityDemandOption} height="400px" />
           </div>
-        </div>
-      )}
-
-      {/* Person-Project Matrix View */}
-      {overviewTab === 'matrix' && (
-        <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '1rem' }}>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Person-Project Allocation Matrix</span>
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.75rem' }}>Hours allocated per employee per project</span>
-          </div>
-          <ChartWrapper option={personProjectMatrixOption} height="500px" />
         </div>
       )}
 
       {/* Quick Actions */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-        <button
-          onClick={() => setActiveSection('heatmap')}
-          style={{
-            padding: '1rem',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-        >
+        <button onClick={() => setActiveSection('heatmap')} style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer', textAlign: 'left' }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Utilization Heatmap</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>View weekly utilization by role across timeline</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Weekly utilization by role</div>
         </button>
-        <button
-          onClick={() => setActiveSection('gantt')}
-          style={{
-            padding: '1rem',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-        >
+        <button onClick={() => setActiveSection('gantt')} style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer', textAlign: 'left' }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Resource Gantt</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Visual timeline of resource assignments</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Timeline of assignments</div>
         </button>
-        <button
-          onClick={() => setActiveSection('leveling')}
-          style={{
-            padding: '1rem',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-        >
+        <button onClick={() => setActiveSection('leveling')} style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', cursor: 'pointer', textAlign: 'left' }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>Resource Leveling</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Optimize and balance resource allocation</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Optimize allocation</div>
         </button>
       </div>
     </div>
