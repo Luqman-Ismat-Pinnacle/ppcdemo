@@ -160,7 +160,7 @@ function filterWbsItemsByPath(items: any[], path: (string | undefined)[]): any[]
 export default function WBSGanttPage() {
   const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter } = useData();
   const { addEngineLog } = useLogs();
-  const fixedColsWidth = 1480; // Increased for FTE sparkline column
+  const fixedColsWidth = 1560; // Includes Employee column
   const data = filteredData;
   const employees = fullData.employees;
 
@@ -1059,11 +1059,12 @@ export default function WBSGanttPage() {
           <table ref={tableRef} className="wbs-table" style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0, maxWidth: `${fixedColsWidth + (dateColumns.length * columnWidth)}px` }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)' }}>
               <tr style={{ height: `${headerHeight}px` }}>
-                <th style={{ width: '90px', position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>WBS</th>
-                <th style={{ width: '380px', position: 'sticky', left: '90px', top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Name</th>
-                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Type</th>
-                <th style={{ width: '90px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Resource</th>
-                {showSparklines && <th style={{ width: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>FTE Load</th>}
+                <th style={{ width: '80px', minWidth: '80px', maxWidth: '80px', position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>WBS</th>
+                <th style={{ width: '280px', minWidth: '280px', maxWidth: '280px', position: 'sticky', left: '80px', top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Name</th>
+                <th style={{ width: '65px', minWidth: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Type</th>
+                <th style={{ width: '80px', minWidth: '80px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Resource</th>
+                <th style={{ width: '90px', minWidth: '90px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Employee</th>
+                {showSparklines && <th style={{ width: '70px', minWidth: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>FTE Load</th>}
                 <th style={{ width: '75px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Start</th>
                 <th style={{ width: '75px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>End</th>
                 <th style={{ width: '40px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Days</th>
@@ -1117,7 +1118,7 @@ export default function WBSGanttPage() {
 
                 return (
                   <tr key={row.id} style={{ height: `${rowHeight}px`, background: isCritical ? 'rgba(220, 38, 38, 0.05)' : 'var(--bg-primary)' }}>
-                    <td style={{ position: 'sticky', left: 0, zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', boxShadow: isCritical ? 'inset 2px 0 0 #ef4444' : 'none' }}>
+                    <td style={{ position: 'sticky', left: 0, zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', boxShadow: isCritical ? 'inset 2px 0 0 #ef4444' : 'none', width: '80px', minWidth: '80px', maxWidth: '80px' }}>
                       <div style={{ paddingLeft: `${(row.indentLevel || 0) * 12}px`, display: 'flex', alignItems: 'center', gap: '4px' }}>
                         {row.hasChildren && (
                           <button onClick={() => toggleExpand(row.id)} style={{ color: worstCase && !isExpanded ? worstCase.color : '#fff', cursor: 'pointer', padding: 0, fontSize: '8px', background: 'none', border: 'none' }}>
@@ -1127,13 +1128,16 @@ export default function WBSGanttPage() {
                         <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: '0.6rem', fontWeight: isCritical ? 700 : 400 }}>{row.wbsCode}</span>
                       </div>
                     </td>
-                    <td style={{ position: 'sticky', left: '90px', zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444' }}>
+                    <td style={{ position: 'sticky', left: '80px', zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', width: '280px', minWidth: '280px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <EnhancedTooltip content={row.name || ''}>
                         <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 400, fontSize: '0.65rem', color: isCritical ? '#ef4444' : row.hasChildren && !isExpanded && worstCase ? worstCase.color : 'inherit' }}>{row.name}</span>
                       </EnhancedTooltip>
                     </td>
-                    <td><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
-                    <td style={{ fontSize: '0.6rem' }}>
+                    <td style={{ width: '65px', minWidth: '65px' }}><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
+                    <td style={{ fontSize: '0.6rem', width: '80px', minWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(row as any).assignedResource || ''}>
+                      {(row as any).assignedResource || '-'}
+                    </td>
+                    <td style={{ fontSize: '0.6rem', width: '90px', minWidth: '90px' }}>
                       {!row.hasChildren ? (
                         editingTaskId === row.id ? (
                           <SearchableDropdown options={employeeOptions} value={row.assignedResourceId || null} onChange={(id) => handleAssignResource(row.id, id)} placeholder="Assign..." disabled={false} />

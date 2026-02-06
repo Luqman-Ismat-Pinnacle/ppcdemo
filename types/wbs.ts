@@ -320,6 +320,7 @@ export interface WBSTableRow extends WBSItem {
   isVisible: boolean;
   rowIndex: number;
   is_critical?: boolean;
+  assignedResource?: string;  // Generic role from Microsoft Project
 }
 
 // ============================================================================
