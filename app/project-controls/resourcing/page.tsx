@@ -240,104 +240,159 @@ function ResourcingPageContent() {
     return { label: 'Normal', color: '#6B7280' };
   };
 
-  // Build portfolio tree data
-  const portfolioTreeData = useMemo(() => {
-    const portfolioMap = new Map<string, any>();
+  // Helper: create employee node for ECharts tree
+  const makeEmpNode = (emp: any) => ({
+    name: emp.name,
+    id: emp.id,
+    emp,
+    utilization: emp.utilization,
+    itemStyle: { color: getUtilizationColor(emp.utilization), borderColor: getUtilizationColor(emp.utilization) },
+    label: { backgroundColor: `${getUtilizationColor(emp.utilization)}20` },
+  });
+
+  // Build tree for ECharts - Portfolio View (uses manager hierarchy from employees)
+  const buildPortfolioTree = useMemo((): any[] => {
+    if (viewMode !== 'portfolio') return [];
+    if (employeeMetrics.length === 0) return [];
     
-    // Group projects by portfolio
-    data.portfolios.forEach((portfolio: any) => {
-      const portfolioId = portfolio.id || portfolio.portfolioId;
-      portfolioMap.set(portfolioId, {
-        id: portfolioId,
-        name: portfolio.name || portfolioId,
-        manager: portfolio.manager || '',
-        projects: [],
-        employees: [],
-      });
-    });
+    const employeeByName = new Map<string, any>();
+    employeeMetrics.forEach(emp => employeeByName.set(emp.name.toLowerCase(), emp));
     
-    // Add projects to portfolios
-    projectsWithEmployees.forEach(proj => {
-      const portfolioId = proj.portfolioId;
-      if (portfolioMap.has(portfolioId)) {
-        portfolioMap.get(portfolioId).projects.push(proj);
+    // Build manager -> reports map
+    const byManager = new Map<string, any[]>();
+    employeeMetrics.forEach(emp => {
+      const mgrName = (emp.manager || '').trim().toLowerCase();
+      if (mgrName) {
+        if (!byManager.has(mgrName)) byManager.set(mgrName, []);
+        byManager.get(mgrName)!.push(emp);
       }
     });
     
-    // Build manager -> employee hierarchy within each portfolio
-    const portfolios = Array.from(portfolioMap.values());
+    // Identify root employees (managers not in employee list, or top-level management)
+    const rootEmps = employeeMetrics.filter(emp => {
+      const mgrName = (emp.manager || '').trim().toLowerCase();
+      const level = (emp.managementLevel || '').toLowerCase();
+      return (
+        !mgrName || 
+        !employeeByName.has(mgrName) ||
+        level.includes('senior manager') ||
+        level.includes('director') ||
+        level.includes('executive') ||
+        level.includes('vp')
+      );
+    });
     
-    if (selectedPortfolio !== 'all') {
-      return portfolios.filter(p => p.id === selectedPortfolio || p.name === selectedPortfolio);
+    // Recursive tree builder
+    const buildBranch = (emp: any, depth: number): any => {
+      const reports = byManager.get(emp.name.toLowerCase()) || [];
+      const node = makeEmpNode(emp);
+      if (depth < 6 && reports.length > 0) {
+        (node as any).children = reports.map(r => buildBranch(r, depth + 1));
+      }
+      return node;
+    };
+    
+    // If we have portfolios, group roots under portfolio nodes
+    if (data.portfolios.length > 0) {
+      const portfolioNodes: any[] = [];
+      const assignedRoots = new Set<string>();
+      
+      let portfolios = data.portfolios;
+      if (selectedPortfolio !== 'all') {
+        portfolios = portfolios.filter((p: any) => 
+          (p.id || p.portfolioId) === selectedPortfolio || p.name === selectedPortfolio
+        );
+      }
+      
+      portfolios.forEach((portfolio: any) => {
+        const portfolioId = portfolio.id || portfolio.portfolioId;
+        const portfolioName = portfolio.name || portfolioId;
+        const portfolioManagerName = (portfolio.manager || '').trim().toLowerCase();
+        
+        // Find portfolio projects
+        const portfolioProjects = projectsWithEmployees.filter(p => 
+          p.portfolioId === portfolioId
+        );
+        
+        // Find employees that belong to this portfolio:
+        // 1. The portfolio manager themselves
+        // 2. Their reports
+        // 3. Anyone assigned to this portfolio's projects
+        const portfolioEmpIds = new Set<string>();
+        
+        // Add employees assigned to portfolio projects
+        portfolioProjects.forEach(proj => {
+          proj.employees.forEach((emp: any) => portfolioEmpIds.add(emp.id));
+        });
+        
+        // Find roots relevant to this portfolio
+        const portfolioRoots = rootEmps.filter(emp => {
+          const empNameLower = emp.name.toLowerCase();
+          // Direct match on portfolio manager
+          if (portfolioManagerName && (empNameLower === portfolioManagerName || empNameLower.includes(portfolioManagerName) || portfolioManagerName.includes(empNameLower))) {
+            return true;
+          }
+          // Employee assigned to one of the portfolio's projects
+          if (portfolioEmpIds.has(emp.id)) return true;
+          return false;
+        });
+        
+        portfolioRoots.forEach(r => assignedRoots.add(r.id));
+        
+        const children = portfolioRoots.length > 0 
+          ? portfolioRoots.map(r => buildBranch(r, 0))
+          : portfolioProjects.map(proj => ({
+              name: proj.name,
+              id: proj.id,
+              isProject: true,
+              employeeCount: proj.employeeCount,
+              totalHours: proj.totalHours,
+              children: proj.employees.map((emp: any) => makeEmpNode(emp)),
+            }));
+        
+        if (children.length > 0) {
+          portfolioNodes.push({
+            name: portfolioName,
+            id: portfolioId,
+            isPortfolio: true,
+            projectCount: portfolioProjects.length,
+            children,
+          });
+        }
+      });
+      
+      // Add unassigned roots if showing all
+      if (selectedPortfolio === 'all') {
+        const unassignedRoots = rootEmps.filter(r => !assignedRoots.has(r.id));
+        if (unassignedRoots.length > 0) {
+          portfolioNodes.push({
+            name: 'Unassigned',
+            id: 'unassigned-portfolio',
+            isPortfolio: true,
+            children: unassignedRoots.map(r => buildBranch(r, 0)),
+          });
+        }
+      }
+      
+      return portfolioNodes;
     }
     
-    return portfolios;
-  }, [data.portfolios, projectsWithEmployees, selectedPortfolio]);
-
-  // Build tree for ECharts - Portfolio View
-  const buildPortfolioTree = useMemo(() => {
-    if (viewMode !== 'portfolio') return [];
+    // No portfolios: just show a flat manager hierarchy
+    if (selectedPortfolio !== 'all') return [];
     
-    return portfolioTreeData.map(portfolio => {
-      // Get all employees in this portfolio's projects
-      const portfolioEmployees = new Map<string, any>();
-      portfolio.projects.forEach((proj: any) => {
-        proj.employees.forEach((emp: any) => {
-          portfolioEmployees.set(emp.id, emp);
-        });
-      });
-      
-      // Build manager hierarchy
-      const employeeList = Array.from(portfolioEmployees.values());
-      const managerGroups = new Map<string, any[]>();
-      
-      employeeList.forEach(emp => {
-        const manager = emp.manager || 'Direct Reports';
-        if (!managerGroups.has(manager)) {
-          managerGroups.set(manager, []);
-        }
-        managerGroups.get(manager)!.push(emp);
-      });
-      
-      // Create manager nodes with employee children
-      const managerNodes = Array.from(managerGroups.entries()).map(([manager, emps]) => ({
-        name: manager,
-        id: `manager-${manager}`,
-        isManager: true,
-        children: emps.map(emp => ({
-          name: emp.name,
-          id: emp.id,
-          emp,
-          utilization: emp.utilization,
-          itemStyle: { color: getUtilizationColor(emp.utilization), borderColor: getUtilizationColor(emp.utilization) },
-        })),
-      }));
-      
-      return {
-        name: portfolio.name,
-        id: portfolio.id,
-        isPortfolio: true,
-        projectCount: portfolio.projects.length,
-        children: managerNodes.length > 0 ? managerNodes : portfolio.projects.map((proj: any) => ({
-          name: proj.name,
-          id: proj.id,
-          isProject: true,
-          employeeCount: proj.employeeCount,
-          children: proj.employees.map((emp: any) => ({
-            name: emp.name,
-            id: emp.id,
-            emp,
-            utilization: emp.utilization,
-            itemStyle: { color: getUtilizationColor(emp.utilization), borderColor: getUtilizationColor(emp.utilization) },
-          })),
-        })),
-      };
-    });
-  }, [portfolioTreeData, viewMode]);
+    // Group by manager for a cleaner tree
+    if (rootEmps.length > 0) {
+      return rootEmps.map(r => buildBranch(r, 0));
+    }
+    
+    // Last fallback: flat list of all employees
+    return employeeMetrics.map(emp => makeEmpNode(emp));
+  }, [employeeMetrics, viewMode, data.portfolios, selectedPortfolio, projectsWithEmployees]);
 
   // Build tree for ECharts - Project View
-  const buildProjectTree = useMemo(() => {
+  const buildProjectTree = useMemo((): any[] => {
     if (viewMode !== 'project') return [];
+    if (projectsWithEmployees.length === 0 && employeeMetrics.length === 0) return [];
     
     let projects = projectsWithEmployees;
     
@@ -355,7 +410,7 @@ function ResourcingPageContent() {
       byPortfolio.get(portfolioName)!.push(proj);
     });
     
-    return Array.from(byPortfolio.entries()).map(([portfolioName, projs]) => ({
+    const result = Array.from(byPortfolio.entries()).map(([portfolioName, projs]) => ({
       name: portfolioName,
       id: `portfolio-${portfolioName}`,
       isPortfolio: true,
@@ -365,20 +420,33 @@ function ResourcingPageContent() {
         isProject: true,
         employeeCount: proj.employeeCount,
         totalHours: proj.totalHours,
-        children: proj.employees.map((emp: any) => ({
-          name: emp.name,
-          id: emp.id,
-          emp,
-          utilization: emp.utilization,
-          itemStyle: { color: getUtilizationColor(emp.utilization), borderColor: getUtilizationColor(emp.utilization) },
-        })),
+        children: proj.employees.length > 0 
+          ? proj.employees.map((emp: any) => makeEmpNode(emp))
+          : [{ name: 'No employees assigned', id: `empty-${proj.id}`, isPlaceholder: true }],
       })),
     }));
-  }, [projectsWithEmployees, viewMode, selectedPortfolio]);
+    
+    // If no portfolio grouping produced results, show projects directly
+    if (result.length === 0 && projects.length > 0) {
+      return projects.map(proj => ({
+        name: proj.name,
+        id: proj.id,
+        isProject: true,
+        employeeCount: proj.employeeCount,
+        totalHours: proj.totalHours,
+        children: proj.employees.length > 0 
+          ? proj.employees.map((emp: any) => makeEmpNode(emp))
+          : [{ name: 'No employees assigned', id: `empty-${proj.id}`, isPlaceholder: true }],
+      }));
+    }
+    
+    return result;
+  }, [projectsWithEmployees, viewMode, selectedPortfolio, employeeMetrics]);
 
   // Combined tree data based on view mode
   const treeData = useMemo(() => {
-    return viewMode === 'portfolio' ? buildPortfolioTree : buildProjectTree;
+    const data = viewMode === 'portfolio' ? buildPortfolioTree : buildProjectTree;
+    return data;
   }, [viewMode, buildPortfolioTree, buildProjectTree]);
 
   // ECharts tree option
@@ -445,37 +513,44 @@ function ResourcingPageContent() {
           type: 'tree',
           data: treeData,
           top: '5%',
-          left: '8%',
+          left: '10%',
           bottom: '5%',
-          right: '8%',
-          symbolSize: [80, 30],
+          right: '10%',
+          symbolSize: 14,
           orient: 'TB',
           layout: 'orthogonal',
-          initialTreeDepth: 3,
+          initialTreeDepth: 4,
           expandAndCollapse: true,
           animationDurationUpdate: 500,
           roam: true,
           label: {
-            position: 'inside',
+            position: 'bottom',
             verticalAlign: 'middle',
             align: 'center',
             fontSize: 10,
-            color: '#fff',
+            color: 'var(--text-primary)',
+            borderRadius: 4,
+            padding: [4, 6],
             formatter: (params: any) => {
               const d = params.data;
-              if (d.isPortfolio) return d.name;
-              if (d.isProject) return d.name.substring(0, 15) + (d.name.length > 15 ? '...' : '');
-              if (d.isManager) return d.name.split(' ')[0];
+              if (d.isPortfolio) return `{bold|${d.name}}`;
+              if (d.isProject) return `{project|${d.name.substring(0, 18)}${d.name.length > 18 ? '...' : ''}}`;
+              if (d.isPlaceholder) return `{muted|${d.name}}`;
               if (d.emp) {
                 const shortName = d.name.split(' ').map((n: string, i: number) => i === 0 ? n : n[0] + '.').join(' ');
-                return `${shortName}\n${d.utilization}%`;
+                return `${shortName}\n${d.utilization || 0}%`;
               }
               return d.name;
+            },
+            rich: {
+              bold: { fontWeight: 'bold' as any, fontSize: 12 },
+              project: { fontSize: 10, color: '#60A5FA' },
+              muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
             },
           },
           leaves: {
             label: {
-              position: 'inside',
+              position: 'bottom',
               verticalAlign: 'middle',
               align: 'center',
             },
@@ -1125,9 +1200,32 @@ function ResourcingPageContent() {
               <ChartWrapper option={treeOption} height="100%" onClick={handleTreeClick} />
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <p>No organization data to display.</p>
-                  <p style={{ fontSize: '0.85rem' }}>Select a different portfolio or check your data.</p>
+                <div style={{ textAlign: 'center', maxWidth: '400px' }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No organization data to display</p>
+                  <p style={{ fontSize: '0.85rem' }}>
+                    {viewMode === 'portfolio' 
+                      ? 'No employees or portfolios found. Import data from Data Management.'
+                      : 'No projects found. Import project data from Data Management.'
+                    }
+                  </p>
+                  {selectedPortfolio !== 'all' && (
+                    <button
+                      onClick={() => setSelectedPortfolio('all')}
+                      style={{
+                        marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '6px',
+                        background: 'var(--pinnacle-teal)', color: '#000', border: 'none',
+                        cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem',
+                      }}
+                    >
+                      Show All Portfolios
+                    </button>
+                  )}
                 </div>
               </div>
             )}
