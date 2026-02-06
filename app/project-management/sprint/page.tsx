@@ -597,22 +597,32 @@ export default function SprintPlanningPage() {
   // Team members
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
     if (data.employees?.length) {
-      return data.employees.slice(0, 8).map((emp: any, idx: number) => ({
-        id: emp.id || emp.employeeId || `${idx}`,
-        name: emp.name || `Team Member ${idx + 1}`,
-        role: emp.jobTitle || emp.role || 'Developer',
-        hoursPerDay: 6,
-        daysOff: 0,
-        capacity: 60,
-        assigned: Math.round(Math.random() * 50 + 10),
-      }));
+      // Calculate assigned hours per employee from tasks
+      return data.employees.slice(0, 8).map((emp: any, idx: number) => {
+        const empId = emp.id || emp.employeeId;
+        const empName = emp.name || `Team Member ${idx + 1}`;
+        // Find tasks assigned to this employee and sum their hours
+        const assignedTasks = (data.tasks || []).filter((t: any) => 
+          (t.employeeId || t.employee_id) === empId ||
+          (t.assignedTo || '').toLowerCase().includes(empName.toLowerCase()) ||
+          (t.assignedResource || '').toLowerCase().includes(empName.toLowerCase())
+        );
+        const assignedHours = assignedTasks.reduce((sum: number, t: any) => 
+          sum + (t.baselineHours || t.actualHours || 0), 0);
+        
+        return {
+          id: empId || `${idx}`,
+          name: empName,
+          role: emp.jobTitle || emp.role || 'Developer',
+          hoursPerDay: 6,
+          daysOff: 0,
+          capacity: 60,
+          assigned: Math.min(60, Math.round(assignedHours)),
+        };
+      });
     }
-    return [
-      { id: '1', name: 'Alice Johnson', role: 'Developer', hoursPerDay: 6, daysOff: 0, capacity: 60, assigned: 45 },
-      { id: '2', name: 'Bob Smith', role: 'Developer', hoursPerDay: 6, daysOff: 1, capacity: 54, assigned: 52 },
-      { id: '3', name: 'Carol Williams', role: 'QA Engineer', hoursPerDay: 6, daysOff: 0, capacity: 60, assigned: 38 },
-      { id: '4', name: 'David Brown', role: 'Designer', hoursPerDay: 4, daysOff: 2, capacity: 32, assigned: 28 },
-    ];
+    // If no employee data, return empty - no fake data
+    return [];
   });
 
   const teamCapacity = useMemo(() => {

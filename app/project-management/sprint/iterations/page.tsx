@@ -27,14 +27,18 @@ interface Iteration {
   level: number;
 }
 
-// Mock data - in production this would come from Supabase
-const defaultIterations: Iteration[] = [
-  { id: 'root', name: 'Project', path: '\\Project', startDate: null, endDate: null, isDefault: false, isCurrent: false, parentId: null, level: 0 },
-  { id: 'sprint-1', name: 'Sprint 1', path: '\\Project\\Sprint 1', startDate: '2026-01-06', endDate: '2026-01-19', isDefault: false, isCurrent: false, parentId: 'root', level: 1 },
-  { id: 'sprint-2', name: 'Sprint 2', path: '\\Project\\Sprint 2', startDate: '2026-01-20', endDate: '2026-02-02', isDefault: false, isCurrent: true, parentId: 'root', level: 1 },
-  { id: 'sprint-3', name: 'Sprint 3', path: '\\Project\\Sprint 3', startDate: '2026-02-03', endDate: '2026-02-16', isDefault: true, isCurrent: false, parentId: 'root', level: 1 },
-  { id: 'sprint-4', name: 'Sprint 4', path: '\\Project\\Sprint 4', startDate: '2026-02-17', endDate: '2026-03-02', isDefault: false, isCurrent: false, parentId: 'root', level: 1 },
-];
+// Default root node for iteration hierarchy (always present)
+const rootIteration: Iteration = { 
+  id: 'root', 
+  name: 'Project', 
+  path: '\\Project', 
+  startDate: null, 
+  endDate: null, 
+  isDefault: false, 
+  isCurrent: false, 
+  parentId: null, 
+  level: 0 
+};
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-';
@@ -61,9 +65,9 @@ function getIterationStatus(iter: Iteration): { label: string; color: string } {
 export default function IterationsPage() {
   const { data } = useData();
   const [iterations, setIterations] = useState<Iteration[]>(() => {
-    // Try to load from sprints if available
+    // Build from sprints data if available
     if (data.sprints?.length) {
-      return data.sprints.map((s: any, idx: number) => ({
+      const sprints = data.sprints.map((s: any, idx: number) => ({
         id: s.id || `sprint-${idx}`,
         name: s.name || `Sprint ${idx + 1}`,
         path: `\\Project\\${s.name || `Sprint ${idx + 1}`}`,
@@ -74,8 +78,10 @@ export default function IterationsPage() {
         parentId: 'root',
         level: 1
       }));
+      return [rootIteration, ...sprints];
     }
-    return defaultIterations;
+    // Return just the root node if no sprint data
+    return [rootIteration];
   });
   
   const [editingId, setEditingId] = useState<string | null>(null);

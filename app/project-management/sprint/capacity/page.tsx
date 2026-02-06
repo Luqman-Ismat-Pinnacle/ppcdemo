@@ -37,22 +37,29 @@ interface Sprint {
   workDays: number;
 }
 
-// Mock data
+// Default sprint (used when no data is available)
 const defaultSprint: Sprint = {
-  id: 'sprint-2',
-  name: 'Sprint 2',
-  startDate: '2026-01-20',
-  endDate: '2026-02-02',
+  id: 'default',
+  name: 'No Sprint Selected',
+  startDate: new Date().toISOString().split('T')[0],
+  endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   workDays: 10
 };
 
-const defaultTeamMembers: TeamMember[] = [
-  { id: '1', name: 'Alice Johnson', role: 'Developer', hoursPerDay: 6, daysOff: 0, activities: { development: 80, testing: 10, design: 5, other: 5 } },
-  { id: '2', name: 'Bob Smith', role: 'Developer', hoursPerDay: 6, daysOff: 1, activities: { development: 70, testing: 20, design: 0, other: 10 } },
-  { id: '3', name: 'Carol Williams', role: 'QA Engineer', hoursPerDay: 6, daysOff: 0, activities: { development: 0, testing: 90, design: 0, other: 10 } },
-  { id: '4', name: 'David Brown', role: 'Designer', hoursPerDay: 4, daysOff: 2, activities: { development: 0, testing: 0, design: 85, other: 15 } },
-  { id: '5', name: 'Eve Davis', role: 'Tech Lead', hoursPerDay: 4, daysOff: 0, activities: { development: 50, testing: 10, design: 10, other: 30 } },
-];
+// Helper to determine activity distribution based on role
+function getActivityDistribution(role: string): { development: number; testing: number; design: number; other: number } {
+  const roleLower = (role || '').toLowerCase();
+  if (roleLower.includes('qa') || roleLower.includes('test')) {
+    return { development: 0, testing: 85, design: 0, other: 15 };
+  } else if (roleLower.includes('design')) {
+    return { development: 0, testing: 0, design: 85, other: 15 };
+  } else if (roleLower.includes('lead') || roleLower.includes('manager')) {
+    return { development: 40, testing: 10, design: 10, other: 40 };
+  } else if (roleLower.includes('develop') || roleLower.includes('engineer')) {
+    return { development: 75, testing: 15, design: 0, other: 10 };
+  }
+  return { development: 50, testing: 20, design: 10, other: 20 };
+}
 
 const ACTIVITY_COLORS = {
   development: '#40E0D0',
@@ -82,23 +89,22 @@ export default function CapacityPage() {
   });
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
-    // Try to build from employees
+    // Build from employees data
     if (data.employees?.length) {
-      return data.employees.slice(0, 6).map((emp: any, idx: number) => ({
-        id: emp.id || emp.employeeId || `${idx}`,
-        name: emp.name || `Team Member ${idx + 1}`,
-        role: emp.jobTitle || emp.role || 'Developer',
-        hoursPerDay: 6,
-        daysOff: 0,
-        activities: { 
-          development: emp.role?.includes('Developer') ? 80 : 20, 
-          testing: emp.role?.includes('QA') ? 80 : 10, 
-          design: emp.role?.includes('Design') ? 80 : 5, 
-          other: 5 
-        }
-      }));
+      return data.employees.slice(0, 6).map((emp: any, idx: number) => {
+        const role = emp.jobTitle || emp.role || 'Developer';
+        return {
+          id: emp.id || emp.employeeId || `${idx}`,
+          name: emp.name || `Team Member ${idx + 1}`,
+          role: role,
+          hoursPerDay: 6,
+          daysOff: 0,
+          activities: getActivityDistribution(role)
+        };
+      });
     }
-    return defaultTeamMembers;
+    // Return empty array if no employee data - no fake data
+    return [];
   });
 
   // Calculate capacity
@@ -116,12 +122,16 @@ export default function CapacityPage() {
       byActivity.other += memberCapacity * (member.activities.other / 100);
     });
     
-    // Mock assigned work (would come from work items in production)
+    // Calculate assigned work from actual task data
+    const tasks = data.tasks || [];
+    const totalTaskHours = tasks.reduce((sum: number, t: any) => sum + (t.baselineHours || t.actualHours || 0), 0);
+    
+    // Distribute hours across activities based on task types
     const assignedWork = {
-      development: Math.round(byActivity.development * 0.7),
-      testing: Math.round(byActivity.testing * 0.5),
-      design: Math.round(byActivity.design * 0.8),
-      other: Math.round(byActivity.other * 0.3)
+      development: Math.round(totalTaskHours * 0.6), // 60% execution/development
+      testing: Math.round(totalTaskHours * 0.2),     // 20% QC/testing
+      design: Math.round(totalTaskHours * 0.1),      // 10% design
+      other: Math.round(totalTaskHours * 0.1)        // 10% other
     };
     const totalAssigned = assignedWork.development + assignedWork.testing + assignedWork.design + assignedWork.other;
     

@@ -68,7 +68,7 @@ interface GanttItem {
   actualHours: number;
 }
 
-type ActiveSection = 'overview' | 'requirements' | 'heatmap' | 'gantt' | 'leveling';
+type ActiveSection = 'overview' | 'orgchart' | 'heatmap' | 'gantt' | 'leveling';
 
 // Helper: Parse roles from a string (handles comma-separated)
 function parseRoles(resourceStr: string | null | undefined): string[] {
@@ -121,6 +121,451 @@ function ResourcingPageLoading() {
 }
 
 // ============================================================================
+// ORGANIZATION CHART SECTION
+// ============================================================================
+interface OrgChartNode {
+  name: string;
+  id: string;
+  title?: string;
+  managementLevel?: string;
+  children?: OrgChartNode[];
+  value?: number;
+  itemStyle?: { borderColor?: string };
+  label?: { backgroundColor?: string };
+}
+
+function OrgChartSection({
+  employees,
+  portfolios,
+  formatNumber,
+}: {
+  employees: any[];
+  portfolios: any[];
+  formatNumber: (num: number, decimals?: number) => string;
+}) {
+  const [selectedPortfolio, setSelectedPortfolio] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'tree' | 'list'>('tree');
+  const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
+
+  // Build hierarchy from employees
+  const orgHierarchy = useMemo(() => {
+    if (!employees?.length) return { roots: [], byManager: new Map(), allEmployees: [] };
+    
+    // Create map of employees by name for lookup
+    const employeeByName = new Map<string, any>();
+    const employeeById = new Map<string, any>();
+    employees.forEach(emp => {
+      employeeByName.set(emp.name?.toLowerCase(), emp);
+      if (emp.id || emp.employeeId) {
+        employeeById.set(emp.id || emp.employeeId, emp);
+      }
+    });
+    
+    // Build children map (manager -> direct reports)
+    const byManager = new Map<string, any[]>();
+    const hasManager = new Set<string>();
+    
+    employees.forEach(emp => {
+      const managerName = (emp.manager || '').trim();
+      if (managerName) {
+        hasManager.add(emp.name?.toLowerCase());
+        if (!byManager.has(managerName.toLowerCase())) {
+          byManager.set(managerName.toLowerCase(), []);
+        }
+        byManager.get(managerName.toLowerCase())!.push(emp);
+      }
+    });
+    
+    // Find root employees (those who are managers but don't have managers, or top management levels)
+    const roots = employees.filter(emp => {
+      const empManager = (emp.manager || '').trim().toLowerCase();
+      const level = (emp.managementLevel || '').toLowerCase();
+      // Root if: no manager OR manager not in employee list OR highest management level
+      return (
+        !empManager || 
+        !employeeByName.has(empManager) ||
+        level.includes('senior manager') ||
+        level.includes('director') ||
+        level.includes('executive') ||
+        level.includes('vp')
+      );
+    });
+    
+    return { roots, byManager, allEmployees: employees, employeeByName };
+  }, [employees]);
+
+  // Filter by portfolio
+  const filteredRoots = useMemo(() => {
+    if (selectedPortfolio === 'all') return orgHierarchy.roots;
+    
+    const portfolio = portfolios.find(p => 
+      (p.portfolioId || p.id) === selectedPortfolio || p.name === selectedPortfolio
+    );
+    if (!portfolio) return orgHierarchy.roots;
+    
+    const portfolioManager = (portfolio.manager || '').toLowerCase();
+    
+    // Find root that matches portfolio manager
+    return orgHierarchy.roots.filter(emp => 
+      emp.name?.toLowerCase() === portfolioManager ||
+      emp.name?.toLowerCase().includes(portfolioManager) ||
+      portfolioManager.includes(emp.name?.toLowerCase() || '')
+    );
+  }, [orgHierarchy.roots, selectedPortfolio, portfolios]);
+
+  // Build tree recursively
+  const buildTree = useCallback((emp: any, depth: number = 0): OrgChartNode => {
+    const children = orgHierarchy.byManager.get(emp.name?.toLowerCase()) || [];
+    const level = (emp.managementLevel || emp.jobTitle || '').toLowerCase();
+    
+    // Color by management level
+    let borderColor = '#6B7280'; // default gray
+    let bgColor = 'rgba(107, 114, 128, 0.2)';
+    if (level.includes('senior') || level.includes('director') || level.includes('vp')) {
+      borderColor = '#EF4444'; // red for senior
+      bgColor = 'rgba(239, 68, 68, 0.2)';
+    } else if (level.includes('lead') || level.includes('manager')) {
+      borderColor = '#F59E0B'; // amber for leads
+      bgColor = 'rgba(245, 158, 11, 0.2)';
+    } else if (level.includes('analyst') || level.includes('rda')) {
+      borderColor = '#10B981'; // green for analysts
+      bgColor = 'rgba(16, 185, 129, 0.2)';
+    }
+    
+    return {
+      name: emp.name || 'Unknown',
+      id: emp.id || emp.employeeId || emp.name,
+      title: emp.jobTitle || emp.role || '',
+      managementLevel: emp.managementLevel || '',
+      value: children.length,
+      itemStyle: { borderColor },
+      label: { backgroundColor: bgColor },
+      children: depth < 5 ? children.map(c => buildTree(c, depth + 1)) : undefined,
+    };
+  }, [orgHierarchy.byManager]);
+
+  // Tree data for ECharts
+  const treeData = useMemo(() => {
+    if (filteredRoots.length === 0) return [];
+    return filteredRoots.map(root => buildTree(root));
+  }, [filteredRoots, buildTree]);
+
+  // ECharts tree option
+  const treeOption: EChartsOption = useMemo(() => {
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: any) => {
+          const data = params.data;
+          return `
+            <div style="font-family: inherit;">
+              <div style="font-weight: 600; margin-bottom: 4px;">${data.name}</div>
+              ${data.title ? `<div style="font-size: 11px; color: #9ca3af;">${data.title}</div>` : ''}
+              ${data.managementLevel ? `<div style="font-size: 11px; color: #9ca3af;">${data.managementLevel}</div>` : ''}
+              ${data.children?.length ? `<div style="font-size: 11px; margin-top: 4px;">${data.children.length} direct reports</div>` : ''}
+            </div>
+          `;
+        },
+      },
+      series: [
+        {
+          type: 'tree',
+          data: treeData,
+          top: '5%',
+          left: '15%',
+          bottom: '5%',
+          right: '15%',
+          symbolSize: 12,
+          orient: 'TB',
+          layout: 'orthogonal',
+          initialTreeDepth: 3,
+          expandAndCollapse: true,
+          animationDurationUpdate: 500,
+          label: {
+            position: 'bottom',
+            verticalAlign: 'middle',
+            align: 'center',
+            fontSize: 11,
+            color: 'var(--text-primary)',
+            backgroundColor: 'rgba(64, 224, 208, 0.1)',
+            borderRadius: 4,
+            padding: [4, 8],
+            formatter: (params: any) => params.data?.name || '',
+          },
+          leaves: {
+            label: {
+              position: 'bottom',
+              verticalAlign: 'middle',
+              align: 'center',
+            },
+          },
+          lineStyle: {
+            color: 'var(--border-color)',
+            width: 1.5,
+            curveness: 0.5,
+          },
+          itemStyle: {
+            color: 'var(--pinnacle-teal)',
+            borderWidth: 2,
+          },
+          emphasis: {
+            focus: 'descendant',
+            itemStyle: {
+              borderColor: 'var(--pinnacle-lime)',
+              borderWidth: 3,
+            },
+          },
+        },
+      ],
+    };
+  }, [treeData]);
+
+  // Stats
+  const stats = useMemo(() => {
+    const levels = new Map<string, number>();
+    employees.forEach(emp => {
+      const level = emp.managementLevel || emp.jobTitle || 'Other';
+      levels.set(level, (levels.get(level) || 0) + 1);
+    });
+    
+    const managersCount = new Set(employees.map(e => e.manager).filter(Boolean)).size;
+    const avgTeamSize = managersCount > 0 
+      ? Math.round(employees.filter(e => e.manager).length / managersCount * 10) / 10 
+      : 0;
+    
+    return {
+      total: employees.length,
+      levels: Array.from(levels.entries()).sort((a, b) => b[1] - a[1]),
+      managersCount,
+      avgTeamSize,
+    };
+  }, [employees]);
+
+  if (employees.length === 0) {
+    return (
+      <div className="chart-card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+        <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.5 }}>
+          <rect x="9" y="2" width="6" height="4" rx="1" />
+          <rect x="2" y="18" width="6" height="4" rx="1" />
+          <rect x="9" y="18" width="6" height="4" rx="1" />
+          <rect x="16" y="18" width="6" height="4" rx="1" />
+          <line x1="12" y1="6" x2="12" y2="10" />
+          <line x1="5" y1="14" x2="5" y2="18" />
+          <line x1="12" y1="14" x2="12" y2="18" />
+          <line x1="19" y1="14" x2="19" y2="18" />
+          <line x1="5" y1="14" x2="19" y2="14" />
+          <rect x="9" y="10" width="6" height="4" rx="1" />
+        </svg>
+        <p style={{ fontSize: '1rem', fontWeight: 500 }}>No Employee Data Available</p>
+        <p style={{ fontSize: '0.85rem' }}>Import employee data from the Data Management page to view the organization chart.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Header */}
+      <div className="chart-card" style={{ background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(205,220,57,0.05) 100%)' }}>
+        <div className="chart-card-body" style={{ padding: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'var(--pinnacle-teal)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#000" strokeWidth="2">
+                  <rect x="9" y="2" width="6" height="4" rx="1" />
+                  <rect x="2" y="18" width="6" height="4" rx="1" />
+                  <rect x="9" y="18" width="6" height="4" rx="1" />
+                  <rect x="16" y="18" width="6" height="4" rx="1" />
+                  <line x1="12" y1="6" x2="12" y2="10" />
+                </svg>
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Organization Chart</h3>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Visualize reporting hierarchy from employee data. Shows who reports to whom.
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <select
+                value={selectedPortfolio}
+                onChange={(e) => setSelectedPortfolio(e.target.value)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-secondary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                <option value="all">All Portfolios</option>
+                {portfolios.map(p => (
+                  <option key={p.portfolioId || p.id} value={p.portfolioId || p.id}>{p.name}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden' }}>
+                <button
+                  onClick={() => setViewMode('tree')}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    border: 'none',
+                    background: viewMode === 'tree' ? 'var(--pinnacle-teal)' : 'transparent',
+                    color: viewMode === 'tree' ? '#000' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  Tree
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    border: 'none',
+                    background: viewMode === 'list' ? 'var(--pinnacle-teal)' : 'transparent',
+                    color: viewMode === 'list' ? '#000' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  List
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+        <div className="metric-card accent-teal" style={{ padding: '1rem' }}>
+          <div className="metric-label" style={{ fontSize: '0.75rem' }}>Total Employees</div>
+          <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(stats.total)}</div>
+        </div>
+        <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+          <div className="metric-label" style={{ fontSize: '0.75rem' }}>Managers</div>
+          <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(stats.managersCount)}</div>
+        </div>
+        <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+          <div className="metric-label" style={{ fontSize: '0.75rem' }}>Avg Team Size</div>
+          <div className="metric-value" style={{ fontSize: '1.75rem' }}>{stats.avgTeamSize}</div>
+        </div>
+        <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+          <div className="metric-label" style={{ fontSize: '0.75rem' }}>Role Types</div>
+          <div className="metric-value" style={{ fontSize: '1.75rem' }}>{stats.levels.length}</div>
+        </div>
+      </div>
+
+      {/* Tree Visualization or List */}
+      {viewMode === 'tree' ? (
+        <div className="chart-card" style={{ height: 'calc(100vh - 400px)', minHeight: '500px' }}>
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="chart-card-title">Reporting Structure</h3>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444', marginRight: '4px' }}></span>Senior/Director</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#F59E0B', marginRight: '4px' }}></span>Lead/Manager</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#10B981', marginRight: '4px' }}></span>Analyst/RDA</span>
+            </div>
+          </div>
+          <div className="chart-card-body" style={{ padding: 0, height: 'calc(100% - 50px)' }}>
+            {treeData.length > 0 ? (
+              <ChartWrapper option={treeOption} style={{ height: '100%', width: '100%' }} />
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <p>No hierarchy found for the selected portfolio.</p>
+                  <p style={{ fontSize: '0.85rem' }}>Employee manager relationships may not be defined.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* List View */
+        <div className="chart-card">
+          <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <h3 className="chart-card-title">Employee Directory</h3>
+          </div>
+          <div className="chart-card-body" style={{ padding: 0, maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>
+            <table className="data-table" style={{ fontSize: '0.85rem', margin: 0 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Name</th>
+                  <th style={{ textAlign: 'left' }}>Job Title</th>
+                  <th style={{ textAlign: 'left' }}>Management Level</th>
+                  <th style={{ textAlign: 'left' }}>Reports To</th>
+                  <th style={{ textAlign: 'right' }}>Direct Reports</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((emp, idx) => {
+                  const directReports = orgHierarchy.byManager.get(emp.name?.toLowerCase())?.length || 0;
+                  const level = (emp.managementLevel || '').toLowerCase();
+                  let levelColor = 'var(--text-secondary)';
+                  if (level.includes('senior') || level.includes('director')) levelColor = '#EF4444';
+                  else if (level.includes('lead') || level.includes('manager')) levelColor = '#F59E0B';
+                  else if (level.includes('analyst') || level.includes('rda')) levelColor = '#10B981';
+                  
+                  return (
+                    <tr key={emp.id || emp.employeeId || idx}>
+                      <td style={{ fontWeight: 600 }}>{emp.name}</td>
+                      <td>{emp.jobTitle || emp.role || '-'}</td>
+                      <td style={{ color: levelColor }}>{emp.managementLevel || '-'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{emp.manager || '-'}</td>
+                      <td style={{ textAlign: 'right', color: directReports > 0 ? 'var(--pinnacle-teal)' : 'var(--text-muted)' }}>
+                        {directReports || '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Role Distribution */}
+      <div className="chart-card">
+        <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
+          <h3 className="chart-card-title">Role Distribution</h3>
+        </div>
+        <div className="chart-card-body">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+            {stats.levels.slice(0, 10).map(([level, count]) => (
+              <div 
+                key={level} 
+                style={{ 
+                  padding: '0.5rem 1rem', 
+                  background: 'var(--bg-secondary)', 
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{level}</span>
+                <span style={{ 
+                  fontSize: '0.85rem', 
+                  fontWeight: 600, 
+                  background: 'var(--pinnacle-teal)', 
+                  color: '#000', 
+                  padding: '2px 8px', 
+                  borderRadius: '4px' 
+                }}>
+                  {count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // ENHANCED RESOURCING OVERVIEW SECTION
 // ============================================================================
 function ResourcingOverviewSection({
@@ -130,6 +575,7 @@ function ResourcingOverviewSection({
   availableEmployees,
   unassignedTasks,
   availableProjects,
+  qcTasks,
   formatNumber,
   setActiveSection,
   getProjectName,
@@ -140,6 +586,7 @@ function ResourcingOverviewSection({
   availableEmployees: { id: string; name: string; role: string }[];
   unassignedTasks: any[];
   availableProjects: { id: string; name: string }[];
+  qcTasks: any[];
   formatNumber: (num: number, decimals?: number) => string;
   setActiveSection: (s: ActiveSection) => void;
   getProjectName: (id: string | null | undefined) => string;
@@ -148,7 +595,7 @@ function ResourcingOverviewSection({
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
   
-  // Calculate detailed employee metrics
+  // Calculate detailed employee metrics using real QC data
   const employeeMetrics = useMemo(() => {
     return availableEmployees.map(emp => {
       const empTasks = filteredTasks.filter((t: any) => 
@@ -163,9 +610,21 @@ function ResourcingOverviewSection({
         ? empTasks.reduce((s: number, t: any) => s + (t.percentComplete || 0), 0) / empTasks.length 
         : 0;
       
-      // QC metrics (simulated based on completion and hours efficiency)
+      // Calculate efficiency from real data
       const efficiency = allocatedHours > 0 ? Math.round((actualHours / allocatedHours) * 100) : 100;
-      const qcPassRate = Math.max(60, Math.min(100, 85 + Math.random() * 15)); // Simulated
+      
+      // Calculate real QC pass rate from qcTasks data
+      const empQcTasks = qcTasks.filter((qc: any) => 
+        (qc.employeeId || qc.employee_id || qc.qcResourceId) === emp.id ||
+        (qc.qcResourceId || '').toLowerCase().includes(emp.name.toLowerCase())
+      );
+      const totalQcTasks = empQcTasks.length;
+      const passedQcTasks = empQcTasks.filter((qc: any) => 
+        (qc.qcStatus || '').toLowerCase() === 'pass' || 
+        (qc.qcStatus || '').toLowerCase() === 'passed' ||
+        (qc.qcScore || 0) >= 80
+      ).length;
+      const qcPassRate = totalQcTasks > 0 ? Math.round((passedQcTasks / totalQcTasks) * 100) : null;
       
       // Capacity calculation
       const annualCapacity = HOURS_PER_YEAR;
@@ -187,13 +646,14 @@ function ResourcingOverviewSection({
         avgCompletion,
         efficiency,
         qcPassRate,
+        totalQcTasks,
         utilization,
         availableHours,
         status,
         projects: [...new Set(empTasks.map((t: any) => getProjectName(t.projectId || t.project_id)))].slice(0, 5),
       };
     }).sort((a, b) => b.allocatedHours - a.allocatedHours);
-  }, [availableEmployees, filteredTasks, getProjectName]);
+  }, [availableEmployees, filteredTasks, qcTasks, getProjectName]);
 
   // Get unique roles
   const uniqueRoles = useMemo(() => {
@@ -350,9 +810,9 @@ function ResourcingOverviewSection({
             {tab.label}
           </button>
         ))}
-        <button onClick={() => setActiveSection('requirements')}
+        <button onClick={() => setActiveSection('orgchart')}
           style={{ marginLeft: 'auto', padding: '0.5rem 1rem', border: '1px solid var(--border-color)', borderRadius: '6px', background: 'transparent', color: 'var(--pinnacle-teal)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer' }}>
-          Full Requirements
+          View Org Chart
         </button>
       </div>
 
@@ -406,7 +866,9 @@ function ResourcingOverviewSection({
                       <div style={{ color: 'var(--text-muted)' }}>Tasks</div>
                     </div>
                     <div style={{ textAlign: 'center', padding: '0.35rem', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
-                      <div style={{ fontWeight: 700, color: '#10B981' }}>{emp.qcPassRate.toFixed(0)}%</div>
+                      <div style={{ fontWeight: 700, color: emp.qcPassRate !== null ? '#10B981' : 'var(--text-muted)' }}>
+                        {emp.qcPassRate !== null ? `${emp.qcPassRate}%` : '-'}
+                      </div>
                       <div style={{ color: 'var(--text-muted)' }}>QC</div>
                     </div>
                     <div style={{ textAlign: 'center', padding: '0.35rem', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
@@ -451,7 +913,9 @@ function ResourcingOverviewSection({
                 </div>
                 <div style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>QC Pass Rate</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedEmpData.qcPassRate >= 85 ? '#10B981' : '#F59E0B' }}>{selectedEmpData.qcPassRate.toFixed(0)}%</div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: selectedEmpData.qcPassRate !== null ? (selectedEmpData.qcPassRate >= 85 ? '#10B981' : '#F59E0B') : 'var(--text-muted)' }}>
+                    {selectedEmpData.qcPassRate !== null ? `${selectedEmpData.qcPassRate}%` : 'No QC data'}
+                  </div>
                 </div>
                 <div style={{ padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '8px' }}>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Efficiency</div>
@@ -629,8 +1093,8 @@ function ResourcingPageContent() {
 
   useEffect(() => {
     setHasMounted(true);
-    if (scrollToSection === 'requirements') {
-      setActiveSection('requirements');
+    if (scrollToSection === 'orgchart' || scrollToSection === 'requirements') {
+      setActiveSection('orgchart');
     }
     if (projectIdParam) {
       setSelectedProjectId(projectIdParam);
@@ -646,6 +1110,8 @@ function ResourcingPageContent() {
       tasks: (filtered.tasks?.length ? filtered.tasks : full.tasks) ?? [],
       employees: (filtered.employees?.length ? filtered.employees : full.employees) ?? [],
       projects: (filtered.projects?.length ? filtered.projects : full.projects) ?? [],
+      qctasks: (filtered.qctasks?.length ? filtered.qctasks : full.qctasks) ?? [],
+      portfolios: (filtered.portfolios?.length ? filtered.portfolios : full.portfolios) ?? [],
       resourceLeveling: filtered.resourceLeveling ?? full.resourceLeveling,
     };
   }, [filteredData, fullData]);
@@ -1587,7 +2053,7 @@ function ResourcingPageContent() {
   // Navigation tabs
   const sections: { id: ActiveSection; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg> },
-    { id: 'requirements', label: 'Resource Requirements', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg> },
+    { id: 'orgchart', label: 'Organization Chart', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="2" width="6" height="4" rx="1" /><rect x="2" y="18" width="6" height="4" rx="1" /><rect x="9" y="18" width="6" height="4" rx="1" /><rect x="16" y="18" width="6" height="4" rx="1" /><line x1="12" y1="6" x2="12" y2="10" /><line x1="5" y1="14" x2="5" y2="18" /><line x1="12" y1="14" x2="12" y2="18" /><line x1="19" y1="14" x2="19" y2="18" /><line x1="5" y1="14" x2="19" y2="14" /><rect x="9" y="10" width="6" height="4" rx="1" /></svg> },
     { id: 'heatmap', label: 'Utilization Heatmap', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="7" y="7" width="3" height="3" /><rect x="14" y="7" width="3" height="3" /><rect x="7" y="14" width="3" height="3" /><rect x="14" y="14" width="3" height="3" /></svg> },
     { id: 'gantt', label: 'Resource Gantt', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><rect x="6" y="6" width="8" height="6" rx="1" fill="currentColor" opacity="0.3" /><rect x="10" y="12" width="10" height="6" rx="1" fill="currentColor" opacity="0.3" /></svg> },
     { id: 'leveling', label: 'Resource Leveling', icon: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg> },
@@ -1765,152 +2231,20 @@ function ResourcingPageContent() {
             availableEmployees={availableEmployees}
             unassignedTasks={unassignedTasks}
             availableProjects={availableProjects}
+            qcTasks={data.qctasks || []}
             formatNumber={formatNumber}
             setActiveSection={setActiveSection}
             getProjectName={getProjectName}
           />
         )}
 
-        {/* Resource Requirements Calculator Section */}
-        {activeSection === 'requirements' && (
-          <div id="requirements-section" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* Explanation Banner */}
-            <div className="chart-card" style={{ background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(205,220,57,0.05) 100%)' }}>
-              <div className="chart-card-body" style={{ padding: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'var(--pinnacle-teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#000" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
-            </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Resource Requirements Calculator</h3>
-                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                      Calculates FTE (Full-Time Equivalent) by role. Tasks with comma-separated roles have hours distributed equally among roles.
-                    </p>
-                    <div style={{ display: 'flex', gap: '2rem', marginTop: '0.75rem', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.8rem' }}>
-                      <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{HOURS_PER_DAY}</strong> hours/day</div>
-                      <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{DAYS_PER_WEEK}</strong> days/week</div>
-                      <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{HOURS_PER_WEEK}</strong> hours/week</div>
-                      <div><strong style={{ color: 'var(--pinnacle-teal)' }}>{formatNumber(HOURS_PER_YEAR)}</strong> hours/year</div>
-          </div>
-                    </div>
-                  </div>
-                  </div>
-                </div>
-
-            {/* Summary Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-              <div className="metric-card accent-teal" style={{ padding: '1rem' }}>
-                <div className="metric-label" style={{ fontSize: '0.75rem' }}>Total FTE Required</div>
-                <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(summaryMetrics.totalFTE, 2)}</div>
-          </div>
-              <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-                <div className="metric-label" style={{ fontSize: '0.75rem' }}>Total Baseline Hours</div>
-                <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(summaryMetrics.totalBaselineHours)}</div>
-        </div>
-              <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-                <div className="metric-label" style={{ fontSize: '0.75rem' }}>Resource Types (Roles)</div>
-                <div className="metric-value" style={{ fontSize: '1.75rem' }}>{summaryMetrics.uniqueResourceTypes}</div>
-              </div>
-              <div className="metric-card" style={{ padding: '1rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-                <div className="metric-label" style={{ fontSize: '0.75rem' }}>Total Tasks</div>
-                <div className="metric-value" style={{ fontSize: '1.75rem' }}>{formatNumber(summaryMetrics.totalTasks)}</div>
-              </div>
-            </div>
-
-            {/* Resource Requirements Table */}
-            <div className="chart-card">
-              <div className="chart-card-header" style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <h3 className="chart-card-title">FTE Requirements by Role</h3>
-        </div>
-              <div className="chart-card-body" style={{ padding: 0 }}>
-                {resourceRequirements.length === 0 ? (
-                  <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 1rem', opacity: 0.5 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                    <p>No tasks found with resource assignments.</p>
-                    <p style={{ fontSize: '0.85rem' }}>Upload an MPP file with resource assignments to see FTE requirements.</p>
-                  </div>
-                ) : (
-                  <div style={{ overflow: 'auto' }}>
-                    <table className="data-table" style={{ fontSize: '0.875rem', margin: 0 }}>
-                <thead>
-                  <tr>
-                          <th style={{ width: '40px' }}></th>
-                          <th style={{ textAlign: 'left' }}>Role</th>
-                          <th style={{ textAlign: 'right' }}>Tasks</th>
-                          <th style={{ textAlign: 'right' }}>Baseline Hrs</th>
-                          <th style={{ textAlign: 'right' }}>Actual Hrs</th>
-                          <th style={{ textAlign: 'right' }}>Remaining</th>
-                          <th style={{ textAlign: 'right' }}>FTE (Annual)</th>
-                          <th style={{ textAlign: 'right' }}>FTE (Monthly)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                        {resourceRequirements.map((req) => (
-                          <React.Fragment key={req.resourceType}>
-                            <tr style={{ cursor: 'pointer' }} onClick={() => setExpandedResourceType(expandedResourceType === req.resourceType ? null : req.resourceType)}>
-                              <td style={{ textAlign: 'center' }}>
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ transform: expandedResourceType === req.resourceType ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}><path d="M9 18l6-6-6-6" /></svg>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: req.resourceType === 'Unassigned' ? '#F59E0B' : 'var(--pinnacle-teal)' }} />
-                                  {req.resourceType}
-                                </div>
-                    </td>
-                              <td style={{ textAlign: 'right' }}>{req.taskCount}</td>
-                              <td style={{ textAlign: 'right' }}>{formatNumber(req.totalBaselineHours)}</td>
-                              <td style={{ textAlign: 'right' }}>{formatNumber(req.totalActualHours)}</td>
-                              <td style={{ textAlign: 'right', color: req.remainingHours > 0 ? '#F59E0B' : '#10B981' }}>{formatNumber(req.remainingHours)}</td>
-                              <td style={{ textAlign: 'right', color: 'var(--pinnacle-teal)', fontWeight: 700, fontSize: '1rem' }}>{formatNumber(req.fteRequired, 2)}</td>
-                              <td style={{ textAlign: 'right', color: 'var(--pinnacle-lime)', fontWeight: 600 }}>{formatNumber(req.fteMonthly, 2)}</td>
-                  </tr>
-                            {expandedResourceType === req.resourceType && (
-                              <tr>
-                                <td colSpan={8} style={{ padding: 0, background: 'var(--bg-tertiary)' }}>
-                                  <div style={{ padding: '1rem 1rem 1rem 3rem', maxHeight: '300px', overflow: 'auto' }}>
-                                    <table className="data-table" style={{ fontSize: '0.8rem', margin: 0 }}>
-                                      <thead><tr><th style={{ textAlign: 'left' }}>Task Name</th><th style={{ textAlign: 'right' }}>Baseline Hrs</th><th style={{ textAlign: 'right' }}>Actual Hrs</th><th style={{ textAlign: 'right' }}>% Complete</th></tr></thead>
-                                      <tbody>
-                                        {req.tasks.map((task) => (
-                                          <tr key={task.taskId}>
-                                            <td>{task.taskName}</td>
-                                            <td style={{ textAlign: 'right' }}>{formatNumber(task.baselineHours)}</td>
-                                            <td style={{ textAlign: 'right' }}>{formatNumber(task.actualHours)}</td>
-                                            <td style={{ textAlign: 'right' }}>
-                                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                                                <div style={{ width: '60px', height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden' }}>
-                                                  <div style={{ width: `${Math.min(100, task.percentComplete)}%`, height: '100%', background: task.percentComplete >= 100 ? '#10B981' : 'var(--pinnacle-teal)' }} />
-                                                </div>
-                                                {formatNumber(task.percentComplete)}%
-                                              </div>
-                    </td>
-                  </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                    </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        ))}
-                        <tr style={{ fontWeight: 700, background: 'var(--bg-secondary)' }}>
-                          <td></td>
-                          <td>TOTAL</td>
-                          <td style={{ textAlign: 'right' }}>{formatNumber(summaryMetrics.totalTasks)}</td>
-                          <td style={{ textAlign: 'right' }}>{formatNumber(summaryMetrics.totalBaselineHours)}</td>
-                          <td style={{ textAlign: 'right' }}>{formatNumber(summaryMetrics.totalActualHours)}</td>
-                          <td style={{ textAlign: 'right', color: '#F59E0B' }}>{formatNumber(summaryMetrics.totalRemainingHours)}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--pinnacle-teal)', fontSize: '1.1rem' }}>{formatNumber(summaryMetrics.totalFTE, 2)}</td>
-                          <td style={{ textAlign: 'right', color: 'var(--pinnacle-lime)' }}>{formatNumber(summaryMetrics.totalBaselineHours / (HOURS_PER_YEAR / 12), 2)}</td>
-                  </tr>
-                </tbody>
-              </table>
-              </div>
-                )}
-            </div>
-            </div>
-            </div>
+        {/* Organization Chart Section */}
+        {activeSection === 'orgchart' && (
+          <OrgChartSection
+            employees={data.employees || []}
+            portfolios={data.portfolios || []}
+            formatNumber={formatNumber}
+          />
           )}
 
         {/* Heatmap Section */}
