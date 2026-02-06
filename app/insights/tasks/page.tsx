@@ -1,45 +1,26 @@
 'use client';
 
 /**
- * @fileoverview Tasks - Comprehensive Operations Dashboard for PPC V3.
+ * @fileoverview Tasks - Operations Dashboard with Creative Visuals
  * 
- * Includes ALL data from legacy hours and QC pages:
- * - Command Center with status breakdown
- * - Task Flow Sankey
- * - Task Hours Efficiency (full width, scrollable)
- * - Quality Hours by Charge Code
- * - Labor Distribution with view toggle
- * - Hours Variance Waterfall
- * - QC Transaction by Gate
- * - QC Pass/Fail Distribution
- * - Analyst Performance scatter
- * - Labor Breakdown tables (by Worker, by Role)
- * - Detailed task table with search/filter
- * 
- * All visuals sized for large datasets with scroll/zoom.
+ * Combined hours, labor, and QC analysis with innovative visualizations:
+ * - Hours vs Efficiency dual-axis chart
+ * - Resource workload heatmap
+ * - Hours flow diagram
+ * - Quality metrics radar
+ * - Interactive task explorer
  * 
  * @module app/insights/tasks/page
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
-import QualityHoursChart from '@/components/charts/QualityHoursChart';
-import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
-import HoursWaterfallChart from '@/components/charts/HoursWaterfallChart';
-import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
-import QCTransactionBarChart from '@/components/charts/QCTransactionBarChart';
-import QCStackedBarChart from '@/components/charts/QCStackedBarChart';
-import QCScatterChart from '@/components/charts/QCScatterChart';
-import QCPassRateLineChart from '@/components/charts/QCPassRateLineChart';
 import type { EChartsOption } from 'echarts';
 
 // ===== COMMAND CENTER =====
 function CommandCenter({ stats, onFilterChange, activeFilter }: { 
-  stats: any;
-  onFilterChange: (filter: string) => void;
-  activeFilter: string;
+  stats: any; onFilterChange: (filter: string) => void; activeFilter: string;
 }) {
   const segments = [
     { key: 'completed', label: 'Complete', value: stats.completed, color: '#10B981' },
@@ -47,37 +28,21 @@ function CommandCenter({ stats, onFilterChange, activeFilter }: {
     { key: 'blocked', label: 'Blocked', value: stats.blocked, color: '#EF4444' },
     { key: 'notStarted', label: 'Pending', value: stats.notStarted, color: '#6B7280' },
   ];
-  
   const total = stats.total || 1;
   
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)',
-      borderRadius: '20px',
-      padding: '1.25rem',
-      border: '1px solid var(--border-color)',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '1.5rem',
-      flexWrap: 'wrap',
-    }}>
+    <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)', borderRadius: '20px', padding: '1.25rem', border: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '160px 1fr auto', alignItems: 'center', gap: '1.5rem' }}>
       {/* Radial Progress */}
-      <div style={{ position: 'relative', width: '140px', height: '140px', flexShrink: 0 }}>
+      <div style={{ position: 'relative', width: '160px', height: '160px' }}>
         <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
           <circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg-tertiary)" strokeWidth="8" />
           {segments.map((seg, idx) => {
             const circumference = 2 * Math.PI * 42;
             const strokeLength = (seg.value / total) * circumference;
             const offset = segments.slice(0, idx).reduce((acc, s) => acc + (s.value / total) * circumference, 0);
-            return (
-              <circle key={seg.key} cx="50" cy="50" r="42" fill="none" stroke={seg.color}
-                strokeWidth={activeFilter === seg.key ? 12 : 8}
-                strokeDasharray={`${strokeLength} ${circumference}`}
-                strokeDashoffset={-offset}
-                style={{ cursor: 'pointer', transition: 'stroke-width 0.2s' }}
-                onClick={() => onFilterChange(activeFilter === seg.key ? 'all' : seg.key)}
-              />
-            );
+            return <circle key={seg.key} cx="50" cy="50" r="42" fill="none" stroke={seg.color}
+              strokeWidth={activeFilter === seg.key ? 12 : 8} strokeDasharray={`${strokeLength} ${circumference}`} strokeDashoffset={-offset}
+              style={{ cursor: 'pointer' }} onClick={() => onFilterChange(activeFilter === seg.key ? 'all' : seg.key)} />;
           })}
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -87,76 +52,180 @@ function CommandCenter({ stats, onFilterChange, activeFilter }: {
       </div>
       
       {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', flex: 1, minWidth: '200px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
         {segments.map(seg => (
           <div key={seg.key} onClick={() => onFilterChange(activeFilter === seg.key ? 'all' : seg.key)}
-            style={{
-              background: activeFilter === seg.key ? `${seg.color}15` : 'rgba(255,255,255,0.03)',
-              borderRadius: '10px', padding: '0.6rem 0.8rem',
-              border: `1px solid ${activeFilter === seg.key ? seg.color : 'transparent'}`,
-              cursor: 'pointer',
-            }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: seg.color }} />
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{seg.label}</span>
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: seg.color }}>{seg.value}</div>
+            style={{ background: activeFilter === seg.key ? `${seg.color}15` : 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '0.75rem', border: `1px solid ${activeFilter === seg.key ? seg.color : 'transparent'}`, cursor: 'pointer', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: seg.color }}>{seg.value}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{seg.label}</div>
           </div>
         ))}
       </div>
       
       {/* Key Metrics */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <div style={{ textAlign: 'center', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '90px' }}>
-          <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Efficiency</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.efficiency <= 100 ? '#10B981' : '#EF4444' }}>{stats.efficiency}%</div>
+      <div style={{ display: 'grid', gridTemplateRows: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+        <div style={{ textAlign: 'center', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>EFFICIENCY</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: stats.efficiency <= 100 ? '#10B981' : '#EF4444' }}>{stats.efficiency}%</div>
         </div>
-        <div style={{ textAlign: 'center', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '90px' }}>
-          <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>QC Pass</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: stats.qcPassRate >= 90 ? '#10B981' : '#F59E0B' }}>{stats.qcPassRate}%</div>
+        <div style={{ textAlign: 'center', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>QC PASS</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: stats.qcPassRate >= 90 ? '#10B981' : '#F59E0B' }}>{stats.qcPassRate}%</div>
         </div>
-        <div style={{ textAlign: 'center', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '90px' }}>
-          <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Hours</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{stats.totalHours.toLocaleString()}</div>
+        <div style={{ textAlign: 'center', padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
+          <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>HOURS</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{stats.totalHours.toLocaleString()}</div>
         </div>
       </div>
     </div>
   );
 }
 
-// ===== TASK FLOW SANKEY =====
-function TaskFlowSankey({ stats }: { stats: any }) {
-  const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
-    series: [{
-      type: 'sankey',
-      layout: 'none',
-      emphasis: { focus: 'adjacency' },
-      nodeAlign: 'left',
-      nodeWidth: 20,
-      nodeGap: 14,
-      layoutIterations: 0,
-      label: { color: 'var(--text-primary)', fontSize: 11, formatter: (p: any) => `${p.name}\n${p.value || 0}` },
-      lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.35 },
-      data: [
-        { name: 'Backlog', itemStyle: { color: '#6B7280' } },
-        { name: 'Active', itemStyle: { color: '#3B82F6' } },
-        { name: 'Review', itemStyle: { color: '#8B5CF6' } },
-        { name: 'Complete', itemStyle: { color: '#10B981' } },
-        { name: 'Blocked', itemStyle: { color: '#EF4444' } },
-      ],
-      links: [
-        { source: 'Backlog', target: 'Active', value: Math.max(1, Math.round(stats.notStarted * 0.6)) },
-        { source: 'Active', target: 'Review', value: Math.max(1, Math.round(stats.inProgress * 0.5)) },
-        { source: 'Review', target: 'Complete', value: Math.max(1, stats.completed) },
-        { source: 'Backlog', target: 'Blocked', value: Math.max(1, Math.round(stats.blocked * 0.3)) },
-        { source: 'Active', target: 'Blocked', value: Math.max(1, Math.round(stats.blocked * 0.7)) },
-      ],
-    }],
-  }), [stats]);
+// ===== HOURS EFFICIENCY DUAL CHART =====
+function HoursEfficiencyChart({ data }: { data: any }) {
+  const option: EChartsOption = useMemo(() => {
+    const tasks = (data.tasks || []).slice(0, 20);
+    const actual = (data.actualWorked || []).slice(0, 20);
+    const estimated = (data.estimatedAdded || []).slice(0, 20);
+    const efficiency = actual.map((a: number, i: number) => {
+      const est = estimated[i] || 0;
+      return est > 0 ? Math.round((a / (a + est)) * 100) : 100;
+    });
 
-  return <ChartWrapper option={option} height="180px" />;
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      legend: { data: ['Actual', 'Estimated', 'Efficiency'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 50, right: 50, top: 20, bottom: 50 },
+      xAxis: { type: 'category', data: tasks, axisLabel: { color: 'var(--text-muted)', fontSize: 9, rotate: 45, interval: 0 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
+      yAxis: [
+        { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+        { type: 'value', name: 'Efficiency %', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 }, max: 100, axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: '{value}%' }, splitLine: { show: false } },
+      ],
+      series: [
+        { name: 'Actual', type: 'bar', data: actual, itemStyle: { color: '#3B82F6' }, barWidth: '35%' },
+        { name: 'Estimated', type: 'bar', data: estimated, itemStyle: { color: '#6B7280' }, barWidth: '35%' },
+        { name: 'Efficiency', type: 'line', yAxisIndex: 1, data: efficiency, lineStyle: { color: '#10B981', width: 3 }, itemStyle: { color: '#10B981' }, symbol: 'circle', symbolSize: 6 },
+      ],
+    };
+  }, [data]);
+
+  return <ChartWrapper option={option} height="350px" />;
+}
+
+// ===== RESOURCE WORKLOAD HEATMAP =====
+function ResourceWorkloadHeatmap({ laborData }: { laborData: any }) {
+  const option: EChartsOption = useMemo(() => {
+    const workers = laborData.byWorker || [];
+    const weeks = laborData.weeks || [];
+    if (!workers.length || !weeks.length) return {};
+
+    const yNames = workers.slice(0, 15).map((w: any) => w.name);
+    const xNames = weeks.slice(0, 8).map((w: string) => {
+      try { return new Date(w).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return w; }
+    });
+    
+    const heatData: [number, number, number][] = [];
+    workers.slice(0, 15).forEach((w: any, yi: number) => {
+      (w.data || []).slice(0, 8).forEach((val: number, xi: number) => {
+        heatData.push([xi, yi, val || 0]);
+      });
+    });
+
+    const maxVal = Math.max(...heatData.map(d => d[2]), 1);
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 }, formatter: (p: any) => `${yNames[p.data[1]]}<br/>${xNames[p.data[0]]}: <strong>${p.data[2].toFixed(1)}h</strong>` },
+      grid: { left: 120, right: 30, top: 30, bottom: 50 },
+      xAxis: { type: 'category', data: xNames, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, splitArea: { show: true } },
+      yAxis: { type: 'category', data: yNames, axisLabel: { color: 'var(--text-primary)', fontSize: 10 }, axisLine: { show: false } },
+      visualMap: { min: 0, max: maxVal, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#1a1a2e', '#3B82F6', '#F59E0B', '#EF4444'] }, textStyle: { color: 'var(--text-muted)' } },
+      series: [{ type: 'heatmap', data: heatData, label: { show: true, color: '#fff', fontSize: 9, formatter: (p: any) => p.data[2] > 0 ? p.data[2].toFixed(0) : '' }, itemStyle: { borderWidth: 2, borderColor: 'var(--bg-card)' } }],
+    };
+  }, [laborData]);
+
+  if (!laborData.byWorker?.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No labor data available</div>;
+  return <ChartWrapper option={option} height="400px" />;
+}
+
+// ===== QC PERFORMANCE RADAR =====
+function QCPerformanceRadar({ qcData, stats }: { qcData: any[]; stats: any }) {
+  const option: EChartsOption = useMemo(() => {
+    const topAnalysts = qcData.sort((a, b) => (b.closedCount || 0) - (a.closedCount || 0)).slice(0, 5);
+    const maxClosed = Math.max(...topAnalysts.map(a => a.closedCount || 0), 1);
+    const colors = ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#EF4444'];
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      legend: { data: topAnalysts.map(a => a.name), bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 }, type: 'scroll' },
+      radar: {
+        indicator: [
+          { name: 'Pass Rate', max: 100 },
+          { name: 'Volume', max: maxClosed },
+          { name: 'Open', max: Math.max(...topAnalysts.map(a => a.openCount || 0), 1) },
+          { name: 'Closed', max: maxClosed },
+        ],
+        shape: 'polygon', radius: '55%', center: ['50%', '45%'],
+        axisName: { color: 'var(--text-muted)', fontSize: 10 },
+        splitLine: { lineStyle: { color: 'var(--border-color)' } },
+        splitArea: { areaStyle: { color: ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.04)'] } },
+      },
+      series: [{
+        type: 'radar',
+        data: topAnalysts.map((a, i) => ({
+          name: a.name,
+          value: [a.passRate || 0, a.closedCount || 0, a.openCount || 0, a.closedCount || 0],
+          lineStyle: { color: colors[i], width: 2 },
+          itemStyle: { color: colors[i] },
+          areaStyle: { color: colors[i] + '25' },
+        })),
+      }],
+    };
+  }, [qcData]);
+
+  if (!qcData.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No QC data available</div>;
+  return <ChartWrapper option={option} height="320px" />;
+}
+
+// ===== HOURS FLOW DIAGRAM =====
+function HoursFlowDiagram({ stats, laborData }: { stats: any; laborData: any }) {
+  const option: EChartsOption = useMemo(() => {
+    const workers = laborData.byWorker || [];
+    const roles = [...new Set(workers.map((w: any) => w.role).filter(Boolean))].slice(0, 5) as string[];
+    const roleHours: Record<string, number> = {};
+    workers.forEach((w: any) => {
+      if (w.role) roleHours[w.role] = (roleHours[w.role] || 0) + (w.total || 0);
+    });
+
+    const nodes: any[] = [
+      { name: 'Total Hours', itemStyle: { color: '#3B82F6' } },
+      ...roles.map(r => ({ name: r, itemStyle: { color: '#F59E0B' } })),
+      { name: 'Complete', itemStyle: { color: '#10B981' } },
+      { name: 'In Progress', itemStyle: { color: '#8B5CF6' } },
+    ];
+
+    const links: any[] = [
+      ...roles.map(r => ({ source: 'Total Hours', target: r, value: Math.max(1, Math.round(roleHours[r] || stats.totalHours / roles.length)) })),
+      ...roles.map(r => ({ source: r, target: 'Complete', value: Math.max(1, Math.round((roleHours[r] || stats.totalHours / roles.length) * (stats.overallProgress / 100))) })),
+      ...roles.map(r => ({ source: r, target: 'In Progress', value: Math.max(1, Math.round((roleHours[r] || stats.totalHours / roles.length) * (1 - stats.overallProgress / 100))) })),
+    ];
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
+      series: [{
+        type: 'sankey', layout: 'none', emphasis: { focus: 'adjacency' },
+        nodeWidth: 24, nodeGap: 16, layoutIterations: 0,
+        label: { color: 'var(--text-primary)', fontSize: 11 },
+        lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.4 },
+        data: nodes, links,
+      }],
+    };
+  }, [stats, laborData]);
+
+  return <ChartWrapper option={option} height="280px" />;
 }
 
 // ===== SECTION CARD =====
@@ -177,12 +246,12 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
   );
 }
 
+// ===== MAIN PAGE =====
 export default function TasksPage() {
   const { filteredData, hierarchyFilters } = useData();
   const data = filteredData;
   
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [laborView, setLaborView] = useState<'chargeCode' | 'project' | 'role'>('chargeCode');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [activeSection, setActiveSection] = useState<string>('hours');
@@ -193,11 +262,9 @@ export default function TasksPage() {
     return 'All Projects';
   }, [hierarchyFilters]);
 
-  // Task statistics
   const taskStats = useMemo(() => {
     const tasks = data.tasks || [];
     let completed = 0, inProgress = 0, blocked = 0, notStarted = 0, totalPlanned = 0, totalActual = 0;
-    
     tasks.forEach((t: any) => {
       const status = (t.status || '').toLowerCase();
       const pc = t.percentComplete || 0;
@@ -208,77 +275,26 @@ export default function TasksPage() {
       totalPlanned += t.baselineHours || t.budgetHours || 0;
       totalActual += t.actualHours || 0;
     });
-
     const qcByName = data.qcByNameAndRole || [];
-    const totalClosed = qcByName.reduce((sum: number, q: any) => sum + (q.closedCount || 0), 0);
-    const totalPassed = qcByName.reduce((sum: number, q: any) => sum + (q.passCount || 0), 0);
-    const qcPassRate = totalClosed > 0 ? Math.round((totalPassed / totalClosed) * 100) : 0;
-
+    const totalClosed = qcByName.reduce((s: number, q: any) => s + (q.closedCount || 0), 0);
+    const totalPassed = qcByName.reduce((s: number, q: any) => s + (q.passCount || 0), 0);
     return { 
       total: tasks.length, completed, inProgress, blocked, notStarted, 
       overallProgress: tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0,
       efficiency: totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : 100,
       totalHours: Math.round(totalActual),
-      qcPassRate,
+      qcPassRate: totalClosed > 0 ? Math.round((totalPassed / totalClosed) * 100) : 0,
     };
   }, [data.tasks, data.qcByNameAndRole]);
 
-  // Labor breakdown data
-  const laborData = useMemo(() => {
-    const workers = data.laborBreakdown?.byWorker || [];
-    const weeks = data.laborBreakdown?.weeks || [];
-    if (!workers.length || !weeks.length) return { months: [], dataByCategory: {} };
-    
-    const months = weeks.map((w: string) => {
-      try { return new Date(w).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return w; }
-    });
-
-    const groupBy = laborView === 'chargeCode' ? 'chargeCode' : laborView === 'role' ? 'role' : 'project';
-    const categories = [...new Set(workers.map((w: any) => w[groupBy]).filter(Boolean))];
-    
-    const dataByCategory: Record<string, number[]> = {};
-    categories.forEach((cat: string) => {
-      dataByCategory[cat] = new Array(months.length).fill(0);
-      workers.filter((w: any) => w[groupBy] === cat).forEach((w: any) => {
-        (w.data || []).forEach((val: number, idx: number) => {
-          if (idx < dataByCategory[cat].length) dataByCategory[cat][idx] += val || 0;
-        });
-      });
-    });
-    return { months, dataByCategory };
-  }, [data.laborBreakdown, laborView]);
-
-  // Labor by worker for table
-  const laborByWorker = useMemo(() => {
-    const workers = data.laborBreakdown?.byWorker || [];
-    return workers.map((w: any) => ({
-      name: w.name,
-      role: w.role,
-      project: w.project,
-      total: w.total || (w.data || []).reduce((a: number, b: number) => a + b, 0),
-      data: w.data || [],
-    })).sort((a: any, b: any) => b.total - a.total);
-  }, [data.laborBreakdown]);
-
-  // Labor weeks for table headers
-  const laborWeeks = useMemo(() => data.laborBreakdown?.weeks || [], [data.laborBreakdown]);
-
-  // QC data
-  const qcGates = useMemo(() => data.qcTransactionByGate || [], [data.qcTransactionByGate]);
-  const qcByGateStatus = useMemo(() => (data.qcByGateStatus || []).map((g: any) => ({
-    projectId: g.gate, customer: '', site: '', unprocessed: g.unprocessed || 0, pass: g.pass || 0, fail: g.fail || 0, portfolio: '',
-  })), [data.qcByGateStatus]);
+  const laborData = useMemo(() => data.laborBreakdown || { byWorker: [], weeks: [] }, [data.laborBreakdown]);
   const qcByAnalyst = useMemo(() => data.qcByNameAndRole || [], [data.qcByNameAndRole]);
 
-  // Filtered tasks
   const filteredTasks = useMemo(() => {
     let tasks = data.tasks || [];
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      tasks = tasks.filter((t: any) => 
-        (t.name || t.taskName || '').toLowerCase().includes(term) ||
-        (t.assignedResource || t.assignedTo || '').toLowerCase().includes(term)
-      );
+      tasks = tasks.filter((t: any) => (t.name || t.taskName || '').toLowerCase().includes(term) || (t.assignedResource || t.assignedTo || '').toLowerCase().includes(term));
     }
     if (statusFilter !== 'all') {
       tasks = tasks.filter((t: any) => {
@@ -296,13 +312,21 @@ export default function TasksPage() {
     return tasks;
   }, [data.tasks, searchTerm, statusFilter]);
 
+  // Top performers and underperformers
+  const topPerformers = useMemo(() => {
+    return (laborData.byWorker || [])
+      .filter((w: any) => w.total > 0)
+      .sort((a: any, b: any) => b.total - a.total)
+      .slice(0, 5);
+  }, [laborData]);
+
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Task Operations</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Hours, labor, quality control, and task management</p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Hours, labor, quality control, and performance analytics</p>
       </div>
 
       {/* Command Center */}
@@ -311,17 +335,12 @@ export default function TasksPage() {
       </div>
 
       {/* Section Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {[
-          { id: 'hours', label: 'Hours & Labor' },
-          { id: 'qc', label: 'Quality Control' },
-          { id: 'tasks', label: 'Task Details' },
-        ].map(tab => (
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        {[{ id: 'hours', label: 'Hours & Labor' }, { id: 'qc', label: 'Quality Control' }, { id: 'tasks', label: 'Task Explorer' }].map(tab => (
           <button key={tab.id} onClick={() => setActiveSection(tab.id)} style={{
             padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${activeSection === tab.id ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
             background: activeSection === tab.id ? 'rgba(64,224,208,0.1)' : 'transparent',
-            color: activeSection === tab.id ? 'var(--pinnacle-teal)' : 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+            color: activeSection === tab.id ? 'var(--pinnacle-teal)' : 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
           }}>{tab.label}</button>
         ))}
       </div>
@@ -331,172 +350,110 @@ export default function TasksPage() {
         <div style={{ background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(205,220,57,0.05) 100%)', borderRadius: '12px', padding: '1rem', marginBottom: '1rem', border: '1px solid var(--pinnacle-teal)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
             <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>{selectedTask.name || selectedTask.taskName}</h4>
-            <button onClick={() => setSelectedTask(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>×</button>
+            <button onClick={() => setSelectedTask(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.25rem' }}>x</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem', fontSize: '0.8rem' }}>
             <div><span style={{ color: 'var(--text-muted)' }}>Project:</span> <strong>{selectedTask.projectName || '-'}</strong></div>
             <div><span style={{ color: 'var(--text-muted)' }}>Assignee:</span> <strong>{selectedTask.assignedResource || selectedTask.assignedTo || '-'}</strong></div>
             <div><span style={{ color: 'var(--text-muted)' }}>Status:</span> <strong>{selectedTask.status || '-'}</strong></div>
-            <div><span style={{ color: 'var(--text-muted)' }}>Planned:</span> <strong>{selectedTask.baselineHours || 0} hrs</strong></div>
-            <div><span style={{ color: 'var(--text-muted)' }}>Actual:</span> <strong style={{ color: (selectedTask.actualHours || 0) > (selectedTask.baselineHours || 0) ? '#EF4444' : '#10B981' }}>{selectedTask.actualHours || 0} hrs</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Planned:</span> <strong>{selectedTask.baselineHours || 0}h</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Actual:</span> <strong style={{ color: (selectedTask.actualHours || 0) > (selectedTask.baselineHours || 0) ? '#EF4444' : '#10B981' }}>{selectedTask.actualHours || 0}h</strong></div>
             <div><span style={{ color: 'var(--text-muted)' }}>Progress:</span> <strong>{selectedTask.percentComplete || 0}%</strong></div>
           </div>
         </div>
       )}
 
-      {/* HOURS & LABOR SECTION */}
+      {/* HOURS & LABOR */}
       {activeSection === 'hours' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Task Flow */}
-          <SectionCard title="Task Flow" subtitle="Lifecycle progression">
-            <TaskFlowSankey stats={taskStats} />
-          </SectionCard>
-
-          {/* Task Hours Efficiency - Full Width, Large */}
-          <SectionCard title="Task Hours Efficiency" subtitle="Actual vs Estimated hours by task">
-            <div style={{ height: '400px', overflowX: 'auto' }}>
-              <TaskHoursEfficiencyChart
-                data={data.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-                height={380}
-                onBarClick={(p: any) => { const t = (data.tasks || []).find((t: any) => t.name === p.name); if (t) setSelectedTask(t); }}
-                activeFilters={[]}
-              />
-            </div>
-          </SectionCard>
-
-          {/* Quality Hours - Full Width */}
-          <SectionCard title="Quality Hours by Charge Code" subtitle="QC hours breakdown per task">
-            <div style={{ height: '350px', overflowX: 'auto' }}>
-              <QualityHoursChart
-                data={data.qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
-                taskOrder={data.taskHoursEfficiency?.tasks}
-                height={330}
-                onBarClick={() => {}}
-                activeFilters={[]}
-              />
-            </div>
-          </SectionCard>
-
-          {/* Labor Distribution - Full Width with View Toggle */}
-          <SectionCard 
-            title="Labor Hours Distribution" 
-            subtitle="Weekly hours breakdown"
-            headerRight={
-              <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
-                {(['chargeCode', 'project', 'role'] as const).map(v => (
-                  <button key={v} onClick={() => setLaborView(v)} style={{
-                    padding: '4px 10px', fontSize: '0.7rem', fontWeight: 600,
-                    background: laborView === v ? 'var(--pinnacle-teal)' : 'transparent',
-                    color: laborView === v ? '#000' : 'var(--text-secondary)',
-                    border: 'none', borderRadius: '4px', cursor: 'pointer',
-                  }}>{v === 'chargeCode' ? 'Charge Code' : v === 'project' ? 'Project' : 'Role'}</button>
-                ))}
-              </div>
-            }
-          >
-            <div style={{ height: '350px' }}>
-              <LaborBreakdownChart months={laborData.months} dataByCategory={laborData.dataByCategory} height={330} onBarClick={() => {}} activeFilters={[]} />
-            </div>
-          </SectionCard>
-
-          {/* Hours Waterfall - Full Width */}
-          <SectionCard title="Hours Variance Waterfall" subtitle="Cumulative variance analysis">
-            <div style={{ height: '400px' }}>
-              <HoursWaterfallChart data={data.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }} height={380} />
-            </div>
-          </SectionCard>
-
-          {/* Non-Execute Hours */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-            <SectionCard title="TPW Comparison" subtitle="TPW vs Execute vs Non-Execute">
-              <div style={{ height: '280px' }}>
-                <NonExecutePieChart data={data.nonExecuteHours?.tpwComparison || []} height={260} showLabels={true} visualId="tpw" enableCompare={false} />
-              </div>
+          {/* Row 1: Efficiency + Flow */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+            <SectionCard title="Hours vs Efficiency" subtitle="Task hours with efficiency overlay">
+              <HoursEfficiencyChart data={data.taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [] }} />
             </SectionCard>
-            <SectionCard title="TPW by Charge Code" subtitle="Other breakdown">
-              <div style={{ height: '280px' }}>
-                <NonExecutePieChart data={data.nonExecuteHours?.otherBreakdown || []} height={260} showLabels={true} visualId="other" enableCompare={false} />
-              </div>
+            <SectionCard title="Hours Flow" subtitle="Distribution by role">
+              <HoursFlowDiagram stats={taskStats} laborData={laborData} />
             </SectionCard>
           </div>
 
-          {/* Labor Breakdown by Worker Table */}
-          <SectionCard title="Labor Breakdown by Worker" subtitle={`${laborByWorker.length} workers`} noPadding>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  <tr>
-                    <th style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 2 }}>Worker</th>
-                    <th>Role</th>
-                    <th>Project</th>
-                    {laborWeeks.slice(0, 8).map((w: string, i: number) => <th key={i} className="number" style={{ minWidth: '60px' }}>{new Date(w).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</th>)}
-                    <th className="number" style={{ fontWeight: 700 }}>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {laborByWorker.slice(0, 50).map((w: any, idx: number) => (
-                    <tr key={idx}>
-                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', fontWeight: 500 }}>{w.name}</td>
-                      <td>{w.role}</td>
-                      <td>{w.project}</td>
-                      {(w.data || []).slice(0, 8).map((h: number, i: number) => <td key={i} className="number" style={{ color: h > 40 ? '#F59E0B' : 'inherit' }}>{h?.toFixed(1) || '0'}</td>)}
-                      <td className="number" style={{ fontWeight: 600, color: 'var(--pinnacle-teal)' }}>{w.total?.toFixed(1) || '0'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* Row 2: Heatmap */}
+          <SectionCard title="Resource Workload Heatmap" subtitle="Weekly hours by team member">
+            <ResourceWorkloadHeatmap laborData={laborData} />
           </SectionCard>
+
+          {/* Row 3: Top Performers + Quick Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <SectionCard title="Top Contributors" subtitle="By total hours logged">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {topPerformers.map((w: any, idx: number) => {
+                  const maxHours = topPerformers[0]?.total || 1;
+                  return (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: idx === 0 ? '#F59E0B' : idx === 1 ? '#9CA3AF' : idx === 2 ? '#CD7F32' : 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: idx < 3 ? '#000' : 'var(--text-muted)' }}>{idx + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{w.name}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{w.total?.toFixed(0)}h</span>
+                        </div>
+                        <div style={{ height: '4px', background: 'var(--bg-tertiary)', borderRadius: '2px' }}>
+                          <div style={{ height: '100%', width: `${(w.total / maxHours) * 100}%`, background: 'linear-gradient(90deg, var(--pinnacle-teal), #CDDC39)', borderRadius: '2px' }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {topPerformers.length === 0 && <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>No data</div>}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Hours Summary" subtitle="Quick breakdown">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+                <div style={{ padding: '1rem', background: 'rgba(59,130,246,0.1)', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3B82F6' }}>{taskStats.totalHours.toLocaleString()}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Total Actual</div>
+                </div>
+                <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.1)', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981' }}>{taskStats.efficiency}%</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Efficiency</div>
+                </div>
+                <div style={{ padding: '1rem', background: 'rgba(245,158,11,0.1)', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F59E0B' }}>{taskStats.inProgress}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Active Tasks</div>
+                </div>
+                <div style={{ padding: '1rem', background: 'rgba(239,68,68,0.1)', borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#EF4444' }}>{taskStats.blocked}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Blocked</div>
+                </div>
+              </div>
+            </SectionCard>
+          </div>
         </div>
       )}
 
       {/* QC SECTION */}
       {activeSection === 'qc' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* QC by Gate and Pass/Fail */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-            <SectionCard title="QC Transaction by Gate" subtitle={`${qcGates.length} gates`}>
-              <div style={{ height: '280px' }}>
-                <QCTransactionBarChart data={qcGates} height="260px" showLabels={true} onBarClick={() => {}} activeFilters={[]} />
-              </div>
-            </SectionCard>
-            <SectionCard title="QC Pass/Fail Distribution" subtitle={`${taskStats.qcPassRate}% pass rate`}>
-              <div style={{ height: '280px' }}>
-                <QCStackedBarChart data={qcByGateStatus} height="260px" onBarClick={() => {}} activeFilters={[]} />
-              </div>
-            </SectionCard>
-          </div>
-
-          {/* Analyst Performance - Full Width */}
-          <SectionCard title="Analyst Performance" subtitle="Records vs Pass Rate">
-            <div style={{ height: '320px' }}>
-              <QCScatterChart data={qcByAnalyst} labelField="name" height="300px" onPointClick={() => {}} activeFilters={[]} />
-            </div>
+          {/* QC Performance Radar */}
+          <SectionCard title="Analyst Performance Comparison" subtitle="Top analysts by volume and pass rate">
+            <QCPerformanceRadar qcData={qcByAnalyst} stats={taskStats} />
           </SectionCard>
 
-          {/* QC Pass Rate Over Time */}
-          <SectionCard title="QC Pass Rate Trend" subtitle="Monthly pass rate">
-            <div style={{ height: '280px' }}>
-              <QCPassRateLineChart data={data.qcPassRatePerMonth || []} height="260px" onPointClick={() => {}} activeFilters={[]} />
-            </div>
-          </SectionCard>
-
-          {/* QC by Analyst Table */}
-          <SectionCard title="Individual QPCI Measures Performance" subtitle={`${qcByAnalyst.length} analysts`} noPadding>
+          {/* QC Table */}
+          <SectionCard title="Individual QC Performance" subtitle={`${qcByAnalyst.length} analysts`} noPadding>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               <table className="data-table" style={{ fontSize: '0.8rem' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
                   <tr>
                     <th>Employee</th>
                     <th>Role</th>
-                    <th className="number">QC Pass Rate</th>
+                    <th className="number">Pass Rate</th>
                     <th className="number">Open</th>
                     <th className="number">Closed</th>
                     <th className="number">Passed</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {qcByAnalyst.sort((a: any, b: any) => b.passRate - a.passRate).map((a: any, idx: number) => (
+                  {qcByAnalyst.sort((a: any, b: any) => (b.passRate || 0) - (a.passRate || 0)).map((a: any, idx: number) => (
                     <tr key={idx}>
                       <td style={{ fontWeight: 500 }}>{a.name}</td>
                       <td>{a.role || '-'}</td>
@@ -525,67 +482,63 @@ export default function TasksPage() {
 
       {/* TASKS SECTION */}
       {activeSection === 'tasks' && (
-        <div>
-          <SectionCard 
-            title={`All Tasks (${filteredTasks.length})`} 
-            subtitle="Click any row for details"
-            headerRight={
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <div style={{ position: 'relative' }}>
-                  <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                    style={{ padding: '6px 10px 6px 32px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem', width: '180px' }} />
-                  <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-                </div>
-                {statusFilter !== 'all' && (
-                  <button onClick={() => setStatusFilter('all')} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--pinnacle-teal)', background: 'rgba(64,224,208,0.1)', color: 'var(--pinnacle-teal)', fontSize: '0.75rem', cursor: 'pointer' }}>
-                    {statusFilter} ×
-                  </button>
-                )}
+        <SectionCard 
+          title={`Task Explorer (${filteredTasks.length})`} 
+          subtitle="Click any row for details"
+          headerRight={
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                <input type="text" placeholder="Search tasks..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ padding: '6px 10px 6px 32px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem', width: '200px' }} />
+                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
-            }
-            noPadding
-          >
-            <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  <tr>
-                    <th>Task</th>
-                    <th>Project</th>
-                    <th>Assignee</th>
-                    <th>Status</th>
-                    <th className="number">Planned</th>
-                    <th className="number">Actual</th>
-                    <th className="number">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTasks.slice(0, 100).map((t: any, idx: number) => {
-                    const pc = t.percentComplete || 0;
-                    const isOver = (t.actualHours || 0) > (t.baselineHours || Infinity);
-                    const isSelected = selectedTask?.name === t.name;
-                    return (
-                      <tr key={idx} onClick={() => setSelectedTask(t)} style={{ cursor: 'pointer', background: isSelected ? 'rgba(64,224,208,0.1)' : 'transparent' }}>
-                        <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || t.taskName || '-'}</td>
-                        <td style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.projectName || t.project_name || '-'}</td>
-                        <td>{t.assignedResource || t.assignedTo || '-'}</td>
-                        <td>
-                          <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: pc >= 100 ? 'rgba(16,185,129,0.15)' : pc > 0 ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)', color: pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280' }}>
-                            {pc >= 100 ? 'Done' : pc > 0 ? 'Active' : 'Pending'}
-                          </span>
-                        </td>
-                        <td className="number">{t.baselineHours || t.budgetHours || 0}</td>
-                        <td className="number" style={{ color: isOver ? '#EF4444' : 'inherit', fontWeight: isOver ? 600 : 400 }}>{t.actualHours || 0}</td>
-                        <td className="number">{pc}%</td>
-                      </tr>
-                    );
-                  })}
-                  {filteredTasks.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No tasks found</td></tr>}
-                </tbody>
-              </table>
-              {filteredTasks.length > 100 && <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Showing 100 of {filteredTasks.length} tasks</div>}
+              {statusFilter !== 'all' && (
+                <button onClick={() => setStatusFilter('all')} style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--pinnacle-teal)', background: 'rgba(64,224,208,0.1)', color: 'var(--pinnacle-teal)', fontSize: '0.75rem', cursor: 'pointer' }}>{statusFilter} x</button>
+              )}
             </div>
-          </SectionCard>
-        </div>
+          }
+          noPadding
+        >
+          <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+            <table className="data-table" style={{ fontSize: '0.8rem' }}>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
+                <tr>
+                  <th>Task</th>
+                  <th>Project</th>
+                  <th>Assignee</th>
+                  <th>Status</th>
+                  <th className="number">Planned</th>
+                  <th className="number">Actual</th>
+                  <th className="number">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTasks.slice(0, 100).map((t: any, idx: number) => {
+                  const pc = t.percentComplete || 0;
+                  const isOver = (t.actualHours || 0) > (t.baselineHours || Infinity);
+                  const isSelected = selectedTask?.name === t.name;
+                  return (
+                    <tr key={idx} onClick={() => setSelectedTask(t)} style={{ cursor: 'pointer', background: isSelected ? 'rgba(64,224,208,0.1)' : 'transparent' }}>
+                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || t.taskName || '-'}</td>
+                      <td style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.projectName || t.project_name || '-'}</td>
+                      <td>{t.assignedResource || t.assignedTo || '-'}</td>
+                      <td>
+                        <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: pc >= 100 ? 'rgba(16,185,129,0.15)' : pc > 0 ? 'rgba(59,130,246,0.15)' : 'rgba(107,114,128,0.15)', color: pc >= 100 ? '#10B981' : pc > 0 ? '#3B82F6' : '#6B7280' }}>
+                          {pc >= 100 ? 'Done' : pc > 0 ? 'Active' : 'Pending'}
+                        </span>
+                      </td>
+                      <td className="number">{t.baselineHours || t.budgetHours || 0}</td>
+                      <td className="number" style={{ color: isOver ? '#EF4444' : 'inherit', fontWeight: isOver ? 600 : 400 }}>{t.actualHours || 0}</td>
+                      <td className="number">{pc}%</td>
+                    </tr>
+                  );
+                })}
+                {filteredTasks.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No tasks found</td></tr>}
+              </tbody>
+            </table>
+            {filteredTasks.length > 100 && <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Showing 100 of {filteredTasks.length} tasks</div>}
+          </div>
+        </SectionCard>
       )}
     </div>
   );

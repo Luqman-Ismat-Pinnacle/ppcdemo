@@ -302,9 +302,9 @@ function CapacityPanel({ isOpen, onClose, sprint, teamMembers, onUpdateMember }:
 
   return (
     <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: '420px',
+      position: 'fixed', top: '60px', right: 0, bottom: 0, width: '420px',
       background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border-color)',
-      zIndex: 1000, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.3)'
+      zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.3)'
     }}>
       <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -686,8 +686,8 @@ export default function SprintPlanningPage() {
       </div>
 
       {/* Capacity Panel */}
+      {showCapacity && <div style={{ position: 'fixed', top: '60px', left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }} onClick={() => setShowCapacity(false)} />}
       <CapacityPanel isOpen={showCapacity} onClose={() => setShowCapacity(false)} sprint={selectedIteration} teamMembers={teamMembers} onUpdateMember={handleUpdateMember} />
-      {showCapacity && <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={() => setShowCapacity(false)} />}
     </div>
   );
 }
