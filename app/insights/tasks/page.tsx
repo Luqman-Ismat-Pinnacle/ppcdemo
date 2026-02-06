@@ -1524,6 +1524,9 @@ export default function TasksPage() {
     });
   }, [crossFilter, sankeyGroupBy]);
 
+  // Check for empty data state
+  const hasData = (data.tasks?.length ?? 0) > 0;
+
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
       <div style={{ marginBottom: '1rem' }}>
@@ -1534,6 +1537,48 @@ export default function TasksPage() {
         </p>
       </div>
 
+      {/* Empty State */}
+      {!hasData && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '4rem 2rem',
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center',
+        }}>
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}>
+            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+            <path d="M9 12h6" />
+            <path d="M9 16h6" />
+          </svg>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Task Data Available</h2>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>
+            Import project data from the Data Management page to view task operations, hours breakdown, and quality metrics.
+          </p>
+          <a
+            href="/project-controls/data-management"
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'var(--pinnacle-teal)',
+              color: '#000',
+              borderRadius: '8px',
+              textDecoration: 'none',
+              fontWeight: 600,
+              fontSize: '0.9rem',
+            }}
+          >
+            Go to Data Management
+          </a>
+        </div>
+      )}
+
+      {hasData && (
+      <>
       {/* Cross-Filter Bar */}
       <CrossFilterBar
         filters={crossFilter.activeFilters}
@@ -1767,6 +1812,8 @@ export default function TasksPage() {
           selectedTask={selectedTask}
           setSelectedTask={setSelectedTask}
         />
+      )}
+      </>
       )}
     </div>
   );

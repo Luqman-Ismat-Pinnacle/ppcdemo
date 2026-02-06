@@ -1964,6 +1964,9 @@ export default function OverviewPage() {
     return { spi: spiVar, cpi: cpiVar, hours: hoursVar, progress: progressVar };
   }, [metricsHistory, variancePeriod, healthMetrics]);
 
+  // Check for empty data state
+  const hasData = (data.tasks?.length ?? 0) > 0 || (data.projects?.length ?? 0) > 0;
+
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
       {/* Header */}
@@ -1975,6 +1978,47 @@ export default function OverviewPage() {
         </p>
       </div>
 
+      {/* Empty State */}
+      {!hasData && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '4rem 2rem',
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center',
+        }}>
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18" />
+            <path d="M9 21V9" />
+          </svg>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Data Available</h2>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>
+            Import project data from the Data Management page to view portfolio analytics, health metrics, and insights.
+          </p>
+          <a
+            href="/project-controls/data-management"
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'var(--pinnacle-teal)',
+              color: '#000',
+              borderRadius: '8px',
+              textDecoration: 'none',
+              fontWeight: 600,
+              fontSize: '0.9rem',
+            }}
+          >
+            Go to Data Management
+          </a>
+        </div>
+      )}
+
+      {hasData && (
+      <>
       {/* Cross-Filter Bar */}
       <CrossFilterBar
         filters={crossFilter.activeFilters}
@@ -2550,6 +2594,8 @@ export default function OverviewPage() {
             <LinchpinAnalysis tasks={data.tasks || []} milestones={milestones} onClick={(params) => handleChartClick(params, 'dependency')} />
           </SectionCard>
         </div>
+      )}
+      </>
       )}
     </div>
   );
