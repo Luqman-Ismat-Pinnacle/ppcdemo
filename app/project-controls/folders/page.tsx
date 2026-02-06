@@ -895,10 +895,10 @@ export default function DocumentsPage() {
 
       let hoursWithWorkday: any[];
       try {
-        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, workday_phase, workday_task, description');
+        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, workday_phase, workday_task, description, charge_code');
       } catch (e) {
         addLog('info', '[Matching] workday_phase/workday_task columns not available, using phase_id fallback');
-        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, description');
+        hoursWithWorkday = await fetchAllUnassigned('id, project_id, phase_id, description, charge_code');
       }
       
       if (!hoursWithWorkday || hoursWithWorkday.length === 0) {
@@ -962,11 +962,17 @@ export default function DocumentsPage() {
       // Normalize for matching: lowercase and trim
       const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
       
-      // Match hours: check if task name is contained in hour description
+      // Parse charge code - delimiter is ">" (e.g., "Project > Phase > Task Name")
+      const parseChargeCode = (chargeCode: string): string[] => {
+        if (!chargeCode) return [];
+        return chargeCode.split('>').map(s => s.trim()).filter(Boolean);
+      };
+      
+      // Match hours: use chargeCode (delimiter ">") to find task
       let tasksMatched = 0;
       let unitsMatched = 0;
       let noProjectId = 0;
-      let noDescription = 0;
+      let noChargeCode = 0;
       let noTasksForProject = 0;
       const hoursToUpdate: { id: string; task_id: string }[] = [];
       const unmatchedSamples: string[] = [];
@@ -976,9 +982,14 @@ export default function DocumentsPage() {
           noProjectId++;
           continue;
         }
-        const description = normalize(h.description || '');
-        if (!description) {
-          noDescription++;
+        
+        // Use chargeCode for matching (moved from description column)
+        // If chargeCode is empty, fall back to description
+        const chargeCodeRaw = h.charge_code || h.chargeCode || h.description || '';
+        const chargeCodeParts = parseChargeCode(chargeCodeRaw);
+        
+        if (chargeCodeParts.length === 0) {
+          noChargeCode++;
           continue;
         }
         
@@ -987,20 +998,43 @@ export default function DocumentsPage() {
         if (projectTasks.length === 0) {
           noTasksForProject++;
           if (unmatchedSamples.length < 3) {
-            unmatchedSamples.push(`No tasks for project "${h.project_id}": desc="${description.substring(0, 50)}..."`);
+            unmatchedSamples.push(`No tasks for project "${h.project_id}": chargeCode="${chargeCodeRaw.substring(0, 50)}..."`);
           }
           continue;
         }
         
-        // Check if any task name is contained in the description
+        // Try to match from most specific to least specific part of charge code
+        // e.g., "Project > Phase > Task Name" - try Task Name first, then Phase
         let matched = false;
+        
+        // Strategy 1: Match last segment (most specific - usually the task name)
+        for (let i = chargeCodeParts.length - 1; i >= 0 && !matched; i--) {
+          const segment = normalize(chargeCodeParts[i]);
+          if (!segment) continue;
+          
+          for (const task of projectTasks) {
+            const taskName = normalize(task.name);
+            // Exact match or segment contains task name or task name contains segment
+            if (taskName && (segment === taskName || segment.includes(taskName) || taskName.includes(segment))) {
+              hoursToUpdate.push({ id: h.id, task_id: task.id });
+              tasksMatched++;
+              matched = true;
+              break;
+            }
+          }
+        }
+        
+        if (matched) continue;
+        
+        // Strategy 2: Check if any task name appears anywhere in the full charge code
+        const fullChargeCode = normalize(chargeCodeRaw);
         for (const task of projectTasks) {
           const taskName = normalize(task.name);
-          if (taskName && description.includes(taskName)) {
+          if (taskName && fullChargeCode.includes(taskName)) {
             hoursToUpdate.push({ id: h.id, task_id: task.id });
             tasksMatched++;
             matched = true;
-            break; // Take first match
+            break;
           }
         }
         
@@ -1010,7 +1044,7 @@ export default function DocumentsPage() {
         const projectUnits = unitsByProject.get(h.project_id) || [];
         for (const unit of projectUnits) {
           const unitName = normalize(unit.name);
-          if (unitName && description.includes(unitName)) {
+          if (unitName && fullChargeCode.includes(unitName)) {
             hoursToUpdate.push({ id: h.id, task_id: unit.id });
             unitsMatched++;
             matched = true;
@@ -1021,12 +1055,12 @@ export default function DocumentsPage() {
         // Log unmatched sample
         if (!matched && unmatchedSamples.length < 5) {
           const taskNames = projectTasks.slice(0, 3).map((t: any) => `"${t.name}"`).join(', ');
-          unmatchedSamples.push(`desc="${description.substring(0, 60)}..." vs tasks: ${taskNames}${projectTasks.length > 3 ? '...' : ''}`);
+          unmatchedSamples.push(`chargeCode="${chargeCodeRaw.substring(0, 60)}..." vs tasks: ${taskNames}${projectTasks.length > 3 ? '...' : ''}`);
         }
       }
       
       // Log detailed breakdown
-      addLog('info', `[Matching] Breakdown: noProjectId=${noProjectId}, noDescription=${noDescription}, noTasksForProject=${noTasksForProject}`);
+      addLog('info', `[Matching] Breakdown: noProjectId=${noProjectId}, noChargeCode=${noChargeCode}, noTasksForProject=${noTasksForProject}`);
       if (unmatchedSamples.length > 0) {
         addLog('info', `[Matching] Sample unmatched comparisons:`);
         unmatchedSamples.forEach((s, i) => addLog('info', `  ${i + 1}. ${s}`));
@@ -1039,7 +1073,7 @@ export default function DocumentsPage() {
       
       const totalMatched = tasksMatched + unitsMatched;
       const stillUnmatched = hoursWithWorkday.length - totalMatched;
-      addLog('success', `[Matching] Matched: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched (by checking if task name is in description)`);
+      addLog('success', `[Matching] Matched: ${tasksMatched} to tasks, ${unitsMatched} to units, ${stillUnmatched} unmatched (using chargeCode with ">" delimiter)`);
       
       // Aggregate actual hours and cost to tasks
       addLog('info', '[Aggregation] Aggregating actual hours and cost to tasks...');

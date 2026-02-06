@@ -1843,7 +1843,7 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
   const tasks = data.tasks || [];
 
   if (hours.length === 0) {
-    return { weeks: [], byWorker: [], byPhase: [], byTask: [] };
+    return { weeks: [], byWorker: [], byPhase: [], byTask: [], byChargeType: [] };
   }
 
   // Build Maps for O(1) lookups instead of O(n) find() calls
@@ -1910,6 +1910,7 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     role: string;
     project: string;
     chargeCode: string;
+    chargeType: string;
     portfolio: string;
     customer: string;
     site: string;
@@ -1917,7 +1918,8 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     total: number
   }>();
   const phaseHours = new Map<string, { name: string; project: string; data: number[]; total: number }>();
-  const taskHours = new Map<string, { name: string; project: string; data: number[]; total: number }>();
+  const taskHours = new Map<string, { name: string; project: string; chargeType: string; data: number[]; total: number }>();
+  const chargeTypeHours = new Map<string, { name: string; data: number[]; total: number }>();
 
   // Single pass through hours - calculate all aggregations at once (byWorker, byPhase, byTask)
   hours.forEach((h: any) => {
@@ -1942,17 +1944,20 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     const role = emp?.jobTitle || emp?.role || emp?.job_title || 'N/A';
     const projectName = proj?.name || h.projectId || h.project_id || 'Unknown';
     const chargeCode = h.chargeCode || h.charge_code || task?.chargeCode || 'EX';
+    // chargeType from Workday: EX=Execution, QC=Quality, CR=Customer Relations
+    const chargeType = h.chargeType || h.charge_type || 'EX';
     const portfolio = proj?.portfolioName || proj?.portfolio_name || '';
     const customer = proj?.customerName || proj?.customer_name || '';
     const site = proj?.siteName || proj?.site_name || '';
 
-    const workerKey = `${workerName}-${projectName}-${chargeCode}`;
+    const workerKey = `${workerName}-${projectName}-${chargeCode}-${chargeType}`;
     if (!workerHours.has(workerKey)) {
       workerHours.set(workerKey, {
         name: workerName,
         role,
         project: projectName,
         chargeCode,
+        chargeType,
         portfolio,
         customer,
         site,
@@ -1981,13 +1986,14 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     phaseData.data[weekIdx] += hoursValue;
     phaseData.total += hoursValue;
 
-    // Update byTask aggregation
+    // Update byTask aggregation (with chargeType)
     const taskName = task?.name || h.taskId || 'Unknown Task';
-    const taskKey = `${taskName}-${projectName}`;
+    const taskKey = `${taskName}-${projectName}-${chargeType}`;
     if (!taskHours.has(taskKey)) {
       taskHours.set(taskKey, {
         name: taskName,
         project: projectName,
+        chargeType,
         data: new Array(rawWeeks.length).fill(0),
         total: 0
       });
@@ -1995,13 +2001,31 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     const taskData = taskHours.get(taskKey)!;
     taskData.data[weekIdx] += hoursValue;
     taskData.total += hoursValue;
+
+    // Update byChargeType aggregation
+    // Map Workday codes to display names: EX=Execution, QC=Quality, CR=Customer Relations
+    const chargeTypeLabel = chargeType === 'EX' ? 'Execution' : 
+                            chargeType === 'QC' ? 'Quality' : 
+                            chargeType === 'CR' ? 'Customer Relations' : 
+                            chargeType || 'Other';
+    if (!chargeTypeHours.has(chargeTypeLabel)) {
+      chargeTypeHours.set(chargeTypeLabel, {
+        name: chargeTypeLabel,
+        data: new Array(rawWeeks.length).fill(0),
+        total: 0
+      });
+    }
+    const ctData = chargeTypeHours.get(chargeTypeLabel)!;
+    ctData.data[weekIdx] += hoursValue;
+    ctData.total += hoursValue;
   });
 
   return {
     weeks,
     byWorker: [...workerHours.values()],
     byPhase: [...phaseHours.values()],
-    byTask: [...taskHours.values()]
+    byTask: [...taskHours.values()],
+    byChargeType: [...chargeTypeHours.values()]
   };
 }
 

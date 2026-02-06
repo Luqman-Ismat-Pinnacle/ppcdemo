@@ -248,12 +248,71 @@ function HoursEfficiencyChart({ data, onBarClick }: { data: any; onBarClick?: (p
 }
 
 // ===== HOURS BY WORK TYPE CHART (with scroll/zoom) =====
-function HoursByWorkTypeChart({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
+// Uses real chargeType data from hours entries (EX=Execution, QC=Quality, CR=Customer Relations)
+function HoursByWorkTypeChart({ tasks, byChargeType, onClick }: { tasks: any[]; byChargeType?: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const workTypes = ['Execution', 'QC', 'Review', 'Admin', 'Rework'];
-    const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444'];
-    const taskList = tasks.slice(0, 80).map((t: any) => t.name || t.taskName || 'Task');
+    // Get work types from real data or fall back to standard types
+    const chargeTypeData = byChargeType || [];
+    const hasRealData = chargeTypeData.length > 0;
     
+    // Standard work types with colors
+    const workTypeColors: Record<string, string> = {
+      'Execution': '#3B82F6',
+      'Quality': '#10B981',
+      'Customer Relations': '#8B5CF6',
+      'QC': '#10B981',
+      'EX': '#3B82F6',
+      'CR': '#8B5CF6',
+      'Other': '#6B7280'
+    };
+    
+    if (hasRealData) {
+      // Use real chargeType aggregation
+      const workTypes = chargeTypeData.map((ct: any) => ct.name);
+      const colors = workTypes.map((wt: string) => workTypeColors[wt] || '#6B7280');
+      const totalHours = chargeTypeData.reduce((s: number, ct: any) => s + (ct.total || 0), 0);
+      
+      return {
+        backgroundColor: 'transparent',
+        tooltip: { 
+          trigger: 'item', 
+          backgroundColor: 'rgba(22,27,34,0.95)', 
+          borderColor: 'var(--border-color)', 
+          textStyle: { color: '#fff', fontSize: 11 },
+          formatter: (params: any) => {
+            const pct = totalHours > 0 ? Math.round((params.value / totalHours) * 100) : 0;
+            return `${params.name}: ${params.value.toLocaleString()} hrs (${pct}%)`;
+          }
+        },
+        legend: { data: workTypes, bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 11 } },
+        series: [{
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: true,
+          itemStyle: { borderRadius: 4, borderColor: 'var(--bg-card)', borderWidth: 2 },
+          label: { 
+            show: true, 
+            color: 'var(--text-primary)', 
+            formatter: '{b}\n{c} hrs',
+            fontSize: 11
+          },
+          emphasis: { 
+            label: { show: true, fontSize: 14, fontWeight: 'bold' },
+            itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
+          },
+          data: chargeTypeData.map((ct: any, i: number) => ({
+            name: ct.name,
+            value: Math.round(ct.total || 0),
+            itemStyle: { color: colors[i] }
+          }))
+        }]
+      };
+    }
+    
+    // Fallback: stacked bar by task (old behavior)
+    const workTypes = ['Execution', 'Quality', 'Customer Relations'];
+    const colors = workTypes.map(wt => workTypeColors[wt]);
+    const taskList = tasks.slice(0, 80).map((t: any) => t.name || t.taskName || 'Task');
     const initialEnd = taskList.length > 25 ? Math.round((25 / taskList.length) * 100) : 100;
     
     return {
@@ -294,23 +353,26 @@ function HoursByWorkTypeChart({ tasks, onClick }: { tasks: any[]; onClick?: (par
         data: taskList.map((_, idx) => {
           const task = tasks[idx];
           const total = task?.actualHours || 0;
-          const ratios = [0.5, 0.2, 0.1, 0.1, 0.1];
+          // Without real chargeType data, estimate distribution
+          const ratios = [0.7, 0.2, 0.1]; // Execution, QC, CR
           return Math.round(total * ratios[i] * 10) / 10;
         }),
       })),
     };
-  }, [tasks]);
+  }, [tasks, byChargeType]);
 
-  if (!tasks.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No task data</div>;
+  if (!tasks.length && !(byChargeType?.length)) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No task data</div>;
   return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
 // ===== ENHANCED SANKEY WITH 5-LEVEL BREAKDOWN =====
+// Updated to use real chargeType data from Workday (EX, QC, CR)
 function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: any; laborData: any; tasks: any[]; groupBy: SankeyGroupBy; onClick?: (params: any) => void }) {
   const [sankeyDepth, setSankeyDepth] = useState<'simple' | 'detailed' | 'full'>('detailed');
   
   const option: EChartsOption = useMemo(() => {
     const workers = laborData.byWorker || [];
+    const byChargeType = laborData.byChargeType || [];
     const nodes: any[] = [];
     const links: any[] = [];
     const nodeSet = new Set<string>();
@@ -329,6 +391,17 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
     
     const totalHours = stats.totalHours || 1;
     const completeRatio = stats.overallProgress / 100;
+    
+    // Color mapping for charge types
+    const chargeTypeColors: Record<string, string> = {
+      'Execution': '#3B82F6',
+      'Quality': '#10B981',
+      'Customer Relations': '#8B5CF6',
+      'EX': '#3B82F6',
+      'QC': '#10B981',
+      'CR': '#8B5CF6',
+      'Other': '#6B7280'
+    };
     
     // Level 1: Source
     addNode('Total Hours', '#3B82F6');
@@ -372,13 +445,21 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
         ].filter(i => i.hours > 0);
         break;
       case 'workType':
-        primaryItems = [
-          { name: 'Execution', hours: totalHours * 0.55, color: '#3B82F6' },
-          { name: 'QC', hours: totalHours * 0.2, color: '#10B981' },
-          { name: 'Review', hours: totalHours * 0.1, color: '#8B5CF6' },
-          { name: 'Admin', hours: totalHours * 0.1, color: '#F59E0B' },
-          { name: 'Rework', hours: totalHours * 0.05, color: '#EF4444' },
-        ];
+        // Use real chargeType data from Workday if available
+        if (byChargeType.length > 0) {
+          primaryItems = byChargeType.map((ct: any) => ({
+            name: ct.name,
+            hours: ct.total || 0,
+            color: chargeTypeColors[ct.name] || '#6B7280',
+          })).filter((i: any) => i.hours > 0);
+        } else {
+          // Fallback to estimated distribution
+          primaryItems = [
+            { name: 'Execution', hours: totalHours * 0.7, color: '#3B82F6' },
+            { name: 'Quality', hours: totalHours * 0.2, color: '#10B981' },
+            { name: 'Customer Relations', hours: totalHours * 0.1, color: '#8B5CF6' },
+          ];
+        }
         break;
     }
     
@@ -1548,9 +1629,10 @@ export default function TasksPage() {
             />
           </SectionCard>
 
-          <SectionCard title="Hours by Work Type" subtitle="Click bars to filter - Stacked breakdown: Execution, QC, Review, Admin, Rework">
+          <SectionCard title="Hours by Work Type" subtitle="Click to filter - Real charge types from Workday (EX=Execution, QC=Quality, CR=Customer Relations)">
             <HoursByWorkTypeChart 
               tasks={tasks}
+              byChargeType={data.laborBreakdown?.byChargeType}
               onClick={(params) => handleChartClick(params, 'workType')}
             />
           </SectionCard>

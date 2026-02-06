@@ -717,6 +717,11 @@ export interface HourEntry {
   phaseId?: string | null;
   userStoryId?: string | null;
   chargeCode: string;
+  /** 
+   * Charge type from Workday: EX (Execution), QC (Quality), CR (Customer Relations)
+   * Used for work type breakdown visualizations 
+   */
+  chargeType?: 'EX' | 'QC' | 'CR' | string | null;
   date: string;
   hours: number;
   description: string;

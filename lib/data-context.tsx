@@ -63,7 +63,7 @@ function createEmptyData(): SampleData {
     milestonesTable: [],
     deliverables: [],
     deliverablesTracker: [],
-    laborBreakdown: { weeks: [], byWorker: [], byPhase: [], byTask: [] },
+    laborBreakdown: { weeks: [], byWorker: [], byPhase: [], byTask: [], byChargeType: [] },
     laborChartData: { months: [], byEmployee: {} },
     qcTransactionByGate: [],
     qcTransactionByProject: [],
