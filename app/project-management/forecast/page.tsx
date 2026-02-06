@@ -1268,27 +1268,36 @@ export default function ForecastPage() {
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
   const [activeTab, setActiveTab] = useState<'overview' | 'margin' | 'cascade' | 'scenarios'>('margin');
 
-  // Derive project state
+  // Check for empty data state
+  const hasData = (data.tasks?.length ?? 0) > 0 || (data.projects?.length ?? 0) > 0 || (data.hours?.length ?? 0) > 0;
+
+  // Derive project state (no fallback values - use 0 when empty)
   const projectState: ProjectState = useMemo(() => {
     const projects = data.projects || [];
     const hours = data.hours || [];
     const milestoneStatus = data.milestoneStatus || [];
+    const tasks = data.tasks || [];
     
-    const totalBudget = projects.reduce((sum, p) => sum + (p.baselineCost || 0), 0) || 100000;
-    const totalActual = hours.reduce((sum, h) => sum + (h.hours || 0), 0) * 75 || 50000;
-    const percentComplete = milestoneStatus.find(m => m.name === 'Completed')?.value || 50;
-    const earnedValue = totalBudget > 0 ? totalBudget * (percentComplete / 100) : 50000;
-    const plannedValue = totalBudget > 0 ? totalBudget * 0.5 : 50000;
-    const cpi = totalActual > 0 ? earnedValue / totalActual : 1.0;
-    const spi = plannedValue > 0 ? earnedValue / plannedValue : 1.0;
+    // Calculate from real data only - no fallbacks
+    const totalBudget = projects.reduce((sum, p) => sum + (p.baselineCost || p.budgetCost || 0), 0) ||
+                        tasks.reduce((sum, t) => sum + ((t.baselineHours || 0) * 75), 0);
+    const totalActual = hours.reduce((sum, h) => sum + ((h.hours || 0) * 75), 0) ||
+                        tasks.reduce((sum, t) => sum + ((t.actualHours || 0) * 75), 0);
+    const taskPc = tasks.reduce((sum, t) => sum + (t.percentComplete || 0), 0);
+    const percentComplete = tasks.length > 0 ? Math.round(taskPc / tasks.length) : 
+                           (milestoneStatus.find(m => m.name === 'Completed')?.value || 0);
+    const earnedValue = totalBudget * (percentComplete / 100);
+    const plannedValue = totalBudget * 0.5; // Assume 50% planned at this point
+    const cpi = totalActual > 0 ? earnedValue / totalActual : 0;
+    const spi = plannedValue > 0 ? earnedValue / plannedValue : 0;
 
     return {
       bac: totalBudget,
       ac: totalActual,
       ev: earnedValue,
       pv: plannedValue,
-      cpi: Math.max(0.5, Math.min(2.0, cpi)),
-      spi: Math.max(0.5, Math.min(2.0, spi)),
+      cpi: cpi > 0 ? Math.max(0.5, Math.min(2.0, cpi)) : 0,
+      spi: spi > 0 ? Math.max(0.5, Math.min(2.0, spi)) : 0,
       remainingDuration: 45
     };
   }, [data]);
@@ -1361,8 +1370,51 @@ export default function ForecastPage() {
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
             PO vs Costs | FTE Constraints | Cascade Impact | Monte Carlo Scenarios
           </p>
+        </div>
       </div>
 
+      {/* Empty State */}
+      {!hasData && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '4rem 2rem',
+          background: 'var(--bg-card)',
+          borderRadius: '16px',
+          border: '1px solid var(--border-color)',
+          textAlign: 'center',
+        }}>
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}>
+            <path d="M3 3v18h18" />
+            <path d="M18 17V9" />
+            <path d="M13 17V5" />
+            <path d="M8 17v-3" />
+          </svg>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Forecast Data Available</h2>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>
+            Import project data from the Data Management page to run forecasting scenarios, profit margin analysis, and cascade impact simulations.
+          </p>
+          <a
+            href="/project-controls/data-management"
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'var(--pinnacle-teal)',
+              color: '#000',
+              borderRadius: '8px',
+              textDecoration: 'none',
+              fontWeight: 600,
+              fontSize: '0.9rem',
+            }}
+          >
+            Go to Data Management
+          </a>
+        </div>
+      )}
+
+      {hasData && (
+      <>
         {/* Tab Selector */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
           {[
@@ -1374,22 +1426,21 @@ export default function ForecastPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-                      style={{ 
+              style={{ 
                 padding: '0.5rem 1rem',
                 borderRadius: '8px',
                 border: 'none',
                 background: activeTab === tab.key ? 'var(--pinnacle-teal)' : 'transparent',
                 color: activeTab === tab.key ? '#000' : 'var(--text-secondary)',
                 fontSize: '0.8rem',
-                        fontWeight: 600,
+                fontWeight: 600,
                 cursor: 'pointer',
-                      }}
-                    >
+              }}
+            >
               {tab.label}
             </button>
           ))}
-                    </div>
-      </div>
+        </div>
 
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
@@ -1704,6 +1755,8 @@ export default function ForecastPage() {
             </div>
           </SectionCard>
           </div>
+      )}
+      </>
       )}
     </div>
   );
