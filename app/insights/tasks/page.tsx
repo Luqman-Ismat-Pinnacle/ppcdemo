@@ -22,6 +22,12 @@ import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-en
 import useCrossFilter, { CrossFilter, applyCrossFilters } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
 
+/** Safe number formatting - returns '0' for NaN/Infinity */
+const sn = (v: any, decimals = 2): string => {
+  const n = Number(v);
+  return isFinite(n) ? n.toFixed(decimals) : '0';
+};
+
 type SankeyGroupBy = 'role' | 'phase' | 'project' | 'status' | 'workType';
 
 // ===== CROSS-FILTER BAR =====
@@ -552,7 +558,7 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
         confine: true,
         formatter: (params: any) => {
           if (params.dataType === 'edge') {
-            const pct = ((params.data.value / totalHours) * 100).toFixed(1);
+            const pct = sn((params.data.value / totalHours) * 100, 1);
             return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
               Hours: ${params.data.value.toLocaleString()}<br/>
               Share: ${pct}%`;
@@ -701,7 +707,7 @@ function ExecutiveSection({ tasks, stats }: { tasks: any[]; stats: any }) {
       backgroundColor: 'rgba(22,27,34,0.95)', 
       borderColor: 'var(--border-color)', 
       textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (p: any) => `<strong>${p.data[2]}</strong><br/>Impact: ${p.data[1].toFixed(1)}<br/>Probability: ${(p.data[0] * 100).toFixed(0)}%`,
+      formatter: (p: any) => `<strong>${p.data[2]}</strong><br/>Impact: ${sn(p.data[1], 1)}<br/>Probability: ${sn(p.data[0] * 100, 0)}%`,
     },
     grid: { left: 50, right: 20, top: 20, bottom: 50 },
     xAxis: { 
@@ -1408,8 +1414,10 @@ export default function TasksPage() {
       else if (status.includes('block') || status.includes('hold')) blocked++;
       else if (pc > 0 || status.includes('progress')) inProgress++;
       else notStarted++;
-      totalPlanned += t.baselineHours || t.budgetHours || 0;
-      totalActual += t.actualHours || 0;
+      const bh = Number(t.baselineHours ?? t.budgetHours ?? 0);
+      const ah = Number(t.actualHours ?? 0);
+      totalPlanned += isFinite(bh) ? bh : 0;
+      totalActual += isFinite(ah) ? ah : 0;
     });
     const qcByName = data.qcByNameAndRole || [];
     const totalClosed = qcByName.reduce((s: number, q: any) => s + (q.closedCount || 0), 0);
@@ -1704,7 +1712,7 @@ export default function TasksPage() {
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
                           <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>{w.name}</span>
-                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{w.total?.toFixed(0)}h</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{sn(w.total, 0)}h</span>
                         </div>
                         <div style={{ height: '4px', background: 'var(--bg-tertiary)', borderRadius: '2px' }}>
                           <div style={{ height: '100%', width: `${(w.total / maxHours) * 100}%`, background: 'linear-gradient(90deg, var(--pinnacle-teal), #CDDC39)', borderRadius: '2px' }} />
@@ -1778,7 +1786,7 @@ export default function TasksPage() {
                     <tr key={idx}>
                       <td style={{ fontWeight: 500 }}>{a.name}</td>
                       <td>{a.role || '-'}</td>
-                      <td className="number" style={{ fontWeight: 600, color: (a.passRate || 0) >= 90 ? '#10B981' : '#F59E0B' }}>{typeof a.passRate === 'number' ? `${a.passRate.toFixed(1)}%` : '0%'}</td>
+                      <td className="number" style={{ fontWeight: 600, color: (a.passRate || 0) >= 90 ? '#10B981' : '#F59E0B' }}>{`${sn(a.passRate, 1)}%`}</td>
                       <td className="number">{a.openCount || 0}</td>
                       <td className="number">{a.closedCount || 0}</td>
                       <td className="number">{a.passCount || 0}</td>

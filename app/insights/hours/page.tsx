@@ -16,6 +16,12 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+
+/** Safe number formatting - returns '0' for NaN/Infinity */
+const sn = (v: any, decimals = 1): string => {
+  const n = Number(v);
+  return isFinite(n) ? n.toFixed(decimals) : '0';
+};
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
 import QualityHoursChart from '@/components/charts/QualityHoursChart';
@@ -381,9 +387,10 @@ export default function HoursPage() {
     return sortedLaborBreakdown.map((w) => {
       const row: Record<string, string | number> = { name: w.name, role: w.role, project: w.project };
       tableWeeks.forEach((week, i) => {
-        row[formatWeekLabel(week)] = typeof (w.data || [])[i] === 'number' ? Number((w.data || [])[i].toFixed(1)) : 0;
+        const val = (w.data || [])[i];
+        row[formatWeekLabel(week)] = typeof val === 'number' && isFinite(val) ? Number(val.toFixed(1)) : 0;
       });
-      row.Total = typeof w.total === 'number' ? Number(w.total.toFixed(1)) : 0;
+      row.Total = typeof w.total === 'number' && isFinite(w.total) ? Number(w.total.toFixed(1)) : 0;
       return row;
     });
   }, [sortedLaborBreakdown, tableWeeks]);
@@ -392,9 +399,10 @@ export default function HoursPage() {
     return sortedRoleRows.map((r) => {
       const row: Record<string, string | number> = { role: r.role, Employees: r.employeeCount };
       tableWeeks.forEach((week, i) => {
-        row[formatWeekLabel(week)] = typeof r.weeklyTotals[i] === 'number' ? Number(r.weeklyTotals[i].toFixed(1)) : 0;
+        const val = r.weeklyTotals[i];
+        row[formatWeekLabel(week)] = typeof val === 'number' && isFinite(val) ? Number(val.toFixed(1)) : 0;
       });
-      row.Total = typeof r.total === 'number' ? Number(r.total.toFixed(1)) : 0;
+      row.Total = typeof r.total === 'number' && isFinite(r.total) ? Number(r.total.toFixed(1)) : 0;
       return row;
     });
   }, [sortedRoleRows, tableWeeks]);
@@ -435,7 +443,7 @@ export default function HoursPage() {
             <div className="metric-label">Total Hours</div>
             <div className="metric-value">
               {data?.taskHoursEfficiency?.actualWorked?.length
-                ? data.taskHoursEfficiency.actualWorked.reduce((a: number, b: number) => a + b, 0).toLocaleString()
+                ? data.taskHoursEfficiency.actualWorked.reduce((a: number, b: number) => a + (isFinite(b) ? b : 0), 0).toLocaleString()
                 : '—'}
             </div>
             {varianceEnabled && varianceData.totalHours ? (
@@ -905,11 +913,11 @@ export default function HoursPage() {
                     <td>{worker.project}</td>
                     {(worker.data || []).map((hours, weekIdx) => (
                       <td key={weekIdx} className="number" style={{ color: hours > 40 ? '#F59E0B' : 'inherit' }}>
-                        {typeof hours === 'number' ? hours.toFixed(1) : '0.0'}
+                        {typeof hours === 'number' && isFinite(hours) ? hours.toFixed(1) : '0.0'}
                       </td>
                     ))}
                     <td className="number" style={{ fontWeight: 600, color: 'var(--pinnacle-teal)' }}>
-                      {typeof worker.total === 'number' ? worker.total.toFixed(1) : '0.0'}
+                      {typeof worker.total === 'number' && isFinite(worker.total) ? worker.total.toFixed(1) : '0.0'}
                     </td>
                   </tr>
                 ))
@@ -1107,11 +1115,11 @@ export default function HoursPage() {
                       <td>{row.employeeCount}</td>
                       {row.weeklyTotals.map((hours, weekIdx) => (
                         <td key={weekIdx} className="number" style={{ color: hours > 160 ? '#F59E0B' : 'inherit' }}>
-                          {hours.toFixed(1)}
+                          {sn(hours)}
                         </td>
                       ))}
                       <td className="number" style={{ fontWeight: 600, color: 'var(--pinnacle-teal)' }}>
-                        {row.total.toFixed(1)}
+                        {sn(row.total)}
                       </td>
                     </tr>
                   );

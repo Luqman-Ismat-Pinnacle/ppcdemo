@@ -25,6 +25,12 @@
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+
+/** Safe number formatting - returns '0' for NaN/Infinity */
+const sn = (v: any, decimals = 2): string => {
+  const n = Number(v);
+  return isFinite(n) ? n.toFixed(decimals) : '0';
+};
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
 import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
@@ -223,7 +229,7 @@ function PortfolioCommandCenter({
             <div style={{ flex: 1 }}>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>{s.label}</span>
               <span style={{ fontSize: '1.1rem', fontWeight: 700, color: getStatusColor(s.status) }}>
-                {s.key === 'quality' ? `${s.value}%` : s.value.toFixed(2)}
+                {s.key === 'quality' ? `${s.value}%` : sn(s.value)}
               </span>
             </div>
           </div>
@@ -394,7 +400,7 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
         confine: true,
         formatter: (params: any) => {
           if (params.dataType === 'edge') {
-            const pct = totalHours > 0 ? ((params.data.value / totalHours) * 100).toFixed(1) : '0';
+            const pct = totalHours > 0 ? sn((params.data.value / totalHours) * 100, 1) : '0';
             return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
               Value: ${params.data.value.toLocaleString()}<br/>
               ${params.data.hours ? `Hours: ${params.data.hours.toLocaleString()}` : `Share: ${pct}%`}`;
@@ -984,7 +990,7 @@ function EarnedValueSCurve({ tasks, sCurveData, onClick }: { tasks: any[]; sCurv
         { name: 'Actual Cost (AC)', type: 'line', data: ac, lineStyle: { color: ac[ac.length - 1] > ev[ev.length - 1] ? '#EF4444' : '#10B981', width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true },
       ],
       graphic: [
-        { type: 'text', right: 40, top: 10, style: { text: `SPI: ${spi.toFixed(2)} | CPI: ${cpi.toFixed(2)}`, fill: 'var(--text-muted)', fontSize: 11 } },
+        { type: 'text', right: 40, top: 10, style: { text: `SPI: ${sn(spi)} | CPI: ${sn(cpi)}`, fill: 'var(--text-muted)', fontSize: 11 } },
       ],
     };
   }, [tasks, sCurveData]);
@@ -1508,10 +1514,10 @@ function VarianceTrend({ label, current, previous, period }: { label: string; cu
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
         <span style={{ fontSize: '1.5rem', fontWeight: 800, color: isPositive ? '#10B981' : '#EF4444' }}>
-          {typeof safeC === 'number' ? (label === 'Hours' ? safeC.toLocaleString() : safeC.toFixed(2)) : safeC}
+          {typeof safeC === 'number' ? (label === 'Hours' ? (isFinite(safeC) ? safeC.toLocaleString() : '0') : sn(safeC)) : safeC}
         </span>
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          from {typeof safeP === 'number' ? (label === 'Hours' ? safeP.toLocaleString() : safeP.toFixed(2)) : safeP}
+          from {typeof safeP === 'number' ? (label === 'Hours' ? (isFinite(safeP) ? safeP.toLocaleString() : '0') : sn(safeP)) : safeP}
         </span>
       </div>
     </div>
@@ -1655,7 +1661,7 @@ function PerformanceQuadrantChart({ projectBreakdown, onClick }: { projectBreakd
       formatter: (params: any) => {
         const p = projectBreakdown[params.dataIndex];
         if (!p) return '';
-        return `<strong>${p.name}</strong><br/>SPI: ${p.spi.toFixed(2)}<br/>CPI: ${p.cpi.toFixed(2)}`;
+        return `<strong>${p.name}</strong><br/>SPI: ${sn(p.spi)}<br/>CPI: ${sn(p.cpi)}`;
       },
     },
     grid: { left: 55, right: 35, top: 40, bottom: 60 },
@@ -1838,9 +1844,12 @@ export default function OverviewPage() {
       
       const p = projectMap.get(projectId)!;
       p.tasks++;
-      p.baselineHours += t.baselineHours || t.budgetHours || 0;
-      p.actualHours += t.actualHours || 0;
-      p.percentComplete += t.percentComplete || 0;
+      const bh = Number(t.baselineHours ?? t.budgetHours ?? 0);
+      const ah = Number(t.actualHours ?? 0);
+      const pc = Number(t.percentComplete ?? 0);
+      p.baselineHours += isFinite(bh) ? bh : 0;
+      p.actualHours += isFinite(ah) ? ah : 0;
+      p.percentComplete += isFinite(pc) ? pc : 0;
       if ((t.status || '').toLowerCase().includes('complete') || (t.percentComplete || 0) >= 100) p.completed++;
     });
 
@@ -1865,9 +1874,12 @@ export default function OverviewPage() {
     let totalBaselineHours = 0, totalActualHours = 0, totalPercentComplete = 0, itemCount = 0;
 
     tasks.forEach((task: any) => {
-      totalBaselineHours += task.baselineHours || task.budgetHours || 0;
-      totalActualHours += task.actualHours || 0;
-      totalPercentComplete += task.percentComplete || 0;
+      const bh = Number(task.baselineHours ?? task.budgetHours ?? 0);
+      const ah = Number(task.actualHours ?? 0);
+      const pc = Number(task.percentComplete ?? 0);
+      totalBaselineHours += isFinite(bh) ? bh : 0;
+      totalActualHours += isFinite(ah) ? ah : 0;
+      totalPercentComplete += isFinite(pc) ? pc : 0;
       itemCount++;
     });
 
@@ -2078,7 +2090,7 @@ export default function OverviewPage() {
                   <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>SPI</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: drillDownItem.relatedData.spi >= 1 ? '#10B981' : '#EF4444' }}>
-                      {drillDownItem.relatedData.spi.toFixed(2)}
+                      {sn(drillDownItem.relatedData.spi)}
                     </div>
                   </div>
                 )}
@@ -2086,7 +2098,7 @@ export default function OverviewPage() {
                   <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>CPI</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, color: drillDownItem.relatedData.cpi >= 1 ? '#10B981' : '#EF4444' }}>
-                      {drillDownItem.relatedData.cpi.toFixed(2)}
+                      {sn(drillDownItem.relatedData.cpi)}
                     </div>
                   </div>
                 )}
@@ -2157,8 +2169,8 @@ export default function OverviewPage() {
               <>
                 <div><span style={{ color: 'var(--text-muted)' }}>Tasks:</span> <strong>{selectedProject.tasks}</strong></div>
                 <div><span style={{ color: 'var(--text-muted)' }}>Completed:</span> <strong>{selectedProject.completed}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>SPI:</span> <strong style={{ color: selectedProject.spi >= 1 ? '#10B981' : '#EF4444' }}>{selectedProject.spi.toFixed(2)}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>CPI:</span> <strong style={{ color: selectedProject.cpi >= 1 ? '#10B981' : '#EF4444' }}>{selectedProject.cpi.toFixed(2)}</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>SPI:</span> <strong style={{ color: selectedProject.spi >= 1 ? '#10B981' : '#EF4444' }}>{sn(selectedProject.spi)}</strong></div>
+                <div><span style={{ color: 'var(--text-muted)' }}>CPI:</span> <strong style={{ color: selectedProject.cpi >= 1 ? '#10B981' : '#EF4444' }}>{sn(selectedProject.cpi)}</strong></div>
                 <div><span style={{ color: 'var(--text-muted)' }}>Progress:</span> <strong>{selectedProject.percentComplete}%</strong></div>
                 <div><span style={{ color: 'var(--text-muted)' }}>Variance:</span> <strong style={{ color: selectedProject.variance <= 0 ? '#10B981' : '#EF4444' }}>{selectedProject.variance > 0 ? '+' : ''}{selectedProject.variance}%</strong></div>
               </>
@@ -2247,8 +2259,8 @@ export default function OverviewPage() {
                       <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{p.name}</td>
                       <td className="number">{p.tasks}</td>
                       <td className="number">{p.completed}</td>
-                      <td className="number" style={{ color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{p.spi.toFixed(2)}</td>
-                      <td className="number" style={{ color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{p.cpi.toFixed(2)}</td>
+                      <td className="number" style={{ color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{sn(p.spi)}</td>
+                      <td className="number" style={{ color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{sn(p.cpi)}</td>
                       <td className="number">{p.percentComplete}%</td>
                       <td className="number">{p.baselineHours.toLocaleString()}</td>
                       <td className="number">{p.actualHours.toLocaleString()}</td>
@@ -2464,7 +2476,7 @@ export default function OverviewPage() {
               border: '1px solid rgba(16, 185, 129, 0.3)',
             }}>
               <div style={{ fontSize: '0.65rem', color: '#10B981', textTransform: 'uppercase', fontWeight: 600 }}>Schedule Performance</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.spi >= 1 ? '#10B981' : '#EF4444' }}>{healthMetrics.spi.toFixed(2)}</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.spi >= 1 ? '#10B981' : '#EF4444' }}>{sn(healthMetrics.spi)}</div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>SPI Index</div>
             </div>
             <div style={{ 
@@ -2474,7 +2486,7 @@ export default function OverviewPage() {
               border: '1px solid rgba(59, 130, 246, 0.3)',
             }}>
               <div style={{ fontSize: '0.65rem', color: '#3B82F6', textTransform: 'uppercase', fontWeight: 600 }}>Cost Performance</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.cpi >= 1 ? '#10B981' : '#EF4444' }}>{healthMetrics.cpi.toFixed(2)}</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.cpi >= 1 ? '#10B981' : '#EF4444' }}>{sn(healthMetrics.cpi)}</div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>CPI Index</div>
             </div>
             <div style={{ 
