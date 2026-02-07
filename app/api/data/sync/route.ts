@@ -1,23 +1,23 @@
 /**
  * @fileoverview Data Sync API Route
  * 
- * Server-side route for syncing data to Supabase using service role key.
- * This ensures proper permissions for write operations.
+ * Server-side route for syncing data to the database.
+ * Supports PostgreSQL (primary) and Supabase (fallback).
  * 
  * @module app/api/data/sync
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { isPostgresConfigured, query as pgQuery, withClient } from '@/lib/postgres';
 import { DATA_KEY_TO_TABLE } from '@/lib/supabase';
 
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
 
-function toSupabaseFormat(obj: any): any {
+function toDbFormat(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(toSupabaseFormat);
+  if (Array.isArray(obj)) return obj.map(toDbFormat);
 
   const result: any = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -27,243 +27,277 @@ function toSupabaseFormat(obj: any): any {
   return result;
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Null-like values to convert to actual NULL
+const nullLike = new Set(['', '-', 'null', 'undefined', 'n/a']);
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json(
-        { success: false, error: 'Supabase configuration missing' },
-        { status: 500 }
-      );
+function cleanRecord(record: any, tableName: string) {
+  const cleaned: any = {};
+  cleaned.id = record.id || '';
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'id') continue;
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      const lowered = trimmed.toLowerCase();
+      if (nullLike.has(lowered)) {
+        cleaned[key] = null;
+      } else if (key.endsWith('Id') && trimmed === '') {
+        cleaned[key] = null;
+      } else {
+        cleaned[key] = trimmed.length > 255 ? trimmed.substring(0, 255) : trimmed;
+      }
+    } else if (key.endsWith('Id') && (value === '' || value === null || value === undefined)) {
+      cleaned[key] = null;
+    } else {
+      cleaned[key] = value;
+    }
+  }
+
+  const formatted = toDbFormat(cleaned);
+
+  // tasks table: strip employee_id to avoid schema issues
+  if (tableName === 'tasks' && 'employee_id' in formatted) {
+    delete formatted.employee_id;
+  }
+
+  return formatted;
+}
+
+// ============================================================================
+// POSTGRESQL OPERATIONS
+// ============================================================================
+
+async function pgUpsert(tableName: string, records: any[]): Promise<{ success: boolean; count: number; error?: string }> {
+  if (records.length === 0) return { success: true, count: 0 };
+
+  try {
+    let totalCount = 0;
+    // Process in batches of 50 to avoid param limits
+    const BATCH = 50;
+    for (let i = 0; i < records.length; i += BATCH) {
+      const batch = records.slice(i, i + BATCH);
+      const columns = Object.keys(batch[0]);
+      const values: any[] = [];
+      const rowPlaceholders: string[] = [];
+
+      batch.forEach((row, rowIdx) => {
+        const placeholders = columns.map((col, colIdx) => {
+          values.push(row[col] !== undefined ? row[col] : null);
+          return `$${rowIdx * columns.length + colIdx + 1}`;
+        });
+        rowPlaceholders.push(`(${placeholders.join(', ')})`);
+      });
+
+      const updateCols = columns
+        .filter(c => c !== 'id')
+        .map(c => `${c} = EXCLUDED.${c}`)
+        .join(', ');
+
+      const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES ${rowPlaceholders.join(', ')} ON CONFLICT (id) DO UPDATE SET ${updateCols}`;
+
+      await pgQuery(sql, values);
+      totalCount += batch.length;
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false },
-    });
+    return { success: true, count: totalCount };
+  } catch (err: any) {
+    console.error(`[Sync] PostgreSQL upsert error for ${tableName}:`, err.message);
+    return { success: false, count: 0, error: err.message };
+  }
+}
 
+async function pgDelete(tableName: string, ids: string[]): Promise<{ success: boolean; count: number; error?: string }> {
+  if (ids.length === 0) return { success: true, count: 0 };
+  try {
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+    await pgQuery(`DELETE FROM ${tableName} WHERE id IN (${placeholders})`, ids);
+    return { success: true, count: ids.length };
+  } catch (err: any) {
+    return { success: false, count: 0, error: err.message };
+  }
+}
+
+async function pgDeleteByProjectId(tableName: string, projectId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await pgQuery(`DELETE FROM ${tableName} WHERE project_id = $1`, [projectId]);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function pgUpdate(tableName: string, id: string, updates: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const keys = Object.keys(updates).filter(k => k !== 'id');
+    if (keys.length === 0) return { success: true };
+    const setClauses = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const values = [id, ...keys.map(k => updates[k])];
+    await pgQuery(`UPDATE ${tableName} SET ${setClauses} WHERE id = $1`, values);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ============================================================================
+// SUPABASE FALLBACK
+// ============================================================================
+
+async function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) return null;
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
+}
+
+// ============================================================================
+// ROUTE HANDLER
+// ============================================================================
+
+export async function POST(req: NextRequest) {
+  try {
+    const usePostgres = isPostgresConfigured();
     const body = await req.json();
     const { dataKey, records, operation, projectId, storagePath, healthScore, healthCheckJson } = body;
 
     if (!dataKey) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request: dataKey required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid request: dataKey required' }, { status: 400 });
     }
 
     const tableName = DATA_KEY_TO_TABLE[dataKey];
     if (!tableName) {
-      return NextResponse.json(
-        { success: false, error: `Unknown data key: ${dataKey}` },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: `Unknown data key: ${dataKey}` }, { status: 400 });
     }
 
-    // Delete all rows for a project (used before MPP import so only MPP hierarchy exists, no Workday extras)
+    // ---- Operation: deleteByProjectId ----
     if (operation === 'deleteByProjectId' && projectId != null && projectId !== '') {
-      const pid = String(projectId);
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('project_id', pid);
-
-      if (error) {
-        console.error(`Error deleting by project_id from ${tableName}:`, error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      if (usePostgres) {
+        const result = await pgDeleteByProjectId(tableName, String(projectId));
+        if (!result.success) return NextResponse.json(result, { status: 500 });
+        return NextResponse.json({ success: true });
       }
+      const supabase = await getSupabaseClient();
+      if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      const { error } = await supabase.from(tableName).delete().eq('project_id', String(projectId));
+      if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
       return NextResponse.json({ success: true });
     }
 
-    // Mark one MPP document as the current version for a project (clear others; set project_id if doc had none)
+    // ---- Operation: setCurrentMpp ----
     if (operation === 'setCurrentMpp' && dataKey === 'projectDocuments' && projectId != null && projectId !== '' && storagePath) {
       const pid = String(projectId);
       const path = String(storagePath).trim();
-      const { error: clearError } = await supabase
-        .from('project_documents')
-        .update({ is_current_version: false })
-        .eq('project_id', pid)
-        .eq('document_type', 'MPP');
-      if (clearError) {
-        console.error('Error clearing current MPP:', clearError);
-        return NextResponse.json({ success: false, error: clearError.message }, { status: 500 });
+
+      if (usePostgres) {
+        await pgQuery(
+          "UPDATE project_documents SET is_current_version = false WHERE project_id = $1 AND document_type = 'MPP'",
+          [pid]
+        );
+        await pgQuery(
+          "UPDATE project_documents SET project_id = $1, is_current_version = true WHERE storage_path = $2 AND document_type = 'MPP'",
+          [pid, path]
+        );
+        return NextResponse.json({ success: true });
       }
-      // Match by storage_path so we find the doc even if it was saved with project_id null at upload
-      const { error: setError } = await supabase
-        .from('project_documents')
-        .update({ project_id: pid, is_current_version: true })
-        .eq('storage_path', path)
-        .eq('document_type', 'MPP');
-      if (setError) {
-        console.error('Error setting current MPP:', setError);
-        return NextResponse.json({ success: false, error: setError.message }, { status: 500 });
-      }
+      const supabase = await getSupabaseClient();
+      if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      await supabase.from('project_documents').update({ is_current_version: false }).eq('project_id', pid).eq('document_type', 'MPP');
+      await supabase.from('project_documents').update({ project_id: pid, is_current_version: true }).eq('storage_path', path).eq('document_type', 'MPP');
       return NextResponse.json({ success: true });
     }
 
-    // Update project_document health (by storage_path) after MPXJ health check
+    // ---- Operation: updateDocumentHealth ----
     if (operation === 'updateDocumentHealth' && dataKey === 'projectDocuments' && storagePath != null && storagePath !== '') {
       const path = String(storagePath).trim();
       const updates: Record<string, unknown> = {};
       if (healthScore != null && healthScore !== '') updates.health_score = Number(healthScore);
       if (healthCheckJson != null) updates.health_check_json = healthCheckJson;
-      if (Object.keys(updates).length === 0) {
+      if (Object.keys(updates).length === 0) return NextResponse.json({ success: true });
+
+      if (usePostgres) {
+        const keys = Object.keys(updates);
+        const setClauses = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+        const values = [path, ...keys.map(k => updates[k])];
+        await pgQuery(`UPDATE project_documents SET ${setClauses} WHERE storage_path = $1`, values);
         return NextResponse.json({ success: true });
       }
-      const { error } = await supabase
-        .from('project_documents')
-        .update(updates)
-        .eq('storage_path', path);
-      if (error) {
-        console.error('Error updating document health:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-      }
+      const supabase = await getSupabaseClient();
+      if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      await supabase.from('project_documents').update(updates).eq('storage_path', path);
       return NextResponse.json({ success: true });
     }
 
     if (!Array.isArray(records)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid request: records array required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid request: records array required' }, { status: 400 });
     }
 
-    // Handle Delete Operation
+    // ---- Operation: delete ----
     if (operation === 'delete') {
       const idsToDelete = records.map((r: any) => typeof r === 'string' ? r : r.id).filter(Boolean);
-      if (idsToDelete.length === 0) {
-        return NextResponse.json({ success: true, count: 0 });
+      if (idsToDelete.length === 0) return NextResponse.json({ success: true, count: 0 });
+
+      if (usePostgres) {
+        const result = await pgDelete(tableName, idsToDelete);
+        if (!result.success) return NextResponse.json(result, { status: 500 });
+        return NextResponse.json({ success: true, count: idsToDelete.length });
       }
-
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .in('id', idsToDelete);
-
-      if (error) {
-        console.error(`Error deleting from ${tableName}:`, error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-      }
-
+      const supabase = await getSupabaseClient();
+      if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      const { error } = await supabase.from(tableName).delete().in('id', idsToDelete);
+      if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
       return NextResponse.json({ success: true, count: idsToDelete.length });
     }
 
-    // Handle Replace Operation (Clear and insert)
+    // ---- Operation: replace ----
     if (operation === 'replace') {
-      // Use a transaction if possible, otherwise delete all and insert
-      // For now, delete all and insert
-      await supabase.from(tableName).delete().neq('id', 'temp_id_impossible');
-      // Then fall through to insert
-    }
-
-    if (records.length === 0) {
-      return NextResponse.json({ success: true, count: 0 });
-    }
-
-    // Convert to snake_case and clean data
-    const nullLike = new Set(['', '-', 'null', 'undefined', 'n/a']);
-    const cleanedRecords = records.map((record: any) => {
-      const cleaned: any = {};
-
-      // Ensure id is set
-      cleaned.id = record.id || '';
-
-      // Process all fields
-      for (const [key, value] of Object.entries(record)) {
-        if (key === 'id') continue;
-
-        if (typeof value === 'string') {
-          const trimmed = value.trim();
-          const lowered = trimmed.toLowerCase();
-          if (nullLike.has(lowered)) {
-            cleaned[key] = null;
-          } else if (key.endsWith('Id') && trimmed === '') {
-            cleaned[key] = null;
-          } else {
-            // Truncate string fields to prevent database errors
-            cleaned[key] = trimmed.length > 255 ? trimmed.substring(0, 255) : trimmed;
-          }
-        } else if (key.endsWith('Id') && (value === '' || value === null || value === undefined)) {
-          cleaned[key] = null;
-        } else {
-          cleaned[key] = value;
-        }
+      if (usePostgres) {
+        await pgQuery(`DELETE FROM ${tableName} WHERE id IS NOT NULL`);
+      } else {
+        const supabase = await getSupabaseClient();
+        if (supabase) await supabase.from(tableName).delete().neq('id', 'temp_id_impossible');
       }
-
-      const formatted = toSupabaseFormat(cleaned);
-
-      // tasks table has assigned_resource_id, not employee_id - strip employee_id to avoid schema cache error
-      if (tableName === 'tasks' && 'employee_id' in formatted) {
-        delete formatted.employee_id;
-      }
-
-      return formatted;
-    });
-
-    // Handle Update Operation (partial update without upsert)
-    if (operation === 'update') {
-      // For projects table, use direct update to avoid name constraint
-      if (tableName === 'projects') {
-        const { data, error } = await supabase
-          .from(tableName)
-          .update(cleanedRecords[0])
-          .eq('id', cleanedRecords[0].id)
-          .select();
-
-        if (error) {
-          console.error(`Error updating ${dataKey} to ${tableName}:`, error);
-          return NextResponse.json(
-            {
-              success: false,
-              count: 0,
-              error: error.message || 'Unknown error',
-              details: error.details || error.hint || undefined,
-            },
-            { status: 500 }
-          );
-        }
-
-        return NextResponse.json({
-          success: true,
-          count: data?.length || 0,
-        });
-      }
+      // fall through to upsert
     }
 
-    // Upsert records
-    const { data, error } = await supabase
-      .from(tableName)
-      .upsert(cleanedRecords, { onConflict: 'id' })
-      .select();
+    if (records.length === 0) return NextResponse.json({ success: true, count: 0 });
 
-    if (error) {
-      console.error(`Error syncing ${dataKey} to ${tableName}:`, error);
-      return NextResponse.json(
-        {
-          success: false,
-          count: 0,
-          error: error.message || 'Unknown error',
-          details: error.details || error.hint || undefined,
-        },
-        { status: 500 }
-      );
+    // Clean records
+    const cleanedRecords = records.map((r: any) => cleanRecord(r, tableName));
+
+    // ---- Operation: update (single record) ----
+    if (operation === 'update' && tableName === 'projects') {
+      if (usePostgres) {
+        const rec = cleanedRecords[0];
+        const id = rec.id;
+        delete rec.id;
+        const result = await pgUpdate(tableName, id, rec);
+        if (!result.success) return NextResponse.json({ success: false, count: 0, error: result.error }, { status: 500 });
+        return NextResponse.json({ success: true, count: 1 });
+      }
+      const supabase = await getSupabaseClient();
+      if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      const { data, error } = await supabase.from(tableName).update(cleanedRecords[0]).eq('id', cleanedRecords[0].id).select();
+      if (error) return NextResponse.json({ success: false, count: 0, error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, count: data?.length || 0 });
     }
 
-    return NextResponse.json({
-      success: true,
-      count: data?.length || 0,
-    });
+    // ---- Default: upsert ----
+    if (usePostgres) {
+      const result = await pgUpsert(tableName, cleanedRecords);
+      if (!result.success) return NextResponse.json({ success: false, count: 0, error: result.error }, { status: 500 });
+      return NextResponse.json({ success: true, count: result.count });
+    }
+
+    const supabase = await getSupabaseClient();
+    if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+    const { data, error } = await supabase.from(tableName).upsert(cleanedRecords, { onConflict: 'id' }).select();
+    if (error) return NextResponse.json({ success: false, count: 0, error: error.message, details: error.details || error.hint }, { status: 500 });
+    return NextResponse.json({ success: true, count: data?.length || 0 });
 
   } catch (error: any) {
     console.error('Sync error:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        count: 0,
-        error: error.message || 'Unknown error occurred',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, count: 0, error: error.message || 'Unknown error occurred' }, { status: 500 });
   }
 }

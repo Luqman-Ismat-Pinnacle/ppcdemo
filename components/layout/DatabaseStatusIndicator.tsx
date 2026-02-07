@@ -211,7 +211,7 @@ export default function DatabaseStatusIndicator() {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Supabase:</span>
+              <span style={{ color: 'var(--text-muted)' }}>Database:</span>
               <span style={{ color: status.details.supabaseConfigured ? '#10B981' : '#EF4444' }}>
                 {status.details.supabaseConfigured ? 'Configured' : 'Not Configured'}
               </span>

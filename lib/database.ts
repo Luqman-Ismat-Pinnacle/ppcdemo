@@ -2,50 +2,33 @@
  * @fileoverview Database Client Configuration
  * 
  * This module provides a unified database client that works with:
- * - Supabase (primary for development/testing)
- * - PostgreSQL (commented out for now; retained for production switch)
+ * - PostgreSQL (primary for production / Azure)
+ * - Supabase (fallback for legacy development)
  * - Mock client (when no database is configured)
  * 
  * @module lib/database
  */
 
-// import { Pool, PoolClient } from 'pg';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { getPool, isPostgresConfigured, withClient } from './postgres';
 import { fromSupabaseFormat } from './supabase';
 
-// Database configuration
-// const DATABASE_URL = process.env.DATABASE_URL;
+// Supabase fallback (only used if DATABASE_URL is not set)
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Database type
-type DatabaseType = 'supabase' | 'mock';
-// type DatabaseType = 'postgresql' | 'supabase' | 'mock';
+type DatabaseType = 'postgresql' | 'supabase' | 'mock';
 
-let dbType: DatabaseType = 'mock';
-// let pgPool: Pool | null = null;
-let supabaseClient: SupabaseClient | null = null;
+function detectDatabaseType(): DatabaseType {
+  if (isPostgresConfigured()) return 'postgresql';
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) return 'supabase';
+  return 'mock';
+}
 
-// Initialize database connection
-// PostgreSQL connection (commented out - use Supabase for now)
-// if (DATABASE_URL) {
-//   dbType = 'postgresql';
-//   pgPool = new Pool({
-//     connectionString: DATABASE_URL,
-//     ssl: { rejectUnauthorized: false },
-//     max: 10,
-//     idleTimeoutMillis: 30000,
-//     connectionTimeoutMillis: 10000,
-//   });
-// } else if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-//   dbType = 'supabase';
-//   supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-// }
+const dbType = detectDatabaseType();
 
-// Supabase connection (enabled)
-if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  dbType = 'supabase';
-  supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Log which database is active
+if (typeof process !== 'undefined') {
+  console.log(`[Database] Using ${dbType} database`);
 }
 
 /**
@@ -63,24 +46,162 @@ export function getDatabaseType(): DatabaseType {
 }
 
 /**
+ * Convert snake_case object to camelCase
+ */
+function toCamelCase(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+function convertRowToCamelCase<T>(row: Record<string, unknown>): T {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    result[toCamelCase(key)] = value;
+  }
+  return result as T;
+}
+
+function convertArrayToCamelCase<T>(arr: any[]): T[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.map(item => convertRowToCamelCase<T>(item));
+}
+
+/**
  * Fetch all data from database
  */
 export async function fetchAllData() {
-  // if (dbType === 'postgresql' && pgPool) {
-  //   return await fetchFromPostgreSQL();
-  // }
-  if (dbType === 'supabase' && supabaseClient) {
+  if (dbType === 'postgresql') {
+    return await fetchFromPostgreSQL();
+  }
+  if (dbType === 'supabase') {
     return await fetchFromSupabase();
   }
   return null;
 }
 
-/** Supabase enforces max 1000 rows per request. Fetch in pages and concatenate. */
+// ============================================================================
+// POSTGRESQL IMPLEMENTATION
+// ============================================================================
+
+async function fetchFromPostgreSQL() {
+  return withClient(async (client) => {
+    // Helper to safely query a table (returns empty array if table doesn't exist)
+    const safeQuery = async (sql: string): Promise<any[]> => {
+      try {
+        const result = await client.query(sql);
+        return result.rows;
+      } catch (err: any) {
+        // Table doesn't exist - return empty array
+        if (err.code === '42P01') return [];
+        console.error(`[Database] Query error: ${sql.substring(0, 80)}...`, err.message);
+        return [];
+      }
+    };
+
+    const [
+      portfolios,
+      customers,
+      sites,
+      units,
+      projects,
+      subprojects,
+      phases,
+      tasks,
+      qcTasks,
+      employees,
+      hourEntries,
+      milestones,
+      deliverables,
+      sprints,
+      sprintTasks,
+      epics,
+      features,
+      userStories,
+      forecasts,
+      snapshots,
+      changeRequests,
+      changeImpacts,
+      projectHealth,
+      projectLog,
+      projectDocuments,
+      taskDependencies,
+      taskQuantityEntries,
+      visualSnapshots,
+    ] = await Promise.all([
+      safeQuery('SELECT * FROM portfolios ORDER BY name'),
+      safeQuery('SELECT * FROM customers ORDER BY name'),
+      safeQuery('SELECT * FROM sites ORDER BY name'),
+      safeQuery('SELECT * FROM units ORDER BY name'),
+      safeQuery('SELECT * FROM projects ORDER BY name'),
+      safeQuery('SELECT * FROM subprojects ORDER BY name'),
+      safeQuery('SELECT * FROM phases ORDER BY name'),
+      safeQuery('SELECT * FROM tasks ORDER BY name'),
+      safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
+      safeQuery('SELECT * FROM employees ORDER BY name'),
+      safeQuery('SELECT * FROM hour_entries ORDER BY date'),
+      safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, due_date, created_at)"),
+      safeQuery('SELECT * FROM deliverables ORDER BY name'),
+      safeQuery('SELECT * FROM sprints ORDER BY start_date'),
+      safeQuery('SELECT * FROM sprint_tasks'),
+      safeQuery('SELECT * FROM epics ORDER BY name'),
+      safeQuery('SELECT * FROM features ORDER BY name'),
+      safeQuery('SELECT * FROM user_stories ORDER BY name'),
+      safeQuery('SELECT * FROM forecasts ORDER BY forecast_date DESC'),
+      safeQuery('SELECT * FROM snapshots ORDER BY snapshot_date DESC'),
+      safeQuery('SELECT * FROM change_requests ORDER BY submitted_at DESC'),
+      safeQuery('SELECT * FROM change_impacts'),
+      safeQuery('SELECT * FROM project_health ORDER BY updated_at DESC'),
+      safeQuery('SELECT * FROM project_log ORDER BY entry_date DESC'),
+      safeQuery('SELECT * FROM project_documents ORDER BY uploaded_at DESC'),
+      safeQuery('SELECT * FROM task_dependencies'),
+      safeQuery('SELECT * FROM task_quantity_entries ORDER BY date'),
+      safeQuery('SELECT * FROM visual_snapshots ORDER BY snapshot_date DESC'),
+    ]);
+
+    console.log(`[Database] PostgreSQL fetch complete — ${hourEntries.length} hour entries, ${tasks.length} tasks, ${projects.length} projects, ${employees.length} employees`);
+
+    return {
+      hierarchyNodes: [],
+      workItems: [],
+      portfolios: convertArrayToCamelCase(portfolios),
+      customers: convertArrayToCamelCase(customers),
+      sites: convertArrayToCamelCase(sites),
+      units: convertArrayToCamelCase(units),
+      projects: convertArrayToCamelCase(projects),
+      subprojects: convertArrayToCamelCase(subprojects),
+      phases: convertArrayToCamelCase(phases),
+      tasks: convertArrayToCamelCase(tasks),
+      qctasks: convertArrayToCamelCase(qcTasks),
+      employees: convertArrayToCamelCase(employees),
+      hours: convertArrayToCamelCase(hourEntries),
+      milestones: convertArrayToCamelCase(milestones),
+      deliverables: convertArrayToCamelCase(deliverables),
+      sprints: convertArrayToCamelCase(sprints),
+      sprintTasks: convertArrayToCamelCase(sprintTasks),
+      epics: convertArrayToCamelCase(epics),
+      features: convertArrayToCamelCase(features),
+      userStories: convertArrayToCamelCase(userStories),
+      forecasts: convertArrayToCamelCase(forecasts),
+      snapshots: convertArrayToCamelCase(snapshots),
+      visualSnapshots: convertArrayToCamelCase(visualSnapshots),
+      changeRequests: convertArrayToCamelCase(changeRequests),
+      changeImpacts: convertArrayToCamelCase(changeImpacts),
+      projectHealth: convertArrayToCamelCase(projectHealth),
+      projectLog: convertArrayToCamelCase(projectLog),
+      projectDocuments: convertArrayToCamelCase(projectDocuments),
+      taskDependencies: convertArrayToCamelCase(taskDependencies),
+      taskQuantityEntries: convertArrayToCamelCase(taskQuantityEntries),
+    };
+  });
+}
+
+// ============================================================================
+// SUPABASE FALLBACK IMPLEMENTATION
+// ============================================================================
+
 const PAGE_SIZE = 1000;
 const MAX_HOUR_ENTRIES = 100000;
 
-async function fetchAllHourEntries(): Promise<any[]> {
-  if (!supabaseClient) return [];
+async function fetchAllHourEntries(supabaseClient: any): Promise<any[]> {
   const all: any[] = [];
   let offset = 0;
   while (true) {
@@ -102,222 +223,87 @@ async function fetchAllHourEntries(): Promise<any[]> {
   return all;
 }
 
-// ============================================================================
-// POSTGRESQL CONNECTION CODE (COMMENTED OUT - FOR FUTURE USE)
-// ============================================================================
-// This section contains PostgreSQL connection code that can be enabled
-// when switching from Supabase to direct PostgreSQL connection
-// ============================================================================
-
-/**
- * Fetch data from Azure PostgreSQL (disabled while testing in Supabase)
- */
-// async function fetchFromPostgreSQL() {
-//   const client = await pgPool!.connect();
-//   try {
-//     const result = await Promise.all([
-//       client.query('SELECT * FROM portfolios ORDER BY name'),
-//       client.query('SELECT * FROM customers ORDER BY name'),
-//       client.query('SELECT * FROM sites ORDER BY name'),
-//       client.query('SELECT * FROM units ORDER BY name'),
-//       client.query('SELECT * FROM projects ORDER BY name'),
-//       client.query('SELECT * FROM subprojects ORDER BY name'),
-//       client.query('SELECT * FROM phases ORDER BY name'),
-//       client.query('SELECT * FROM tasks ORDER BY name'),
-//       client.query('SELECT * FROM qc_tasks ORDER BY name'),
-//       client.query('SELECT * FROM employees ORDER BY name'),
-//       client.query('SELECT * FROM hour_entries ORDER BY date'),
-//       client.query('SELECT * FROM milestones ORDER BY planned_date'),
-//       client.query('SELECT * FROM deliverables ORDER BY name'),
-//       client.query('SELECT * FROM sprints ORDER BY start_date'),
-//       client.query('SELECT * FROM sprint_tasks'),
-//       client.query('SELECT * FROM epics ORDER BY name'),
-//       client.query('SELECT * FROM features ORDER BY name'),
-//       client.query('SELECT * FROM user_stories ORDER BY name'),
-//       client.query('SELECT * FROM forecasts ORDER BY forecast_date DESC'),
-//       client.query('SELECT * FROM snapshots ORDER BY snapshot_date DESC'),
-//       client.query('SELECT * FROM change_requests ORDER BY submitted_at DESC'),
-//       client.query('SELECT * FROM change_impacts'),
-//       client.query('SELECT * FROM project_health ORDER BY updated_at DESC'),
-//       client.query('SELECT * FROM project_log ORDER BY entry_date DESC'),
-//       client.query('SELECT * FROM project_documents ORDER BY uploaded_at DESC'),
-//       client.query('SELECT * FROM task_quantity_entries ORDER BY date'),
-//     ]);
-
-//     return {
-//       portfolios: result[0].rows,
-//       customers: result[1].rows,
-//       sites: result[2].rows,
-//       units: result[3].rows,
-//       projects: result[4].rows,
-//       subprojects: result[5].rows,
-//       phases: result[6].rows,
-//       tasks: result[7].rows,
-//       qctasks: result[8].rows,
-//       employees: result[9].rows,
-//       hours: result[10].rows,
-//       milestones: result[11].rows,
-//       deliverables: result[12].rows,
-//       sprints: result[13].rows,
-//       sprintTasks: result[14].rows,
-//       epics: result[15].rows,
-//       features: result[16].rows,
-//       userStories: result[17].rows,
-//       forecasts: result[18].rows,
-//       snapshots: result[19].rows,
-//       changeRequests: result[20].rows,
-//       changeImpacts: result[21].rows,
-//       projectHealth: result[22].rows,
-//       projectLog: result[23].rows,
-//       projectDocuments: result[24].rows,
-//       taskDependencies: result[25].rows,
-//       taskQuantityEntries: result[26].rows,
-//     };
-//   } finally {
-//     client.release();
-//   }
-// }
-
-/**
- * Convert snake_case array to camelCase array
- */
-function convertArrayToCamelCase<T>(arr: any[]): T[] {
+function convertArrayFromSupabase<T>(arr: any[]): T[] {
   if (!Array.isArray(arr)) return [];
   return arr.map(item => fromSupabaseFormat<T>(item));
 }
 
 async function fetchFromSupabase() {
-  // Legacy tables hierarchy_nodes and work_items are no longer loaded (dropped in migration 20260201000000)
-  const hierarchyNodes = { data: null as any[] | null };
-  const workItems = { data: null as any[] | null };
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabaseClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
 
-  // IMPORTANT: The destructuring order MUST match the Promise.all query order!
-  const hourEntriesPromise = fetchAllHourEntries();
+  const hourEntriesPromise = fetchAllHourEntries(supabaseClient);
 
   const [
-    portfolios,        // 0: portfolios
-    customers,         // 1: customers
-    sites,             // 2: sites
-    units,             // 3: units
-    projects,          // 4: projects
-    subprojects,       // 5: subprojects
-    phases,            // 6: phases
-    tasks,             // 7: tasks
-    qcTasks,           // 8: qc_tasks
-    employees,         // 9: employees
-    milestones,        // 10: milestones
-    deliverables,      // 12: deliverables
-    sprints,           // 13: sprints
-    sprintTasks,       // 14: sprint_tasks
-    epics,             // 15: epics
-    features,          // 16: features
-    userStories,       // 17: user_stories
-    forecasts,         // 18: forecasts
-    snapshots,         // 19: snapshots
-    changeRequests,    // 20: change_requests
-    changeImpacts,     // 21: change_impacts
-    projectHealth,     // 22: project_health
-    projectLog,        // 23: project_log
-    projectDocuments,  // 24: project_documents
-    taskDependencies,  // 25: task_dependencies
-    taskQuantityEntries, // 26: task_quantity_entries
-    visualSnapshots,    // 27: visual_snapshots
+    portfolios, customers, sites, units, projects, subprojects,
+    phases, tasks, qcTasks, employees, milestones, deliverables,
+    sprints, sprintTasks, epics, features, userStories,
+    forecasts, snapshots, changeRequests, changeImpacts,
+    projectHealth, projectLog, projectDocuments,
+    taskDependencies, taskQuantityEntries, visualSnapshots,
   ] = await Promise.all([
-    supabaseClient!.from('portfolios').select('*').order('name'),           // 0
-    supabaseClient!.from('customers').select('*').order('name'),            // 1
-    supabaseClient!.from('sites').select('*').order('name'),                // 2
-    supabaseClient!.from('units').select('*').order('name'),                // 3
-    supabaseClient!.from('projects').select('*').order('name'),             // 4
-    supabaseClient!.from('subprojects').select('*').order('name'),          // 5
-    supabaseClient!.from('phases').select('*').order('name'),               // 6
-    supabaseClient!.from('tasks').select('*').order('name'),                // 7
-    supabaseClient!.from('qc_tasks').select('*').order('name'),             // 8 - FIXED: was task_dependencies
-    supabaseClient!.from('employees').select('*').order('name'),            // 9
-    supabaseClient!.from('milestones').select('*').order('planned_date'),   // 10
-    supabaseClient!.from('deliverables').select('*').order('name'),         // 12
-    supabaseClient!.from('sprints').select('*').order('start_date'),        // 13
-    supabaseClient!.from('sprint_tasks').select('*'),                       // 14
-    supabaseClient!.from('epics').select('*').order('name'),                // 15
-    supabaseClient!.from('features').select('*').order('name'),             // 16
-    supabaseClient!.from('user_stories').select('*').order('name'),         // 17
-    supabaseClient!.from('forecasts').select('*').order('forecast_date', { ascending: false }),   // 18
-    supabaseClient!.from('snapshots').select('*').order('snapshot_date', { ascending: false }),   // 19
-    supabaseClient!.from('change_requests').select('*').order('submitted_at', { ascending: false }), // 20
-    supabaseClient!.from('change_impacts').select('*'),                     // 21
-    supabaseClient!.from('project_health').select('*').order('updated_at', { ascending: false }), // 22
-    supabaseClient!.from('project_log').select('*').order('entry_date', { ascending: false }),    // 23
-    supabaseClient!.from('project_documents').select('*').order('uploaded_at', { ascending: false }), // 24
-    supabaseClient!.from('task_dependencies').select('*'),                  // 25 - Moved to end
-    supabaseClient!.from('task_quantity_entries').select('*').order('date'), // 26
-    supabaseClient!.from('visual_snapshots').select('*').order('snapshot_date', { ascending: false }), // 26
+    supabaseClient.from('portfolios').select('*').order('name'),
+    supabaseClient.from('customers').select('*').order('name'),
+    supabaseClient.from('sites').select('*').order('name'),
+    supabaseClient.from('units').select('*').order('name'),
+    supabaseClient.from('projects').select('*').order('name'),
+    supabaseClient.from('subprojects').select('*').order('name'),
+    supabaseClient.from('phases').select('*').order('name'),
+    supabaseClient.from('tasks').select('*').order('name'),
+    supabaseClient.from('qc_tasks').select('*').order('name'),
+    supabaseClient.from('employees').select('*').order('name'),
+    supabaseClient.from('milestones').select('*').order('planned_date'),
+    supabaseClient.from('deliverables').select('*').order('name'),
+    supabaseClient.from('sprints').select('*').order('start_date'),
+    supabaseClient.from('sprint_tasks').select('*'),
+    supabaseClient.from('epics').select('*').order('name'),
+    supabaseClient.from('features').select('*').order('name'),
+    supabaseClient.from('user_stories').select('*').order('name'),
+    supabaseClient.from('forecasts').select('*').order('forecast_date', { ascending: false }),
+    supabaseClient.from('snapshots').select('*').order('snapshot_date', { ascending: false }),
+    supabaseClient.from('change_requests').select('*').order('submitted_at', { ascending: false }),
+    supabaseClient.from('change_impacts').select('*'),
+    supabaseClient.from('project_health').select('*').order('updated_at', { ascending: false }),
+    supabaseClient.from('project_log').select('*').order('entry_date', { ascending: false }),
+    supabaseClient.from('project_documents').select('*').order('uploaded_at', { ascending: false }),
+    supabaseClient.from('task_dependencies').select('*'),
+    supabaseClient.from('task_quantity_entries').select('*').order('date'),
+    supabaseClient.from('visual_snapshots').select('*').order('snapshot_date', { ascending: false }),
   ]);
 
   const hourEntriesData = await hourEntriesPromise;
-  const hourEntries = { data: hourEntriesData };
 
-  const hasHierarchyNodes = false;
-  const hasWorkItems = false;
-
-  // Extract hierarchy levels from hierarchy_nodes if available
-  let extractedPortfolios = portfolios.data || [];
-  let extractedCustomers = customers.data || [];
-  let extractedSites = sites.data || [];
-  let extractedUnits = units.data || [];
-
-  /*
-    if (hasHierarchyNodes && hierarchyNodes.data) {
-      const nodes = hierarchyNodes.data;
-      extractedPortfolios = nodes.filter((n: any) => n.node_type === 'portfolio');
-      extractedCustomers = nodes.filter((n: any) => n.node_type === 'customer');
-      extractedSites = nodes.filter((n: any) => n.node_type === 'site');
-      extractedUnits = nodes.filter((n: any) => n.node_type === 'unit');
-    }
-  */
-
-  // Extract work items if available
-  let extractedEpics = epics.data || [];
-  let extractedFeatures = features.data || [];
-  let extractedUserStories = userStories.data || [];
-
-  if (hasWorkItems && workItems.data) {
-    const items = workItems.data;
-    extractedEpics = items.filter((i: any) => i.work_item_type === 'epic');
-    extractedFeatures = items.filter((i: any) => i.work_item_type === 'feature');
-    extractedUserStories = items.filter((i: any) => i.work_item_type === 'user_story');
-  }
-
-  // Convert all data from snake_case to camelCase for frontend
   return {
-    hierarchyNodes: hasHierarchyNodes && hierarchyNodes.data ? convertArrayToCamelCase(hierarchyNodes.data) : [],
-    workItems: hasWorkItems && workItems.data ? convertArrayToCamelCase(workItems.data) : [],
-    portfolios: convertArrayToCamelCase(extractedPortfolios),
-    customers: convertArrayToCamelCase(extractedCustomers),
-    sites: convertArrayToCamelCase(extractedSites),
-    units: convertArrayToCamelCase(extractedUnits),
-    projects: convertArrayToCamelCase((projects.data || []) as any[]),
-    subprojects: convertArrayToCamelCase((subprojects.data || []) as any[]),
-    phases: convertArrayToCamelCase(phases.data || []),
-    tasks: convertArrayToCamelCase(tasks.data || []),
-    qctasks: convertArrayToCamelCase(qcTasks.data || []),
-    employees: convertArrayToCamelCase(employees.data || []),
-    hours: convertArrayToCamelCase(hourEntries.data || []),
-    milestones: convertArrayToCamelCase(milestones.data || []),
-    deliverables: convertArrayToCamelCase(deliverables.data || []),
-    sprints: convertArrayToCamelCase(sprints.data || []),
-    sprintTasks: convertArrayToCamelCase(sprintTasks.data || []),
-    epics: convertArrayToCamelCase(extractedEpics),
-    features: convertArrayToCamelCase(extractedFeatures),
-    userStories: convertArrayToCamelCase(extractedUserStories),
-    forecasts: convertArrayToCamelCase(forecasts.data || []),
-    snapshots: convertArrayToCamelCase(snapshots.data || []),
-    visualSnapshots: convertArrayToCamelCase(visualSnapshots.data || []),
-    changeRequests: convertArrayToCamelCase(changeRequests.data || []),
-    changeImpacts: convertArrayToCamelCase(changeImpacts.data || []),
-    projectHealth: convertArrayToCamelCase(projectHealth.data || []),
-    projectLog: convertArrayToCamelCase(projectLog.data || []),
-    projectDocuments: convertArrayToCamelCase(projectDocuments.data || []),
-    taskDependencies: convertArrayToCamelCase(taskDependencies.data || []),
-    taskQuantityEntries: convertArrayToCamelCase(taskQuantityEntries.data || []),
+    hierarchyNodes: [],
+    workItems: [],
+    portfolios: convertArrayFromSupabase(portfolios.data || []),
+    customers: convertArrayFromSupabase(customers.data || []),
+    sites: convertArrayFromSupabase(sites.data || []),
+    units: convertArrayFromSupabase(units.data || []),
+    projects: convertArrayFromSupabase((projects.data || []) as any[]),
+    subprojects: convertArrayFromSupabase((subprojects.data || []) as any[]),
+    phases: convertArrayFromSupabase(phases.data || []),
+    tasks: convertArrayFromSupabase(tasks.data || []),
+    qctasks: convertArrayFromSupabase(qcTasks.data || []),
+    employees: convertArrayFromSupabase(employees.data || []),
+    hours: convertArrayFromSupabase(hourEntriesData || []),
+    milestones: convertArrayFromSupabase(milestones.data || []),
+    deliverables: convertArrayFromSupabase(deliverables.data || []),
+    sprints: convertArrayFromSupabase(sprints.data || []),
+    sprintTasks: convertArrayFromSupabase(sprintTasks.data || []),
+    epics: convertArrayFromSupabase(epics.data || []),
+    features: convertArrayFromSupabase(features.data || []),
+    userStories: convertArrayFromSupabase(userStories.data || []),
+    forecasts: convertArrayFromSupabase(forecasts.data || []),
+    snapshots: convertArrayFromSupabase(snapshots.data || []),
+    visualSnapshots: convertArrayFromSupabase(visualSnapshots.data || []),
+    changeRequests: convertArrayFromSupabase(changeRequests.data || []),
+    changeImpacts: convertArrayFromSupabase(changeImpacts.data || []),
+    projectHealth: convertArrayFromSupabase(projectHealth.data || []),
+    projectLog: convertArrayFromSupabase(projectLog.data || []),
+    projectDocuments: convertArrayFromSupabase(projectDocuments.data || []),
+    taskDependencies: convertArrayFromSupabase(taskDependencies.data || []),
+    taskQuantityEntries: convertArrayFromSupabase(taskQuantityEntries.data || []),
   };
 }
 
@@ -325,28 +311,36 @@ async function fetchFromSupabase() {
  * Save data to database
  */
 export async function saveData(table: string, data: Record<string, unknown>[]) {
-  // if (dbType === 'postgresql' && pgPool) {
-  //   return await saveToPostgreSQL(table, data);
-  // }
-  if (dbType === 'supabase' && supabaseClient) {
-    return await saveToSupabase(table, data);
+  if (dbType === 'postgresql') {
+    return await saveToPostgreSQL(table, data);
+  }
+  if (dbType === 'supabase') {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
+    try {
+      const { error } = await supabaseClient.from(table).insert(data);
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
   }
   return { success: false, error: 'No database configured' };
 }
 
-/**
- * Save data to Supabase
- */
-async function saveToSupabase(table: string, data: Record<string, unknown>[]) {
-  if (!supabaseClient) {
-    return { success: false, error: 'Supabase client not initialized' };
-  }
-
+async function saveToPostgreSQL(table: string, data: Record<string, unknown>[]) {
+  if (data.length === 0) return { success: true };
   try {
-    const { error } = await supabaseClient.from(table).insert(data);
-    if (error) {
-      return { success: false, error: error.message };
-    }
+    const pool = getPool();
+    if (!pool) return { success: false, error: 'PostgreSQL not configured' };
+
+    const columns = Object.keys(data[0]);
+    const placeholders = data.map((_, rowIdx) =>
+      `(${columns.map((_, colIdx) => `$${rowIdx * columns.length + colIdx + 1}`).join(', ')})`
+    ).join(', ');
+    const values = data.flatMap(row => columns.map(col => (row as any)[col]));
+    const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`;
+    await pool.query(sql, values);
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

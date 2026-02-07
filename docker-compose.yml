@@ -1,4 +1,4 @@
-# Optional: copy .env.example to .env and set values. Build works without .env; runtime needs env for Auth0/Supabase.
+# Optional: copy .env.example to .env and set values. Build works without .env; runtime needs env for Auth0/Database.
 services:
   # Production service
   nextjs-app:
@@ -11,6 +11,7 @@ services:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         AUTH0_BASE_URL: ${AUTH0_BASE_URL}
         AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
+        DATABASE_URL: ${DATABASE_URL}
     container_name: ppc-nextjs-app
     ports:
       - "3001:3000"
@@ -24,10 +25,14 @@ services:
       - AUTH0_ISSUER_BASE_URL=${AUTH0_ISSUER_BASE_URL}
       - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
       - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
-      # Supabase Configuration
+      # PostgreSQL Configuration (primary database)
+      - DATABASE_URL=${DATABASE_URL}
+      # Azure Functions (Workday Sync)
+      - AZURE_FUNCTION_URL=${AZURE_FUNCTION_URL}
+      - AZURE_FUNCTION_KEY=${AZURE_FUNCTION_KEY}
+      # Supabase Configuration (legacy fallback / file storage)
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      # Supabase Service Role Key (for server-side API routes)
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
     restart: unless-stopped
     healthcheck:
@@ -60,10 +65,11 @@ services:
       AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
       AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
       AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
-      # Supabase Configuration
+      # PostgreSQL Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      # Supabase Configuration (legacy / file storage)
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      # Supabase Service Role Key (for server-side API routes)
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
     volumes:
       # Mount source code for live updates

@@ -1,13 +1,11 @@
 /**
- * @fileoverview Supabase Client Configuration
+ * @fileoverview Database Client Configuration & Utilities
  * 
- * This module provides the Supabase client for database operations and authentication.
- * IMPORTANT: This client should ONLY be imported by:
- * - app/project-controls/data-management/page.tsx (for data persistence)
- * - app/login/page.tsx (for authentication)
- * - lib/user-context.tsx (for auth state management)
- * 
- * All other application pages should use the Data Context (useData hook) instead.
+ * This module provides:
+ * - Database configuration check (PostgreSQL primary, Supabase fallback)
+ * - Table name mappings
+ * - Case conversion utilities (snake_case <-> camelCase)
+ * - Connection status checking
  * 
  * @module lib/supabase
  */
@@ -17,10 +15,9 @@ import { logger } from './logger';
 
 /**
  * Create a mock Supabase client for when env vars are not configured
- * This prevents build errors while allowing the app to function without a database
  */
 function createMockSupabaseClient(): SupabaseClient {
-  const mockResponse = { data: null, error: { message: 'Supabase not configured' } };
+  const mockResponse = { data: null, error: { message: 'Database not configured' } };
   const mockAuth = {
     getSession: async () => ({ data: { session: null }, error: null }),
     signInWithPassword: async () => mockResponse,
@@ -51,41 +48,38 @@ function createMockSupabaseClient(): SupabaseClient {
   } as unknown as SupabaseClient;
 }
 
-// Environment variables for Supabase connection
+// Environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const isSupabaseEnvConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-// Check if Supabase is configured
-const isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-// Log warning if not configured (only once)
-if (typeof window === 'undefined' && !isConfigured) {
-  logger.warn(
-    'Supabase environment variables not set. Database features will be unavailable. ' +
-    'Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file.'
-  );
-}
+// Check if PostgreSQL is configured (server-side only)
+const DATABASE_URL = typeof window === 'undefined'
+  ? (process.env.DATABASE_URL || process.env.AZURE_POSTGRES_CONNECTION_STRING || process.env.POSTGRES_CONNECTION_STRING || '')
+  : '';
+const isPostgresEnvConfigured = Boolean(DATABASE_URL);
 
 /**
- * Supabase client instance
- * Use this for all database operations and authentication
- * Returns a mock client if env vars are not configured
+ * Supabase client instance (used as fallback or for auth)
  */
-export const supabase = isConfigured
+export const supabase = isSupabaseEnvConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-    },
+    auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
   })
   : createMockSupabaseClient();
 
 /**
- * Check if Supabase is properly configured
+ * Check if any database is properly configured (PostgreSQL or Supabase)
  */
 export function isSupabaseConfigured(): boolean {
-  return Boolean(supabaseUrl && supabaseAnonKey);
+  return isPostgresEnvConfigured || isSupabaseEnvConfigured;
+}
+
+/**
+ * Check if PostgreSQL is the active database
+ */
+export function isPostgresActive(): boolean {
+  return isPostgresEnvConfigured;
 }
 
 /**
@@ -487,10 +481,7 @@ export interface ConnectionCheckResult {
 
 /**
  * Check database connection status
- * Tests:
- * 1. Supabase configuration
- * 2. Auth status
- * 3. Database reachability (simple query)
+ * Tests PostgreSQL (primary) or Supabase (fallback)
  */
 export async function checkConnectionStatus(): Promise<ConnectionCheckResult> {
   const startTime = Date.now();
@@ -500,70 +491,65 @@ export async function checkConnectionStatus(): Promise<ConnectionCheckResult> {
     lastChecked: new Date().toISOString(),
     error: null,
     details: {
-      supabaseConfigured: false,
-      authStatus: 'error',
+      supabaseConfigured: isPostgresEnvConfigured || isSupabaseEnvConfigured,
+      authStatus: 'anonymous',
       databaseReachable: false,
     },
   };
 
-  // Check 1: Is Supabase configured?
   if (!isSupabaseConfigured()) {
-    result.error = 'Supabase environment variables not configured';
-    result.details.supabaseConfigured = false;
+    result.error = 'No database configured (set DATABASE_URL or NEXT_PUBLIC_SUPABASE_URL)';
     return result;
   }
-  result.details.supabaseConfigured = true;
 
   try {
-    // Check 2: Auth status
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-
-    if (authError) {
-      result.details.authStatus = 'error';
-      result.error = `Auth error: ${authError.message}`;
-    } else if (session) {
-      result.details.authStatus = 'authenticated';
-    } else {
-      result.details.authStatus = 'anonymous';
-    }
-
-    // Check 3: Database reachability (simple query)
-    // Try to query a simple table or use a health check endpoint
-    const { error: dbError } = await supabase
-      .from('employees')
-      .select('id')
-      .limit(1);
-
-    if (dbError) {
-      // Check if it's a "table doesn't exist" error (which means DB is reachable)
-      if (dbError.code === '42P01' || dbError.message.includes('does not exist')) {
-        result.details.databaseReachable = true;
-        result.status = 'connected';
-      } else {
-        result.details.databaseReachable = false;
-        result.error = `Database error: ${dbError.message}`;
+    // PostgreSQL check (server-side)
+    if (isPostgresEnvConfigured && typeof window === 'undefined') {
+      try {
+        const { getPool } = await import('./postgres');
+        const pool = getPool();
+        if (pool) {
+          const client = await pool.connect();
+          try {
+            await client.query('SELECT 1');
+            result.details.databaseReachable = true;
+            result.status = 'connected';
+            result.details.authStatus = 'anonymous'; // PostgreSQL doesn't use Supabase auth
+          } finally {
+            client.release();
+          }
+        }
+      } catch (pgErr: any) {
+        result.error = `PostgreSQL: ${pgErr.message}`;
         result.status = 'degraded';
       }
-    } else {
-      result.details.databaseReachable = true;
-      result.status = 'connected';
+    } else if (isSupabaseEnvConfigured) {
+      // Supabase fallback
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      if (authError) {
+        result.details.authStatus = 'error';
+      } else if (session) {
+        result.details.authStatus = 'authenticated';
+      } else {
+        result.details.authStatus = 'anonymous';
+      }
+
+      const { error: dbError } = await supabase.from('employees').select('id').limit(1);
+      if (dbError) {
+        if (dbError.code === '42P01' || dbError.message.includes('does not exist')) {
+          result.details.databaseReachable = true;
+          result.status = 'connected';
+        } else {
+          result.error = `Database: ${dbError.message}`;
+          result.status = 'degraded';
+        }
+      } else {
+        result.details.databaseReachable = true;
+        result.status = 'connected';
+      }
     }
 
     result.latency = Date.now() - startTime;
-
-    // Determine final status
-    if (result.details.databaseReachable && result.details.supabaseConfigured) {
-      if (result.details.authStatus === 'error') {
-        result.status = 'degraded';
-      } else {
-        result.status = 'connected';
-      }
-    } else if (result.details.supabaseConfigured) {
-      result.status = 'degraded';
-    } else {
-      result.status = 'disconnected';
-    }
-
   } catch (err) {
     result.latency = Date.now() - startTime;
     result.error = err instanceof Error ? err.message : 'Unknown connection error';

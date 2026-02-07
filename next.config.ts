@@ -3,6 +3,9 @@
 const nextConfig = {
   output: 'standalone',
 
+  // Ensure pg (PostgreSQL) native module works in API routes
+  serverExternalPackages: ['pg'],
+
   async redirects() {
     return [
       { source: '/project-controls/project-health', destination: '/project-controls/folders', permanent: true },
