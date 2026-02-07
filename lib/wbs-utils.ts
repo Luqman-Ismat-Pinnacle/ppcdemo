@@ -387,6 +387,7 @@ export function calculateRollUpValues(item: WBSItem): void {
  * @returns Formatted string like "$1,234,567"
  */
 export function formatCurrency(amount: number): string {
+  if (amount == null || !isFinite(amount)) return '-';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',

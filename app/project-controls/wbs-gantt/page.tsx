@@ -715,6 +715,14 @@ export default function WBSGanttPage() {
     setEditingTaskId(null);
   };
 
+  // Dynamically calculate WBS code column width based on deepest visible indent level
+  const wbsCodeColWidth = useMemo(() => {
+    if (flatRows.length === 0) return 80;
+    const maxLevel = flatRows.reduce((max, r) => Math.max(max, r.indentLevel || 0), 0);
+    // Base 80px + 12px per additional indent level beyond 1
+    return Math.max(80, 80 + Math.max(0, maxLevel - 1) * 12);
+  }, [flatRows]);
+
   const totalRowsHeight = flatRows.length * rowHeight;
 
   const { virtualRows, paddingTop, paddingBottom } = useMemo(() => {
@@ -1059,8 +1067,8 @@ export default function WBSGanttPage() {
           <table ref={tableRef} className="wbs-table" style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0, maxWidth: `${fixedColsWidth + (dateColumns.length * columnWidth)}px` }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)' }}>
               <tr style={{ height: `${headerHeight}px` }}>
-                <th style={{ width: '80px', minWidth: '80px', maxWidth: '80px', position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>WBS</th>
-                <th style={{ width: '280px', minWidth: '280px', maxWidth: '280px', position: 'sticky', left: '80px', top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Name</th>
+                <th style={{ width: `${wbsCodeColWidth}px`, minWidth: `${wbsCodeColWidth}px`, position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', transition: 'width 0.2s' }}>WBS</th>
+                <th style={{ width: '280px', minWidth: '280px', maxWidth: '280px', position: 'sticky', left: `${wbsCodeColWidth}px`, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', transition: 'left 0.2s' }}>Name</th>
                 <th style={{ width: '65px', minWidth: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Type</th>
                 <th style={{ width: '80px', minWidth: '80px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Resource</th>
                 <th style={{ width: '90px', minWidth: '90px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Employee</th>
@@ -1119,17 +1127,17 @@ export default function WBSGanttPage() {
 
                 return (
                   <tr key={row.id} style={{ height: `${rowHeight}px`, background: isCritical ? 'rgba(220, 38, 38, 0.05)' : 'var(--bg-primary)' }}>
-                    <td style={{ position: 'sticky', left: 0, zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', boxShadow: isCritical ? 'inset 2px 0 0 #ef4444' : 'none', width: '80px', minWidth: '80px', maxWidth: '80px' }}>
+                    <td style={{ position: 'sticky', left: 0, zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', boxShadow: isCritical ? 'inset 2px 0 0 #ef4444' : 'none', width: `${wbsCodeColWidth}px`, minWidth: `${wbsCodeColWidth}px`, transition: 'width 0.2s' }}>
                       <div style={{ paddingLeft: `${(row.indentLevel || 0) * 12}px`, display: 'flex', alignItems: 'center', gap: '4px' }}>
                         {row.hasChildren && (
                           <button onClick={() => toggleExpand(row.id)} style={{ color: worstCase && !isExpanded ? worstCase.color : '#fff', cursor: 'pointer', padding: 0, fontSize: '8px', background: 'none', border: 'none' }}>
                             {isExpanded ? '▼' : '▶'}
                           </button>
                         )}
-                        <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: '0.6rem', fontWeight: isCritical ? 700 : 400 }}>{row.wbsCode}</span>
+                        <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: '0.6rem', fontWeight: isCritical ? 700 : 400, whiteSpace: 'nowrap' }}>{row.wbsCode}</span>
                       </div>
                     </td>
-                    <td style={{ position: 'sticky', left: '80px', zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', width: '280px', minWidth: '280px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ position: 'sticky', left: `${wbsCodeColWidth}px`, zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', width: '280px', minWidth: '280px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'left 0.2s' }}>
                       <EnhancedTooltip content={row.name || ''}>
                         <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 400, fontSize: '0.65rem', color: isCritical ? '#ef4444' : row.hasChildren && !isExpanded && worstCase ? worstCase.color : 'inherit' }}>{row.name}</span>
                       </EnhancedTooltip>
@@ -1156,13 +1164,13 @@ export default function WBSGanttPage() {
                     )}
                     <td style={{ fontSize: '0.6rem' }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
                     <td style={{ fontSize: '0.6rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.daysRequired != null ? Number(row.daysRequired).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineHours ? Number(row.baselineHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{row.actualHours ? Number(row.actualHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{(row as any).remainingHours != null ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineCost != null ? formatCurrency(row.baselineCost) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineCost != null ? formatCurrency(Math.max(0, (row.baselineCost || 0) - (row.actualCost || 0))) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.daysRequired != null && isFinite(Number(row.daysRequired)) ? Number(row.daysRequired).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineHours && isFinite(Number(row.baselineHours)) ? Number(row.baselineHours).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.6rem' }}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: '0.6rem' }}>{formatCurrency(Number(row.baselineCost))}</td>
+                    <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(row.actualCost))}</td>
+                    <td className="number" style={{ fontSize: '0.6rem' }}>{formatCurrency(Number((row as any).remainingCost))}</td>
                     <td className="number" style={{ fontSize: '0.6rem', color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     <td>
                       <div className="progress-bar" style={{ width: '30px', height: '6px' }}>

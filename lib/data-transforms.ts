@@ -1221,8 +1221,12 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             startDate: phase.startDate || phase.baselineStartDate,
             endDate: phase.endDate || phase.baselineEndDate,
             percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
-            baselineHours: phase.baselineHours || 0,
-            actualHours: phase.actualHours || 0,
+            baselineHours: Number(phase.baselineHours ?? phase.baseline_hours) || 0,
+            actualHours: Number(phase.actualHours ?? phase.actual_hours) || 0,
+            remainingHours: phase.remainingHours ?? phase.remaining_hours ?? 0,
+            baselineCost: Number(phase.baselineCost ?? phase.baseline_cost) || 0,
+            actualCost: Number(phase.actualCost ?? phase.actual_cost) || 0,
+            remainingCost: phase.remainingCost ?? phase.remaining_cost ?? 0,
             children: []
           };
 
@@ -1274,21 +1278,22 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           });
 
           if (phaseChildCount > 0) {
-            phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
-            phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
-            phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
-            phaseItem.actualCost = phaseRollupActualCst; // Always use rolled up value
-            phaseItem.remainingHours = phaseRollupRemainingHrs || undefined;
-            phaseItem.remainingCost = phaseRollupRemainingCst || undefined;
-            phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
+            // Use DB values when available, fall back to rollup
+            if (!phaseItem.baselineHours) phaseItem.baselineHours = phaseRollupBaselineHrs;
+            if (!phaseItem.actualHours) phaseItem.actualHours = phaseRollupActualHrs;
+            if (!phaseItem.baselineCost) phaseItem.baselineCost = phaseRollupBaselineCst;
+            if (!phaseItem.actualCost) phaseItem.actualCost = phaseRollupActualCst;
+            if (!phaseItem.remainingHours && phaseRollupRemainingHrs > 0) phaseItem.remainingHours = phaseRollupRemainingHrs;
+            if (!phaseItem.remainingCost && phaseRollupRemainingCst > 0) phaseItem.remainingCost = phaseRollupRemainingCst;
+            if (!phaseItem.percentComplete) phaseItem.percentComplete = Math.round(phaseRollupPercentComplete / phaseChildCount);
           }
 
-          unitRollupBaselineHrs += phaseItem.baselineHours || 0;
-          unitRollupActualHrs += phaseItem.actualHours || 0;
-          unitRollupBaselineCst += phaseItem.baselineCost || 0;
-          unitRollupActualCst += phaseItem.actualCost || 0;
-          unitRollupRemainingHrs += phaseItem.remainingHours || 0;
-          unitRollupRemainingCst += phaseItem.remainingCost || 0;
+          unitRollupBaselineHrs += Number(phaseItem.baselineHours) || 0;
+          unitRollupActualHrs += Number(phaseItem.actualHours) || 0;
+          unitRollupBaselineCst += Number(phaseItem.baselineCost) || 0;
+          unitRollupActualCst += Number(phaseItem.actualCost) || 0;
+          unitRollupRemainingHrs += Number(phaseItem.remainingHours) || 0;
+          unitRollupRemainingCst += Number(phaseItem.remainingCost) || 0;
           unitRollupPercentComplete += phaseItem.percentComplete || 0;
           unitChildCount++;
 
@@ -1296,21 +1301,21 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         });
 
         if (unitChildCount > 0) {
-          unitItem.baselineHours = unitItem.baselineHours || unitRollupBaselineHrs;
-          unitItem.actualHours = unitItem.actualHours || unitRollupActualHrs;
-          unitItem.baselineCost = unitItem.baselineCost || unitRollupBaselineCst;
-          unitItem.actualCost = unitRollupActualCst; // Always use rolled up value
-          unitItem.remainingHours = unitRollupRemainingHrs || undefined;
-          unitItem.remainingCost = unitRollupRemainingCst || undefined;
-          unitItem.percentComplete = unitItem.percentComplete || Math.round(unitRollupPercentComplete / unitChildCount);
+          if (!unitItem.baselineHours) unitItem.baselineHours = unitRollupBaselineHrs;
+          if (!unitItem.actualHours) unitItem.actualHours = unitRollupActualHrs;
+          if (!unitItem.baselineCost) unitItem.baselineCost = unitRollupBaselineCst;
+          if (!unitItem.actualCost) unitItem.actualCost = unitRollupActualCst;
+          if (!unitItem.remainingHours && unitRollupRemainingHrs > 0) unitItem.remainingHours = unitRollupRemainingHrs;
+          if (!unitItem.remainingCost && unitRollupRemainingCst > 0) unitItem.remainingCost = unitRollupRemainingCst;
+          if (!unitItem.percentComplete) unitItem.percentComplete = Math.round(unitRollupPercentComplete / unitChildCount);
         }
 
-        projRollupBaselineHrs += unitItem.baselineHours || 0;
-        projRollupActualHrs += unitItem.actualHours || 0;
-        projRollupBaselineCst += unitItem.baselineCost || 0;
-        projRollupActualCst += unitItem.actualCost || 0;
-        projRollupRemainingHrs += unitItem.remainingHours || 0;
-        projRollupRemainingCst += unitItem.remainingCost || 0;
+        projRollupBaselineHrs += Number(unitItem.baselineHours) || 0;
+        projRollupActualHrs += Number(unitItem.actualHours) || 0;
+        projRollupBaselineCst += Number(unitItem.baselineCost) || 0;
+        projRollupActualCst += Number(unitItem.actualCost) || 0;
+        projRollupRemainingHrs += Number(unitItem.remainingHours) || 0;
+        projRollupRemainingCst += Number(unitItem.remainingCost) || 0;
         projRollupPercentComplete += unitItem.percentComplete || 0;
         projChildCount++;
 
@@ -1346,8 +1351,12 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           startDate: phase.startDate || phase.baselineStartDate,
           endDate: phase.endDate || phase.baselineEndDate,
           percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
-          baselineHours: phase.baselineHours || 0,
-          actualHours: phase.actualHours || 0,
+          baselineHours: Number(phase.baselineHours ?? phase.baseline_hours) || 0,
+          actualHours: Number(phase.actualHours ?? phase.actual_hours) || 0,
+          remainingHours: phase.remainingHours ?? phase.remaining_hours ?? 0,
+          baselineCost: Number(phase.baselineCost ?? phase.baseline_cost) || 0,
+          actualCost: Number(phase.actualCost ?? phase.actual_cost) || 0,
+          remainingCost: phase.remainingCost ?? phase.remaining_cost ?? 0,
           children: []
         };
 
@@ -1401,21 +1410,21 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         });
 
         if (phaseChildCount > 0) {
-          phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
-          phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
-          phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
-          phaseItem.actualCost = phaseRollupActualCst; // Always use rolled up value
-          phaseItem.remainingHours = phaseRollupRemainingHrs || undefined;
-          phaseItem.remainingCost = phaseRollupRemainingCst || undefined;
-          phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
+          if (!phaseItem.baselineHours) phaseItem.baselineHours = phaseRollupBaselineHrs;
+          if (!phaseItem.actualHours) phaseItem.actualHours = phaseRollupActualHrs;
+          if (!phaseItem.baselineCost) phaseItem.baselineCost = phaseRollupBaselineCst;
+          if (!phaseItem.actualCost) phaseItem.actualCost = phaseRollupActualCst;
+          if (!phaseItem.remainingHours && phaseRollupRemainingHrs > 0) phaseItem.remainingHours = phaseRollupRemainingHrs;
+          if (!phaseItem.remainingCost && phaseRollupRemainingCst > 0) phaseItem.remainingCost = phaseRollupRemainingCst;
+          if (!phaseItem.percentComplete) phaseItem.percentComplete = Math.round(phaseRollupPercentComplete / phaseChildCount);
         }
 
-        projRollupBaselineHrs += phaseItem.baselineHours || 0;
-        projRollupActualHrs += phaseItem.actualHours || 0;
-        projRollupBaselineCst += phaseItem.baselineCost || 0;
-        projRollupActualCst += phaseItem.actualCost || 0;
-        projRollupRemainingHrs += phaseItem.remainingHours || 0;
-        projRollupRemainingCst += phaseItem.remainingCost || 0;
+        projRollupBaselineHrs += Number(phaseItem.baselineHours) || 0;
+        projRollupActualHrs += Number(phaseItem.actualHours) || 0;
+        projRollupBaselineCst += Number(phaseItem.baselineCost) || 0;
+        projRollupActualCst += Number(phaseItem.actualCost) || 0;
+        projRollupRemainingHrs += Number(phaseItem.remainingHours) || 0;
+        projRollupRemainingCst += Number(phaseItem.remainingCost) || 0;
         projRollupPercentComplete += phaseItem.percentComplete || 0;
         projChildCount++;
 
@@ -1479,15 +1488,15 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projectItem.children?.push(taskItem);
       });
 
-      // Project rollup completion
+      // Project rollup completion - use DB values when available, fall back to rollup
       if (projChildCount > 0) {
-        projectItem.baselineHours = projectItem.baselineHours || projRollupBaselineHrs;
-        projectItem.actualHours = projectItem.actualHours || projRollupActualHrs;
-        projectItem.baselineCost = projectItem.baselineCost || projRollupBaselineCst;
-        projectItem.actualCost = projRollupActualCst; // Always use rolled up value
-        projectItem.remainingHours = projRollupRemainingHrs || undefined;
-        projectItem.remainingCost = projRollupRemainingCst || undefined;
-        projectItem.percentComplete = projectItem.percentComplete || Math.round(projRollupPercentComplete / projChildCount);
+        if (!projectItem.baselineHours) projectItem.baselineHours = projRollupBaselineHrs;
+        if (!projectItem.actualHours) projectItem.actualHours = projRollupActualHrs;
+        if (!projectItem.baselineCost) projectItem.baselineCost = projRollupBaselineCst;
+        if (!projectItem.actualCost) projectItem.actualCost = projRollupActualCst;
+        if (!projectItem.remainingHours && projRollupRemainingHrs > 0) projectItem.remainingHours = projRollupRemainingHrs;
+        if (!projectItem.remainingCost && projRollupRemainingCst > 0) projectItem.remainingCost = projRollupRemainingCst;
+        if (!projectItem.percentComplete) projectItem.percentComplete = Math.round(projRollupPercentComplete / projChildCount);
       }
 
       return projectItem;
