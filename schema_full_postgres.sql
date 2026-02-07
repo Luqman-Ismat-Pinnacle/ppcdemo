@@ -486,6 +486,7 @@ CREATE TABLE IF NOT EXISTS hour_entries (
   invoice_number VARCHAR(50),
   invoice_status VARCHAR(50),
   charge_type VARCHAR(10),
+  charge_code VARCHAR(255),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -501,6 +502,8 @@ CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_phase ON hour_entries(workda
 CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_task ON hour_entries(workday_task);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_project_workday ON hour_entries(project_id, workday_phase, workday_task);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_actual_cost ON hour_entries(actual_cost);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_type ON hour_entries(charge_type);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_code ON hour_entries(charge_code);
 
 -- TASK QUANTITY ENTRIES
 CREATE TABLE IF NOT EXISTS task_quantity_entries (
@@ -734,13 +737,35 @@ CREATE TABLE IF NOT EXISTS visual_snapshots (
 CREATE INDEX IF NOT EXISTS idx_visual_snapshots_visual_id ON visual_snapshots(visual_id);
 CREATE INDEX IF NOT EXISTS idx_visual_snapshots_date ON visual_snapshots(snapshot_date);
 
--- PROJECT HEALTH
+-- PROJECT HEALTH (comprehensive health assessment per project)
 CREATE TABLE IF NOT EXISTS project_health (
   id VARCHAR(50) PRIMARY KEY,
   project_id VARCHAR(50) REFERENCES projects(id),
+  project_name VARCHAR(255),
+  workday_status VARCHAR(100),
+  schedule_required BOOLEAN DEFAULT false,
+  total_contract NUMERIC(15, 2) DEFAULT 0,
+  rev_td NUMERIC(15, 2) DEFAULT 0,
+  billed_td NUMERIC(15, 2) DEFAULT 0,
+  latest_forecasted_cost NUMERIC(15, 2) DEFAULT 0,
+  forecasted_gp NUMERIC(15, 2) DEFAULT 0,
+  forecasted_gm NUMERIC(10, 4) DEFAULT 0,
+  baseline_work NUMERIC(12, 2) DEFAULT 0,
+  actual_work NUMERIC(12, 2) DEFAULT 0,
+  remaining_work NUMERIC(12, 2) DEFAULT 0,
+  work_variance NUMERIC(12, 2) DEFAULT 0,
+  baseline_cost NUMERIC(15, 2) DEFAULT 0,
+  actual_cost NUMERIC(15, 2) DEFAULT 0,
+  schedule_forecasted_cost NUMERIC(15, 2) DEFAULT 0,
+  cost_variance NUMERIC(15, 2) DEFAULT 0,
+  schedule_cost_forecasted_cost_variance NUMERIC(15, 2) DEFAULT 0,
+  overall_status VARCHAR(50),
+  overall_score NUMERIC(5, 2),
   health_score NUMERIC(5, 2),
   status VARCHAR(50),
   risk_level VARCHAR(50),
+  checks JSONB,
+  approvals JSONB,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -748,6 +773,7 @@ CREATE TABLE IF NOT EXISTS project_health (
 CREATE INDEX IF NOT EXISTS idx_project_health_project_id ON project_health(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_health_status ON project_health(status) WHERE status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_project_health_updated_at ON project_health(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_project_health_overall_status ON project_health(overall_status);
 
 -- PROJECT LOG (no FK on project_id so parser can log before project exists)
 CREATE TABLE IF NOT EXISTS project_log (
@@ -1428,6 +1454,93 @@ CREATE TRIGGER trigger_update_updated_at_employees
   BEFORE UPDATE ON employees
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- INCREMENTAL MIGRATIONS (safe to re-run on existing databases)
+-- ============================================================================
+
+-- Add charge_code column to hour_entries if it doesn't exist
+DO $$ BEGIN
+  ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_code VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Add charge_type column to hour_entries if it doesn't exist
+DO $$ BEGIN
+  ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_type VARCHAR(10);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Expand project_health table with comprehensive fields
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS project_name VARCHAR(255);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS workday_status VARCHAR(100);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS schedule_required BOOLEAN DEFAULT false;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS total_contract NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS rev_td NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS billed_td NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS latest_forecasted_cost NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS forecasted_gp NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS forecasted_gm NUMERIC(10, 4) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS baseline_work NUMERIC(12, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS actual_work NUMERIC(12, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS remaining_work NUMERIC(12, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS work_variance NUMERIC(12, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS baseline_cost NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS schedule_forecasted_cost NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS cost_variance NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS schedule_cost_forecasted_cost_variance NUMERIC(15, 2) DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS overall_status VARCHAR(50);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS overall_score NUMERIC(5, 2);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS checks JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS approvals JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- Indexes for new columns
+CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_type ON hour_entries(charge_type);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_code ON hour_entries(charge_code);
+CREATE INDEX IF NOT EXISTS idx_project_health_overall_status ON project_health(overall_status);
 
 -- ============================================================================
 -- MIGRATION NOTES
