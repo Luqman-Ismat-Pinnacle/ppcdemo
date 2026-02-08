@@ -7,26 +7,7 @@
  * @module lib/postgres
  */
 
-import { Pool, types } from 'pg';
-
-// ── Type Parsers ──────────────────────────────────────────────────────────
-// By default, node-postgres (`pg`) returns NUMERIC/DECIMAL columns as strings
-// to preserve arbitrary precision. Supabase's client auto-converts them to JS
-// numbers. To match Supabase behavior and prevent NaN issues downstream, we
-// register custom type parsers for all numeric PostgreSQL OIDs.
-//
-// OIDs:  20 = INT8 (bigint), 700 = FLOAT4, 701 = FLOAT8,
-//        1700 = NUMERIC (decimal), 23 = INT4, 21 = INT2
-types.setTypeParser(20, (val: string) => {            // INT8 / bigint
-  const n = Number(val);
-  return Number.isSafeInteger(n) ? n : val;           // Keep string if too large
-});
-types.setTypeParser(700, (val: string) => parseFloat(val));  // FLOAT4
-types.setTypeParser(701, (val: string) => parseFloat(val));  // FLOAT8
-types.setTypeParser(1700, (val: string) => {          // NUMERIC / decimal
-  const n = parseFloat(val);
-  return isFinite(n) ? n : 0;
-});
+import { Pool } from 'pg';
 
 const DATABASE_URL = process.env.DATABASE_URL
   || process.env.AZURE_POSTGRES_CONNECTION_STRING
