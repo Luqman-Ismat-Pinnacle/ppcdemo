@@ -2,26 +2,29 @@
 
 /**
  * AuthGuard – redirects unauthenticated users to Auth0 login.
- * Bypass: set NEXT_PUBLIC_AUTH_DISABLED=true to skip (render children only).
+ * Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
  */
 
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { useEffect } from 'react';
 
-// Bypass when NEXT_PUBLIC_AUTH_DISABLED !== 'false' (default: bypass so app works without login)
-const AUTH_BYPASS = typeof process === 'undefined' || process.env.NEXT_PUBLIC_AUTH_DISABLED !== 'false';
+// Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
+const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useUser();
 
-  if (AUTH_BYPASS) return <>{children}</>;
-
+  // Hooks must be called unconditionally — redirect effect runs only when auth is active
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     if (isLoading) return;
     if (!user) {
       window.location.href = '/api/auth/login';
     }
   }, [user, isLoading]);
+
+  // When auth is disabled, render children immediately
+  if (AUTH_DISABLED) return <>{children}</>;
 
   if (isLoading) {
     return (

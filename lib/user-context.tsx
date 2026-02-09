@@ -2,8 +2,8 @@
 
 /**
  * User Context for PPC V3
- * Integrates with Auth0 when enabled; bypass uses demo user.
- * Set NEXT_PUBLIC_AUTH_DISABLED=true to skip Auth0 login.
+ * Integrates with Auth0 for authentication (enabled by default).
+ * Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass Auth0 and use a demo user.
  */
 
 import React, { createContext, useContext, ReactNode } from 'react';
@@ -26,8 +26,8 @@ interface UserContextValue {
 
 const UserContext = createContext<UserContextValue | null>(null);
 
-// Bypass Auth0 when NEXT_PUBLIC_AUTH_DISABLED is true, or when unset (default bypass for now)
-const AUTH_BYPASS = typeof process === 'undefined' || process.env.NEXT_PUBLIC_AUTH_DISABLED !== 'false';
+// Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
+const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 
 function getInitials(name: string): string {
   if (!name) return '?';
@@ -58,28 +58,28 @@ const DEMO_USER: UserInfo = {
 };
 
 /**
- * UserProvider: when AUTH_BYPASS (NEXT_PUBLIC_AUTH_DISABLED=true), uses demo user; otherwise Auth0.
+ * UserProvider: wraps Auth0 user state. Falls back to demo user when AUTH_DISABLED.
  */
 export function UserProvider({ children }: { children: ReactNode }) {
   const { user: auth0User, isLoading } = useAuth0User();
-  const user = AUTH_BYPASS ? DEMO_USER : mapAuth0User(auth0User);
+  const user = AUTH_DISABLED ? DEMO_USER : mapAuth0User(auth0User);
 
   const login = () => {
-    if (AUTH_BYPASS) return;
+    if (AUTH_DISABLED) return;
     window.location.href = '/api/auth/login';
   };
 
   const logout = () => {
-    if (AUTH_BYPASS) return;
+    if (AUTH_DISABLED) return;
     window.location.href = '/api/auth/logout';
   };
 
   const value: UserContextValue = {
-    user: AUTH_BYPASS ? DEMO_USER : user,
+    user: AUTH_DISABLED ? DEMO_USER : user,
     login,
     logout,
-    isLoggedIn: AUTH_BYPASS ? true : !!user,
-    isLoading: AUTH_BYPASS ? false : isLoading,
+    isLoggedIn: AUTH_DISABLED ? true : !!user,
+    isLoading: AUTH_DISABLED ? false : isLoading,
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

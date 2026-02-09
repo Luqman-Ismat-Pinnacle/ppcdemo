@@ -88,7 +88,7 @@ export default function RootLayout({
         </div>
         <ErrorBoundary>
           <Auth0Provider>
-            {/* Bypass Auth0: set NEXT_PUBLIC_AUTH_DISABLED=true in env to skip login and inactivity logout */}
+            {/* Auth0 is active by default. Set NEXT_PUBLIC_AUTH_DISABLED=true in .env.local to bypass for local dev */}
             <AuthGuard>
               <InactivityLogout>
                 <LogsProvider>
