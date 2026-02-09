@@ -284,9 +284,9 @@ function PortfolioCommandCenter({
   );
 }
 
-// ===== PORTFOLIO FLOW SANKEY (Enhanced with 5-Level Breakdown) =====
+// ===== PORTFOLIO HOURS FLOW SANKEY =====
 function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
-  const [sankeyDepth, setSankeyDepth] = useState<'simple' | 'detailed' | 'full'>('detailed');
+  const [sankeyDepth, setSankeyDepth] = useState<'summary' | 'detailed'>('detailed');
   
   const option: EChartsOption = useMemo(() => {
     const goodProjects = projectBreakdown.filter(p => p.spi >= 1 && p.cpi >= 1);
@@ -298,96 +298,78 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
     const criticalHours = criticalProjects.reduce((sum, p) => sum + p.actualHours, 0);
     const totalHours = goodHours + atRiskHours + criticalHours || 1;
     
-    // Build nodes and links based on depth
     const nodes: any[] = [];
     const links: any[] = [];
     const nodeSet = new Set<string>();
     
-    const addNode = (name: string, color: string, borderColor?: string) => {
+    const addNode = (name: string, color: string) => {
       if (!nodeSet.has(name)) {
-        nodes.push({ name, itemStyle: { color, borderWidth: 2, borderColor: borderColor || color } });
+        nodes.push({ name, itemStyle: { color, borderWidth: 2, borderColor: color } });
         nodeSet.add(name);
       }
     };
     
-    // Level 1: Portfolio
-    addNode('Portfolio', '#3B82F6', '#60A5FA');
+    // Level 1: Portfolio (total hours)
+    addNode('Portfolio', '#3B82F6');
     
-    // Level 2: Health Status
-    addNode('On Track', '#10B981', '#34D399');
-    addNode('At Risk', '#F59E0B', '#FBBF24');
-    addNode('Critical', '#EF4444', '#F87171');
+    // Level 2: Health Status (hours-based)
+    if (goodHours > 0) addNode('On Track', '#10B981');
+    if (atRiskHours > 0) addNode('At Risk', '#F59E0B');
+    if (criticalHours > 0) addNode('Critical', '#EF4444');
     
-    links.push({ source: 'Portfolio', target: 'On Track', value: Math.max(1, goodProjects.length), hours: goodHours });
-    links.push({ source: 'Portfolio', target: 'At Risk', value: Math.max(1, atRiskProjects.length), hours: atRiskHours });
-    links.push({ source: 'Portfolio', target: 'Critical', value: Math.max(1, criticalProjects.length), hours: criticalHours });
+    if (goodHours > 0) links.push({ source: 'Portfolio', target: 'On Track', value: goodHours });
+    if (atRiskHours > 0) links.push({ source: 'Portfolio', target: 'At Risk', value: atRiskHours });
+    if (criticalHours > 0) links.push({ source: 'Portfolio', target: 'Critical', value: criticalHours });
     
-    if (sankeyDepth === 'simple') {
-      // Simple: just portfolio -> status -> outcome
-      addNode('Delivered', '#8B5CF6', '#A78BFA');
-      addNode('In Progress', '#06B6D4', '#22D3EE');
-      
-      links.push({ source: 'On Track', target: 'Delivered', value: Math.max(1, Math.round(goodProjects.length * 0.7)) });
-      links.push({ source: 'On Track', target: 'In Progress', value: Math.max(1, Math.round(goodProjects.length * 0.3)) });
-      links.push({ source: 'At Risk', target: 'Delivered', value: Math.max(1, Math.round(atRiskProjects.length * 0.4)) });
-      links.push({ source: 'At Risk', target: 'In Progress', value: Math.max(1, Math.round(atRiskProjects.length * 0.6)) });
-      links.push({ source: 'Critical', target: 'In Progress', value: Math.max(1, criticalProjects.length) });
-    } else {
-      // Detailed/Full: Add individual projects as middle layer
-      const topGood = goodProjects.slice(0, sankeyDepth === 'full' ? 8 : 4);
-      const topRisk = atRiskProjects.slice(0, sankeyDepth === 'full' ? 6 : 3);
-      const topCrit = criticalProjects.slice(0, sankeyDepth === 'full' ? 4 : 2);
-      
-      // Add project nodes
-      topGood.forEach(p => addNode(p.name.slice(0, 20), '#10B981'));
-      topRisk.forEach(p => addNode(p.name.slice(0, 20), '#F59E0B'));
-      topCrit.forEach(p => addNode(p.name.slice(0, 20), '#EF4444'));
-      
-      // Status -> Projects
-      topGood.forEach(p => {
-        links.push({ source: 'On Track', target: p.name.slice(0, 20), value: Math.max(1, p.actualHours || 10) });
-      });
-      topRisk.forEach(p => {
-        links.push({ source: 'At Risk', target: p.name.slice(0, 20), value: Math.max(1, p.actualHours || 10) });
-      });
-      topCrit.forEach(p => {
-        links.push({ source: 'Critical', target: p.name.slice(0, 20), value: Math.max(1, p.actualHours || 10) });
-      });
-      
-      // Level 4: Work Types
-      addNode('Execution', '#3B82F6');
-      addNode('QC/Review', '#8B5CF6');
-      addNode('Admin', '#6B7280');
-      
-      // Projects -> Work Types (distribute hours)
-      [...topGood, ...topRisk, ...topCrit].forEach(p => {
-        const hrs = p.actualHours || 10;
-        links.push({ source: p.name.slice(0, 20), target: 'Execution', value: Math.max(1, Math.round(hrs * 0.6)) });
-        links.push({ source: p.name.slice(0, 20), target: 'QC/Review', value: Math.max(1, Math.round(hrs * 0.3)) });
-        links.push({ source: p.name.slice(0, 20), target: 'Admin', value: Math.max(1, Math.round(hrs * 0.1)) });
-      });
-      
-      // Level 5: Outcomes
-      addNode('Completed', '#10B981');
-      addNode('In Progress', '#06B6D4');
-      addNode('Pending', '#6B7280');
-      
-      // Work Types -> Outcomes
-      const execTotal = links.filter(l => l.target === 'Execution').reduce((s, l) => s + l.value, 0);
-      const qcTotal = links.filter(l => l.target === 'QC/Review').reduce((s, l) => s + l.value, 0);
-      const adminTotal = links.filter(l => l.target === 'Admin').reduce((s, l) => s + l.value, 0);
-      
+    if (sankeyDepth === 'summary') {
+      // Summary: Health Status → Outcome
       const completeRatio = healthMetrics.percentComplete / 100;
+      addNode('Completed', '#8B5CF6');
+      addNode('In Progress', '#06B6D4');
       
-      links.push({ source: 'Execution', target: 'Completed', value: Math.max(1, Math.round(execTotal * completeRatio)) });
-      links.push({ source: 'Execution', target: 'In Progress', value: Math.max(1, Math.round(execTotal * (1 - completeRatio) * 0.7)) });
-      links.push({ source: 'Execution', target: 'Pending', value: Math.max(1, Math.round(execTotal * (1 - completeRatio) * 0.3)) });
+      if (goodHours > 0) {
+        links.push({ source: 'On Track', target: 'Completed', value: Math.max(1, Math.round(goodHours * completeRatio)) });
+        links.push({ source: 'On Track', target: 'In Progress', value: Math.max(1, Math.round(goodHours * (1 - completeRatio))) });
+      }
+      if (atRiskHours > 0) {
+        links.push({ source: 'At Risk', target: 'Completed', value: Math.max(1, Math.round(atRiskHours * completeRatio * 0.7)) });
+        links.push({ source: 'At Risk', target: 'In Progress', value: Math.max(1, Math.round(atRiskHours * (1 - completeRatio * 0.7))) });
+      }
+      if (criticalHours > 0) {
+        links.push({ source: 'Critical', target: 'In Progress', value: Math.max(1, criticalHours) });
+      }
+    } else {
+      // Detailed: Health Status → Projects → Outcomes
+      const topGood = goodProjects.sort((a, b) => b.actualHours - a.actualHours).slice(0, 5);
+      const topRisk = atRiskProjects.sort((a, b) => b.actualHours - a.actualHours).slice(0, 4);
+      const topCrit = criticalProjects.sort((a, b) => b.actualHours - a.actualHours).slice(0, 3);
       
-      links.push({ source: 'QC/Review', target: 'Completed', value: Math.max(1, Math.round(qcTotal * completeRatio * 0.9)) });
-      links.push({ source: 'QC/Review', target: 'In Progress', value: Math.max(1, Math.round(qcTotal * (1 - completeRatio * 0.9))) });
+      topGood.forEach(p => { addNode(p.name.slice(0, 22), '#10B981'); });
+      topRisk.forEach(p => { addNode(p.name.slice(0, 22), '#F59E0B'); });
+      topCrit.forEach(p => { addNode(p.name.slice(0, 22), '#EF4444'); });
       
-      links.push({ source: 'Admin', target: 'Completed', value: Math.max(1, Math.round(adminTotal * 0.8)) });
-      links.push({ source: 'Admin', target: 'In Progress', value: Math.max(1, Math.round(adminTotal * 0.2)) });
+      // Remaining hours not covered by top projects
+      const goodRemaining = goodHours - topGood.reduce((s, p) => s + p.actualHours, 0);
+      const riskRemaining = atRiskHours - topRisk.reduce((s, p) => s + p.actualHours, 0);
+      const critRemaining = criticalHours - topCrit.reduce((s, p) => s + p.actualHours, 0);
+      if (goodRemaining > 0 && goodProjects.length > topGood.length) { addNode('Other On Track', '#10B981'); links.push({ source: 'On Track', target: 'Other On Track', value: goodRemaining }); }
+      if (riskRemaining > 0 && atRiskProjects.length > topRisk.length) { addNode('Other At Risk', '#F59E0B'); links.push({ source: 'At Risk', target: 'Other At Risk', value: riskRemaining }); }
+      if (critRemaining > 0 && criticalProjects.length > topCrit.length) { addNode('Other Critical', '#EF4444'); links.push({ source: 'Critical', target: 'Other Critical', value: critRemaining }); }
+      
+      topGood.forEach(p => { if (p.actualHours > 0) links.push({ source: 'On Track', target: p.name.slice(0, 22), value: p.actualHours }); });
+      topRisk.forEach(p => { if (p.actualHours > 0) links.push({ source: 'At Risk', target: p.name.slice(0, 22), value: p.actualHours }); });
+      topCrit.forEach(p => { if (p.actualHours > 0) links.push({ source: 'Critical', target: p.name.slice(0, 22), value: p.actualHours }); });
+      
+      // Projects → Outcomes
+      addNode('Completed', '#8B5CF6');
+      addNode('In Progress', '#06B6D4');
+      
+      [...topGood, ...topRisk, ...topCrit].forEach(p => {
+        const pCompleted = Math.round(p.actualHours * (p.percentComplete / 100));
+        const pRemaining = p.actualHours - pCompleted;
+        if (pCompleted > 0) links.push({ source: p.name.slice(0, 22), target: 'Completed', value: pCompleted });
+        if (pRemaining > 0) links.push({ source: p.name.slice(0, 22), target: 'In Progress', value: pRemaining });
+      });
     }
     
     return {
@@ -402,53 +384,44 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
           if (params.dataType === 'edge') {
             const pct = totalHours > 0 ? sn((params.data.value / totalHours) * 100, 1) : '0';
             return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
-              Value: ${params.data.value.toLocaleString()}<br/>
-              ${params.data.hours ? `Hours: ${params.data.hours.toLocaleString()}` : `Share: ${pct}%`}`;
+              Hours: <strong>${params.data.value.toLocaleString()}</strong><br/>
+              Share: ${pct}% of portfolio`;
           }
           return `<strong>${params.name}</strong><br/>Click to filter`;
         },
       },
-      grid: { left: 20, right: 20, top: 30, bottom: 60, containLabel: true },
       series: [{
         type: 'sankey',
-        layout: 'none',
         emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
         nodeAlign: 'justify',
-        nodeWidth: 22,
-        nodeGap: 14,
+        nodeWidth: 24,
+        nodeGap: 16,
         layoutIterations: 64,
         orient: 'horizontal',
-        left: 20,
-        right: 100,
-        top: 30,
-        bottom: 50,
+        left: 30,
+        right: 120,
+        top: 20,
+        bottom: 20,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 10, 
+          fontSize: 11, 
           fontWeight: 600,
-          position: 'right',
           formatter: (p: any) => {
-            const short = p.name.length > 12 ? p.name.slice(0, 12) + '..' : p.name;
+            const short = p.name.length > 18 ? p.name.slice(0, 18) + '..' : p.name;
             return short;
           },
         },
-        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.5 },
+        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.45 },
         data: nodes, 
         links,
       }],
-      dataZoom: [
-        { type: 'inside', orient: 'horizontal' },
-        { type: 'inside', orient: 'vertical' },
-        { type: 'slider', orient: 'horizontal', bottom: 5, height: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
-        { type: 'slider', orient: 'vertical', right: 5, width: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
-      ],
     };
   }, [projectBreakdown, healthMetrics, sankeyDepth]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-        {(['simple', 'detailed', 'full'] as const).map(depth => (
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+        {(['summary', 'detailed'] as const).map(depth => (
           <button
             key={depth}
             onClick={() => setSankeyDepth(depth)}
@@ -467,13 +440,18 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
             {depth}
           </button>
         ))}
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
-          Use sliders or scroll to pan/zoom
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {totalHoursLabel(healthMetrics.totalHours)} total hours across {projectBreakdown.length} projects
         </span>
       </div>
-      <ChartWrapper option={option} height="520px" onClick={onClick} />
+      <ChartWrapper option={option} height="420px" onClick={onClick} />
     </div>
   );
+}
+
+/** Format hours with K suffix */
+function totalHoursLabel(hrs: number): string {
+  return hrs >= 1000 ? `${(hrs / 1000).toFixed(1)}K` : hrs.toLocaleString();
 }
 
 // ===== ENHANCED BUDGET VARIANCE CHART =====
@@ -695,68 +673,74 @@ function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect, onClick }: { 
   return <ChartWrapper option={option} height="340px" onEvents={{ click: (params: any) => { matrixData[params.dataIndex] && onItemSelect(matrixData[params.dataIndex]); onClick?.(params); } }} />;
 }
 
-// ===== PROGRESS BURNDOWN =====
-function ProgressBurndown({ healthMetrics, onClick }: { healthMetrics: any; onClick?: (params: any) => void }) {
-  const burndownData = useMemo(() => {
-    const target = 100;
-    const current = healthMetrics.percentComplete;
+// ===== PROJECT PERFORMANCE COMPARISON (Parallel Coordinates) =====
+function ProjectPerformanceParallel({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
+  const option: EChartsOption = useMemo(() => {
+    const projects = projectBreakdown.slice(0, 20);
+    if (!projects.length) return { backgroundColor: 'transparent' };
     
-    const days = Array.from({ length: 21 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (20 - i));
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
+    const maxHours = Math.max(...projects.map(p => p.actualHours), 1);
     
-    const ideal = days.map((_, i) => Math.round((i / 20) * target));
-    // Calculate actual progress curve based on current completion
-    // Use a smooth curve that approaches current value
-    const actual = days.map((_, i) => {
-      // Use a curved progression to represent realistic progress
-      const dayProgress = i / 20;
-      // Interpolate towards current value with slight variance based on efficiency
-      const baseProgress = dayProgress * current;
-      // Slight early/late adjustment based on overall health
-      const healthFactor = healthMetrics.overallEfficiency > 100 ? 0.95 : 1.05;
-      return Math.min(target, Math.round(baseProgress * healthFactor));
-    });
-    actual[actual.length - 1] = current;
-    
-    return { days, ideal, actual, current, target };
-  }, [healthMetrics]);
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const d = params.data;
+          if (!d) return '';
+          return `<strong>${d.name}</strong><br/>
+            SPI: ${sn(d.value[0])}<br/>
+            CPI: ${sn(d.value[1])}<br/>
+            Progress: ${d.value[2]}%<br/>
+            Hours: ${d.value[3].toLocaleString()}<br/>
+            Variance: ${d.value[4] > 0 ? '+' : ''}${d.value[4]}%`;
+        },
+      },
+      parallelAxis: [
+        { dim: 0, name: 'SPI', min: 0.5, max: 1.5, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
+        { dim: 1, name: 'CPI', min: 0.5, max: 1.5, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
+        { dim: 2, name: 'Progress %', min: 0, max: 100, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
+        { dim: 3, name: 'Actual Hours', min: 0, max: maxHours, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v } },
+        { dim: 4, name: 'Variance %', min: Math.min(-30, ...projects.map(p => p.variance)), max: Math.max(30, ...projects.map(p => p.variance)), nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
+      ],
+      parallel: {
+        left: 60,
+        right: 60,
+        top: 40,
+        bottom: 30,
+        parallelAxisDefault: {
+          areaSelectStyle: { width: 20, opacity: 0.3, color: 'rgba(64,224,208,0.3)' },
+        },
+      },
+      series: [{
+        type: 'parallel',
+        lineStyle: {
+          width: 2.5,
+          opacity: 0.7,
+        },
+        emphasis: {
+          lineStyle: { width: 4, opacity: 1 },
+        },
+        data: projects.map(p => {
+          const isGood = p.spi >= 1 && p.cpi >= 1;
+          const isCrit = p.spi < 0.9 || p.cpi < 0.9;
+          return {
+            name: p.name,
+            value: [p.spi, p.cpi, p.percentComplete, p.actualHours, p.variance],
+            lineStyle: {
+              color: isGood ? '#10B981' : isCrit ? '#EF4444' : '#F59E0B',
+            },
+          };
+        }),
+      }],
+    };
+  }, [projectBreakdown]);
 
-  const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    grid: { left: 50, right: 20, top: 25, bottom: 45 },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
-    xAxis: { type: 'category', data: burndownData.days, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 9, rotate: 45 } },
-    yAxis: { type: 'value', max: 100, axisLine: { show: false }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: '{value}%' } },
-    series: [
-      { name: 'Target', type: 'line', data: burndownData.ideal, lineStyle: { color: '#6B7280', type: 'dashed', width: 2 }, symbol: 'none' },
-      { name: 'Actual', type: 'line', data: burndownData.actual, lineStyle: { color: 'var(--pinnacle-teal)', width: 3 }, symbol: 'circle', symbolSize: 5, itemStyle: { color: 'var(--pinnacle-teal)' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(64,224,208,0.25)' }, { offset: 1, color: 'rgba(64,224,208,0)' }] } } },
-    ],
-  }), [burndownData]);
-
-  return (
-    <div>
-      <ChartWrapper option={option} height="200px" />
-      <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Current</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{burndownData.current}%</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Target</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{burndownData.target}%</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Gap</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: burndownData.target - burndownData.current > 20 ? '#EF4444' : '#10B981' }}>
-            {burndownData.target - burndownData.current}%
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No project data</div>;
+  return <ChartWrapper option={option} height="320px" onClick={onClick} />;
 }
 
 // ===== FLOAT & CASCADE GANTT =====
@@ -1984,9 +1968,9 @@ export default function OverviewPage() {
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
-        <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Portfolio Overview</h1>
+        <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Executive Briefing</h1>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          Health, milestones, risks, variance analysis - Click any chart element to filter
+          Portfolio health at a glance - click any visual to drill down
         </p>
       </div>
 
@@ -2206,29 +2190,29 @@ export default function OverviewPage() {
       {/* DASHBOARD TAB */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Full Width: Enhanced Sankey */}
-          <SectionCard title="Portfolio Flow" subtitle="Click any node to filter - hover for details">
+          {/* Full Width: Hours Distribution Sankey */}
+          <SectionCard title="Hours Distribution" subtitle="How actual hours flow across health status and projects - click any node to filter">
             <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'sankey')} />
+          </SectionCard>
+
+          {/* Project Comparison - Full Width */}
+          <SectionCard title="Project Performance Comparison" subtitle="Each line is a project - green=on track, yellow=at risk, red=critical. Drag axes to filter.">
+            <ProjectPerformanceParallel projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'project')} />
           </SectionCard>
 
           {/* Row: Radar + Risk Matrix */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Project Health Radar" subtitle="Click project to filter">
+            <SectionCard title="Project Health Radar" subtitle="Top projects compared across SPI, CPI, Progress, Efficiency">
               <ProjectHealthRadar projects={projectBreakdown} onClick={(params) => handleChartClick(params, 'radar')} />
             </SectionCard>
 
-          <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget items`}>
+            <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget risks`}>
               <RiskMatrix scheduleRisks={scheduleRisks} budgetConcerns={budgetConcerns} onItemSelect={setSelectedRiskItem} onClick={(params) => handleChartClick(params, 'risk')} />
             </SectionCard>
           </div>
 
-          {/* Progress Burndown - Full Width */}
-          <SectionCard title="Progress Burndown" subtitle="Completion trajectory">
-            <ProgressBurndown healthMetrics={healthMetrics} onClick={(params) => handleChartClick(params, 'burndown')} />
-          </SectionCard>
-
-          {/* Full Width: Enhanced Budget Variance */}
-          <SectionCard title="Budget Variance Analysis" subtitle="Click bar to filter by project - hover for details">
+          {/* Full Width: Budget Variance */}
+          <SectionCard title="Budget Variance by Project" subtitle="Baseline vs actual hours - click any bar to drill down">
             <EnhancedBudgetVarianceChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
 

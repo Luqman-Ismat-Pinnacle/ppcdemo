@@ -560,44 +560,37 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
           if (params.dataType === 'edge') {
             const pct = sn((params.data.value / totalHours) * 100, 1);
             return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
-              Hours: ${params.data.value.toLocaleString()}<br/>
+              Hours: <strong>${params.data.value.toLocaleString()}</strong><br/>
               Share: ${pct}%`;
           }
           return `<strong>${params.name}</strong><br/>Click to filter page`;
         },
       },
-      grid: { left: 20, right: 20, top: 30, bottom: 60, containLabel: true },
       series: [{
         type: 'sankey', 
-        layout: 'none', 
         emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
-        nodeWidth: 20, 
-        nodeGap: 12, 
+        nodeAlign: 'justify',
+        nodeWidth: 22, 
+        nodeGap: 14, 
         layoutIterations: 64, 
         orient: 'horizontal',
-        left: 20, right: 100, top: 30, bottom: 50,
+        left: 30, right: 120, top: 20, bottom: 20,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 9, 
+          fontSize: 10, 
           fontWeight: 600,
-          formatter: (params: any) => params.name.length > 12 ? params.name.slice(0, 12) + '..' : params.name,
+          formatter: (params: any) => params.name.length > 16 ? params.name.slice(0, 16) + '..' : params.name,
         },
-        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.5 },
+        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.45 },
         data: nodes, 
         links,
       }],
-      dataZoom: [
-        { type: 'inside', orient: 'horizontal' },
-        { type: 'inside', orient: 'vertical' },
-        { type: 'slider', orient: 'horizontal', bottom: 5, height: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
-        { type: 'slider', orient: 'vertical', right: 5, width: 18, fillerColor: 'rgba(64,224,208,0.2)', borderColor: 'var(--border-color)', handleStyle: { color: 'var(--pinnacle-teal)' } },
-      ],
     };
   }, [stats, laborData, tasks, groupBy, sankeyDepth]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
         {(['simple', 'detailed', 'full'] as const).map(depth => (
           <button
             key={depth}
@@ -617,11 +610,11 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
             {depth}
           </button>
         ))}
-        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
-          Use sliders or scroll to pan/zoom
+        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {stats.totalHours.toLocaleString()} total hours
         </span>
       </div>
-      <ChartWrapper option={option} height="520px" onClick={onClick} />
+      <ChartWrapper option={option} height="440px" onClick={onClick} />
     </div>
   );
 }
@@ -1541,7 +1534,7 @@ export default function TasksPage() {
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Task Operations</h1>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          Hours, labor, quality control, variance analysis - Click any chart element to filter
+          Where the hours are going and how work is performing - click any visual to drill down
         </p>
       </div>
 
@@ -1661,7 +1654,7 @@ export default function TasksPage() {
 
           <SectionCard 
             title="Hours Flow" 
-            subtitle="Click nodes to filter - 5-level breakdown with scroll/zoom"
+            subtitle="How hours distribute across your team - click any node to filter"
             headerRight={
               <select value={sankeyGroupBy} onChange={(e) => setSankeyGroupBy(e.target.value as SankeyGroupBy)}
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer' }}>
