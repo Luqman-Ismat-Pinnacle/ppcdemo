@@ -5,13 +5,14 @@
  *
  * Executive-level visualization with:
  * - Inazuma (Lightning) Progress Line — zigzag showing schedule deviation
- * - Collapsible WBS Hierarchy with smart color aggregation
+ * - Collapsible WBS Hierarchy with progress-based color aggregation
  * - Baseline Ghosting — ghost bars showing original schedule creep
  * - Dependency Curves with color coding (critical / non-critical / delay)
  * - FTE Sparklines — mini resource charts in sidebar
  * - Full CPM analysis integration
  * - Virtual scrolling for large datasets
- * - Timeline & vertical zoom (range slider, Ctrl+wheel, Shift+wheel)
+ * - Fit-to-view zoom, row density, Ctrl+wheel zoom
+ * - Rich floating bar tooltips
  *
  * @module app/project-controls/wbs-gantt/page
  */
@@ -36,7 +37,7 @@ import SearchableDropdown from '@/components/ui/SearchableDropdown';
 // CONSTANTS & STYLES
 // ═══════════════════════════════════════════════════════════════════
 
-/** WBS-level type colours used for parent bars and badges */
+/** WBS-level type colours used for badges */
 const WBS_COLORS: Record<string, string> = {
   portfolio: '#40E0D0',
   customer: '#CDDC39',
@@ -51,6 +52,32 @@ const WBS_COLORS: Record<string, string> = {
 };
 
 type GanttInterval = 'week' | 'month' | 'quarter' | 'year';
+type RowDensity = 'compact' | 'normal' | 'comfortable';
+
+const ROW_HEIGHTS: Record<RowDensity, number> = { compact: 24, normal: 32, comfortable: 42 };
+
+/** Column widths — sized to always fit header text and common content */
+const COL = {
+  NAME: 280,
+  TYPE: 90,       // fits "sub project" badge
+  RESOURCE: 80,
+  EMPLOYEE: 90,
+  SPARKLINE: 70,
+  START: 82,
+  END: 82,
+  DAYS: 48,
+  BL_HRS: 56,
+  ACT_HRS: 56,
+  REM_HRS: 50,
+  BL_COST: 65,
+  ACT_COST: 65,
+  REM_COST: 68,   // fits "Rem Cost" header
+  EFF: 48,        // fits "Eff%" header
+  PROG: 50,
+  PRED: 70,
+  TF: 40,
+  CP: 36,
+} as const;
 
 /** Shared header-cell style — individual cells only override what differs. */
 const TH_BASE: React.CSSProperties = {
@@ -63,7 +90,7 @@ const TH_BASE: React.CSSProperties = {
 /** Shared data-cell font size used on most <td> elements. */
 const TD_FONT: React.CSSProperties = { fontSize: '0.6rem' };
 
-/** Progress-to-colour mapping (used for leaf tasks). */
+/** Progress-to-colour mapping (used for ALL bars — leaf and rollup). */
 const getProgressColor = (pct: number): string => {
   if (pct >= 75) return '#22c55e';
   if (pct >= 50) return '#eab308';
@@ -191,9 +218,10 @@ export default function WBSGanttPage() {
   const [wbsSearchQuery, setWbsSearchQuery] = useState('');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [timelineZoom, setTimelineZoom] = useState(1);
-  const [verticalZoom, setVerticalZoom] = useState(1);
+  const [rowDensity, setRowDensity] = useState<RowDensity>('normal');
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
+  const [barTip, setBarTip] = useState<{ row: any; x: number; y: number } | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -445,14 +473,16 @@ export default function WBSGanttPage() {
     return Math.max(80, 80 + Math.max(0, maxLvl - 1) * 12);
   }, [flatRows]);
 
-  const NAME_COL = 280;
+  /** Sum of all fixed (non-timeline) column widths */
   const fixedColsWidth = useMemo(() =>
-    wbsCodeColWidth + NAME_COL + 65 + 80 + 90 + 75 + 75 + 40 + 50 + 50 + 50 + 65 + 65 + 65 + 40 + 50 + 70 + 35 + 30 + (showSparklines ? 70 : 0),
+    wbsCodeColWidth + COL.NAME + COL.TYPE + COL.RESOURCE + COL.EMPLOYEE
+    + COL.START + COL.END + COL.DAYS + COL.BL_HRS + COL.ACT_HRS + COL.REM_HRS
+    + COL.BL_COST + COL.ACT_COST + COL.REM_COST + COL.EFF + COL.PROG
+    + COL.PRED + COL.TF + COL.CP + (showSparklines ? COL.SPARKLINE : 0),
     [wbsCodeColWidth, showSparklines],
   );
 
-  const baseRowHeight = 32;
-  const rowHeight = Math.round(baseRowHeight * verticalZoom);
+  const rowHeight = ROW_HEIGHTS[rowDensity];
   const headerHeight = 38;
   const BUFFER = 10;
   const totalRowsHeight = flatRows.length * rowHeight;
@@ -475,21 +505,19 @@ export default function WBSGanttPage() {
     return () => ro.disconnect();
   }, [wbsDataForTable?.items?.length]);
 
-  // ── Scroll handler (rAF throttled) ─────────────────────────────
+  // ── Scroll handler (rAF throttled, clears bar tooltip) ─────────
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const top = e.currentTarget.scrollTop;
     if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
     scrollRafRef.current = requestAnimationFrame(() => { scrollRafRef.current = null; setScrollTop(top); });
-  }, []);
+    if (barTip) setBarTip(null);
+  }, [barTip]);
 
-  // ── Wheel zoom (Ctrl = timeline, Shift = vertical) ────────────
+  // ── Wheel zoom (Ctrl/Cmd = timeline zoom) ─────────────────────
   const handleWheelZoom = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
-      setTimelineZoom(prev => Math.max(0.25, Math.min(3, prev + (e.deltaY > 0 ? -0.1 : 0.1))));
-    } else if (e.shiftKey) {
-      e.preventDefault();
-      setVerticalZoom(prev => Math.max(0.5, Math.min(2, prev + (e.deltaY > 0 ? -0.1 : 0.1))));
+      setTimelineZoom(prev => Math.max(0.25, Math.min(4, prev + (e.deltaY > 0 ? -0.1 : 0.1))));
     }
   }, []);
 
@@ -522,11 +550,30 @@ export default function WBSGanttPage() {
 
   const scrollToToday = useCallback(() => {
     if (!containerRef.current || todayColumnIndex < 0) return;
-    const stickyW = wbsCodeColWidth + NAME_COL;
+    const stickyW = wbsCodeColWidth + COL.NAME;
     const vpW = containerRef.current.clientWidth;
     const todayPx = todayColumnIndex * columnWidth;
     containerRef.current.scrollTo({ left: Math.max(0, fixedColsWidth - stickyW + todayPx - (vpW - stickyW) / 2 + columnWidth / 2), behavior: 'smooth' });
   }, [todayColumnIndex, columnWidth, fixedColsWidth, wbsCodeColWidth]);
+
+  // ── Fit-to-view zoom ──────────────────────────────────────────
+  const fitToView = useCallback(() => {
+    if (!containerRef.current || !dateColumns.length) return;
+    const available = containerRef.current.clientWidth - fixedColsWidth;
+    if (available > 0) {
+      const fitWidth = available / dateColumns.length;
+      setTimelineZoom(Math.max(0.25, Math.min(4, fitWidth / baseColumnWidth)));
+    }
+  }, [fixedColsWidth, dateColumns.length, baseColumnWidth]);
+
+  // ── Bar tooltip handlers ──────────────────────────────────────
+  const handleBarMouseEnter = useCallback((e: React.MouseEvent, row: any) => {
+    const x = Math.min(e.clientX + 16, window.innerWidth - 350);
+    const y = Math.max(10, Math.min(e.clientY - 20, window.innerHeight - 360));
+    setBarTip({ row, x, y });
+  }, []);
+
+  const handleBarMouseLeave = useCallback(() => setBarTip(null), []);
 
   // ── Assign resource ────────────────────────────────────────────
   const handleAssignResource = useCallback((taskId: string, empId: string | null) => {
@@ -700,7 +747,7 @@ export default function WBSGanttPage() {
   const tableWidth = fixedColsWidth + dateColumns.length * columnWidth;
 
   return (
-    <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden', padding: '0.5rem 1rem 0.25rem', gap: '0.35rem' }}>
       {/* ── Page Header ─────────────────────────────────────────── */}
       <div className="page-header" style={{ flexShrink: 0 }}>
         <div>
@@ -722,7 +769,7 @@ export default function WBSGanttPage() {
             </svg>
           </div>
 
-          {/* Interval Selector */}
+          {/* Interval Selector (primary scale) */}
           <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
             {(['week', 'month', 'quarter', 'year'] as GanttInterval[]).map(iv => (
               <button key={iv} onClick={() => setGanttInterval(iv)} style={{
@@ -734,18 +781,33 @@ export default function WBSGanttPage() {
             ))}
           </div>
 
-          {/* Zoom Controls — sliders + buttons + % */}
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '4px 10px', border: '1px solid var(--border-color)' }}>
-            <button onClick={() => setTimelineZoom(z => Math.max(0.25, z - 0.25))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', padding: '0 2px' }}>−</button>
-            <input type="range" min="0.25" max="3" step="0.1" value={timelineZoom} onChange={e => setTimelineZoom(parseFloat(e.target.value))} style={{ width: '50px', accentColor: 'var(--pinnacle-teal)' }} title="Timeline zoom (Ctrl+Scroll)" />
-            <button onClick={() => setTimelineZoom(z => Math.min(3, z + 0.25))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', padding: '0 2px' }}>+</button>
-            <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)', minWidth: '28px', textAlign: 'center' }}>{Math.round(timelineZoom * 100)}%</span>
-            <div style={{ width: '1px', height: '14px', background: 'var(--border-color)' }} />
-            <button onClick={() => setVerticalZoom(z => Math.max(0.5, z - 0.25))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', padding: '0 2px' }}>−</button>
-            <input type="range" min="0.5" max="2" step="0.1" value={verticalZoom} onChange={e => setVerticalZoom(parseFloat(e.target.value))} style={{ width: '50px', accentColor: 'var(--pinnacle-teal)' }} title="Vertical zoom (Shift+Scroll)" />
-            <button onClick={() => setVerticalZoom(z => Math.min(2, z + 0.25))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', padding: '0 2px' }}>+</button>
-            <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)', minWidth: '28px', textAlign: 'center' }}>{Math.round(verticalZoom * 100)}%</span>
-            <button onClick={() => { setTimelineZoom(1); setVerticalZoom(1); }} style={{ padding: '2px 6px', fontSize: '0.6rem', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer', marginLeft: '2px' }} title="Reset zoom">↺</button>
+          {/* Zoom Controls — Fit + fine-tune +/- + Density + Today */}
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '3px 8px', border: '1px solid var(--border-color)' }}>
+            {/* Fit to View */}
+            <button onClick={fitToView} title="Fit all content in view" style={{
+              padding: '3px 8px', fontSize: '0.6rem', fontWeight: 600,
+              background: 'rgba(64,224,208,0.1)', border: '1px solid rgba(64,224,208,0.3)',
+              borderRadius: '4px', color: 'var(--pinnacle-teal)', cursor: 'pointer',
+            }}>Fit</button>
+            <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 2px' }} />
+            {/* Timeline zoom +/- */}
+            <button onClick={() => setTimelineZoom(z => Math.max(0.25, z - 0.2))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', padding: '0 3px', lineHeight: 1 }} title="Zoom out timeline">-</button>
+            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', minWidth: '32px', textAlign: 'center', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{Math.round(timelineZoom * 100)}%</span>
+            <button onClick={() => setTimelineZoom(z => Math.min(4, z + 0.2))} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.85rem', padding: '0 3px', lineHeight: 1 }} title="Zoom in timeline">+</button>
+            <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 2px' }} />
+            {/* Row density */}
+            {(['compact', 'normal', 'comfortable'] as RowDensity[]).map(d => (
+              <button key={d} onClick={() => setRowDensity(d)} title={`${d} row height`} style={{
+                padding: '3px 6px', fontSize: '0.55rem', fontWeight: 600,
+                background: rowDensity === d ? 'rgba(255,255,255,0.12)' : 'transparent',
+                color: rowDensity === d ? '#fff' : 'var(--text-muted)',
+                border: rowDensity === d ? '1px solid rgba(255,255,255,0.15)' : '1px solid transparent',
+                borderRadius: '3px', cursor: 'pointer', textTransform: 'capitalize',
+              }}>{d === 'compact' ? 'S' : d === 'normal' ? 'M' : 'L'}</button>
+            ))}
+            <div style={{ width: '1px', height: '16px', background: 'var(--border-color)', margin: '0 2px' }} />
+            {/* Reset */}
+            <button onClick={() => { setTimelineZoom(1); setRowDensity('normal'); }} style={{ padding: '2px 6px', fontSize: '0.6rem', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer' }} title="Reset zoom & density">Reset</button>
           </div>
 
           <button className="btn btn-secondary btn-sm" onClick={scrollToToday}>Today</button>
@@ -765,7 +827,7 @@ export default function WBSGanttPage() {
       </div>
 
       {/* ── Feature Toggles & Legend ──────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '1rem', padding: '0 1.5rem 0.5rem', fontSize: '0.7rem', color: '#888', flexShrink: 0, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '1rem', padding: '0 0.5rem', fontSize: '0.7rem', color: '#888', flexShrink: 0, flexWrap: 'wrap' }}>
         {[
           { checked: showInazuma, set: setShowInazuma, color: '#EF4444', label: 'Inazuma Line' },
           { checked: showBaseline, set: setShowBaseline, color: '#6B7280', label: 'Baseline Ghost' },
@@ -787,15 +849,15 @@ export default function WBSGanttPage() {
 
       {/* ── CPM Results Panel ─────────────────────────────────────── */}
       {cpmResult && (
-        <div style={{ display: 'flex', gap: '1rem', margin: '0 1.5rem 1rem', background: 'rgba(20,20,25,0.95)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '1rem', margin: '0 0.25rem', background: 'rgba(20,20,25,0.95)', padding: '10px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', alignItems: 'center', flexShrink: 0 }}>
           {[
             { label: 'Duration', value: `${cpmResult.projectDuration}d` },
             { label: 'Critical Tasks', value: String(cpmResult.stats.criticalTasksCount), color: '#EF4444' },
             { label: 'Avg Float', value: `${cpmResult.stats.averageFloat.toFixed(1)}d`, color: '#40E0D0' },
           ].map(m => (
-            <div key={m.label} className="metric-card" style={{ padding: '8px 16px', background: '#111', minWidth: '120px' }}>
+            <div key={m.label} className="metric-card" style={{ padding: '6px 14px', background: '#111', minWidth: '110px' }}>
               <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.label}</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: m.color }}>{m.value}</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: m.color }}>{m.value}</div>
             </div>
           ))}
           <div style={{ flex: 1, fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -805,14 +867,13 @@ export default function WBSGanttPage() {
         </div>
       )}
 
-      {/* ── Gantt Container (all scrolling happens here) ──────────── */}
-      <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      {/* ── Gantt Container (all scrolling happens HERE) ──────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', position: 'relative' }}>
         <div
-          className="chart-card-body no-padding"
           ref={containerRef}
           onScroll={handleScroll}
           onWheel={handleWheelZoom}
-          style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}
+          style={{ flex: 1, minHeight: 0, overflow: 'auto', overscrollBehavior: 'contain', position: 'relative' }}
         >
           {/* Dependency SVG */}
           <svg ref={svgRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 5 }}>
@@ -828,16 +889,16 @@ export default function WBSGanttPage() {
           <table ref={tableRef} className="wbs-table" style={{ tableLayout: 'fixed', width: `${tableWidth}px`, borderCollapse: 'separate', borderSpacing: 0 }}>
             <colgroup>
               <col style={{ width: `${wbsCodeColWidth}px` }} />
-              <col style={{ width: `${NAME_COL}px` }} />
-              <col style={{ width: '65px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '90px' }} />
-              {showSparklines && <col style={{ width: '70px' }} />}
-              <col style={{ width: '75px' }} /><col style={{ width: '75px' }} />
-              <col style={{ width: '40px' }} /><col style={{ width: '50px' }} /><col style={{ width: '50px' }} /><col style={{ width: '50px' }} />
-              <col style={{ width: '65px' }} /><col style={{ width: '65px' }} /><col style={{ width: '65px' }} />
-              <col style={{ width: '40px' }} /><col style={{ width: '50px' }} />
-              <col style={{ width: '70px' }} /><col style={{ width: '35px' }} /><col style={{ width: '30px' }} />
+              <col style={{ width: `${COL.NAME}px` }} />
+              <col style={{ width: `${COL.TYPE}px` }} />
+              <col style={{ width: `${COL.RESOURCE}px` }} />
+              <col style={{ width: `${COL.EMPLOYEE}px` }} />
+              {showSparklines && <col style={{ width: `${COL.SPARKLINE}px` }} />}
+              <col style={{ width: `${COL.START}px` }} /><col style={{ width: `${COL.END}px` }} />
+              <col style={{ width: `${COL.DAYS}px` }} /><col style={{ width: `${COL.BL_HRS}px` }} /><col style={{ width: `${COL.ACT_HRS}px` }} /><col style={{ width: `${COL.REM_HRS}px` }} />
+              <col style={{ width: `${COL.BL_COST}px` }} /><col style={{ width: `${COL.ACT_COST}px` }} /><col style={{ width: `${COL.REM_COST}px` }} />
+              <col style={{ width: `${COL.EFF}px` }} /><col style={{ width: `${COL.PROG}px` }} />
+              <col style={{ width: `${COL.PRED}px` }} /><col style={{ width: `${COL.TF}px` }} /><col style={{ width: `${COL.CP}px` }} />
               {dateColumns.map((_, i) => <col key={i} style={{ width: `${columnWidth}px` }} />)}
             </colgroup>
 
@@ -884,14 +945,10 @@ export default function WBSGanttPage() {
                 const progress = row.percentComplete || 0;
                 const isExpanded = expandedIds.has(row.id);
                 const worstCase = (row as any).worstCaseStatus;
-                const typeColor = WBS_COLORS[row.itemType] || '#6B7280';
 
-                // Bar colour: WBS type for parents, progress for leaves, worst-case when collapsed
-                const barColor = isCritical
-                  ? '#EF4444'
-                  : row.hasChildren
-                    ? (!isExpanded && worstCase ? worstCase.color : typeColor)
-                    : getProgressColor(progress);
+                // Simplified bar colour: progress-based for ALL bars (parent + leaf), critical path override
+                const barColor = isCritical ? '#EF4444' : getProgressColor(progress);
+                const typeColor = WBS_COLORS[row.itemType] || '#6B7280';
 
                 const rowBg = isCritical ? 'rgba(220,38,38,0.05)' : 'var(--bg-primary)';
                 const stickyBg = isCritical ? '#1a1010' : 'var(--bg-primary)';
@@ -916,7 +973,7 @@ export default function WBSGanttPage() {
                       </EnhancedTooltip>
                     </td>
                     {/* Type badge */}
-                    <td><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
+                    <td style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
                     {/* Resource */}
                     <td style={{ ...TD_FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(row as any).assignedResource || ''}>{(row as any).assignedResource || '-'}</td>
                     {/* Employee (Assign dropdown) */}
@@ -985,7 +1042,7 @@ export default function WBSGanttPage() {
                             const bL = (Math.max(0, bs.getTime() - tlStart.getTime()) / tlDur) * 100;
                             const bW = ((Math.min(be.getTime(), tlEnd.getTime()) - Math.max(bs.getTime(), tlStart.getTime())) / tlDur) * 100;
                             baselineBar = (
-                              <div title={`Baseline: ${blStart} - ${blEnd}`} style={{
+                              <div style={{
                                 position: 'absolute', left: `calc(${dateColumns.length * 100}% * ${bL / 100})`,
                                 width: `calc(${dateColumns.length * 100}% * ${bW / 100})`, height: '6px', top: '18px',
                                 background: 'rgba(107,114,128,0.4)', borderRadius: '2px', zIndex: 3, border: '1px solid rgba(107,114,128,0.6)',
@@ -994,11 +1051,11 @@ export default function WBSGanttPage() {
                           }
                         }
 
-                        // Determine parent bar styles
+                        // Determine parent bar styles — unified progress-based coloring
                         const isParent = row.hasChildren;
                         const barHeight = isMilestone ? '16px' : isParent ? '10px' : '14px';
                         const barTop = isMilestone ? '6px' : isParent ? '8px' : '5px';
-                        const barBg = isMilestone ? 'transparent' : isParent ? `${typeColor}22` : (pct === 0 ? '#333' : '#444');
+                        const barBg = isMilestone ? 'transparent' : isParent ? `${barColor}22` : (pct === 0 ? '#333' : '#444');
                         const barBorder = isCritical
                           ? '2px solid #ef4444'
                           : isParent
@@ -1009,7 +1066,8 @@ export default function WBSGanttPage() {
                           <>
                             {baselineBar}
                             <div
-                              title={`${row.name}\n${row.startDate} — ${row.endDate}\nProgress: ${pct}%${hasSlipped ? '\nSLIPPED from baseline!' : ''}`}
+                              onMouseEnter={(e) => handleBarMouseEnter(e, row)}
+                              onMouseLeave={handleBarMouseLeave}
                               style={{
                                 position: 'absolute',
                                 left: `calc(${dateColumns.length * 100}% * ${leftPct / 100})`,
@@ -1019,6 +1077,7 @@ export default function WBSGanttPage() {
                                 border: barBorder,
                                 boxShadow: hasSlipped ? '0 0 6px rgba(245,158,11,0.5)' : '0 1px 3px rgba(0,0,0,0.3)',
                                 display: 'flex', alignItems: 'center',
+                                cursor: 'default',
                               }}
                             >
                               {!isMilestone && <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '3px' }} />}
@@ -1042,6 +1101,97 @@ export default function WBSGanttPage() {
           </table>
         </div>
       </div>
+
+      {/* ── Rich Floating Bar Tooltip ────────────────────────────── */}
+      {barTip && (
+        <div style={{
+          position: 'fixed', left: barTip.x, top: barTip.y, zIndex: 10000,
+          width: '320px', maxWidth: 'calc(100vw - 24px)',
+          background: 'rgba(18, 18, 22, 0.97)', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: '10px', padding: '14px 16px',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.7)', pointerEvents: 'none',
+          backdropFilter: 'blur(20px)', fontSize: '0.72rem', color: '#d0d0d0', lineHeight: 1.5,
+        }}>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#fff', flex: 1, marginRight: '8px', lineHeight: 1.3 }}>
+              {barTip.row.name}
+            </div>
+            <span style={{
+              fontSize: '0.52rem', fontWeight: 600, padding: '2px 6px', borderRadius: '4px',
+              background: `${WBS_COLORS[barTip.row.itemType] || '#666'}33`,
+              color: WBS_COLORS[barTip.row.itemType] || '#999', whiteSpace: 'nowrap', flexShrink: 0,
+            }}>
+              {(barTip.row.itemType || '').replace('_', ' ')}
+            </span>
+          </div>
+          <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: '8px' }}>WBS {barTip.row.wbsCode}</div>
+
+          <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+
+          {/* Dates */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', marginBottom: '2px' }}>
+            <span>{barTip.row.startDate ? new Date(barTip.row.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+            <span style={{ color: '#555' }}>→</span>
+            <span>{barTip.row.endDate ? new Date(barTip.row.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+          </div>
+          <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: '6px' }}>
+            {barTip.row.daysRequired ? `${Number(barTip.row.daysRequired).toFixed(0)} working days` : ''}
+          </div>
+
+          <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+
+          {/* Progress bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+            <div style={{ flex: 1, height: '7px', background: '#333', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ width: `${barTip.row.percentComplete || 0}%`, height: '100%', background: getProgressColor(barTip.row.percentComplete || 0), borderRadius: '4px', transition: 'width 0.3s' }} />
+            </div>
+            <span style={{ fontWeight: 700, color: getProgressColor(barTip.row.percentComplete || 0), fontSize: '0.78rem', minWidth: '36px', textAlign: 'right' }}>
+              {Math.round(barTip.row.percentComplete || 0)}%
+            </span>
+          </div>
+
+          <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+
+          {/* Metrics grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 16px', marginBottom: '6px', fontSize: '0.65rem' }}>
+            <div><span style={{ color: '#777' }}>BL Hours: </span><span style={{ color: '#e0e0e0' }}>{barTip.row.baselineHours && isFinite(Number(barTip.row.baselineHours)) ? Number(barTip.row.baselineHours).toLocaleString() : '-'}</span></div>
+            <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: 'var(--pinnacle-teal)' }}>{barTip.row.actualHours && isFinite(Number(barTip.row.actualHours)) ? Number(barTip.row.actualHours).toLocaleString() : '-'}</span></div>
+            <div><span style={{ color: '#777' }}>BL Cost: </span><span style={{ color: '#e0e0e0' }}>{formatCurrency(Number(barTip.row.baselineCost))}</span></div>
+            <div><span style={{ color: '#777' }}>Act Cost: </span><span style={{ color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(barTip.row.actualCost))}</span></div>
+          </div>
+
+          <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+
+          {/* Footer details */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: '0.62rem' }}>
+            {barTip.row.assignedResourceId && (
+              <span><span style={{ color: '#777' }}>Resource: </span>{getEmployeeName(barTip.row.assignedResourceId, employees)}</span>
+            )}
+            {(barTip.row.assignedResource) && !barTip.row.assignedResourceId && (
+              <span><span style={{ color: '#777' }}>Resource: </span>{barTip.row.assignedResource}</span>
+            )}
+            {barTip.row.taskEfficiency != null && barTip.row.taskEfficiency > 0 && (
+              <span><span style={{ color: '#777' }}>Efficiency: </span><span style={{ color: barTip.row.taskEfficiency >= 100 ? '#22c55e' : barTip.row.taskEfficiency >= 80 ? '#eab308' : '#ef4444' }}>{Math.round(barTip.row.taskEfficiency)}%</span></span>
+            )}
+            {barTip.row.totalFloat != null && (
+              <span><span style={{ color: '#777' }}>Float: </span><span style={{ color: barTip.row.totalFloat <= 0 ? '#ef4444' : '#e0e0e0' }}>{barTip.row.totalFloat}d</span></span>
+            )}
+          </div>
+
+          {/* Status badges */}
+          {(barTip.row.isCritical || barTip.row.is_critical) && (
+            <div style={{ marginTop: '8px', padding: '4px 10px', background: 'rgba(239,68,68,0.12)', borderRadius: '5px', color: '#ef4444', fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.5px' }}>
+              CRITICAL PATH
+            </div>
+          )}
+          {barTip.row.baselineEnd && barTip.row.endDate && new Date(barTip.row.baselineEnd) < new Date(barTip.row.endDate) && (
+            <div style={{ marginTop: '4px', padding: '4px 10px', background: 'rgba(245,158,11,0.12)', borderRadius: '5px', color: '#F59E0B', fontSize: '0.6rem', fontWeight: 600 }}>
+              SLIPPED {Math.round((new Date(barTip.row.endDate).getTime() - new Date(barTip.row.baselineEnd).getTime()) / (1000 * 60 * 60 * 24))} days from baseline
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
