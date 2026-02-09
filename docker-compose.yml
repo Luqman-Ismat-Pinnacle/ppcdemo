@@ -7,8 +7,6 @@ services:
       dockerfile: Dockerfile
       target: runner
       args:
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         AUTH0_BASE_URL: ${AUTH0_BASE_URL}
         AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
         DATABASE_URL: ${DATABASE_URL}
@@ -25,15 +23,13 @@ services:
       - AUTH0_ISSUER_BASE_URL=${AUTH0_ISSUER_BASE_URL}
       - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
       - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
-      # PostgreSQL Configuration (primary database)
+      # PostgreSQL Configuration (primary database — Azure PostgreSQL)
       - DATABASE_URL=${DATABASE_URL}
+      # Azure Blob Storage (document storage)
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
       # Azure Functions (Workday Sync)
       - AZURE_FUNCTION_URL=${AZURE_FUNCTION_URL}
       - AZURE_FUNCTION_KEY=${AZURE_FUNCTION_KEY}
-      # Supabase Configuration (legacy fallback / file storage)
-      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3000/api/auth/me', (r) => {process.exit(r.statusCode === 200 || r.statusCode === 401 ? 0 : 1)})" ]
@@ -65,12 +61,10 @@ services:
       AUTH0_ISSUER_BASE_URL: ${AUTH0_ISSUER_BASE_URL}
       AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
       AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET}
-      # PostgreSQL Configuration
+      # PostgreSQL Configuration (Azure PostgreSQL)
       DATABASE_URL: ${DATABASE_URL}
-      # Supabase Configuration (legacy / file storage)
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      # Azure Blob Storage (document storage)
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
     volumes:
       # Mount source code for live updates
       - .:/app

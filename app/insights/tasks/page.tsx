@@ -371,13 +371,13 @@ function HoursByWorkTypeChart({ tasks, byChargeType, onClick }: { tasks: any[]; 
   return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
-// ===== ENHANCED SANKEY WITH 5-LEVEL BREAKDOWN =====
-// Updated to use real chargeType data from Workday (EX, QC, CR)
+// ===== ENHANCED SANKEY WITH REAL DATA =====
+const TASK_CHARGE_COLORS: Record<string, string> = { Execution: '#3B82F6', Quality: '#8B5CF6', 'Customer Relations': '#F59E0B', EX: '#3B82F6', QC: '#8B5CF6', CR: '#F59E0B', SC: '#06B6D4', Other: '#6B7280' };
+
 function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: any; laborData: any; tasks: any[]; groupBy: SankeyGroupBy; onClick?: (params: any) => void }) {
-  const [sankeyDepth, setSankeyDepth] = useState<'simple' | 'detailed' | 'full'>('detailed');
+  const [sankeyDepth, setSankeyDepth] = useState<'simple' | 'detailed'>('detailed');
   
   const option: EChartsOption = useMemo(() => {
-    const workers = laborData.byWorker || [];
     const byChargeType = laborData.byChargeType || [];
     const nodes: any[] = [];
     const links: any[] = [];
@@ -385,167 +385,160 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
     
     const addNode = (name: string, color: string) => {
       if (!nodeSet.has(name)) {
-        nodes.push({ name, itemStyle: { color, borderWidth: 1, borderColor: color } });
+        nodes.push({ name, itemStyle: { color, borderWidth: 0 } });
         nodeSet.add(name);
       }
     };
     
-    // Get unique values based on groupBy
     const projects = [...new Set(tasks.map((t: any) => t.projectName || t.project_name).filter(Boolean))];
-    const phases = [...new Set(tasks.map((t: any) => t.phase || t.phaseId || 'General').filter(Boolean))];
-    const roles = [...new Set(workers.map((w: any) => w.role).filter(Boolean))];
-    
     const totalHours = stats.totalHours || 1;
     const completeRatio = stats.overallProgress / 100;
     
-    // Color mapping for charge types
-    const chargeTypeColors: Record<string, string> = {
-      'Execution': '#3B82F6',
-      'Quality': '#10B981',
-      'Customer Relations': '#8B5CF6',
-      'EX': '#3B82F6',
-      'QC': '#10B981',
-      'CR': '#8B5CF6',
-      'Other': '#6B7280'
-    };
-    
     // Level 1: Source
-    addNode('Total Hours', '#3B82F6');
+    addNode('Total Hours', '#40E0D0');
     
-    // Level 2: Primary grouping
-    let primaryItems: { name: string; hours: number; color: string }[] = [];
-    
-    switch (groupBy) {
-      case 'role':
-        primaryItems = roles.slice(0, sankeyDepth === 'full' ? 10 : 6).map(r => ({
-          name: String(r).slice(0, 18),
-          hours: workers.filter((w: any) => w.role === r).reduce((s: number, w: any) => s + (w.total || 0), 0) || totalHours / roles.length,
-          color: '#8B5CF6',
-        }));
-        break;
-      case 'project':
-        primaryItems = projects.slice(0, sankeyDepth === 'full' ? 10 : 6).map(p => {
-          const pTasks = tasks.filter((t: any) => (t.projectName || t.project_name) === p);
-          return {
-            name: String(p).slice(0, 18),
-            hours: pTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0) || totalHours / projects.length,
-            color: '#10B981',
-          };
-        });
-        break;
-      case 'phase':
-        primaryItems = phases.slice(0, sankeyDepth === 'full' ? 8 : 5).map(ph => {
-          const phTasks = tasks.filter((t: any) => (t.phase || t.phaseId || 'General') === ph);
-          return {
-            name: String(ph).slice(0, 18),
-            hours: phTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0) || totalHours / phases.length,
-            color: '#F59E0B',
-          };
-        });
-        break;
-      case 'status':
-        primaryItems = [
-          { name: 'Complete', hours: tasks.filter((t: any) => (t.percentComplete || 0) >= 100).reduce((s: number, t: any) => s + (t.actualHours || 0), 0), color: '#10B981' },
-          { name: 'In Progress', hours: tasks.filter((t: any) => (t.percentComplete || 0) > 0 && (t.percentComplete || 0) < 100).reduce((s: number, t: any) => s + (t.actualHours || 0), 0), color: '#3B82F6' },
-          { name: 'Not Started', hours: tasks.filter((t: any) => (t.percentComplete || 0) === 0).reduce((s: number, t: any) => s + (t.actualHours || 0), 0), color: '#6B7280' },
-        ].filter(i => i.hours > 0);
-        break;
-      case 'workType':
-        // Use real chargeType data from Workday if available
-        if (byChargeType.length > 0) {
-          primaryItems = byChargeType.map((ct: any) => ({
-            name: ct.name,
-            hours: ct.total || 0,
-            color: chargeTypeColors[ct.name] || '#6B7280',
-          })).filter((i: any) => i.hours > 0);
-        } else {
-          // Fallback to estimated distribution
-          primaryItems = [
-            { name: 'Execution', hours: totalHours * 0.7, color: '#3B82F6' },
-            { name: 'Quality', hours: totalHours * 0.2, color: '#10B981' },
-            { name: 'Customer Relations', hours: totalHours * 0.1, color: '#8B5CF6' },
-          ];
+    if (groupBy === 'project') {
+      // Project → Charge Type → Progress
+      projects.forEach(p => {
+        const pTasks = tasks.filter((t: any) => (t.projectName || t.project_name) === p);
+        const pHours = pTasks.reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
+        if (pHours > 0) {
+          const shortName = String(p).length > 28 ? String(p).slice(0, 28) + '...' : String(p);
+          addNode(shortName, '#10B981');
+          links.push({ source: 'Total Hours', target: shortName, value: Math.round(pHours) });
+          
+          if (sankeyDepth === 'detailed') {
+            // Project → Status breakdown
+            const pComplete = pTasks.filter((t: any) => (t.percentComplete || 0) >= 100).reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
+            const pActive = pTasks.filter((t: any) => { const pc = t.percentComplete || 0; return pc > 0 && pc < 100; }).reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
+            const pPending = pHours - pComplete - pActive;
+            if (pComplete > 0) { addNode('Complete', '#10B981'); links.push({ source: shortName, target: 'Complete', value: Math.round(pComplete) }); }
+            if (pActive > 0) { addNode('In Progress', '#3B82F6'); links.push({ source: shortName, target: 'In Progress', value: Math.round(pActive) }); }
+            if (pPending > 0) { addNode('Not Started', '#6B7280'); links.push({ source: shortName, target: 'Not Started', value: Math.max(1, Math.round(pPending)) }); }
+          } else {
+            const earned = Math.round(pHours * completeRatio);
+            const remain = Math.round(pHours * (1 - completeRatio));
+            addNode('Earned', '#10B981'); addNode('Remaining', '#F97316');
+            if (earned > 0) links.push({ source: shortName, target: 'Earned', value: earned });
+            if (remain > 0) links.push({ source: shortName, target: 'Remaining', value: remain });
+          }
         }
-        break;
-    }
-    
-    // Add primary nodes and links from Total
-    primaryItems.forEach(item => {
-      addNode(item.name, item.color);
-      links.push({ source: 'Total Hours', target: item.name, value: Math.max(1, Math.round(item.hours)) });
-    });
-    
-    if (sankeyDepth === 'simple') {
-      // Simple: Primary -> Outcomes only
-      addNode('Delivered', '#10B981');
-      addNode('Pending', '#6B7280');
+      });
+    } else if (groupBy === 'workType') {
+      // Work Type → Projects → Progress
+      const chargeItems = byChargeType.length > 0
+        ? byChargeType.map((ct: any) => ({ name: ct.name, hours: ct.total || 0 })).filter((i: any) => i.hours > 0)
+        : [{ name: 'Execution', hours: totalHours * 0.7 }, { name: 'Quality', hours: totalHours * 0.2 }, { name: 'Other', hours: totalHours * 0.1 }];
       
-      primaryItems.forEach(item => {
-        const delivered = Math.round(item.hours * completeRatio);
-        const pending = Math.round(item.hours * (1 - completeRatio));
-        if (delivered > 0) links.push({ source: item.name, target: 'Delivered', value: delivered });
-        if (pending > 0) links.push({ source: item.name, target: 'Pending', value: pending });
+      chargeItems.forEach((ct: any) => {
+        addNode(ct.name, TASK_CHARGE_COLORS[ct.name] || '#6B7280');
+        links.push({ source: 'Total Hours', target: ct.name, value: Math.max(1, Math.round(ct.hours)) });
+      });
+      
+      if (sankeyDepth === 'detailed') {
+        // Charge type → projects (proportional)
+        chargeItems.forEach((ct: any) => {
+          projects.forEach(p => {
+            const pTasks = tasks.filter((t: any) => (t.projectName || t.project_name) === p);
+            const pHours = pTasks.reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
+            const share = totalHours > 0 ? (pHours / totalHours) * ct.hours : 0;
+            if (share > 0) {
+              const shortName = `${String(p).slice(0, 20)}`;
+              addNode(shortName, '#10B981');
+              links.push({ source: ct.name, target: shortName, value: Math.max(1, Math.round(share)) });
+            }
+          });
+        });
+        
+        // Projects → outcome
+        addNode('Earned', '#10B981'); addNode('Remaining', '#F97316');
+        projects.forEach(p => {
+          const shortName = `${String(p).slice(0, 20)}`;
+          if (nodeSet.has(shortName)) {
+            const incoming = links.filter(l => l.target === shortName).reduce((s, l) => s + l.value, 0);
+            const earned = Math.round(incoming * completeRatio);
+            const remain = incoming - earned;
+            if (earned > 0) links.push({ source: shortName, target: 'Earned', value: earned });
+            if (remain > 0) links.push({ source: shortName, target: 'Remaining', value: remain });
+          }
+        });
+      } else {
+        addNode('Earned', '#10B981'); addNode('Remaining', '#F97316');
+        chargeItems.forEach((ct: any) => {
+          const earned = Math.round(ct.hours * completeRatio);
+          const remain = Math.round(ct.hours * (1 - completeRatio));
+          if (earned > 0) links.push({ source: ct.name, target: 'Earned', value: earned });
+          if (remain > 0) links.push({ source: ct.name, target: 'Remaining', value: remain });
+        });
+      }
+    } else if (groupBy === 'status') {
+      // Status → Projects
+      const statuses = [
+        { name: 'Complete', filter: (t: any) => (t.percentComplete || 0) >= 100, color: '#10B981' },
+        { name: 'In Progress', filter: (t: any) => { const pc = t.percentComplete || 0; return pc > 0 && pc < 100; }, color: '#3B82F6' },
+        { name: 'Not Started', filter: (t: any) => (t.percentComplete || 0) === 0, color: '#6B7280' },
+      ];
+      
+      statuses.forEach(s => {
+        const sHours = tasks.filter(s.filter).reduce((sum: number, t: any) => sum + (Number(t.actualHours) || 0), 0);
+        if (sHours > 0) {
+          addNode(s.name, s.color);
+          links.push({ source: 'Total Hours', target: s.name, value: Math.round(sHours) });
+          
+          if (sankeyDepth === 'detailed') {
+            projects.forEach(p => {
+              const pTasks = tasks.filter((t: any) => (t.projectName || t.project_name) === p).filter(s.filter);
+              const pHours = pTasks.reduce((sum: number, t: any) => sum + (Number(t.actualHours) || 0), 0);
+              if (pHours > 0) {
+                const shortName = `${String(p).slice(0, 22)}`;
+                addNode(shortName, '#10B981');
+                links.push({ source: s.name, target: shortName, value: Math.round(pHours) });
+              }
+            });
+          }
+        }
+      });
+    } else if (groupBy === 'role') {
+      // Role → Projects → Progress
+      const workers = laborData.byWorker || [];
+      const roles = [...new Set(workers.map((w: any) => w.role).filter(Boolean))];
+      
+      roles.slice(0, 8).forEach(r => {
+        const rHours = workers.filter((w: any) => w.role === r).reduce((s: number, w: any) => s + (w.total || 0), 0);
+        if (rHours > 0) {
+          const roleName = String(r).slice(0, 20);
+          addNode(roleName, '#8B5CF6');
+          links.push({ source: 'Total Hours', target: roleName, value: Math.round(rHours) });
+          
+          if (sankeyDepth === 'detailed') {
+            addNode('Earned', '#10B981'); addNode('Remaining', '#F97316');
+            const earned = Math.round(rHours * completeRatio);
+            const remain = rHours - earned;
+            if (earned > 0) links.push({ source: roleName, target: 'Earned', value: earned });
+            if (remain > 0) links.push({ source: roleName, target: 'Remaining', value: remain });
+          }
+        }
       });
     } else {
-      // Detailed/Full: Add middle layers
-      
-      // Level 3: Secondary grouping (opposite of primary)
-      let secondaryItems: { name: string; color: string }[] = [];
-      
-      if (groupBy === 'role' || groupBy === 'workType') {
-        secondaryItems = projects.slice(0, sankeyDepth === 'full' ? 6 : 4).map(p => ({ name: `Proj: ${String(p).slice(0, 12)}`, color: '#10B981' }));
-      } else if (groupBy === 'project') {
-        secondaryItems = roles.slice(0, sankeyDepth === 'full' ? 6 : 4).map(r => ({ name: `Role: ${String(r).slice(0, 12)}`, color: '#8B5CF6' }));
-      } else {
-        secondaryItems = ['Execution', 'QC', 'Review'].map(w => ({ name: w, color: w === 'Execution' ? '#3B82F6' : w === 'QC' ? '#10B981' : '#8B5CF6' }));
-      }
-      
-      secondaryItems.forEach(item => addNode(item.name, item.color));
-      
-      // Primary -> Secondary links
-      primaryItems.forEach(primary => {
-        const primaryTotal = primary.hours;
-        secondaryItems.forEach((secondary, idx) => {
-          const share = primaryTotal / secondaryItems.length * (1 - idx * 0.1);
-          if (share > 0) links.push({ source: primary.name, target: secondary.name, value: Math.max(1, Math.round(share)) });
-        });
-      });
-      
-      // Level 4: Work quality
-      addNode('High Quality', '#10B981');
-      addNode('Needs Review', '#F59E0B');
-      addNode('Rework', '#EF4444');
-      
-      secondaryItems.forEach(secondary => {
-        const secTotal = links.filter(l => l.target === secondary.name).reduce((s, l) => s + l.value, 0);
-        if (secTotal > 0) {
-          links.push({ source: secondary.name, target: 'High Quality', value: Math.max(1, Math.round(secTotal * 0.7)) });
-          links.push({ source: secondary.name, target: 'Needs Review', value: Math.max(1, Math.round(secTotal * 0.2)) });
-          links.push({ source: secondary.name, target: 'Rework', value: Math.max(1, Math.round(secTotal * 0.1)) });
+      // Phase → Progress
+      const phases = [...new Set(tasks.map((t: any) => t.phase || t.phaseId || 'General').filter(Boolean))];
+      phases.slice(0, 8).forEach(ph => {
+        const phTasks = tasks.filter((t: any) => (t.phase || t.phaseId || 'General') === ph);
+        const phHours = phTasks.reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
+        if (phHours > 0) {
+          const phaseName = String(ph).slice(0, 20);
+          addNode(phaseName, '#F59E0B');
+          links.push({ source: 'Total Hours', target: phaseName, value: Math.round(phHours) });
+          
+          if (sankeyDepth === 'detailed') {
+            addNode('Earned', '#10B981'); addNode('Remaining', '#F97316');
+            const earned = Math.round(phHours * completeRatio);
+            const remain = phHours - earned;
+            if (earned > 0) links.push({ source: phaseName, target: 'Earned', value: earned });
+            if (remain > 0) links.push({ source: phaseName, target: 'Remaining', value: remain });
+          }
         }
       });
-      
-      // Level 5: Final outcomes
-      addNode('Delivered', '#10B981');
-      addNode('In Progress', '#3B82F6');
-      addNode('Blocked', '#EF4444');
-      
-      const hqTotal = links.filter(l => l.target === 'High Quality').reduce((s, l) => s + l.value, 0);
-      const nrTotal = links.filter(l => l.target === 'Needs Review').reduce((s, l) => s + l.value, 0);
-      const rwTotal = links.filter(l => l.target === 'Rework').reduce((s, l) => s + l.value, 0);
-      
-      if (hqTotal > 0) {
-        links.push({ source: 'High Quality', target: 'Delivered', value: Math.max(1, Math.round(hqTotal * completeRatio)) });
-        links.push({ source: 'High Quality', target: 'In Progress', value: Math.max(1, Math.round(hqTotal * (1 - completeRatio))) });
-      }
-      if (nrTotal > 0) {
-        links.push({ source: 'Needs Review', target: 'Delivered', value: Math.max(1, Math.round(nrTotal * 0.5)) });
-        links.push({ source: 'Needs Review', target: 'In Progress', value: Math.max(1, Math.round(nrTotal * 0.5)) });
-      }
-      if (rwTotal > 0) {
-        links.push({ source: 'Rework', target: 'In Progress', value: Math.max(1, Math.round(rwTotal * 0.7)) });
-        links.push({ source: 'Rework', target: 'Blocked', value: Math.max(1, Math.round(rwTotal * 0.3)) });
-      }
     }
 
     return {
@@ -560,10 +553,10 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
           if (params.dataType === 'edge') {
             const pct = sn((params.data.value / totalHours) * 100, 1);
             return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
-              Hours: <strong>${params.data.value.toLocaleString()}</strong><br/>
+              Hours: <strong>${Math.round(params.data.value).toLocaleString()}</strong><br/>
               Share: ${pct}%`;
           }
-          return `<strong>${params.name}</strong><br/>Click to filter page`;
+          return `<strong>${params.name}</strong><br/>Click to filter`;
         },
       },
       series: [{
@@ -574,14 +567,14 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
         nodeGap: 14, 
         layoutIterations: 64, 
         orient: 'horizontal',
-        left: 30, right: 120, top: 20, bottom: 20,
+        left: 40, right: 140, top: 20, bottom: 20,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 10, 
+          fontSize: 11, 
           fontWeight: 600,
-          formatter: (params: any) => params.name.length > 16 ? params.name.slice(0, 16) + '..' : params.name,
+          formatter: (params: any) => params.name.length > 22 ? params.name.slice(0, 22) + '..' : params.name,
         },
-        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.45 },
+        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.4 },
         data: nodes, 
         links,
       }],
@@ -591,17 +584,17 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-        {(['simple', 'detailed', 'full'] as const).map(depth => (
+        {(['simple', 'detailed'] as const).map(depth => (
           <button
             key={depth}
             onClick={() => setSankeyDepth(depth)}
             style={{
-              padding: '0.3rem 0.6rem',
+              padding: '0.3rem 0.7rem',
               borderRadius: '6px',
               border: `1px solid ${sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
               background: sankeyDepth === depth ? 'rgba(64,224,208,0.1)' : 'transparent',
               color: sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-              fontSize: '0.65rem',
+              fontSize: '0.7rem',
               fontWeight: 600,
               cursor: 'pointer',
               textTransform: 'capitalize',
@@ -610,8 +603,8 @@ function EnhancedSankey({ stats, laborData, tasks, groupBy, onClick }: { stats: 
             {depth}
           </button>
         ))}
-        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {stats.totalHours.toLocaleString()} total hours
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {stats.totalHours.toLocaleString()} actual hrs | {stats.total} tasks from plan projects
         </span>
       </div>
       <ChartWrapper option={option} height="440px" onClick={onClick} />
@@ -1525,7 +1518,7 @@ export default function TasksPage() {
     });
   }, [crossFilter, sankeyGroupBy]);
 
-  // Check for empty data state
+  // Check for empty data — only plan projects have tasks
   const hasData = (data.tasks?.length ?? 0) > 0;
 
   return (
@@ -1534,7 +1527,7 @@ export default function TasksPage() {
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
         <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Task Operations</h1>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          Where the hours are going and how work is performing - click any visual to drill down
+          Task-level hours and performance for projects with imported plans - click any visual to drill down
         </p>
       </div>
 
@@ -1557,9 +1550,9 @@ export default function TasksPage() {
             <path d="M9 12h6" />
             <path d="M9 16h6" />
           </svg>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Task Data Available</h2>
-          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>
-            Import project data from the Data Management page to view task operations, hours breakdown, and quality metrics.
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Project Plans Found</h2>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '420px' }}>
+            Upload and process an MPP project plan from the Project Plans page. Only projects with imported schedules appear here.
           </p>
           <a
             href="/project-controls/data-management"

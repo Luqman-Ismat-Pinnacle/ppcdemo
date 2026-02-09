@@ -270,105 +270,126 @@ function PortfolioCommandCenter({
       </div>
       
       {/* Summary Stats */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <div style={{ textAlign: 'center', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '120px' }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Actual Hours</div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{healthMetrics.totalHours.toLocaleString()}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Actual Hrs</div>
+          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{healthMetrics.totalHours.toLocaleString()}</div>
         </div>
-        <div style={{ textAlign: 'center', padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '120px' }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Baseline</div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{healthMetrics.baselineHours.toLocaleString()}</div>
+        <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Baseline Hrs</div>
+          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{healthMetrics.baselineHours.toLocaleString()}</div>
         </div>
+        <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Remaining</div>
+          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: healthMetrics.remainingHours > healthMetrics.baselineHours * 0.5 ? '#F59E0B' : '#10B981' }}>{healthMetrics.remainingHours.toLocaleString()}</div>
+        </div>
+        {healthMetrics.timesheetCost > 0 && (
+          <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Labor Cost</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#3B82F6' }}>${(healthMetrics.timesheetCost / 1000).toFixed(0)}K</div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // ===== PORTFOLIO HOURS FLOW SANKEY =====
+const CHARGE_TYPE_LABELS: Record<string, string> = { EX: 'Execution', QC: 'Quality Control', CR: 'Customer Relations', SC: 'Supervision', Other: 'Other' };
+const CHARGE_TYPE_COLORS: Record<string, string> = { EX: '#3B82F6', QC: '#8B5CF6', CR: '#F59E0B', SC: '#06B6D4', Other: '#6B7280' };
+
 function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const [sankeyDepth, setSankeyDepth] = useState<'summary' | 'detailed'>('detailed');
   
   const option: EChartsOption = useMemo(() => {
-    const goodProjects = projectBreakdown.filter(p => p.spi >= 1 && p.cpi >= 1);
-    const atRiskProjects = projectBreakdown.filter(p => (p.spi >= 0.9 && p.spi < 1) || (p.cpi >= 0.9 && p.cpi < 1));
-    const criticalProjects = projectBreakdown.filter(p => p.spi < 0.9 || p.cpi < 0.9);
-    
-    const goodHours = goodProjects.reduce((sum, p) => sum + p.actualHours, 0);
-    const atRiskHours = atRiskProjects.reduce((sum, p) => sum + p.actualHours, 0);
-    const criticalHours = criticalProjects.reduce((sum, p) => sum + p.actualHours, 0);
-    const totalHours = goodHours + atRiskHours + criticalHours || 1;
-    
+    const totalHours = projectBreakdown.reduce((s, p) => s + p.actualHours, 0) || 1;
     const nodes: any[] = [];
     const links: any[] = [];
     const nodeSet = new Set<string>();
     
     const addNode = (name: string, color: string) => {
       if (!nodeSet.has(name)) {
-        nodes.push({ name, itemStyle: { color, borderWidth: 2, borderColor: color } });
+        nodes.push({ name, itemStyle: { color, borderWidth: 0, borderColor: color } });
         nodeSet.add(name);
       }
     };
     
-    // Level 1: Portfolio (total hours)
-    addNode('Portfolio', '#3B82F6');
-    
-    // Level 2: Health Status (hours-based)
-    if (goodHours > 0) addNode('On Track', '#10B981');
-    if (atRiskHours > 0) addNode('At Risk', '#F59E0B');
-    if (criticalHours > 0) addNode('Critical', '#EF4444');
-    
-    if (goodHours > 0) links.push({ source: 'Portfolio', target: 'On Track', value: goodHours });
-    if (atRiskHours > 0) links.push({ source: 'Portfolio', target: 'At Risk', value: atRiskHours });
-    if (criticalHours > 0) links.push({ source: 'Portfolio', target: 'Critical', value: criticalHours });
-    
     if (sankeyDepth === 'summary') {
-      // Summary: Health Status → Outcome
-      const completeRatio = healthMetrics.percentComplete / 100;
-      addNode('Completed', '#8B5CF6');
-      addNode('In Progress', '#06B6D4');
+      // Summary: Portfolio → Projects → Work Type
+      addNode('Portfolio', '#40E0D0');
       
-      if (goodHours > 0) {
-        links.push({ source: 'On Track', target: 'Completed', value: Math.max(1, Math.round(goodHours * completeRatio)) });
-        links.push({ source: 'On Track', target: 'In Progress', value: Math.max(1, Math.round(goodHours * (1 - completeRatio))) });
-      }
-      if (atRiskHours > 0) {
-        links.push({ source: 'At Risk', target: 'Completed', value: Math.max(1, Math.round(atRiskHours * completeRatio * 0.7)) });
-        links.push({ source: 'At Risk', target: 'In Progress', value: Math.max(1, Math.round(atRiskHours * (1 - completeRatio * 0.7))) });
-      }
-      if (criticalHours > 0) {
-        links.push({ source: 'Critical', target: 'In Progress', value: Math.max(1, criticalHours) });
-      }
+      projectBreakdown.forEach(p => {
+        const shortName = p.name.length > 30 ? p.name.slice(0, 30) + '...' : p.name;
+        const pColor = p.spi >= 1 && p.cpi >= 1 ? '#10B981' : p.spi >= 0.9 && p.cpi >= 0.9 ? '#F59E0B' : '#EF4444';
+        addNode(shortName, pColor);
+        if (p.actualHours > 0) links.push({ source: 'Portfolio', target: shortName, value: p.actualHours });
+        
+        // Project → Work types
+        const ct = p.chargeTypes || {};
+        Object.entries(ct).forEach(([type, hrs]) => {
+          if ((hrs as number) > 0) {
+            const label = CHARGE_TYPE_LABELS[type] || type;
+            addNode(label, CHARGE_TYPE_COLORS[type] || '#6B7280');
+            links.push({ source: shortName, target: label, value: hrs as number });
+          }
+        });
+      });
+      
+      // Work types → Outcomes
+      const completedHrs = Math.round(totalHours * (healthMetrics.percentComplete / 100));
+      const remainingHrs = totalHours - completedHrs;
+      addNode('Earned', '#10B981');
+      addNode('Remaining', '#F97316');
+      Object.keys(CHARGE_TYPE_LABELS).forEach(type => {
+        const label = CHARGE_TYPE_LABELS[type];
+        if (nodeSet.has(label)) {
+          const typeTotal = projectBreakdown.reduce((s, p) => s + ((p.chargeTypes || {})[type] || 0), 0);
+          if (typeTotal > 0) {
+            const earned = Math.round(typeTotal * (healthMetrics.percentComplete / 100));
+            const rem = typeTotal - earned;
+            if (earned > 0) links.push({ source: label, target: 'Earned', value: earned });
+            if (rem > 0) links.push({ source: label, target: 'Remaining', value: rem });
+          }
+        }
+      });
     } else {
-      // Detailed: Health Status → Projects → Outcomes
-      const topGood = goodProjects.sort((a, b) => b.actualHours - a.actualHours).slice(0, 5);
-      const topRisk = atRiskProjects.sort((a, b) => b.actualHours - a.actualHours).slice(0, 4);
-      const topCrit = criticalProjects.sort((a, b) => b.actualHours - a.actualHours).slice(0, 3);
+      // Detailed: Portfolio → Projects → Charge Types → Progress
+      addNode('Portfolio', '#40E0D0');
       
-      topGood.forEach(p => { addNode(p.name.slice(0, 22), '#10B981'); });
-      topRisk.forEach(p => { addNode(p.name.slice(0, 22), '#F59E0B'); });
-      topCrit.forEach(p => { addNode(p.name.slice(0, 22), '#EF4444'); });
-      
-      // Remaining hours not covered by top projects
-      const goodRemaining = goodHours - topGood.reduce((s, p) => s + p.actualHours, 0);
-      const riskRemaining = atRiskHours - topRisk.reduce((s, p) => s + p.actualHours, 0);
-      const critRemaining = criticalHours - topCrit.reduce((s, p) => s + p.actualHours, 0);
-      if (goodRemaining > 0 && goodProjects.length > topGood.length) { addNode('Other On Track', '#10B981'); links.push({ source: 'On Track', target: 'Other On Track', value: goodRemaining }); }
-      if (riskRemaining > 0 && atRiskProjects.length > topRisk.length) { addNode('Other At Risk', '#F59E0B'); links.push({ source: 'At Risk', target: 'Other At Risk', value: riskRemaining }); }
-      if (critRemaining > 0 && criticalProjects.length > topCrit.length) { addNode('Other Critical', '#EF4444'); links.push({ source: 'Critical', target: 'Other Critical', value: critRemaining }); }
-      
-      topGood.forEach(p => { if (p.actualHours > 0) links.push({ source: 'On Track', target: p.name.slice(0, 22), value: p.actualHours }); });
-      topRisk.forEach(p => { if (p.actualHours > 0) links.push({ source: 'At Risk', target: p.name.slice(0, 22), value: p.actualHours }); });
-      topCrit.forEach(p => { if (p.actualHours > 0) links.push({ source: 'Critical', target: p.name.slice(0, 22), value: p.actualHours }); });
-      
-      // Projects → Outcomes
-      addNode('Completed', '#8B5CF6');
-      addNode('In Progress', '#06B6D4');
-      
-      [...topGood, ...topRisk, ...topCrit].forEach(p => {
-        const pCompleted = Math.round(p.actualHours * (p.percentComplete / 100));
-        const pRemaining = p.actualHours - pCompleted;
-        if (pCompleted > 0) links.push({ source: p.name.slice(0, 22), target: 'Completed', value: pCompleted });
-        if (pRemaining > 0) links.push({ source: p.name.slice(0, 22), target: 'In Progress', value: pRemaining });
+      projectBreakdown.forEach(p => {
+        const shortName = p.name.length > 30 ? p.name.slice(0, 30) + '...' : p.name;
+        const pColor = p.spi >= 1 && p.cpi >= 1 ? '#10B981' : p.spi >= 0.9 && p.cpi >= 0.9 ? '#F59E0B' : '#EF4444';
+        addNode(shortName, pColor);
+        if (p.actualHours > 0) links.push({ source: 'Portfolio', target: shortName, value: p.actualHours });
+        
+        // Project → Charge types
+        const ct = p.chargeTypes || {};
+        Object.entries(ct).forEach(([type, hrs]) => {
+          if ((hrs as number) > 0) {
+            const label = `${CHARGE_TYPE_LABELS[type] || type} (${shortName.slice(0, 12)})`;
+            addNode(label, CHARGE_TYPE_COLORS[type] || '#6B7280');
+            links.push({ source: shortName, target: label, value: hrs as number });
+          }
+        });
+        
+        // Charge types → Progress (per project)
+        const earnedLabel = `Earned: ${shortName.slice(0, 15)}`;
+        const remainLabel = `Remaining: ${shortName.slice(0, 15)}`;
+        const pEarned = Math.round(p.actualHours * (p.percentComplete / 100));
+        const pRemain = p.actualHours - pEarned;
+        
+        if (pEarned > 0) addNode(earnedLabel, '#10B981');
+        if (pRemain > 0) addNode(remainLabel, '#F97316');
+        
+        Object.entries(ct).forEach(([type, hrs]) => {
+          if ((hrs as number) > 0) {
+            const label = `${CHARGE_TYPE_LABELS[type] || type} (${shortName.slice(0, 12)})`;
+            const typeEarned = Math.round((hrs as number) * (p.percentComplete / 100));
+            const typeRemain = (hrs as number) - typeEarned;
+            if (typeEarned > 0 && pEarned > 0) links.push({ source: label, target: earnedLabel, value: typeEarned });
+            if (typeRemain > 0 && pRemain > 0) links.push({ source: label, target: remainLabel, value: typeRemain });
+          }
+        });
       });
     }
     
@@ -384,7 +405,7 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
           if (params.dataType === 'edge') {
             const pct = totalHours > 0 ? sn((params.data.value / totalHours) * 100, 1) : '0';
             return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
-              Hours: <strong>${params.data.value.toLocaleString()}</strong><br/>
+              Hours: <strong>${Math.round(params.data.value).toLocaleString()}</strong><br/>
               Share: ${pct}% of portfolio`;
           }
           return `<strong>${params.name}</strong><br/>Click to filter`;
@@ -394,30 +415,28 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
         type: 'sankey',
         emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
         nodeAlign: 'justify',
-        nodeWidth: 24,
-        nodeGap: 16,
+        nodeWidth: 22,
+        nodeGap: 14,
         layoutIterations: 64,
         orient: 'horizontal',
-        left: 30,
-        right: 120,
+        left: 40,
+        right: 140,
         top: 20,
         bottom: 20,
         label: { 
           color: 'var(--text-primary)', 
           fontSize: 11, 
           fontWeight: 600,
-          formatter: (p: any) => {
-            const short = p.name.length > 18 ? p.name.slice(0, 18) + '..' : p.name;
-            return short;
-          },
+          formatter: (p: any) => p.name.length > 25 ? p.name.slice(0, 25) + '..' : p.name,
         },
-        lineStyle: { color: 'gradient', curveness: 0.4, opacity: 0.45 },
+        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.4 },
         data: nodes, 
         links,
       }],
     };
   }, [projectBreakdown, healthMetrics, sankeyDepth]);
 
+  const totalHours = projectBreakdown.reduce((s, p) => s + p.actualHours, 0);
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
@@ -440,11 +459,11 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
             {depth}
           </button>
         ))}
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {totalHoursLabel(healthMetrics.totalHours)} total hours across {projectBreakdown.length} projects
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {totalHoursLabel(totalHours)} actual hrs | {totalHoursLabel(healthMetrics.baselineHours)} baseline | {projectBreakdown.length} projects with plans
         </span>
       </div>
-      <ChartWrapper option={option} height="420px" onClick={onClick} />
+      <ChartWrapper option={option} height="440px" onClick={onClick} />
     </div>
   );
 }
@@ -1809,23 +1828,54 @@ export default function OverviewPage() {
     return 'All Projects';
   }, [hierarchyFilters]);
 
-  // Project breakdown
+  // ── Project IDs that have a plan (tasks in schedule) ──
+  const planProjectIds = useMemo(() => {
+    const ids = new Set<string>();
+    (data.tasks || []).forEach((t: any) => {
+      const pid = t.projectId || t.project_id;
+      if (pid) ids.add(pid);
+    });
+    return ids;
+  }, [data.tasks]);
+
+  // ── Hour entries filtered to plan-only projects ──
+  const planHours = useMemo(() => {
+    return (data.hours || []).filter((h: any) => {
+      const pid = h.projectId || h.project_id;
+      return pid && planProjectIds.has(pid);
+    });
+  }, [data.hours, planProjectIds]);
+
+  // ── Charge type breakdown for plan projects ──
+  const chargeBreakdown = useMemo(() => {
+    const byType: Record<string, { hours: number; cost: number; count: number }> = {};
+    planHours.forEach((h: any) => {
+      const ct = h.chargeType || h.charge_type || 'Other';
+      if (!byType[ct]) byType[ct] = { hours: 0, cost: 0, count: 0 };
+      const hrs = Number(h.hours ?? 0);
+      const cost = Number(h.actualCost ?? h.actual_cost ?? 0);
+      byType[ct].hours += isFinite(hrs) ? hrs : 0;
+      byType[ct].cost += isFinite(cost) ? cost : 0;
+      byType[ct].count++;
+    });
+    return byType;
+  }, [planHours]);
+
+  // ── Project breakdown (only projects with a plan) ──
   const projectBreakdown = useMemo(() => {
     const tasks = data.tasks || [];
     const projects = data.projects || [];
-    const projectMap = new Map<string, any>();
     const projectNameMap = new Map<string, string>();
-    
     projects.forEach((p: any) => projectNameMap.set(p.id || p.projectId, p.name || p.projectName || p.id));
 
+    // Aggregate tasks by project
+    const projectMap = new Map<string, any>();
     tasks.forEach((t: any) => {
       const projectId = t.projectId || t.project_id || 'Unknown';
       const projectName = projectNameMap.get(projectId) || t.projectName || t.project_name || projectId;
-      
       if (!projectMap.has(projectId)) {
-        projectMap.set(projectId, { name: projectName, tasks: 0, completed: 0, baselineHours: 0, actualHours: 0, percentComplete: 0 });
+        projectMap.set(projectId, { name: projectName, tasks: 0, completed: 0, baselineHours: 0, actualHours: 0, percentComplete: 0, hoursActual: 0, hoursCost: 0, chargeTypes: {} as Record<string, number> });
       }
-      
       const p = projectMap.get(projectId)!;
       p.tasks++;
       const bh = Number(t.baselineHours ?? t.budgetHours ?? 0);
@@ -1837,58 +1887,92 @@ export default function OverviewPage() {
       if ((t.status || '').toLowerCase().includes('complete') || (t.percentComplete || 0) >= 100) p.completed++;
     });
 
+    // Enrich with hour_entries data (actual labor hours from timesheet)
+    planHours.forEach((h: any) => {
+      const pid = h.projectId || h.project_id;
+      const entry = projectMap.get(pid);
+      if (entry) {
+        const hrs = Number(h.hours ?? 0);
+        const cost = Number(h.actualCost ?? h.actual_cost ?? 0);
+        entry.hoursActual += isFinite(hrs) ? hrs : 0;
+        entry.hoursCost += isFinite(cost) ? cost : 0;
+        const ct = h.chargeType || h.charge_type || 'Other';
+        entry.chargeTypes[ct] = (entry.chargeTypes[ct] || 0) + (isFinite(hrs) ? hrs : 0);
+      }
+    });
+
     return Array.from(projectMap.entries()).map(([id, p]) => {
       const avgPc = p.tasks > 0 ? Math.round(p.percentComplete / p.tasks) : 0;
-      const spi = p.baselineHours > 0 ? p.actualHours / p.baselineHours : 1;
+      // EV = % complete * baseline (Earned Value)
       const earnedHours = p.baselineHours * (avgPc / 100);
+      // CPI = EV / AC  (Cost Performance Index)
       const cpi = p.actualHours > 0 ? earnedHours / p.actualHours : 1;
+      // SPI = EV / PV  (Schedule Performance Index) — PV = baseline
+      const spi = p.baselineHours > 0 ? earnedHours / p.baselineHours : 1;
+      // Remaining
+      const remaining = Math.max(0, p.baselineHours - p.actualHours);
+      // Timesheet hours (from hour_entries - actual labor recorded)
+      const timesheetHours = Math.round(p.hoursActual);
+      const timesheetCost = Math.round(p.hoursCost);
       
       return {
         id, name: p.name, tasks: p.tasks, completed: p.completed,
         baselineHours: Math.round(p.baselineHours), actualHours: Math.round(p.actualHours),
+        remainingHours: Math.round(remaining),
+        timesheetHours, timesheetCost,
+        chargeTypes: p.chargeTypes as Record<string, number>,
         spi: Math.round(spi * 100) / 100, cpi: Math.round(cpi * 100) / 100, percentComplete: avgPc,
         variance: p.baselineHours > 0 ? Math.round(((p.actualHours - p.baselineHours) / p.baselineHours) * 100) : 0,
       };
-    }).filter(p => p.name !== 'Unknown' && p.tasks > 0);
-  }, [data.tasks, data.projects]);
+    }).filter(p => p.name !== 'Unknown' && p.tasks > 0)
+      .sort((a, b) => b.actualHours - a.actualHours);
+  }, [data.tasks, data.projects, planHours]);
 
-  // Health metrics
+  // ── Portfolio health metrics (plan projects only) ──
   const healthMetrics = useMemo(() => {
-    const tasks = data.tasks || [];
-    let totalBaselineHours = 0, totalActualHours = 0, totalPercentComplete = 0, itemCount = 0;
+    let totalBaseline = 0, totalActual = 0, totalEarned = 0;
+    let totalTimesheetHours = 0, totalTimesheetCost = 0;
 
-    tasks.forEach((task: any) => {
-      const bh = Number(task.baselineHours ?? task.budgetHours ?? 0);
-      const ah = Number(task.actualHours ?? 0);
-      const pc = Number(task.percentComplete ?? 0);
-      totalBaselineHours += isFinite(bh) ? bh : 0;
-      totalActualHours += isFinite(ah) ? ah : 0;
-      totalPercentComplete += isFinite(pc) ? pc : 0;
-      itemCount++;
+    projectBreakdown.forEach(p => {
+      totalBaseline += p.baselineHours;
+      totalActual += p.actualHours;
+      totalEarned += p.baselineHours * (p.percentComplete / 100);
+      totalTimesheetHours += p.timesheetHours;
+      totalTimesheetCost += p.timesheetCost;
     });
 
-    const avgPercentComplete = itemCount > 0 ? Math.round(totalPercentComplete / itemCount) : 0;
-    const spi = totalBaselineHours > 0 ? totalActualHours / totalBaselineHours : 1;
-    const earnedHours = totalBaselineHours * (avgPercentComplete / 100);
-    const cpi = totalActualHours > 0 ? earnedHours / totalActualHours : 1;
+    // Portfolio-level EVM
+    const spi = totalBaseline > 0 ? totalEarned / totalBaseline : 1;
+    const cpi = totalActual > 0 ? totalEarned / totalActual : 1;
+    const avgPc = projectBreakdown.length > 0
+      ? Math.round(projectBreakdown.reduce((s, p) => s + p.percentComplete, 0) / projectBreakdown.length)
+      : 0;
+    const remaining = Math.max(0, totalBaseline - totalActual);
 
+    // Health scoring
     let healthScore = 100;
-    if (spi < 0.9) healthScore -= 25;
-    else if (spi < 1) healthScore -= 10;
-    if (cpi < 0.9) healthScore -= 25;
-    else if (cpi < 1) healthScore -= 10;
+    if (spi < 0.85) healthScore -= 30;
+    else if (spi < 0.95) healthScore -= 15;
+    else if (spi < 1) healthScore -= 5;
+    if (cpi < 0.85) healthScore -= 30;
+    else if (cpi < 0.95) healthScore -= 15;
+    else if (cpi < 1) healthScore -= 5;
     healthScore = Math.max(0, Math.min(100, healthScore));
 
     const scheduleStatus: 'green' | 'yellow' | 'red' = spi >= 1 ? 'green' : spi >= 0.9 ? 'yellow' : 'red';
     const budgetStatus: 'green' | 'yellow' | 'red' = cpi >= 1 ? 'green' : cpi >= 0.9 ? 'yellow' : 'red';
-    const qualityStatus: 'green' | 'yellow' | 'red' = avgPercentComplete >= 80 ? 'green' : avgPercentComplete >= 50 ? 'yellow' : 'red';
+    const qualityStatus: 'green' | 'yellow' | 'red' = avgPc >= 80 ? 'green' : avgPc >= 50 ? 'yellow' : 'red';
 
     return {
       healthScore, spi: Math.round(spi * 100) / 100, cpi: Math.round(cpi * 100) / 100,
-      percentComplete: avgPercentComplete, scheduleStatus, budgetStatus, qualityStatus,
-      projectCount: projectBreakdown.length, totalHours: Math.round(totalActualHours), baselineHours: Math.round(totalBaselineHours),
+      percentComplete: avgPc, scheduleStatus, budgetStatus, qualityStatus,
+      projectCount: projectBreakdown.length,
+      totalHours: Math.round(totalActual), baselineHours: Math.round(totalBaseline),
+      earnedHours: Math.round(totalEarned), remainingHours: Math.round(remaining),
+      timesheetHours: Math.round(totalTimesheetHours), timesheetCost: Math.round(totalTimesheetCost),
+      chargeBreakdown,
     };
-  }, [data.tasks, projectBreakdown]);
+  }, [projectBreakdown, chargeBreakdown]);
 
   // Schedule risks (milestones)
   const milestones = useMemo(() => data.milestones || [], [data.milestones]);
@@ -1902,8 +1986,12 @@ export default function OverviewPage() {
     
     // Determine filter type based on chart
     if (chartType === 'sankey') {
-      if (['On Track', 'At Risk', 'Critical', 'Completed', 'In Progress'].includes(name)) {
+      if (['Execution', 'Quality Control', 'Customer Relations', 'Supervision', 'Other'].includes(name) || name.startsWith('Execution (') || name.startsWith('Quality Control (')) {
+        filterType = 'workType';
+      } else if (name.startsWith('Earned') || name.startsWith('Remaining')) {
         filterType = 'status';
+      } else if (name === 'Portfolio') {
+        filterType = 'custom';
       } else {
         filterType = 'project';
       }
@@ -1960,8 +2048,8 @@ export default function OverviewPage() {
     return { spi: spiVar, cpi: cpiVar, hours: hoursVar, progress: progressVar };
   }, [metricsHistory, variancePeriod, healthMetrics]);
 
-  // Check for empty data state
-  const hasData = (data.tasks?.length ?? 0) > 0 || (data.projects?.length ?? 0) > 0;
+  // Check for empty data state — only projects with plans matter
+  const hasData = projectBreakdown.length > 0;
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
@@ -1992,9 +2080,9 @@ export default function OverviewPage() {
             <path d="M3 9h18" />
             <path d="M9 21V9" />
           </svg>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Data Available</h2>
-          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>
-            Import project data from the Data Management page to view portfolio analytics, health metrics, and insights.
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Project Plans Found</h2>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '420px' }}>
+            Upload and process an MPP project plan from the Project Plans page to view analytics. Only projects with imported schedules appear here.
           </p>
           <a
             href="/project-controls/data-management"
@@ -2191,7 +2279,7 @@ export default function OverviewPage() {
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Full Width: Hours Distribution Sankey */}
-          <SectionCard title="Hours Distribution" subtitle="How actual hours flow across health status and projects - click any node to filter">
+          <SectionCard title="Hours Flow by Work Type" subtitle="Portfolio → Projects → Charge Type (Execution, QC, CR, Supervision) → Progress">
             <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'sankey')} />
           </SectionCard>
 
@@ -2217,7 +2305,7 @@ export default function OverviewPage() {
           </SectionCard>
 
           {/* Project Summary Table */}
-          <SectionCard title={`Project Summary (${projectBreakdown.length})`} subtitle="Click any row for details" noPadding>
+          <SectionCard title={`Project Summary (${projectBreakdown.length} with plans)`} subtitle="Only projects with an imported project plan are shown" noPadding>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               <table className="data-table" style={{ fontSize: '0.8rem' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
@@ -2228,8 +2316,11 @@ export default function OverviewPage() {
                     <th className="number">SPI</th>
                     <th className="number">CPI</th>
                     <th className="number">Progress</th>
-                    <th className="number">Baseline</th>
-                    <th className="number">Actual</th>
+                    <th className="number">Baseline Hrs</th>
+                    <th className="number">Actual Hrs</th>
+                    <th className="number">Remaining</th>
+                    <th className="number">Timesheet Hrs</th>
+                    <th className="number">Labor Cost</th>
                     <th className="number">Variance</th>
                   </tr>
                 </thead>
@@ -2240,14 +2331,24 @@ export default function OverviewPage() {
                       style={{ cursor: 'pointer', background: selectedProject?.id === p.id ? 'rgba(64,224,208,0.1)' : 'transparent' }}
                       onClick={() => setSelectedProject(selectedProject?.id === p.id ? null : p)}
                     >
-                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{p.name}</td>
+                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{p.name}</td>
                       <td className="number">{p.tasks}</td>
                       <td className="number">{p.completed}</td>
                       <td className="number" style={{ color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{sn(p.spi)}</td>
                       <td className="number" style={{ color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{sn(p.cpi)}</td>
-                      <td className="number">{p.percentComplete}%</td>
+                      <td className="number">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                          <div style={{ width: '40px', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.min(100, p.percentComplete)}%`, height: '100%', background: p.percentComplete >= 80 ? '#10B981' : p.percentComplete >= 50 ? '#F59E0B' : '#EF4444', borderRadius: '3px' }} />
+                          </div>
+                          {p.percentComplete}%
+                        </div>
+                      </td>
                       <td className="number">{p.baselineHours.toLocaleString()}</td>
                       <td className="number">{p.actualHours.toLocaleString()}</td>
+                      <td className="number" style={{ color: 'var(--text-muted)' }}>{p.remainingHours.toLocaleString()}</td>
+                      <td className="number" style={{ color: '#3B82F6' }}>{p.timesheetHours > 0 ? p.timesheetHours.toLocaleString() : '—'}</td>
+                      <td className="number" style={{ color: '#3B82F6' }}>{p.timesheetCost > 0 ? `$${(p.timesheetCost / 1000).toFixed(1)}K` : '—'}</td>
                       <td className="number" style={{ color: p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
                     </tr>
                   ))}

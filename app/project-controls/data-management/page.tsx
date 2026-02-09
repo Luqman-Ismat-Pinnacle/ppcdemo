@@ -3018,18 +3018,20 @@ export default function DataManagementPage() {
                 onClick={async () => {
                   try {
                     const response = await fetch(`/api/documents/download?documentId=${doc.id}`);
-                    const result = await response.json();
-                    if (result.success && result.url) {
-                      const link = document.createElement('a');
-                      link.href = result.url;
-                      link.download = result.fileName || doc.fileName || doc.file_name || doc.name;
-                      link.target = '_blank';
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    } else {
+                    if (!response.ok) {
+                      const result = await response.json().catch(() => ({}));
                       alert(result.error || 'Download failed');
+                      return;
                     }
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = doc.fileName || doc.file_name || doc.name || 'download';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
                   } catch (err: any) {
                     alert(err.message || 'Download error');
                   }

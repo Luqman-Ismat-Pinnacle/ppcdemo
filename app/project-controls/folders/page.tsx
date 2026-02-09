@@ -2,14 +2,13 @@
 
 /**
  * Project Plans Page
- * Upload MPP files, process with MPXJ, run auto project health checks, and sync to Supabase.
+ * Upload MPP files, process with MPXJ, run auto project health checks, and sync to database.
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import { useLogs } from '@/lib/logs-context';
-import { createClient } from '@supabase/supabase-js';
 import { convertMppParserOutput } from '@/lib/data-converter';
 import { runProjectHealthAutoCheck, type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
@@ -64,12 +63,59 @@ interface UploadedFile {
   healthCheck?: ProjectHealthAutoResult;
 }
 
-// Supabase client for storage
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
-
-const STORAGE_BUCKET = 'project-documents';
+// Azure Blob Storage API helpers (server-side via /api/storage)
+const storageApi = {
+  async upload(path: string, file: File): Promise<{ data: { path: string } | null; error: Error | null }> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('path', path);
+      const res = await fetch('/api/storage', { method: 'POST', body: formData });
+      const json = await res.json();
+      if (!res.ok) return { data: null, error: new Error(json.error || 'Upload failed') };
+      return { data: json.data, error: null };
+    } catch (err: any) {
+      return { data: null, error: err };
+    }
+  },
+  async download(path: string): Promise<{ data: Blob | null; error: Error | null }> {
+    try {
+      const res = await fetch(`/api/storage?action=download&path=${encodeURIComponent(path)}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return { data: null, error: new Error(json.error || 'Download failed') };
+      }
+      const blob = await res.blob();
+      return { data: blob, error: null };
+    } catch (err: any) {
+      return { data: null, error: err };
+    }
+  },
+  async list(prefix: string, limit: number = 100): Promise<{ data: any[] | null; error: Error | null }> {
+    try {
+      const res = await fetch(`/api/storage?action=list&prefix=${encodeURIComponent(prefix)}&limit=${limit}`);
+      const json = await res.json();
+      if (!res.ok) return { data: null, error: new Error(json.error || 'List failed') };
+      return { data: json.data, error: null };
+    } catch (err: any) {
+      return { data: null, error: err };
+    }
+  },
+  async remove(paths: string[]): Promise<{ error: Error | null }> {
+    try {
+      const res = await fetch('/api/storage', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths }),
+      });
+      const json = await res.json();
+      if (!res.ok) return { error: new Error(json.error || 'Delete failed') };
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
+  },
+};
 
 export default function DocumentsPage() {
   const router = useRouter();
@@ -120,7 +166,7 @@ export default function DocumentsPage() {
     }]);
   }, []);
 
-  // Load existing files from Supabase Storage on mount
+  // Load existing files from Azure Blob Storage on mount
   useEffect(() => {
     loadStoredFiles();
     loadWorkdayProjects();
@@ -155,17 +201,10 @@ export default function DocumentsPage() {
   };
 
   const loadStoredFiles = async () => {
-    if (!supabase) {
-      console.log('[loadStoredFiles] No supabase client');
-      return;
-    }
-
     try {
-      console.log('[loadStoredFiles] Fetching files from storage bucket:', STORAGE_BUCKET);
-      // Fetch files from storage
-      const { data: storageFiles, error: storageError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .list('mpp', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+      console.log('[loadStoredFiles] Fetching files from Azure Blob Storage...');
+      // Fetch files from Azure Blob Storage
+      const { data: storageFiles, error: storageError } = await storageApi.list('mpp', 100);
 
       console.log('[loadStoredFiles] Storage response:', { count: storageFiles?.length, error: storageError });
 
@@ -174,11 +213,20 @@ export default function DocumentsPage() {
         return;
       }
 
-      // Fetch document metadata from database (has project_id, health_score, etc.)
-      const { data: dbDocs, error: dbError } = await supabase
-        .from('project_documents')
-        .select('id, file_name, storage_path, project_id, health_score, health_check_json, uploaded_at, file_size')
-        .order('uploaded_at', { ascending: false });
+      // Fetch document metadata from database via API
+      const dbRes = await fetch('/api/data');
+      const dbJson = await dbRes.json();
+      const dbDocs = (dbJson?.projectDocuments || []).map((d: any) => ({
+        id: d.id,
+        file_name: d.fileName,
+        storage_path: d.storagePath,
+        project_id: d.projectId,
+        health_score: d.healthScore,
+        health_check_json: d.healthCheckJson,
+        uploaded_at: d.uploadedAt,
+        file_size: d.fileSize,
+      }));
+      const dbError = dbRes.ok ? null : new Error('Failed to fetch documents');
 
       console.log('[loadStoredFiles] DB docs response:', { count: dbDocs?.length, error: dbError });
 
@@ -278,32 +326,22 @@ export default function DocumentsPage() {
     addLog('info', `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
   }, [addLog]);
 
-  // Upload file to Supabase Storage
+  // Upload file to Azure Blob Storage
   const handleUpload = useCallback(async () => {
     if (!selectedFile) {
       addLog('error', 'No file selected');
       return;
     }
 
-    if (!supabase) {
-      addLog('error', 'Supabase not configured');
-      return;
-    }
-
     // Show hierarchy selection modal instead of prompts
     setShowHierarchyModal(true);
     return;
-  }, [selectedFile, supabase, addLog, showHierarchyModal]);
+  }, [selectedFile, addLog, showHierarchyModal]);
 
   // Actual upload function after project selection
   const handleUploadWithHierarchy = useCallback(async () => {
     if (!selectedFile || !workdayProjectId) {
       addLog('error', 'Please select a Workday project');
-      return;
-    }
-
-    if (!supabase) {
-      addLog('error', 'Supabase not configured');
       return;
     }
 
@@ -332,17 +370,12 @@ export default function DocumentsPage() {
     };
     setUploadedFiles(prev => [...prev, fileRecord]);
 
-    pushLog('info', `[Storage] Uploading ${selectedFile.name} to Supabase...`);
+    pushLog('info', `[Storage] Uploading ${selectedFile.name} to Azure Blob Storage...`);
     pushLog('info', `[Project] Linking to Workday project: ${workdayProjectId}`);
 
     try {
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(storagePath, selectedFile, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      // Upload to Azure Blob Storage via API
+      const { data, error } = await storageApi.upload(storagePath, selectedFile);
 
       if (error) {
         throw new Error(error.message);
@@ -351,7 +384,7 @@ export default function DocumentsPage() {
       const savedStoragePath = data.path ?? storagePath;
       pushLog('success', `[Storage] File uploaded: ${savedStoragePath}`);
 
-      // Update file status (use path returned by Supabase so it matches DB for setCurrentMpp/updateDocumentHealth)
+      // Update file status (use path returned by storage so it matches DB for setCurrentMpp/updateDocumentHealth)
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'uploaded' as const, storagePath: savedStoragePath } : f
       ));
@@ -457,7 +490,7 @@ export default function DocumentsPage() {
     }
   }, []);
 
-  // Process file with MPXJ Python service and sync to Supabase
+  // Process file with MPXJ Python service and sync to database
   const handleProcess = useCallback(async (fileId: string) => {
     const file = uploadedFiles.find(f => f.id === fileId);
     if (!file || !file.storagePath) return;
@@ -476,16 +509,10 @@ export default function DocumentsPage() {
     };
 
     try {
-      // Step 1: Download file from Supabase Storage
+      // Step 1: Download file from Azure Blob Storage
       pushLog('info', `[Storage] Downloading ${file.fileName}...`);
 
-      if (!supabase) {
-        throw new Error('Supabase not configured');
-      }
-
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .download(file.storagePath);
+      const { data: fileData, error: downloadError } = await storageApi.download(file.storagePath!);
 
       if (downloadError || !fileData) {
         throw new Error(`Download failed: ${downloadError?.message || 'Unknown error'}`);
@@ -830,19 +857,17 @@ export default function DocumentsPage() {
     }
   }, [uploadedFiles, addLog, refreshData, saveLogsToProjectLog]);
 
-  // Delete file from Supabase Storage
+  // Delete file from Azure Blob Storage
   const handleDelete = useCallback(async (fileId: string) => {
     const file = uploadedFiles.find(f => f.id === fileId);
     if (!file) return;
 
     // Delete the file from storage
-    if (file.storagePath && supabase) {
+    if (file.storagePath) {
       addLog('info', `[Storage] Deleting ${file.fileName}...`);
 
       try {
-        const { error } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .remove([file.storagePath]);
+        const { error } = await storageApi.remove([file.storagePath]);
 
         if (error) {
           addLog('error', `[Storage] Delete failed: ${error.message}`);
