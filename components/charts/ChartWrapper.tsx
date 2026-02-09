@@ -1,30 +1,14 @@
 'use client';
 
 /**
- * @fileoverview Chart Wrapper Component for PPC V3.
- * 
- * Base wrapper for all ECharts components providing:
- * - Consistent theme integration (dark/light mode)
- * - Responsive chart resizing
- * - Proper cleanup on unmount
- * - Common chart styling and configuration
- * 
- * All chart components in the application should use this wrapper
- * to ensure consistent behavior and styling.
- * 
- * @module components/charts/ChartWrapper
- * 
- * @example
- * ```tsx
- * <ChartWrapper
- *   option={chartOption}
- *   height="400px"
- *   onChartReady={(chart) => console.log('Chart ready')}
- * />
- * ```
+ * ChartWrapper — ECharts 6 wrapper with a pre-registered Pinnacle dark theme.
+ *
+ * All colors are baked into the theme — NO CSS variable resolution at render time.
+ * This eliminates the resolveOption/resolveColor deep-walk that caused
+ * Sankey/Parallel/Graph charts to silently fail in ECharts 6.
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
@@ -35,23 +19,119 @@ import { useChartHeaderActions } from './ChartCard';
 import { useData } from '@/lib/data-context';
 import { VarianceIndicator } from '@/components/ui/VarianceIndicator';
 
+/* ------------------------------------------------------------------ */
+/*  Pinnacle Dark Theme — registered once, used everywhere             */
+/* ------------------------------------------------------------------ */
+
+const PINNACLE_THEME = {
+  color: [
+    '#40E0D0', '#3B82F6', '#8B5CF6', '#F59E0B', '#10B981',
+    '#EF4444', '#EC4899', '#06B6D4', '#CDDC39', '#FF9800',
+    '#6366F1', '#14B8A6', '#F97316', '#A855F7', '#22D3EE',
+  ],
+  backgroundColor: 'transparent',
+  textStyle: { color: '#e4e4e7' },
+  title: {
+    textStyle: { color: '#f4f4f5' },
+    subtextStyle: { color: '#a1a1aa' },
+  },
+  line: {
+    itemStyle: { borderWidth: 2 },
+    lineStyle: { width: 2.5 },
+    symbolSize: 6,
+    symbol: 'circle',
+    smooth: false,
+  },
+  radar: { axisName: { color: '#a1a1aa' } },
+  bar: { itemStyle: { barBorderWidth: 0 } },
+  pie: { itemStyle: { borderWidth: 0 } },
+  scatter: { itemStyle: { borderWidth: 0 } },
+  graph: {
+    itemStyle: { borderWidth: 0 },
+    lineStyle: { width: 1.5, color: 'rgba(255,255,255,0.2)' },
+    label: { color: '#e4e4e7' },
+  },
+  gauge: {
+    axisLine: { lineStyle: { color: [[1, 'rgba(255,255,255,0.08)']] } },
+    axisTick: { lineStyle: { color: '#52525b' } },
+    axisLabel: { color: '#a1a1aa' },
+    title: { color: '#a1a1aa' },
+    detail: { color: '#f4f4f5' },
+  },
+  categoryAxis: {
+    axisLine: { show: true, lineStyle: { color: '#3f3f46' } },
+    axisTick: { show: false },
+    axisLabel: { color: '#a1a1aa', fontSize: 11 },
+    splitLine: { show: false },
+    splitArea: { show: false },
+  },
+  valueAxis: {
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { color: '#a1a1aa', fontSize: 11 },
+    splitLine: { show: true, lineStyle: { color: '#27272a', type: 'dashed' } },
+    splitArea: { show: false },
+  },
+  logAxis: {
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { color: '#a1a1aa' },
+    splitLine: { lineStyle: { color: '#27272a' } },
+  },
+  timeAxis: {
+    axisLine: { show: true, lineStyle: { color: '#3f3f46' } },
+    axisTick: { lineStyle: { color: '#3f3f46' } },
+    axisLabel: { color: '#a1a1aa' },
+    splitLine: { lineStyle: { color: '#27272a' } },
+  },
+  legend: {
+    textStyle: { color: '#a1a1aa', fontSize: 11 },
+    pageTextStyle: { color: '#a1a1aa' },
+  },
+  tooltip: {
+    backgroundColor: 'rgba(15,15,18,0.96)',
+    borderColor: '#3f3f46',
+    borderWidth: 1,
+    textStyle: { color: '#f4f4f5', fontSize: 12 },
+    extraCssText:
+      'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);',
+    appendToBody: true,
+    confine: false,
+  },
+  dataZoom: {
+    backgroundColor: 'transparent',
+    dataBackgroundColor: 'rgba(64,224,208,0.15)',
+    fillerColor: 'rgba(64,224,208,0.12)',
+    handleColor: '#40E0D0',
+    handleSize: '100%',
+    textStyle: { color: '#a1a1aa' },
+  },
+  visualMap: { color: ['#EF4444', '#F59E0B', '#10B981'] },
+};
+
+let themeRegistered = false;
+function ensureTheme() {
+  if (!themeRegistered) {
+    echarts.registerTheme('pinnacle-dark', PINNACLE_THEME);
+    themeRegistered = true;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Props                                                              */
+/* ------------------------------------------------------------------ */
+
 interface ChartWrapperProps {
   option: EChartsOption;
   style?: React.CSSProperties;
   className?: string;
   height?: string | number;
   onChartReady?: (chart: echarts.ECharts) => void;
-  /** Called when user clicks a chart element. Enables Power BI-style cross-filtering. */
   onClick?: (params: { name?: string; value?: unknown; dataIndex?: number; seriesName?: string; [key: string]: unknown }) => void;
-  /** Show export PNG button in corner */
   enableExport?: boolean;
-  /** Show fullscreen button; opens chart in a modal overlay */
   enableFullscreen?: boolean;
-  /** Show variance toggle button */
   enableVariance?: boolean;
-  /** Variance data for this chart (current vs previous values) */
   varianceData?: { current: number; previous: number; metricName?: string };
-  /** Filename for export (without extension) */
   exportFilename?: string;
   visualId?: string;
   visualTitle?: string;
@@ -59,25 +139,25 @@ interface ChartWrapperProps {
   isEmpty?: boolean;
 }
 
-// Variance toggle icon component
+/* ------------------------------------------------------------------ */
+/*  Variance icon                                                      */
+/* ------------------------------------------------------------------ */
+
 function VarianceIcon({ size = 14, enabled = false }: { size?: number; enabled?: boolean }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={enabled ? 'var(--pinnacle-teal)' : 'currentColor'}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={enabled ? '#40E0D0' : 'currentColor'} strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" />
       <path d="M7 16l4-4 4 4 6-6" />
-      {enabled && <circle cx="21" cy="10" r="3" fill="var(--pinnacle-teal)" stroke="none" />}
+      {enabled && <circle cx="21" cy="10" r="3" fill="#40E0D0" stroke="none" />}
     </svg>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 
 const ChartWrapper = React.memo(function ChartWrapper({
   option,
@@ -98,200 +178,75 @@ const ChartWrapper = React.memo(function ChartWrapper({
 }: ChartWrapperProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
-  const resolvedOptionRef = useRef<EChartsOption | null>(null);
+  const optionRef = useRef<EChartsOption | null>(null);
   const fullscreenChartRef = useRef<HTMLDivElement>(null);
   const fullscreenInstanceRef = useRef<echarts.ECharts | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showVariance, setShowVariance] = useState(false);
-  const themeContext = useTheme();
-  const theme = themeContext?.theme || 'dark';
+  const themeCtx = useTheme();
+  const theme = themeCtx?.theme || 'dark';
   const setHeaderActions = useChartHeaderActions();
-  
-  // Access variance settings from context
   const { varianceEnabled } = useData();
 
-  const onRenderChart = useCallback((container: HTMLDivElement, opt: EChartsOption) => {
-    const ch = echarts.init(container, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
-    ch.setOption(opt);
-    return ch;
-  }, [theme]);
-
+  /* ---- main chart ---- */
   useEffect(() => {
     if (!chartRef.current) return;
+    ensureTheme();
 
-    // Initialize chart with current theme
-    if (!echarts) return;
+    if (chartInstanceRef.current) chartInstanceRef.current.dispose();
 
-    // Dispose previous instance if exists
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.dispose();
-    }
-
-    const chart = echarts.init(chartRef.current, theme === 'dark' ? 'dark' : undefined, {
-      renderer: 'canvas',
-    });
-
+    const themeName = theme === 'dark' ? 'pinnacle-dark' : undefined;
+    const chart = echarts.init(chartRef.current, themeName, { renderer: 'canvas' });
     chartInstanceRef.current = chart;
 
-    // Function to resolve CSS variables
-    const resolveColor = (color: any): any => {
-      if (!color) return color;
-
-      if (typeof color === 'string') {
-        // Trim any whitespace
-        const trimmed = color.trim();
-
-        // Handle exact variable: var(--name)
-        if (trimmed.startsWith('var(--') && trimmed.endsWith(')')) {
-          const varName = trimmed.match(/var\((--[^)]+)\)/)?.[1];
-          if (varName) {
-            const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-            if (val) return val;
-
-            // Fallback for known variables if resolution fails
-            if (varName === '--pinnacle-teal') return '#40E0D0';
-            if (varName === '--pinnacle-lime') return '#CDDC39';
-            if (varName === '--pinnacle-pink') return '#E91E63';
-            if (varName === '--pinnacle-orange') return '#FF9800';
-            if (varName === '--border-color') return theme === 'dark' ? '#3f3f46' : '#e2e8f0';
-            if (varName === '--text-secondary') return theme === 'dark' ? '#f4f4f5' : '#475569';
-            if (varName === '--bg-primary') return theme === 'dark' ? '#0a0a0a' : '#f8fafc';
-
-            return theme === 'dark' ? '#ffffff' : '#000000';
-          }
-        }
-
-        // Handle variable with alpha or within other strings
-        if (trimmed.includes('var(--')) {
-          const resolved = trimmed.replace(/var\((--[^)]+)\)/g, (match, varName) => {
-            const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-            if (val) return val;
-
-            if (varName === '--pinnacle-teal') return '#40E0D0';
-            if (varName === '--pinnacle-lime') return '#CDDC39';
-            return theme === 'dark' ? '#ffffff' : '#000000';
-          });
-
-          return resolved.replace(/\s+/g, '');
-        }
-
-        // Ensure we don't return an empty string for addColorStop
-        if (trimmed === '') return 'transparent';
-
-        return trimmed;
-      }
-
-      // Handle ECharts Gradient objects
-      if (typeof color === 'object' && (color.type === 'linear' || color.type === 'radial')) {
-        if (color.colorStops && Array.isArray(color.colorStops)) {
-          return {
-            ...color,
-            colorStops: color.colorStops.map((stop: any) => ({
-              ...stop,
-              color: resolveColor(stop.color)
-            }))
-          };
-        }
-      }
-
-      return color;
+    // Merge a few global defaults then set the user option directly — no deep walk
+    const merged: EChartsOption = {
+      animation: true,
+      animationDuration: 600,
+      animationEasing: 'cubicOut',
+      ...option,
     };
 
-    // Deep copy and resolve variables in the option object
-    const resolveOption = (obj: any): any => {
-      if (Array.isArray(obj)) return obj.map(resolveOption);
-      if (obj !== null && typeof obj === 'object') {
-        const newObj: any = {};
-        for (const key in obj) {
-          if (key === 'color' || key.endsWith('Color') || key === 'backgroundColor') {
-            newObj[key] = resolveColor(obj[key]);
-          } else {
-            newObj[key] = resolveOption(obj[key]);
-          }
-        }
-        return newObj;
-      }
-      return typeof obj === 'string' ? resolveColor(obj) : obj;
-    };
-
-    const finalOption = resolveOption(option);
-
-    // Inject global text color if not set
-    const textColor = theme === 'dark' ? '#ffffff' : '#0f172a';
-    if (!finalOption.textStyle) finalOption.textStyle = {};
-    if (!finalOption.textStyle.color) finalOption.textStyle.color = textColor;
-
-    // Apply consistency to tooltips with high z-index
-    if (finalOption.tooltip && typeof finalOption.tooltip === 'object') {
-      finalOption.tooltip.backgroundColor = theme === 'dark' ? 'rgba(20, 20, 20, 0.95)' : 'rgba(255, 255, 255, 0.95)';
-      finalOption.tooltip.borderColor = theme === 'dark' ? '#444' : '#eee';
-      finalOption.tooltip.borderWidth = 1;
-      finalOption.tooltip.shadowBlur = 10;
-      finalOption.tooltip.shadowColor = 'rgba(0,0,0,0.3)';
-      finalOption.tooltip.padding = [10, 15];
-      finalOption.tooltip.confine = false;  // Allow tooltip to go outside chart bounds
-      finalOption.tooltip.appendToBody = true;  // Append to body for higher z-index
-      if (!finalOption.tooltip.textStyle) finalOption.tooltip.textStyle = {};
-      finalOption.tooltip.textStyle.color = theme === 'dark' ? '#fff' : '#000';
-      finalOption.tooltip.textStyle.fontSize = 12;
-      finalOption.tooltip.textStyle.fontFamily = 'var(--font-primary)';
-      // High z-index to ensure tooltip appears above all other elements
-      finalOption.tooltip.extraCssText = 'z-index: 99999 !important; backdrop-filter: blur(30px); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);';
+    // Ensure grid has containLabel where applicable
+    if (merged.grid && typeof merged.grid === 'object' && !Array.isArray(merged.grid)) {
+      if ((merged.grid as any).containLabel === undefined) (merged.grid as any).containLabel = true;
     }
 
-    // Ensure grid reserves space for axis labels so x-axis is visible (ECharts containLabel)
-    if (finalOption.grid && typeof finalOption.grid === 'object') {
-      if (finalOption.grid.containLabel === undefined) finalOption.grid.containLabel = true;
+    try {
+      chart.setOption(merged);
+    } catch (err) {
+      console.error('[ChartWrapper] setOption error:', err, 'option:', JSON.stringify(merged).slice(0, 500));
     }
+    optionRef.current = merged;
 
-    // Global animation and interaction (ECharts best practices)
-    if (finalOption.animation === undefined) finalOption.animation = true;
-    if (finalOption.animationDuration === undefined) finalOption.animationDuration = 700;
-    if (finalOption.animationEasing === undefined) finalOption.animationEasing = 'cubicOut';
-    chart.setOption(finalOption);
-    resolvedOptionRef.current = finalOption;
+    // Resize on next frame to fix 0-height init
+    const resize = () => chartInstanceRef.current?.resize();
+    const rafId = requestAnimationFrame(() => { resize(); requestAnimationFrame(resize); });
 
-    // Resize after layout so chart and axes render correctly (fixes 0-height init)
-    const resizeChart = () => {
-      if (chartInstanceRef.current) chartInstanceRef.current.resize();
-    };
-    const rafId = requestAnimationFrame(() => {
-      resizeChart();
-      requestAnimationFrame(resizeChart);
-    });
+    const ro = new ResizeObserver(resize);
+    if (chartRef.current) ro.observe(chartRef.current);
 
-    const resizeObserver = new ResizeObserver(() => resizeChart());
-    if (chartRef.current) resizeObserver.observe(chartRef.current);
-
-    if (onChartReady) {
-      onChartReady(chart);
-    }
+    if (onChartReady) onChartReady(chart);
 
     if (onClick) {
       chart.off('click');
       chart.on('click', (params: any) => {
-        onClick({
-          name: params.name,
-          value: params.value,
-          dataIndex: params.dataIndex,
-          seriesName: params.seriesName,
-          data: params.data,
-          ...params,
-        });
+        onClick({ name: params.name, value: params.value, dataIndex: params.dataIndex, seriesName: params.seriesName, data: params.data, ...params });
       });
     }
 
-    const handleResize = () => chart.resize();
-    window.addEventListener('resize', handleResize);
+    const onWinResize = () => chart.resize();
+    window.addEventListener('resize', onWinResize);
 
     return () => {
       cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
+      ro.disconnect();
+      window.removeEventListener('resize', onWinResize);
       chart.dispose();
     };
   }, [option, onChartReady, onClick, theme]);
 
+  /* ---- fullscreen overlay ---- */
   useEffect(() => {
     if (isFullscreen) {
       const prev = document.body.style.overflow;
@@ -300,29 +255,28 @@ const ChartWrapper = React.memo(function ChartWrapper({
     }
   }, [isFullscreen]);
 
-  // Fullscreen overlay chart
   useEffect(() => {
-    if (!isFullscreen || !fullscreenChartRef.current || !resolvedOptionRef.current) return;
-    const chart = echarts.init(fullscreenChartRef.current, theme === 'dark' ? 'dark' : undefined, { renderer: 'canvas' });
+    if (!isFullscreen || !fullscreenChartRef.current || !optionRef.current) return;
+    ensureTheme();
+    const themeName = theme === 'dark' ? 'pinnacle-dark' : undefined;
+    const chart = echarts.init(fullscreenChartRef.current, themeName, { renderer: 'canvas' });
     fullscreenInstanceRef.current = chart;
-    chart.setOption(resolvedOptionRef.current);
-    const resizeChart = () => chart.resize();
-    const rafId = requestAnimationFrame(() => {
-      resizeChart();
-      requestAnimationFrame(resizeChart);
-    });
-    const resizeObserver = new ResizeObserver(resizeChart);
-    resizeObserver.observe(fullscreenChartRef.current);
-    window.addEventListener('resize', resizeChart);
+    chart.setOption(optionRef.current);
+    const resize = () => chart.resize();
+    const rafId = requestAnimationFrame(() => { resize(); requestAnimationFrame(resize); });
+    const ro = new ResizeObserver(resize);
+    ro.observe(fullscreenChartRef.current);
+    window.addEventListener('resize', resize);
     return () => {
       cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', resizeChart);
+      ro.disconnect();
+      window.removeEventListener('resize', resize);
       chart.dispose();
       fullscreenInstanceRef.current = null;
     };
   }, [isFullscreen, theme]);
 
+  /* ---- export ---- */
   const handleExport = () => {
     const chart = chartInstanceRef.current;
     if (chart) {
@@ -334,47 +288,33 @@ const ChartWrapper = React.memo(function ChartWrapper({
     }
   };
 
+  /* ---- sizing ---- */
   const inChartCard = !!setHeaderActions;
-  // Use explicit height when provided (number or px string); only fall back to 100% when no explicit height
-  const hasExplicitHeight = typeof height === 'number' || (typeof height === 'string' && /^\d+px$/.test(height));
-  const containerHeight = hasExplicitHeight ? (typeof height === 'number' ? `${height}px` : height) : (inChartCard ? '100%' : height);
+  const hasExplicit = typeof height === 'number' || (typeof height === 'string' && /^\d+px$/.test(height));
+  const containerHeight = hasExplicit ? (typeof height === 'number' ? `${height}px` : height) : (inChartCard ? '100%' : height);
 
+  /* ---- action buttons ---- */
   const actionButtons = (
     <>
       {enableVariance && varianceEnabled && !isLoading && !isEmpty && (
-        <button
-          type="button"
-          className="chart-action-btn"
+        <button type="button" className="chart-action-btn"
           onClick={(e) => { e.stopPropagation(); setShowVariance(!showVariance); }}
-          title={showVariance ? "Hide variance" : "Show variance"}
-          style={{
-            ...(inChartCard ? {} : { top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }),
-            background: showVariance ? 'rgba(64, 224, 208, 0.2)' : undefined,
-            borderColor: showVariance ? 'var(--pinnacle-teal)' : undefined,
-          }}
-        >
+          title={showVariance ? 'Hide variance' : 'Show variance'}
+          style={{ ...(inChartCard ? {} : { top: 8, right: `${(enableExport ? 44 : 0) + (enableFullscreen ? 44 : 0) + 8}px` }), background: showVariance ? 'rgba(64,224,208,0.2)' : undefined, borderColor: showVariance ? '#40E0D0' : undefined }}>
           <VarianceIcon size={14} enabled={showVariance} />
         </button>
       )}
       {enableFullscreen && !isLoading && !isEmpty && (
-        <button
-          type="button"
-          className="chart-action-btn"
-          onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }}
-          title="Fullscreen"
-          style={!inChartCard ? { top: 8, right: enableExport ? 44 : 8 } : undefined}
-        >
+        <button type="button" className="chart-action-btn"
+          onClick={(e) => { e.stopPropagation(); setIsFullscreen(true); }} title="Fullscreen"
+          style={!inChartCard ? { top: 8, right: enableExport ? 44 : 8 } : undefined}>
           <FullscreenIcon size={14} />
         </button>
       )}
       {enableExport && !isLoading && !isEmpty && (
-        <button
-          type="button"
-          className="chart-action-btn"
-          onClick={(e) => { e.stopPropagation(); handleExport(); }}
-          title="Export as PNG"
-          style={!inChartCard ? { top: 8, right: 8 } : undefined}
-        >
+        <button type="button" className="chart-action-btn"
+          onClick={(e) => { e.stopPropagation(); handleExport(); }} title="Export as PNG"
+          style={!inChartCard ? { top: 8, right: 8 } : undefined}>
           <DownloadIcon size={14} />
         </button>
       )}
@@ -383,33 +323,22 @@ const ChartWrapper = React.memo(function ChartWrapper({
 
   useEffect(() => {
     if (!setHeaderActions) return;
-    if (!isLoading && !isEmpty) {
-      setHeaderActions(actionButtons);
-    } else {
-      setHeaderActions(null);
-    }
+    if (!isLoading && !isEmpty) setHeaderActions(actionButtons);
+    else setHeaderActions(null);
     return () => setHeaderActions(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- actionButtons is derived from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setHeaderActions, isLoading, isEmpty, visualId, enableFullscreen, enableExport, enableVariance, varianceEnabled, showVariance]);
 
+  /* ---- render ---- */
   return (
-    <div
-      className={`chart-container relative rounded-xl overflow-hidden ${className}`}
-      style={{
-        width: '100%',
-        height: containerHeight,
-        minHeight: inChartCard ? 200 : undefined,
-        cursor: onClick ? 'pointer' : undefined,
-        ...style,
-      }}
-    >
+    <div className={`chart-container relative rounded-xl overflow-hidden ${className}`}
+      style={{ width: '100%', height: containerHeight, minHeight: inChartCard ? 200 : undefined, cursor: onClick ? 'pointer' : undefined, ...style }}>
+
       {!setHeaderActions && actionButtons}
+
       {isLoading && (
         <div className="absolute inset-0 z-10 flex flex-col bg-[var(--bg-primary)]/80">
-          <SkeletonChart
-            height={typeof height === 'number' ? `${height}px` : height}
-            className="flex-1 min-h-0"
-          />
+          <SkeletonChart height={typeof height === 'number' ? `${height}px` : height} className="flex-1 min-h-0" />
         </div>
       )}
 
@@ -426,113 +355,30 @@ const ChartWrapper = React.memo(function ChartWrapper({
         </div>
       )}
 
-      <div
-        ref={chartRef}
-        className={`w-full h-full transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
-      />
-      
-      {/* Variance indicator overlay */}
+      <div ref={chartRef} className={`w-full h-full transition-opacity duration-500 ${isLoading ? 'opacity-0' : 'opacity-100'}`} />
+
       {showVariance && varianceData && varianceEnabled && !isLoading && !isEmpty && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '8px',
-            left: '8px',
-            zIndex: 20,
-          }}
-        >
-          <VarianceIndicator
-            metricName={varianceData.metricName || visualTitle}
-            current={varianceData.current}
-            previous={varianceData.previous}
-            format="number"
-            size="sm"
-            expandable={true}
-          />
+        <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 20 }}>
+          <VarianceIndicator metricName={varianceData.metricName || visualTitle} current={varianceData.current} previous={varianceData.previous} format="number" size="sm" expandable />
         </div>
       )}
-      
+
       {isFullscreen && typeof document !== 'undefined' && createPortal(
-        <div
-          role="dialog"
-          aria-label={`${visualTitle} fullscreen`}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            boxSizing: 'border-box',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(0,0,0,0.85)',
-              cursor: 'pointer',
-            }}
-            onClick={() => setIsFullscreen(false)}
-            aria-hidden
-          />
-          <div
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              width: '100%',
-              maxWidth: '95vw',
-              height: '85vh',
-              background: 'var(--bg-primary)',
-              borderRadius: 12,
-              border: '1px solid var(--border-color)',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}
-          >
+        <div role="dialog" aria-label={`${visualTitle} fullscreen`}
+          style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, boxSizing: 'border-box' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', cursor: 'pointer' }} onClick={() => setIsFullscreen(false)} aria-hidden />
+          <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '95vw', height: '85vh', background: '#0a0a0a', borderRadius: 12, border: '1px solid #3f3f46', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ flex: 1, minHeight: 0 }} ref={fullscreenChartRef} />
-            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setIsFullscreen(false)}
-                style={{
-                  padding: '8px 16px',
-                  background: 'var(--border-color)',
-                  border: 'none',
-                  borderRadius: 8,
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontWeight: 500,
-                }}
-              >
+            <div style={{ padding: '12px 16px', borderTop: '1px solid #3f3f46', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" onClick={() => setIsFullscreen(false)}
+                style={{ padding: '8px 16px', background: '#3f3f46', border: 'none', borderRadius: 8, color: '#e4e4e7', cursor: 'pointer', fontWeight: 500 }}>
                 Close
               </button>
               {enableExport && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const chart = fullscreenInstanceRef.current;
-                    if (chart) {
-                      const url = chart.getDataURL({ type: 'png', pixelRatio: 2 });
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `${exportFilename}-${Date.now()}.png`;
-                      a.click();
-                    }
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'var(--pinnacle-teal)',
-                    border: 'none',
-                    borderRadius: 8,
-                    color: '#0a0a0a',
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                  }}
-                >
+                <button type="button" onClick={() => {
+                  const c = fullscreenInstanceRef.current;
+                  if (c) { const u = c.getDataURL({ type: 'png', pixelRatio: 2 }); const a = document.createElement('a'); a.href = u; a.download = `${exportFilename}-${Date.now()}.png`; a.click(); }
+                }} style={{ padding: '8px 16px', background: '#40E0D0', border: 'none', borderRadius: 8, color: '#0a0a0a', cursor: 'pointer', fontWeight: 500 }}>
                   Export PNG
                 </button>
               )}
@@ -546,6 +392,4 @@ const ChartWrapper = React.memo(function ChartWrapper({
 });
 
 ChartWrapper.displayName = 'ChartWrapper';
-
 export default ChartWrapper;
-

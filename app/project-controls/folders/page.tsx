@@ -63,6 +63,8 @@ interface UploadedFile {
   healthCheck?: ProjectHealthAutoResult;
 }
 
+const STORAGE_BUCKET = 'project-documents';
+
 // Azure Blob Storage API helpers (server-side via /api/storage)
 const storageApi = {
   async upload(path: string, file: File): Promise<{ data: { path: string } | null; error: Error | null }> {

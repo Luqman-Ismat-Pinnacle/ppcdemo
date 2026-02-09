@@ -208,16 +208,10 @@ a,
   transition: all var(--transition-fast);
 }
 
-button:hover,
-a:hover,
-[role="button"]:hover {
-  transform: translateY(-1px);
-}
-
 button:active,
 a:active,
 [role="button"]:active {
-  transform: translateY(0);
+  opacity: 0.85;
 }
 
 /* Focus styles – visible and on-brand in both themes */
@@ -237,12 +231,10 @@ textarea:focus-visible,
 
 /* Card hover effects */
 .card-hover {
-  transition: transform var(--transition-normal),
-    box-shadow var(--transition-normal);
+  transition: box-shadow var(--transition-normal);
 }
 
 .card-hover:hover {
-  transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
 }
 
@@ -343,31 +335,13 @@ button {
   border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow: var(--shadow-md);
-  transition: background var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal);
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
   position: relative;
 }
 
-.chart-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--pinnacle-teal) 0%, var(--pinnacle-lime) 45%, var(--pinnacle-pink) 100%);
-  opacity: 0.95;
-  opacity: 0;
-  transition: opacity var(--transition-normal);
-}
-
 .chart-card:hover {
-  border-color: rgba(64, 224, 208, 0.5);
-  box-shadow: var(--shadow-lg), var(--glow-teal);
-  transform: translateY(-4px);
-}
-
-.chart-card:hover::before {
-  opacity: 1;
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-lg);
 }
 
 /* WBS Table Styling */
@@ -1598,7 +1572,6 @@ body {
 .kanban-card:hover {
   border-color: var(--pinnacle-teal);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transform: translateY(-2px);
 }
 
 .kanban-card.dragging {

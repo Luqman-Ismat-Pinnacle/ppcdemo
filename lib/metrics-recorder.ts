@@ -11,6 +11,15 @@
 import { supabase } from './supabase';
 
 /**
+ * Supabase env vars — if these are absent we're using the mock client,
+ * so every DB call would return a fake error. Skip silently instead.
+ */
+const SUPABASE_LIVE =
+  typeof window !== 'undefined'
+    ? Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    : Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+/**
  * Metrics to be recorded for variance tracking
  */
 export interface MetricsSnapshot {
@@ -225,9 +234,8 @@ export function calculateProjectMetrics(data: CalculationData, projectId: string
  * Uses upsert to update existing records for the same date/scope
  */
 export async function recordMetrics(metrics: MetricsSnapshot): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) {
-    console.warn('Supabase not configured, metrics not recorded to database');
-    return { success: false, error: 'Database not configured' };
+  if (!supabase || !SUPABASE_LIVE) {
+    return { success: false, error: 'Supabase not configured' };
   }
   
   try {
@@ -306,8 +314,7 @@ export async function fetchMetricsHistory(
   scopeId: string | null = null,
   days: number = 90
 ): Promise<MetricsSnapshot[]> {
-  if (!supabase) {
-    console.warn('Supabase not configured, returning empty metrics history');
+  if (!supabase || !SUPABASE_LIVE) {
     return [];
   }
   
@@ -347,7 +354,7 @@ export async function fetchMetricsHistory(
  * Check if metrics have been recorded today
  */
 export async function hasRecordedToday(scope: string = 'all', scopeId: string | null = null): Promise<boolean> {
-  if (!supabase) {
+  if (!supabase || !SUPABASE_LIVE) {
     return false;
   }
   

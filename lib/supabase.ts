@@ -25,21 +25,25 @@ function createMockSupabaseClient(): SupabaseClient {
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
   };
 
+  /** Chainable query builder — every method returns `chain` so calls like
+   *  .select().eq().eq().gte().order().limit() all work without crashing.
+   *  When the chain is awaited (or `.then()` is called) it resolves with mockResponse. */
+  const createChain = (): any => {
+    const chain: any = new Proxy({} as any, {
+      get(_target, prop) {
+        if (prop === 'then') return (resolve: any) => resolve(mockResponse);
+        return (..._args: any[]) => chain;
+      },
+    });
+    return chain;
+  };
+
   const mockFrom = () => ({
-    select: () => ({
-      limit: () => Promise.resolve(mockResponse),
-      order: () => Promise.resolve(mockResponse),
-      eq: () => Promise.resolve(mockResponse),
-      single: () => Promise.resolve(mockResponse),
-    }),
-    insert: () => ({ select: () => Promise.resolve(mockResponse) }),
-    update: () => ({ eq: () => Promise.resolve(mockResponse) }),
-    upsert: () => ({ select: () => Promise.resolve(mockResponse) }),
-    delete: () => ({
-      eq: () => Promise.resolve(mockResponse),
-      neq: () => Promise.resolve(mockResponse),
-      in: () => Promise.resolve(mockResponse),
-    }),
+    select: (..._a: any[]) => createChain(),
+    insert: (..._a: any[]) => createChain(),
+    update: (..._a: any[]) => createChain(),
+    upsert: (..._a: any[]) => createChain(),
+    delete: (..._a: any[]) => createChain(),
   });
 
   return {

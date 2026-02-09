@@ -1,2819 +1,1207 @@
 'use client';
 
 /**
- * @fileoverview Executive Briefing - Overview Page for PPC V3.
- * 
- * Comprehensive portfolio analytics with ALL legacy data:
- * - Portfolio Command Center with health score, SPI/CPI indicators
- * - Enhanced Portfolio Flow Sankey (full-width, project status distribution)
- * - Project Health Radar (multi-metric comparison)
- * - Risk Matrix (impact vs probability scatter)
- * - Progress Burndown with forecast
- * - Enhanced Budget Variance (full-width, baseline vs actual by project)
- * - Milestone Tab with creative visuals (timeline, status, gauges)
- * - Project Summary Table (detailed breakdown)
- * - Schedule Risks and Budget Concerns lists
- * - Variance Analysis section
- * - Advanced Project Controls (Float, FTE, Predictive Health, Linchpin)
- * - Cross-sync filtering - click any visual to filter entire page
- * - Drill-down panels for detailed breakdowns
- * 
- * All visuals sized for large datasets with scroll/zoom.
- * 
- * @module app/insights/overview/page
+ * Overview Page — Portfolio Analytics Dashboard
+ *
+ * Rewritten from scratch for ECharts 6 with:
+ * - Simplified 2-memo data pipeline (projectBreakdown + portfolio)
+ * - All ECharts visuals — no custom SVG charts
+ * - No CSS variables in ECharts options (colors baked into pinnacle-dark theme)
+ * - Cross-filter + drill-down interactivity
+ * - 4 tabs: Dashboard, Milestones, Variance, Advanced
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-
-/** Safe number formatting - returns '0' for NaN/Infinity */
-const sn = (v: any, decimals = 2): string => {
-  const n = Number(v);
-  return isFinite(n) ? n.toFixed(decimals) : '0';
-};
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
-import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
+import useCrossFilter, { type CrossFilter } from '@/lib/hooks/useCrossFilter';
+import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
 
-// ===== INFO TOOLTIP =====
+/* ================================================================== */
+/*  CONSTANTS                                                          */
+/* ================================================================== */
+
+const C = {
+  teal: '#40E0D0', blue: '#3B82F6', purple: '#8B5CF6', amber: '#F59E0B',
+  green: '#10B981', red: '#EF4444', pink: '#EC4899', cyan: '#06B6D4',
+  lime: '#CDDC39', orange: '#FF9800', indigo: '#6366F1',
+  textPrimary: '#f4f4f5', textMuted: '#a1a1aa', textSecondary: '#e4e4e7',
+  border: '#3f3f46', bgCard: '#18181b', bgSecondary: '#141416',
+  axis: '#3f3f46', gridLine: '#27272a',
+};
+
+const CHARGE_LABELS: Record<string, string> = { EX: 'Execution', QC: 'Quality Control', CR: 'Customer Relations', SC: 'Supervision', Other: 'Other' };
+const CHARGE_COLORS: Record<string, string> = { EX: C.blue, QC: C.purple, CR: C.amber, SC: C.cyan, Other: '#6B7280' };
+
+/** Safe number display */
+const sn = (v: any, d = 2): string => { const n = Number(v); return isFinite(n) ? n.toFixed(d) : '0'; };
+const truncName = (s: string, max = 25) => s.length > max ? s.slice(0, max) + '...' : s;
+const fmtHrs = (h: number) => h >= 1000 ? `${(h / 1000).toFixed(1)}K` : h.toLocaleString();
+
+/** Shared tooltip config — applied at each chart, not injected by wrapper */
+const TT = {
+  backgroundColor: 'rgba(15,15,18,0.96)',
+  borderColor: C.border,
+  borderWidth: 1,
+  padding: [10, 15] as [number, number],
+  textStyle: { color: '#fff', fontSize: 12 },
+  confine: false,
+  appendToBody: true,
+  extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);',
+};
+
+/* ================================================================== */
+/*  HELPER UI COMPONENTS                                               */
+/* ================================================================== */
+
 function InfoTip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: '4px', cursor: 'help' }}
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: 4, cursor: 'help' }}
       onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ opacity: 0.6 }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="2" style={{ opacity: 0.6 }}>
         <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
       </svg>
       {show && (
-        <div style={{
-          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-          marginBottom: '6px', padding: '0.6rem 0.8rem', borderRadius: '8px',
-          background: 'rgba(22,27,34,0.97)', border: '1px solid var(--border-color)',
-          color: '#e5e7eb', fontSize: '0.72rem', lineHeight: 1.45, whiteSpace: 'pre-line',
-          width: '260px', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          pointerEvents: 'none',
-        }}>
+        <div style={{ position: 'absolute', bottom: '120%', left: '50%', transform: 'translateX(-50%)', padding: '10px 14px', background: 'rgba(15,15,18,0.97)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: '0.72rem', color: C.textSecondary, whiteSpace: 'pre-line', width: 240, zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', pointerEvents: 'none' }}>
           {text}
-          <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-            width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
-            borderTop: '6px solid rgba(22,27,34,0.97)' }} />
         </div>
       )}
     </span>
   );
 }
 
-// ===== DRILL-DOWN DETAIL PANEL (appears below chart) =====
-function DrillDetail({ item, type, projectBreakdown, budgetConcerns, scheduleRisks, onClose }: {
-  item: any; type: string; projectBreakdown: any[]; budgetConcerns: any[]; scheduleRisks: any[]; onClose: () => void;
-}) {
-  const project = type === 'project' ? projectBreakdown.find(p => p.name === item?.name || p.id === item?.id) : null;
-  const risk = type === 'risk' ? item : null;
-  
-  if (!item) return null;
-  
-  return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(64,224,208,0.08) 0%, rgba(30,35,50,0.95) 100%)',
-      borderRadius: '16px', padding: '1.25rem 1.5rem', marginTop: '0.75rem',
-      border: '1px solid rgba(64,224,208,0.25)', position: 'relative',
-    }}>
-      <button onClick={onClose} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-      </button>
-      
-      <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px', marginBottom: '0.25rem' }}>
-        {type} detail
-      </div>
-      <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>
-        {item.name || item.source || 'Selected Item'}
-      </div>
-
-      {project && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
-          {[
-            { label: 'Tasks', value: project.tasks, sub: `${project.completed} complete` },
-            { label: 'SPI', value: sn(project.spi), color: project.spi >= 1 ? '#10B981' : '#EF4444', tip: 'Schedule Performance Index\nEV / PV = (% Complete x Baseline) / Baseline\n>1 = ahead, <1 = behind' },
-            { label: 'CPI', value: sn(project.cpi), color: project.cpi >= 1 ? '#10B981' : '#EF4444', tip: 'Cost Performance Index\nEV / AC = (% Complete x Baseline) / Actual\n>1 = under budget, <1 = over budget' },
-            { label: 'Progress', value: `${project.percentComplete}%` },
-            { label: 'Baseline Hrs', value: project.baselineHours.toLocaleString() },
-            { label: 'Actual Hrs', value: project.actualHours.toLocaleString(), color: project.actualHours > project.baselineHours ? '#EF4444' : '#10B981' },
-            { label: 'Remaining', value: project.remainingHours.toLocaleString() },
-            { label: 'Variance', value: `${project.variance > 0 ? '+' : ''}${project.variance}%`, color: project.variance <= 0 ? '#10B981' : '#EF4444' },
-            ...(project.timesheetHours > 0 ? [{ label: 'Timesheet Hrs', value: project.timesheetHours.toLocaleString(), color: '#3B82F6' }] : []),
-            ...(project.timesheetCost > 0 ? [{ label: 'Labor Cost', value: `$${(project.timesheetCost / 1000).toFixed(1)}K`, color: '#3B82F6' }] : []),
-          ].map((m, i) => (
-            <div key={i} style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
-              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem', display: 'flex', alignItems: 'center' }}>
-                {m.label}{(m as any).tip && <InfoTip text={(m as any).tip} />}
-              </div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: (m as any).color || 'var(--text-primary)' }}>{m.value}</div>
-              {(m as any).sub && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{(m as any).sub}</div>}
-            </div>
-          ))}
-          {/* Charge type mini-breakdown */}
-          {Object.keys(project.chargeTypes || {}).length > 0 && (
-            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', padding: '0.5rem 0' }}>
-              {Object.entries(project.chargeTypes).map(([type, hrs]) => (
-                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: CHARGE_TYPE_COLORS[type] || '#6B7280' }} />
-                  <span style={{ color: 'var(--text-muted)' }}>{CHARGE_TYPE_LABELS[type] || type}:</span>
-                  <strong>{Math.round(hrs as number).toLocaleString()} hrs</strong>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {risk && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
-          {[
-            { label: 'Type', value: risk.type === 'schedule' ? 'Schedule Risk' : 'Budget Concern' },
-            { label: 'Variance', value: risk.type === 'schedule' ? `+${risk.variance} days` : `+${risk.variance}%`, color: '#EF4444' },
-            { label: 'Impact', value: risk.impact > 70 ? 'High' : risk.impact > 40 ? 'Medium' : 'Low', color: risk.impact > 70 ? '#EF4444' : '#F59E0B', tip: `Impact score: ${risk.impact}/100\nSchedule risks: >14d delay = High, >7d = Medium\nBudget risks: >50% over = High, >20% = Medium` },
-            { label: 'Probability', value: `${risk.probability}%`, tip: `Probability of continued impact.\nBased on variance magnitude.` },
-            ...(risk.project ? [{ label: 'Project', value: risk.project }] : []),
-            ...(risk.assignee ? [{ label: 'Assignee', value: risk.assignee }] : []),
-          ].map((m, i) => (
-            <div key={i} style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
-              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem', display: 'flex', alignItems: 'center' }}>
-                {m.label}{(m as any).tip && <InfoTip text={(m as any).tip} />}
-              </div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: (m as any).color || 'var(--text-primary)' }}>{m.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!project && !risk && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
-          {Object.entries(item).filter(([k]) => !['data', 'event', 'componentType', 'seriesType', 'dataType'].includes(k) && item[k] !== undefined && item[k] !== null).slice(0, 8).map(([key, val]) => (
-            <div key={key} style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
-              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem', textTransform: 'capitalize' }}>{key.replace(/([A-Z])/g, ' $1')}</div>
-              <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{typeof val === 'number' ? (val as number).toLocaleString() : String(val)}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== CROSS-FILTER BAR =====
-function CrossFilterBar({ 
-  filters, 
-  drillPath,
-  onRemove, 
-  onClear,
-  onDrillToLevel,
-}: { 
-  filters: CrossFilter[];
-  drillPath: { id: string; label: string }[];
-  onRemove: (type: string, value?: string) => void;
-  onClear: () => void;
-  onDrillToLevel: (id: string) => void;
-}) {
-  if (filters.length === 0 && drillPath.length === 0) return null;
-
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.75rem',
-      padding: '0.75rem 1rem',
-      background: 'linear-gradient(90deg, rgba(64,224,208,0.08), rgba(205,220,57,0.05))',
-      borderRadius: '12px',
-      border: '1px solid rgba(64,224,208,0.2)',
-      marginBottom: '1rem',
-      flexWrap: 'wrap',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2">
-          <polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46" />
-        </svg>
-        <span style={{ fontSize: '0.75rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>FILTERED</span>
-      </div>
-
-      {/* Drill path breadcrumbs */}
-      {drillPath.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          {drillPath.map((level, idx) => (
-            <React.Fragment key={level.id}>
-              {idx > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>/</span>}
-              <button
-                onClick={() => onDrillToLevel(level.id)}
-                style={{
-                  padding: '0.25rem 0.5rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: idx === drillPath.length - 1 ? 'rgba(64,224,208,0.15)' : 'transparent',
-                  color: 'var(--pinnacle-teal)',
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                }}
-              >
-                {level.label}
-              </button>
-            </React.Fragment>
-          ))}
-        </div>
-      )}
-
-      {/* Active filter pills */}
-      {filters.map((f) => (
-        <div
-          key={`${f.type}-${f.value}`}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.35rem 0.75rem',
-            background: 'var(--bg-secondary)',
-            borderRadius: '20px',
-            border: '1px solid var(--border-color)',
-          }}
-        >
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{f.type}:</span>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{f.label}</span>
-          <button
-            onClick={() => onRemove(f.type, f.value)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px' }}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-      ))}
-
-      <button
-        onClick={onClear}
-        style={{
-          marginLeft: 'auto',
-          padding: '0.35rem 0.75rem',
-          borderRadius: '6px',
-          border: '1px solid var(--border-color)',
-          background: 'transparent',
-          color: 'var(--text-secondary)',
-          fontSize: '0.75rem',
-          cursor: 'pointer',
-        }}
-      >
-        Clear All
-      </button>
-    </div>
-  );
-}
-
-// ===== SECTION CARD =====
-function SectionCard({ title, subtitle, children, headerRight, noPadding = false }: { 
-  title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode; noPadding?: boolean;
+function SectionCard({ title, subtitle, children, noPadding = false }: {
+  title: string; subtitle?: string; children: React.ReactNode; noPadding?: boolean;
 }) {
   return (
-    <div style={{ background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>{title}</h3>
-          {subtitle && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{subtitle}</span>}
-        </div>
-        {headerRight}
+    <div style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '0.875rem 1rem', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: C.textPrimary }}>{title}</h3>
+        {subtitle && <span style={{ fontSize: '0.65rem', color: C.textMuted }}>{subtitle}</span>}
       </div>
       <div style={{ padding: noPadding ? 0 : '1rem', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{children}</div>
     </div>
   );
 }
 
-// ===== PORTFOLIO COMMAND CENTER =====
-function PortfolioCommandCenter({ 
-  healthMetrics, 
-  projectBreakdown,
-  onProjectSelect,
-  selectedProject,
-}: { 
-  healthMetrics: any;
-  projectBreakdown: any[];
-  onProjectSelect: (p: any | null) => void;
-  selectedProject: any | null;
+function CrossFilterBar({ filters, drillPath, onRemove, onClear, onDrillToLevel }: {
+  filters: CrossFilter[]; drillPath: any[]; onRemove: (t: string, v?: string) => void; onClear: () => void; onDrillToLevel: (id: string) => void;
 }) {
-  const healthColor = healthMetrics.healthScore >= 80 ? '#10B981' : healthMetrics.healthScore >= 60 ? '#F59E0B' : '#EF4444';
-  
-  const statusData = [
-    { key: 'schedule', label: 'Schedule (SPI)', status: healthMetrics.scheduleStatus, value: healthMetrics.spi, tip: 'Schedule Performance Index\nEV / PV = (% Complete x Baseline) / Baseline\n\n>1.0 = Ahead of schedule\n1.0 = On schedule\n<1.0 = Behind schedule' },
-    { key: 'budget', label: 'Budget (CPI)', status: healthMetrics.budgetStatus, value: healthMetrics.cpi, tip: 'Cost Performance Index\nEV / AC = (% Complete x Baseline) / Actual Hrs\n\n>1.0 = Under budget\n1.0 = On budget\n<1.0 = Over budget' },
-    { key: 'quality', label: 'Progress', status: healthMetrics.qualityStatus, value: healthMetrics.percentComplete, tip: 'Weighted average completion\nacross all scheduled tasks.' },
-  ];
-
-  // Top / worst performers
-  const sortedByHrs = [...projectBreakdown].sort((a, b) => b.actualHours - a.actualHours);
-  const topPerformer = projectBreakdown.filter(p => p.cpi >= 1).sort((a, b) => b.cpi - a.cpi)[0];
-  const worstPerformer = projectBreakdown.filter(p => p.cpi < 1).sort((a, b) => a.cpi - b.cpi)[0];
-  
-  const getStatusColor = (status: string) => status === 'green' ? '#10B981' : status === 'yellow' ? '#F59E0B' : '#EF4444';
-  
+  if (!filters.length && !drillPath.length) return null;
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)',
-      borderRadius: '24px',
-      padding: '1.5rem',
-      border: '1px solid var(--border-color)',
-      display: 'grid',
-      gridTemplateColumns: '180px auto 1fr auto',
-      alignItems: 'center',
-      gap: '1.5rem',
-    }}>
-      {/* Health Score Ring */}
-      <div style={{ position: 'relative', width: '180px', height: '180px', flexShrink: 0 }}>
-        <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
-          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg-tertiary)" strokeWidth="8" />
-          <circle 
-            cx="50" cy="50" r="42" fill="none" 
-            stroke={healthColor} strokeWidth="8"
-            strokeDasharray={`${healthMetrics.healthScore * 2.64} 264`}
-            strokeLinecap="round"
-            transform="rotate(-90 50 50)"
-            style={{ filter: `drop-shadow(0 0 8px ${healthColor})` }}
-          />
-        </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1, color: healthColor }}>{healthMetrics.healthScore}</span>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '2px' }}>Health<InfoTip text={'Portfolio Health Score (0-100)\nBased on SPI and CPI:\n-30 if SPI or CPI < 0.85\n-15 if SPI or CPI < 0.95\n-5 if SPI or CPI < 1.0'} /></span>
-        </div>
-      </div>
-      
-      {/* Status Indicators */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {statusData.map(s => (
-          <div key={s.key} style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-            padding: '0.75rem 1.25rem',
-            background: `${getStatusColor(s.status)}12`,
-            borderRadius: '12px',
-            border: `1px solid ${getStatusColor(s.status)}30`,
-            minWidth: '200px',
-          }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: getStatusColor(s.status), boxShadow: `0 0 8px ${getStatusColor(s.status)}` }} />
-            <div style={{ flex: 1 }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{s.label}<InfoTip text={s.tip} /></span>
-              <span style={{ fontSize: '1.1rem', fontWeight: 700, color: getStatusColor(s.status) }}>
-                {s.key === 'quality' ? `${s.value}%` : sn(s.value)}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-      
-      {/* Top / Worst Performers + Project pills */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Performance Leaders
-        </div>
-        {/* Most hours */}
-        {sortedByHrs[0] && (
-          <button onClick={() => onProjectSelect(selectedProject?.id === sortedByHrs[0].id ? null : sortedByHrs[0])} style={{
-            padding: '0.5rem 0.75rem', borderRadius: '10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
-            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem',
-          }}>
-            <div style={{ fontSize: '0.65rem', color: '#3B82F6', width: '50px' }}>Most Hrs</div>
-            <div style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{sortedByHrs[0].name}</div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3B82F6' }}>{sortedByHrs[0].actualHours.toLocaleString()}</div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0.5rem 0.75rem', background: `${C.teal}08`, borderRadius: 10, border: `1px solid ${C.teal}30`, marginBottom: '0.75rem', flexWrap: 'wrap', fontSize: '0.75rem' }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.teal} strokeWidth="2"><polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46" /></svg>
+      {drillPath.map((l: any, i: number) => (
+        <span key={l.id}>
+          <button onClick={() => onDrillToLevel(l.id)} style={{ background: 'none', border: 'none', color: C.teal, cursor: 'pointer', fontWeight: 600, fontSize: '0.75rem' }}>{l.label}</button>
+          {i < drillPath.length - 1 && <span style={{ color: C.textMuted, margin: '0 4px' }}>›</span>}
+        </span>
+      ))}
+      {filters.map(f => (
+        <span key={`${f.type}-${f.value}`} style={{ padding: '3px 8px', background: `${C.teal}18`, borderRadius: 6, border: `1px solid ${C.teal}40`, color: C.teal, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {f.label}
+          <button onClick={() => onRemove(f.type, f.value)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 2 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
-        )}
-        {/* Best CPI */}
-        {topPerformer && (
-          <button onClick={() => onProjectSelect(selectedProject?.id === topPerformer.id ? null : topPerformer)} style={{
-            padding: '0.5rem 0.75rem', borderRadius: '10px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem',
-          }}>
-            <div style={{ fontSize: '0.65rem', color: '#10B981', width: '50px' }}>Best CPI</div>
-            <div style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{topPerformer.name}</div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10B981' }}>{sn(topPerformer.cpi)}</div>
-          </button>
-        )}
-        {/* Worst CPI */}
-        {worstPerformer && (
-          <button onClick={() => onProjectSelect(selectedProject?.id === worstPerformer.id ? null : worstPerformer)} style={{
-            padding: '0.5rem 0.75rem', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem',
-          }}>
-            <div style={{ fontSize: '0.65rem', color: '#EF4444', width: '50px' }}>Worst CPI</div>
-            <div style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{worstPerformer.name}</div>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#EF4444' }}>{sn(worstPerformer.cpi)}</div>
-          </button>
-        )}
-        {/* Project pills */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '60px', overflowY: 'auto', marginTop: '0.25rem' }}>
-          {projectBreakdown.map((p, idx) => {
-            const pColor = p.spi >= 1 && p.cpi >= 1 ? '#10B981' : p.spi >= 0.9 && p.cpi >= 0.9 ? '#F59E0B' : '#EF4444';
-            const isSelected = selectedProject?.id === p.id;
-            return (
-              <button key={idx} onClick={() => onProjectSelect(isSelected ? null : p)} style={{
-                padding: '0.25rem 0.6rem', borderRadius: '14px', border: `1px solid ${isSelected ? 'var(--pinnacle-teal)' : pColor}40`,
-                background: isSelected ? 'rgba(64,224,208,0.15)' : `${pColor}08`, color: isSelected ? 'var(--pinnacle-teal)' : 'var(--text-secondary)',
-                fontSize: '0.7rem', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem',
-              }}>
-                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: pColor }} />
-                {p.name.length > 16 ? p.name.slice(0, 16) + '..' : p.name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      
-      {/* Summary Stats */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Actual Hrs</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{healthMetrics.totalHours.toLocaleString()}</div>
-        </div>
-        <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Baseline Hrs</div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{healthMetrics.baselineHours.toLocaleString()}</div>
-        </div>
-        <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Remaining</div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: healthMetrics.remainingHours > healthMetrics.baselineHours * 0.5 ? '#F59E0B' : '#10B981' }}>{healthMetrics.remainingHours.toLocaleString()}</div>
-        </div>
-        {healthMetrics.timesheetCost > 0 && (
-          <div style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', minWidth: '130px' }}>
-            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Labor Cost</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#3B82F6' }}>${(healthMetrics.timesheetCost / 1000).toFixed(0)}K</div>
-          </div>
-        )}
+        </span>
+      ))}
+      <button onClick={onClear} style={{ marginLeft: 'auto', padding: '0.3rem 0.7rem', borderRadius: 6, border: `1px solid ${C.border}`, background: 'transparent', color: C.textSecondary, fontSize: '0.72rem', cursor: 'pointer' }}>Clear All</button>
+    </div>
+  );
+}
+
+function DrillDetail({ item, type, onClose }: { item: any; type: string; onClose: () => void }) {
+  if (!item) return null;
+  return (
+    <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 16, padding: '1.25rem', marginBottom: '1rem', position: 'relative' }}>
+      <button onClick={onClose} style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 4 }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
+      <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: C.textPrimary }}>{item.name || 'Details'}</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem' }}>
+        {item.tasks != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>Tasks</div><div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.tasks}</div></div>}
+        {item.baselineHours != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>Baseline</div><div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.baselineHours.toLocaleString()} hrs</div></div>}
+        {item.actualHours != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>Actual</div><div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.actualHours.toLocaleString()} hrs</div></div>}
+        {item.spi != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>SPI</div><div style={{ fontSize: '1.1rem', fontWeight: 700, color: item.spi >= 1 ? C.green : item.spi >= 0.9 ? C.amber : C.red }}>{sn(item.spi)}</div></div>}
+        {item.cpi != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>CPI</div><div style={{ fontSize: '1.1rem', fontWeight: 700, color: item.cpi >= 1 ? C.green : item.cpi >= 0.9 ? C.amber : C.red }}>{sn(item.cpi)}</div></div>}
+        {item.percentComplete != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>Progress</div><div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.percentComplete}%</div></div>}
+        {item.variance != null && <div><div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase' }}>Variance</div><div style={{ fontSize: '1.1rem', fontWeight: 700, color: item.variance > 0 ? C.red : C.green }}>{item.variance > 0 ? '+' : ''}{item.variance}%</div></div>}
       </div>
     </div>
   );
 }
 
-// ===== PORTFOLIO HOURS FLOW SANKEY =====
-const CHARGE_TYPE_LABELS: Record<string, string> = { EX: 'Execution', QC: 'Quality Control', CR: 'Customer Relations', SC: 'Supervision', Other: 'Other' };
-const CHARGE_TYPE_COLORS: Record<string, string> = { EX: '#3B82F6', QC: '#8B5CF6', CR: '#F59E0B', SC: '#06B6D4', Other: '#6B7280' };
+/* ================================================================== */
+/*  LEADERBOARD                                                        */
+/* ================================================================== */
 
-function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
-  const [sankeyDepth, setSankeyDepth] = useState<'summary' | 'detailed'>('detailed');
-  
+type LBTab = 'hours' | 'cpi' | 'spi' | 'progress';
+const LB_TABS: { key: LBTab; label: string; color: string }[] = [
+  { key: 'hours', label: 'Hours', color: C.blue },
+  { key: 'cpi', label: 'CPI', color: C.green },
+  { key: 'spi', label: 'SPI', color: C.purple },
+  { key: 'progress', label: 'Progress', color: C.amber },
+];
+
+function Leaderboard({ projectBreakdown, onSelect, selected }: { projectBreakdown: any[]; onSelect: (p: any) => void; selected: any }) {
+  const [tab, setTab] = useState<LBTab>('hours');
+  const sorted = useMemo(() => {
+    const pb = [...projectBreakdown];
+    if (tab === 'hours') return pb.sort((a, b) => b.actualHours - a.actualHours);
+    if (tab === 'cpi') return pb.sort((a, b) => b.cpi - a.cpi);
+    if (tab === 'spi') return pb.sort((a, b) => b.spi - a.spi);
+    return pb.sort((a, b) => b.percentComplete - a.percentComplete);
+  }, [projectBreakdown, tab]);
+  const cur = LB_TABS.find(t => t.key === tab)!;
+  const fmtVal = (p: any) => tab === 'hours' ? p.actualHours.toLocaleString() + ' hrs' : tab === 'cpi' ? sn(p.cpi) : tab === 'spi' ? sn(p.spi) : `${p.percentComplete}%`;
+  const valColor = (p: any) => tab === 'hours' ? C.blue : tab === 'cpi' ? (p.cpi >= 1 ? C.green : p.cpi >= 0.9 ? C.amber : C.red) : tab === 'spi' ? (p.spi >= 1 ? C.green : p.spi >= 0.9 ? C.amber : C.red) : (p.percentComplete >= 75 ? C.green : p.percentComplete >= 50 ? C.amber : C.red);
+  const medals = ['#FFD700', '#C0C0C0', '#CD7F32'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>
+      <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3 }}>
+        {LB_TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{ flex: 1, padding: '0.3rem 0.4rem', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600, letterSpacing: 0.3, textTransform: 'uppercase', background: tab === t.key ? `${t.color}20` : 'transparent', color: tab === t.key ? t.color : C.textMuted, transition: 'all 0.15s' }}>{t.label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 170, overflowY: 'auto', paddingRight: 4 }}>
+        {sorted.map((p, i) => (
+          <button key={p.id || i} onClick={() => onSelect(selected?.id === p.id ? null : p)} style={{ padding: '0.35rem 0.6rem', borderRadius: 8, border: selected?.id === p.id ? `1px solid ${C.teal}` : '1px solid transparent', background: selected?.id === p.id ? `${C.teal}10` : i < 3 ? `${cur.color}06` : 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, transition: 'background 0.15s' }}>
+            <div style={{ width: 18, height: 18, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, flexShrink: 0, background: i < 3 ? `${medals[i]}20` : 'rgba(255,255,255,0.04)', color: i < 3 ? medals[i] : C.textMuted }}>{i + 1}</div>
+            <div style={{ flex: 1, fontSize: '0.72rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.textPrimary, minWidth: 0 }}>{p.name}</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: valColor(p), flexShrink: 0 }}>{fmtVal(p)}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  CHART COMPONENTS — All ECharts 6, no CSS vars                      */
+/* ================================================================== */
+
+// ── 1. Portfolio Health Gauge (Command Center) ──
+function HealthGauge({ score }: { score: number }) {
+  const color = score >= 80 ? C.green : score >= 60 ? C.amber : C.red;
+  const option: EChartsOption = useMemo(() => ({
+    series: [{ type: 'gauge', startAngle: 220, endAngle: -40, min: 0, max: 100, pointer: { show: false }, progress: { show: true, roundCap: true, itemStyle: { color } }, axisLine: { lineStyle: { width: 14, color: [[1, 'rgba(255,255,255,0.06)']] } }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, title: { show: true, offsetCenter: [0, '55%'], fontSize: 11, color: C.textMuted }, detail: { valueAnimation: true, fontSize: 38, fontWeight: 900, offsetCenter: [0, '-8%'], color, formatter: '{value}' }, data: [{ value: score, name: 'HEALTH' }] }],
+  }), [score, color]);
+  return <ChartWrapper option={option} height="180px" />;
+}
+
+// ── 2. Portfolio Flow Sankey ──
+function PortfolioSankey({ projectBreakdown, portfolio, onClick }: { projectBreakdown: any[]; portfolio: any; onClick?: (p: any) => void }) {
+  const [depth, setDepth] = useState<'summary' | 'detailed'>('detailed');
   const option: EChartsOption = useMemo(() => {
-    const totalHours = projectBreakdown.reduce((s, p) => s + p.actualHours, 0) || 1;
+    if (!projectBreakdown.length) return {};
     const nodes: any[] = [];
     const links: any[] = [];
-    const nodeSet = new Set<string>();
-    
-    const addNode = (name: string, color: string) => {
-      if (!nodeSet.has(name)) {
-        nodes.push({ name, itemStyle: { color, borderWidth: 0, borderColor: color } });
-        nodeSet.add(name);
-      }
-    };
-    
-    if (sankeyDepth === 'summary') {
-      // Summary: Portfolio → Projects → Work Type
-      addNode('Portfolio', '#40E0D0');
-      
-      projectBreakdown.forEach(p => {
-        const shortName = p.name.length > 30 ? p.name.slice(0, 30) + '...' : p.name;
-        const pColor = p.spi >= 1 && p.cpi >= 1 ? '#10B981' : p.spi >= 0.9 && p.cpi >= 0.9 ? '#F59E0B' : '#EF4444';
-        addNode(shortName, pColor);
-        if (p.actualHours > 0) links.push({ source: 'Portfolio', target: shortName, value: p.actualHours });
-        
-        // Project → Work types
-        const ct = p.chargeTypes || {};
+    const added = new Set<string>();
+    const add = (name: string, color: string) => { if (!added.has(name)) { nodes.push({ name, itemStyle: { color, borderWidth: 0 } }); added.add(name); } };
+
+    add('Portfolio', C.teal);
+    projectBreakdown.forEach(p => {
+      const nm = truncName(p.name, 30);
+      const clr = p.spi >= 1 && p.cpi >= 1 ? C.green : p.spi >= 0.9 && p.cpi >= 0.9 ? C.amber : C.red;
+      add(nm, clr);
+
+      // Use the larger of task actualHours or timesheet hours as the project total
+      const projTotal = Math.max(p.actualHours, p.timesheetHours, 1);
+      links.push({ source: 'Portfolio', target: nm, value: projTotal });
+
+      // Scale charge-type breakdown proportionally to project total
+      const ct = p.chargeTypes || {};
+      const ctRaw = Object.values(ct).reduce((s: number, v: any) => s + (Number(v) || 0), 0) || 1;
+      const scale = projTotal / ctRaw; // scale factor to normalize
+
+      if (depth === 'detailed') {
         Object.entries(ct).forEach(([type, hrs]) => {
-          if ((hrs as number) > 0) {
-            const label = CHARGE_TYPE_LABELS[type] || type;
-            addNode(label, CHARGE_TYPE_COLORS[type] || '#6B7280');
-            links.push({ source: shortName, target: label, value: hrs as number });
+          const scaled = Math.round((hrs as number) * scale);
+          if (scaled > 0) {
+            const label = `${CHARGE_LABELS[type] || type} (${nm.slice(0, 12)})`;
+            add(label, CHARGE_COLORS[type] || '#6B7280');
+            links.push({ source: nm, target: label, value: scaled });
           }
         });
-      });
-      
-      // Work types → Outcomes
-      const completedHrs = Math.round(totalHours * (healthMetrics.percentComplete / 100));
-      const remainingHrs = totalHours - completedHrs;
-      addNode('Earned', '#10B981');
-      addNode('Remaining', '#F97316');
-      Object.keys(CHARGE_TYPE_LABELS).forEach(type => {
-        const label = CHARGE_TYPE_LABELS[type];
-        if (nodeSet.has(label)) {
-          const typeTotal = projectBreakdown.reduce((s, p) => s + ((p.chargeTypes || {})[type] || 0), 0);
+        // Earned / Remaining
+        const pEarned = Math.round(projTotal * (p.percentComplete / 100));
+        const pRemain = projTotal - pEarned;
+        const earned = `Earned: ${nm.slice(0, 15)}`;
+        const remain = `Remaining: ${nm.slice(0, 15)}`;
+        if (pEarned > 0) add(earned, C.green);
+        if (pRemain > 0) add(remain, C.orange);
+        Object.entries(ct).forEach(([type, hrs]) => {
+          const scaled = Math.round((hrs as number) * scale);
+          if (scaled > 0) {
+            const label = `${CHARGE_LABELS[type] || type} (${nm.slice(0, 12)})`;
+            const te = Math.round(scaled * (p.percentComplete / 100));
+            const tr = scaled - te;
+            if (te > 0 && pEarned > 0) links.push({ source: label, target: earned, value: te });
+            if (tr > 0 && pRemain > 0) links.push({ source: label, target: remain, value: tr });
+          }
+        });
+      } else {
+        Object.entries(ct).forEach(([type, hrs]) => {
+          const scaled = Math.round((hrs as number) * scale);
+          if (scaled > 0) {
+            const label = CHARGE_LABELS[type] || type;
+            add(label, CHARGE_COLORS[type] || '#6B7280');
+            links.push({ source: nm, target: label, value: scaled });
+          }
+        });
+      }
+
+      // If no charge types, add a single "Unclassified" link so the flow doesn't dead-end
+      if (Object.keys(ct).length === 0) {
+        add('Unclassified', '#6B7280');
+        links.push({ source: nm, target: 'Unclassified', value: projTotal });
+      }
+    });
+
+    if (depth === 'summary') {
+      add('Earned', C.green);
+      add('Remaining', C.orange);
+      Object.keys(CHARGE_LABELS).forEach(type => {
+        const label = CHARGE_LABELS[type];
+        if (added.has(label)) {
+          const typeTotal = links.filter(l => l.target === label).reduce((s, l) => s + l.value, 0);
           if (typeTotal > 0) {
-            const earned = Math.round(typeTotal * (healthMetrics.percentComplete / 100));
-            const rem = typeTotal - earned;
-            if (earned > 0) links.push({ source: label, target: 'Earned', value: earned });
-            if (rem > 0) links.push({ source: label, target: 'Remaining', value: rem });
+            const e = Math.round(typeTotal * (portfolio.percentComplete / 100));
+            const r = typeTotal - e;
+            if (e > 0) links.push({ source: label, target: 'Earned', value: e });
+            if (r > 0) links.push({ source: label, target: 'Remaining', value: r });
           }
         }
       });
-    } else {
-      // Detailed: Portfolio → Projects → Charge Types → Progress
-      addNode('Portfolio', '#40E0D0');
-      
-      projectBreakdown.forEach(p => {
-        const shortName = p.name.length > 30 ? p.name.slice(0, 30) + '...' : p.name;
-        const pColor = p.spi >= 1 && p.cpi >= 1 ? '#10B981' : p.spi >= 0.9 && p.cpi >= 0.9 ? '#F59E0B' : '#EF4444';
-        addNode(shortName, pColor);
-        if (p.actualHours > 0) links.push({ source: 'Portfolio', target: shortName, value: p.actualHours });
-        
-        // Project → Charge types
-        const ct = p.chargeTypes || {};
-        Object.entries(ct).forEach(([type, hrs]) => {
-          if ((hrs as number) > 0) {
-            const label = `${CHARGE_TYPE_LABELS[type] || type} (${shortName.slice(0, 12)})`;
-            addNode(label, CHARGE_TYPE_COLORS[type] || '#6B7280');
-            links.push({ source: shortName, target: label, value: hrs as number });
-          }
-        });
-        
-        // Charge types → Progress (per project)
-        const earnedLabel = `Earned: ${shortName.slice(0, 15)}`;
-        const remainLabel = `Remaining: ${shortName.slice(0, 15)}`;
-        const pEarned = Math.round(p.actualHours * (p.percentComplete / 100));
-        const pRemain = p.actualHours - pEarned;
-        
-        if (pEarned > 0) addNode(earnedLabel, '#10B981');
-        if (pRemain > 0) addNode(remainLabel, '#F97316');
-        
-        Object.entries(ct).forEach(([type, hrs]) => {
-          if ((hrs as number) > 0) {
-            const label = `${CHARGE_TYPE_LABELS[type] || type} (${shortName.slice(0, 12)})`;
-            const typeEarned = Math.round((hrs as number) * (p.percentComplete / 100));
-            const typeRemain = (hrs as number) - typeEarned;
-            if (typeEarned > 0 && pEarned > 0) links.push({ source: label, target: earnedLabel, value: typeEarned });
-            if (typeRemain > 0 && pRemain > 0) links.push({ source: label, target: remainLabel, value: typeRemain });
-          }
-        });
-      });
     }
-    
-    return {
-      backgroundColor: 'transparent',
-      tooltip: { 
-        trigger: 'item', 
-        backgroundColor: 'rgba(22,27,34,0.95)', 
-        borderColor: 'var(--border-color)', 
-        textStyle: { color: '#fff', fontSize: 12 },
-        confine: true,
-        formatter: (params: any) => {
-          if (params.dataType === 'edge') {
-            const pct = totalHours > 0 ? sn((params.data.value / totalHours) * 100, 1) : '0';
-            return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>
-              Hours: <strong>${Math.round(params.data.value).toLocaleString()}</strong><br/>
-              Share: ${pct}% of portfolio`;
-          }
-          return `<strong>${params.name}</strong><br/>Click to filter`;
-        },
-      },
-      series: [{
-        type: 'sankey',
-        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.85 } },
-        nodeAlign: 'justify',
-        nodeWidth: 28,
-        nodeGap: 18,
-        layoutIterations: 64,
-        orient: 'horizontal',
-        left: 50,
-        right: 180,
-        top: 25,
-        bottom: 25,
-        label: { 
-          color: 'var(--text-primary)', 
-          fontSize: 12.5, 
-          fontWeight: 600,
-          formatter: (p: any) => {
-            const hrs = links.filter((l: any) => l.source === p.name || l.target === p.name)
-              .reduce((s: number, l: any) => l.source === p.name ? s + l.value : s, 0);
-            const short = p.name.length > 30 ? p.name.slice(0, 30) + '..' : p.name;
-            return hrs > 0 ? `${short}\n{sub|${Math.round(hrs).toLocaleString()} hrs}` : short;
-          },
-          rich: { sub: { fontSize: 10, color: 'var(--text-muted)', lineHeight: 16 } },
-        },
-        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.42 },
-        data: nodes, 
-        links,
-      }],
-    };
-  }, [projectBreakdown, healthMetrics, sankeyDepth]);
 
-  const totalHours = projectBreakdown.reduce((s, p) => s + p.actualHours, 0);
+    // Validate: remove any links with value 0 or referencing missing nodes
+    const nodeNames = new Set(nodes.map(n => n.name));
+    const validLinks = links.filter(l => l.value > 0 && nodeNames.has(l.source) && nodeNames.has(l.target));
+
+    if (validLinks.length === 0) return {};
+
+    const totalHours = projectBreakdown.reduce((s, p) => s + Math.max(p.actualHours, p.timesheetHours), 0) || 1;
+    return {
+      tooltip: { ...TT, trigger: 'item', formatter: (params: any) => {
+        if (params.dataType === 'edge') { const pct = sn((params.data.value / totalHours) * 100, 1); return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>Hours: <strong>${Math.round(params.data.value).toLocaleString()}</strong><br/>Share: ${pct}%`; }
+        return `<strong>${params.name}</strong><br/>Click to filter`;
+      }},
+      series: [{ type: 'sankey', emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.85 } }, nodeAlign: 'justify', nodeWidth: 28, nodeGap: 18, layoutIterations: 64, orient: 'horizontal', left: 50, right: 180, top: 25, bottom: 25, label: { color: C.textPrimary, fontSize: 12.5, fontWeight: 600, formatter: (p: any) => { const hrs = validLinks.filter((l: any) => l.source === p.name).reduce((s: number, l: any) => s + l.value, 0); const short = truncName(p.name, 30); return hrs > 0 ? `${short}\n{sub|${Math.round(hrs).toLocaleString()} hrs}` : short; }, rich: { sub: { fontSize: 10, color: C.textMuted, lineHeight: 16 } } }, lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.42 }, data: nodes, links: validLinks }],
+    };
+  }, [projectBreakdown, portfolio, depth]);
+
+  const totalHours = projectBreakdown.reduce((s, p) => s + Math.max(p.actualHours, p.timesheetHours), 0);
+  if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No project data for Sankey</div>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
-        {(['summary', 'detailed'] as const).map(depth => (
-          <button
-            key={depth}
-            onClick={() => setSankeyDepth(depth)}
-            style={{
-              padding: '0.3rem 0.75rem',
-              borderRadius: '6px',
-              border: `1px solid ${sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
-              background: sankeyDepth === depth ? 'rgba(64,224,208,0.1)' : 'transparent',
-              color: sankeyDepth === depth ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-              fontSize: '0.7rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textTransform: 'capitalize',
-            }}
-          >
-            {depth}
-          </button>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+        {(['summary', 'detailed'] as const).map(d => (
+          <button key={d} onClick={() => setDepth(d)} style={{ padding: '0.3rem 0.75rem', borderRadius: 6, border: `1px solid ${depth === d ? C.teal : C.border}`, background: depth === d ? `${C.teal}10` : 'transparent', color: depth === d ? C.teal : C.textMuted, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{d}</button>
         ))}
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {totalHoursLabel(totalHours)} actual hrs | {totalHoursLabel(healthMetrics.baselineHours)} baseline | {projectBreakdown.length} projects
-        </span>
+        <span style={{ fontSize: '0.7rem', color: C.textMuted, marginLeft: 'auto' }}>{fmtHrs(totalHours)} hrs | {fmtHrs(portfolio.baselineHours)} baseline | {projectBreakdown.length} projects</span>
       </div>
-      <ChartWrapper option={option} height="560px" onClick={onClick} />
+      <ChartWrapper option={option} height="560px" onClick={onClick} isEmpty={!Object.keys(option).length} visualTitle="Portfolio Flow" />
     </div>
   );
 }
 
-/** Format hours with K suffix */
-function totalHoursLabel(hrs: number): string {
-  return hrs >= 1000 ? `${(hrs / 1000).toFixed(1)}K` : hrs.toLocaleString();
-}
-
-// ===== ENHANCED BUDGET VARIANCE CHART =====
-function EnhancedBudgetVarianceChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
+// ── 3. Project Performance Comparison (Parallel Coordinates) ──
+function PerformanceParallel({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const sorted = [...projectBreakdown].sort((a, b) => b.variance - a.variance).slice(0, 15);
-    
+    const projects = projectBreakdown.slice(0, 20);
+    if (!projects.length) return {};
+    const maxHrs = Math.max(...projects.map(p => p.actualHours), 1);
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const p = sorted[params[0]?.dataIndex];
-          if (!p) return '';
-          const diff = p.actualHours - p.baselineHours;
-          return `<strong>${p.name}</strong><br/>
-            Baseline: ${p.baselineHours.toLocaleString()} hrs<br/>
-            Actual: ${p.actualHours.toLocaleString()} hrs<br/>
-            Variance: <span style="color:${diff <= 0 ? '#10B981' : '#EF4444'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</span><br/>
-            Progress: ${p.percentComplete}%`;
-        },
-      },
-      legend: { 
-        data: ['Baseline Hours', 'Actual Hours', 'Variance %'], 
-        bottom: 0, 
-        textStyle: { color: 'var(--text-muted)', fontSize: 11 } 
-      },
-      grid: { left: 150, right: 80, top: 30, bottom: 50 },
-      xAxis: [
-        { 
-          type: 'value', 
-          name: 'Hours',
-          nameLocation: 'center',
-          nameGap: 25,
-          nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
-          axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v },
-          splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-          position: 'bottom',
-        },
+      tooltip: { ...TT, trigger: 'item', formatter: (params: any) => { const d = params.data; if (!d) return ''; return `<strong>${d.name}</strong><br/>SPI: ${sn(d.value[0])}<br/>CPI: ${sn(d.value[1])}<br/>Progress: ${d.value[2]}%<br/>Hours: ${d.value[3].toLocaleString()}<br/>Variance: ${d.value[4] > 0 ? '+' : ''}${d.value[4]}%`; }},
+      parallelAxis: [
+        { dim: 0, name: 'SPI', min: 0.5, max: 1.5, nameTextStyle: { color: C.textMuted, fontSize: 11 }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10 } },
+        { dim: 1, name: 'CPI', min: 0.5, max: 1.5, nameTextStyle: { color: C.textMuted, fontSize: 11 }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10 } },
+        { dim: 2, name: 'Progress %', min: 0, max: 100, nameTextStyle: { color: C.textMuted, fontSize: 11 }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10 } },
+        { dim: 3, name: 'Hours', min: 0, max: maxHrs, nameTextStyle: { color: C.textMuted, fontSize: 11 }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v) } },
+        { dim: 4, name: 'Variance %', min: Math.min(-30, ...projects.map(p => p.variance)), max: Math.max(30, ...projects.map(p => p.variance)), nameTextStyle: { color: C.textMuted, fontSize: 11 }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10 } },
       ],
-      yAxis: { 
-        type: 'category', 
-        data: sorted.map(p => p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name),
-        axisLabel: { color: 'var(--text-primary)', fontSize: 11 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      series: [
-        {
-          name: 'Baseline Hours',
-          type: 'bar',
-          data: sorted.map(p => ({
-            value: p.baselineHours,
-            itemStyle: { color: 'rgba(59,130,246,0.4)', borderColor: '#3B82F6', borderWidth: 1 },
-          })),
-          barWidth: '35%',
-          barGap: '-100%',
-          z: 1,
-        },
-        {
-          name: 'Actual Hours',
-          type: 'bar',
-          data: sorted.map(p => ({
-            value: p.actualHours,
-            itemStyle: { 
-              color: p.actualHours <= p.baselineHours ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444',
-              borderRadius: [0, 4, 4, 0],
-            },
-          })),
-          barWidth: '35%',
-          z: 2,
-          label: {
-            show: true,
-            position: 'right',
-            formatter: (params: any) => {
-              const p = sorted[params.dataIndex];
-              return `${p.variance > 0 ? '+' : ''}${p.variance}%`;
-            },
-            color: (params: any) => {
-              const p = sorted[params.dataIndex];
-              return p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444';
-            },
-            fontSize: 11,
-            fontWeight: 600,
-          },
-        },
-      ],
-      dataZoom: [
-        { type: 'inside', yAxisIndex: 0, start: 0, end: 100 },
-      ],
+      parallel: { left: 60, right: 60, top: 40, bottom: 30, parallelAxisDefault: { areaSelectStyle: { width: 20, opacity: 0.3, color: `${C.teal}50` } } },
+      series: [{ type: 'parallel', lineStyle: { width: 2.5, opacity: 0.7 }, emphasis: { lineStyle: { width: 4, opacity: 1 } }, data: projects.map(p => ({ name: p.name, value: [p.spi, p.cpi, p.percentComplete, p.actualHours, p.variance], lineStyle: { color: p.spi >= 1 && p.cpi >= 1 ? C.green : p.spi < 0.9 || p.cpi < 0.9 ? C.red : C.amber } })) }],
     };
   }, [projectBreakdown]);
-
-  return <ChartWrapper option={option} height="480px" onClick={onClick} />;
+  if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No project data</div>;
+  return <ChartWrapper option={option} height="320px" onClick={onClick} />;
 }
 
-// ===== PROJECT HEALTH RADAR =====
-function ProjectHealthRadar({ projects, onClick }: { projects: any[]; onClick?: (params: any) => void }) {
+// ── 4. Project Health Radar ──
+function HealthRadar({ projects, onClick }: { projects: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const indicators = [
-      { name: 'Schedule (SPI)', max: 1.5 },
-      { name: 'Cost (CPI)', max: 1.5 },
-      { name: 'Progress %', max: 100 },
-      { name: 'Efficiency %', max: 150 },
-    ];
-    
-    const topProjects = projects.slice(0, 4);
-    const colors = ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'];
-    
+    const top = projects.slice(0, 6);
+    if (!top.length) return {};
     return {
-      backgroundColor: 'transparent',
-      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
-      legend: { data: topProjects.map(p => p.name), bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 }, type: 'scroll' },
-      radar: {
-        indicator: indicators,
-        shape: 'polygon',
-        radius: '60%',
-        center: ['50%', '45%'],
-        splitNumber: 4,
-        axisName: { color: 'var(--text-muted)', fontSize: 10 },
-        splitLine: { lineStyle: { color: 'var(--border-color)' } },
-        splitArea: { areaStyle: { color: ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.04)'] } },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      series: [{
-        type: 'radar',
-        data: topProjects.map((p, idx) => ({
-          name: p.name,
-          value: [p.spi, p.cpi, p.percentComplete, p.baselineHours > 0 ? Math.min(150, Math.round((p.actualHours / p.baselineHours) * 100)) : 100],
-          lineStyle: { color: colors[idx], width: 2 },
-          itemStyle: { color: colors[idx] },
-          areaStyle: { color: colors[idx] + '25' },
-        })),
-      }],
+      tooltip: { ...TT, trigger: 'item' },
+      legend: { bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      radar: { indicator: [{ name: 'SPI', max: 1.5 }, { name: 'CPI', max: 1.5 }, { name: 'Progress', max: 100 }, { name: 'Efficiency', max: 2 }], axisName: { color: C.textMuted, fontSize: 10 }, splitLine: { lineStyle: { color: C.gridLine } }, splitArea: { areaStyle: { color: ['transparent', 'rgba(255,255,255,0.02)'] } } },
+      series: [{ type: 'radar', data: top.map((p, i) => ({ name: truncName(p.name, 20), value: [p.spi, p.cpi, p.percentComplete, p.baselineHours > 0 ? p.actualHours / p.baselineHours : 1], areaStyle: { opacity: 0.15 }, lineStyle: { width: 2 } })) }],
     };
   }, [projects]);
-
   return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
-// ===== RISK MATRIX =====
-function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect, onClick }: { scheduleRisks: any[]; budgetConcerns: any[]; onItemSelect: (item: any) => void; onClick?: (params: any) => void }) {
-  const matrixData = useMemo(() => {
-    const items: any[] = [];
-    
-    // Calculate probability from variance - higher variance = higher probability of impact
-    scheduleRisks.forEach(r => {
-      const impact = r.variance > 14 ? 90 : r.variance > 7 ? 60 : 30;
-      // Probability based on variance magnitude - scale to 50-95 range
-      const probability = Math.min(95, Math.max(50, 50 + (r.variance || 0) * 2));
-      items.push({ ...r, type: 'schedule', impact, probability, color: '#EF4444' });
-    });
-    
-    budgetConcerns.slice(0, 15).forEach(b => {
-      const impact = b.variance > 50 ? 85 : b.variance > 20 ? 55 : 25;
-      // Probability based on variance percentage - scale to 40-90 range
-      const probability = Math.min(90, Math.max(40, 40 + (b.variance || 0)));
-      items.push({ ...b, type: 'budget', impact, probability, color: '#F59E0B' });
-    });
-    
-    return items.slice(0, 30);
+// ── 5. Risk Matrix ──
+function RiskMatrix({ scheduleRisks, budgetConcerns, onClick }: { scheduleRisks: any[]; budgetConcerns: any[]; onClick?: (p: any) => void }) {
+  const items = useMemo(() => {
+    const out: any[] = [];
+    scheduleRisks.forEach(r => { out.push({ ...r, type: 'schedule', impact: r.variance > 14 ? 90 : r.variance > 7 ? 60 : 30, probability: Math.min(95, Math.max(50, 50 + (r.variance || 0) * 2)), color: C.red }); });
+    budgetConcerns.slice(0, 15).forEach(b => { out.push({ ...b, type: 'budget', impact: b.variance > 50 ? 85 : b.variance > 20 ? 55 : 25, probability: Math.min(90, Math.max(40, 40 + (b.variance || 0))), color: C.amber }); });
+    return out.slice(0, 30);
   }, [scheduleRisks, budgetConcerns]);
 
   const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
+    tooltip: { ...TT, trigger: 'item', formatter: (params: any) => { const d = items[params.dataIndex]; if (!d) return ''; const risk = Math.round((d.impact * d.probability) / 100); return `<strong>${d.name}</strong><br/>Type: ${d.type === 'schedule' ? 'Schedule Risk' : 'Budget Concern'}<br/>Variance: ${d.type === 'schedule' ? `+${d.variance} days` : `+${d.variance}% over`}<br/>Impact: ${d.impact}/100<br/>Probability: ${d.probability}%<br/>Risk Score: <strong>${risk}</strong>/100`; }},
     grid: { left: 55, right: 20, top: 35, bottom: 55 },
-    xAxis: {
-      name: 'PROBABILITY',
-      nameLocation: 'center',
-      nameGap: 35,
-      nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
-      type: 'value',
-      min: 0,
-      max: 100,
-      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      axisLabel: { show: false },
-    },
-    yAxis: {
-      name: 'IMPACT',
-      nameLocation: 'center',
-      nameGap: 40,
-      nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
-      type: 'value',
-      min: 0,
-      max: 100,
-      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      axisLabel: { show: false },
-    },
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(22,27,34,0.95)',
-      borderColor: 'var(--border-color)',
-      textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (params: any) => {
-        const d = matrixData[params.dataIndex];
-        if (!d) return '';
-        const impactLabel = d.impact > 70 ? 'HIGH' : d.impact > 40 ? 'MEDIUM' : 'LOW';
-        const riskScore = Math.round((d.impact * d.probability) / 100);
-        return `<strong>${d.name}</strong><br/>
-          <span style="opacity:0.7">Type:</span> ${d.type === 'schedule' ? 'Schedule Risk' : 'Budget Concern'}<br/>
-          <span style="opacity:0.7">Variance:</span> ${d.type === 'schedule' ? `+${d.variance} days late` : `+${d.variance}% over budget`}<br/>
-          <span style="opacity:0.7">Impact:</span> ${impactLabel} (${d.impact}/100)<br/>
-          <span style="opacity:0.7">Probability:</span> ${d.probability}%<br/>
-          <span style="opacity:0.7">Risk Score:</span> <strong>${riskScore}</strong>/100<br/>
-          <br/><em style="opacity:0.6">Impact = severity of delay or overrun<br/>Probability = likelihood of continued impact</em>`;
-      },
-    },
-    series: [{
-      type: 'scatter',
-      data: matrixData.map(d => [d.probability, d.impact]),
-      symbolSize: (params: any) => {
-        const d = matrixData[params[2] !== undefined ? params[2] : params.dataIndex];
-        const riskScore = d ? (d.impact * d.probability) / 100 : 14;
-        return Math.max(14, Math.min(32, riskScore * 0.4));
-      },
-      itemStyle: { color: (params: any) => matrixData[params.dataIndex]?.color || '#6B7280' },
-      emphasis: { itemStyle: { shadowBlur: 12, shadowColor: 'rgba(64,224,208,0.5)' } },
-      label: {
-        show: true,
-        position: 'right',
-        fontSize: 9,
-        color: 'var(--text-muted)',
-        formatter: (params: any) => {
-          const d = matrixData[params.dataIndex];
-          if (!d) return '';
-          // Only label top risks
-          const riskScore = (d.impact * d.probability) / 100;
-          return riskScore > 50 ? d.name.slice(0, 14) : '';
-        },
-      },
-    }],
+    xAxis: { name: 'PROBABILITY', nameLocation: 'center', nameGap: 35, nameTextStyle: { color: C.textMuted, fontSize: 11 }, type: 'value', min: 0, max: 100, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { show: false } },
+    yAxis: { name: 'IMPACT', nameLocation: 'center', nameGap: 40, nameTextStyle: { color: C.textMuted, fontSize: 11 }, type: 'value', min: 0, max: 100, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { show: false } },
+    series: [{ type: 'scatter', data: items.map(d => [d.probability, d.impact]), symbolSize: (val: any) => { const d = items[val[2] !== undefined ? val[2] : 0]; const r = d ? (d.impact * d.probability) / 100 : 14; return Math.max(14, Math.min(32, r * 0.4)); }, itemStyle: { color: (params: any) => items[params.dataIndex]?.color || '#6B7280' }, emphasis: { itemStyle: { shadowBlur: 12, shadowColor: `${C.teal}80` } }, label: { show: true, position: 'right', fontSize: 9, color: C.textMuted, formatter: (params: any) => { const d = items[params.dataIndex]; if (!d) return ''; return (d.impact * d.probability) / 100 > 50 ? d.name.slice(0, 14) : ''; } } }],
     graphic: [
-      { type: 'rect', left: '50%', top: 0, shape: { width: '50%', height: '50%' }, style: { fill: 'rgba(239,68,68,0.08)' }, silent: true, z: -1 },
-      { type: 'text', left: '70%', top: '20%', style: { text: 'HIGH RISK', fill: '#EF4444', fontSize: 11, fontWeight: 'bold', opacity: 0.6 } },
-      { type: 'text', left: '15%', top: '20%', style: { text: 'WATCH', fill: '#F59E0B', fontSize: 11, fontWeight: 'bold', opacity: 0.6 } },
-      { type: 'text', left: '15%', top: '70%', style: { text: 'LOW RISK', fill: '#10B981', fontSize: 11, fontWeight: 'bold', opacity: 0.6 } },
+      { type: 'rect', left: '50%', top: 0, shape: { width: '50%', height: '50%' }, style: { fill: 'rgba(239,68,68,0.06)' }, silent: true, z: -1 },
+      { type: 'text', left: '70%', top: '20%', style: { text: 'HIGH RISK', fill: C.red, fontSize: 11, fontWeight: 'bold', opacity: 0.5 } },
+      { type: 'text', left: '15%', top: '20%', style: { text: 'WATCH', fill: C.amber, fontSize: 11, fontWeight: 'bold', opacity: 0.5 } },
+      { type: 'text', left: '15%', top: '70%', style: { text: 'LOW RISK', fill: C.green, fontSize: 11, fontWeight: 'bold', opacity: 0.5 } },
     ],
-  }), [matrixData]);
+  }), [items]);
 
-  return <ChartWrapper option={option} height="340px" onEvents={{ click: (params: any) => { matrixData[params.dataIndex] && onItemSelect(matrixData[params.dataIndex]); onClick?.(params); } }} />;
+  return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
-// ===== PROJECT PERFORMANCE COMPARISON (Parallel Coordinates) =====
-function ProjectPerformanceParallel({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
+// ── 6. Budget Variance ──
+function BudgetVariance({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const projects = projectBreakdown.slice(0, 20);
-    if (!projects.length) return { backgroundColor: 'transparent' };
-    
-    const maxHours = Math.max(...projects.map(p => p.actualHours), 1);
-    
+    if (!projectBreakdown.length) return {};
+    const sorted = [...projectBreakdown].sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance)).slice(0, 15);
+    const names = sorted.map(p => truncName(p.name, 22));
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const d = params.data;
-          if (!d) return '';
-          return `<strong>${d.name}</strong><br/>
-            SPI: ${sn(d.value[0])}<br/>
-            CPI: ${sn(d.value[1])}<br/>
-            Progress: ${d.value[2]}%<br/>
-            Hours: ${d.value[3].toLocaleString()}<br/>
-            Variance: ${d.value[4] > 0 ? '+' : ''}${d.value[4]}%`;
-        },
-      },
-      parallelAxis: [
-        { dim: 0, name: 'SPI', min: 0.5, max: 1.5, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
-        { dim: 1, name: 'CPI', min: 0.5, max: 1.5, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
-        { dim: 2, name: 'Progress %', min: 0, max: 100, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
-        { dim: 3, name: 'Actual Hours', min: 0, max: maxHours, nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v } },
-        { dim: 4, name: 'Variance %', min: Math.min(-30, ...projects.map(p => p.variance)), max: Math.max(30, ...projects.map(p => p.variance)), nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 }, axisLine: { lineStyle: { color: 'var(--border-color)' } }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 } },
+      tooltip: { ...TT, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any) => {
+        if (!params || !params.length) return '';
+        const idx = params[0]?.dataIndex;
+        const p = sorted[idx]; if (!p) return '';
+        return `<strong>${p.name}</strong><br/>Baseline: ${p.baselineHours.toLocaleString()} hrs<br/>Actual: ${p.actualHours.toLocaleString()} hrs<br/>Variance: <span style="color:${p.variance > 0 ? C.red : C.green};font-weight:700">${p.variance > 0 ? '+' : ''}${p.variance}%</span>`;
+      }},
+      grid: { left: 160, right: 60, top: 30, bottom: 40, containLabel: false },
+      xAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(Math.round(v)) }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+      yAxis: { type: 'category', data: names, axisLabel: { color: C.textPrimary, fontSize: 10, width: 140, overflow: 'truncate' }, axisLine: { lineStyle: { color: C.axis } } },
+      series: [
+        { name: 'Baseline', type: 'bar', data: sorted.map(p => p.baselineHours), itemStyle: { color: 'rgba(255,255,255,0.12)', borderColor: C.axis, borderWidth: 1, borderType: 'dashed' as const }, barWidth: '40%', barGap: '10%' },
+        { name: 'Actual', type: 'bar', data: sorted.map(p => ({ value: p.actualHours, itemStyle: { color: p.variance > 10 ? C.red : p.variance > 0 ? C.amber : C.green } })), barWidth: '40%' },
       ],
-      parallel: {
-        left: 60,
-        right: 60,
-        top: 40,
-        bottom: 30,
-        parallelAxisDefault: {
-          areaSelectStyle: { width: 20, opacity: 0.3, color: 'rgba(64,224,208,0.3)' },
-        },
-      },
-      series: [{
-        type: 'parallel',
-        lineStyle: {
-          width: 2.5,
-          opacity: 0.7,
-        },
-        emphasis: {
-          lineStyle: { width: 4, opacity: 1 },
-        },
-        data: projects.map(p => {
-          const isGood = p.spi >= 1 && p.cpi >= 1;
-          const isCrit = p.spi < 0.9 || p.cpi < 0.9;
-          return {
-            name: p.name,
-            value: [p.spi, p.cpi, p.percentComplete, p.actualHours, p.variance],
-            lineStyle: {
-              color: isGood ? '#10B981' : isCrit ? '#EF4444' : '#F59E0B',
-            },
-          };
-        }),
-      }],
+      legend: { data: ['Baseline', 'Actual'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
     };
   }, [projectBreakdown]);
-
-  if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No project data</div>;
-  return <ChartWrapper option={option} height="320px" onClick={onClick} />;
+  if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No data</div>;
+  return <ChartWrapper option={option} height="480px" onClick={onClick} isEmpty={!Object.keys(option).length} visualTitle="Budget Variance" />;
 }
 
-// ===== FLOAT & CASCADE GANTT =====
-function FloatCascadeGantt({ tasks, milestones, onClick }: { tasks: any[]; milestones: any[]; onClick?: (params: any) => void }) {
+// ── 7. Float & Cascade ──
+function FloatCascade({ tasks, onClick }: { tasks: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    // Get top tasks with float data
-    const taskData = tasks.slice(0, 15).map((t: any, idx: number) => {
-      const baseline = t.baselineHours || t.budgetHours || 0;
-      const actual = t.actualHours || 0;
-      const pc = t.percentComplete || 0;
-      // Use real totalFloat if available, otherwise calculate based on hours variance
-      const totalFloat = t.totalFloat !== undefined 
-        ? t.totalFloat 
-        : Math.max(0, baseline > 0 ? Math.round((1 - actual / baseline) * 20) : 10);
-      const isCritical = t.isCritical !== undefined ? t.isCritical : totalFloat <= 0;
-      
-      return {
-        name: (t.name || t.taskName || `Task ${idx + 1}`).slice(0, 25),
-        actual: actual,
-        float: totalFloat,
-        isCritical,
-        pc,
-        dependencies: t.predecessors || [],
-      };
-    });
+    // Filter to tasks with meaningful data, then take top 15 by hours
+    const withData = tasks
+      .map((t: any, i: number) => {
+        const bl = Number(t.baselineHours || t.budgetHours || 0);
+        const ac = Number(t.actualHours || 0);
+        const pc = Number(t.percentComplete || 0);
+        const tf = t.totalFloat != null && t.totalFloat !== '' ? Number(t.totalFloat) : (bl > 0 ? Math.max(0, Math.round((bl - ac) / bl * 20)) : 0);
+        const crit = t.isCritical === true || t.isCritical === 'true' || tf <= 0;
+        return { name: truncName(t.name || t.taskName || `Task ${i + 1}`, 25), actual: ac, baseline: bl, float: tf, isCritical: crit, pc };
+      })
+      .filter(t => t.actual > 0 || t.baseline > 0)
+      .sort((a, b) => (b.actual + b.baseline) - (a.actual + a.baseline))
+      .slice(0, 15);
 
-    const names = taskData.map(t => t.name);
-    
+    if (!withData.length) return {};
+    const names = withData.map(t => t.name);
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const d = taskData[params[0]?.dataIndex];
-          if (!d) return '';
-          return `<strong>${d.name}</strong><br/>
-            Hours: ${d.actual}<br/>
-            Float: ${d.float} hrs ${d.isCritical ? '<span style="color:#EF4444">(CRITICAL)</span>' : ''}<br/>
-            Progress: ${d.pc}%`;
-        },
-      },
-      legend: { data: ['Work Hours', 'Float (Buffer)', 'Critical Path'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 150, right: 40, top: 30, bottom: 50 },
-      xAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
-      yAxis: { type: 'category', data: names, axisLabel: { color: 'var(--text-primary)', fontSize: 10 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
+      tooltip: { ...TT, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any) => { const d = withData[params[0]?.dataIndex]; if (!d) return ''; return `<strong>${d.name}</strong><br/>Baseline: ${d.baseline.toLocaleString()} hrs<br/>Actual: ${d.actual.toLocaleString()} hrs<br/>Float: ${d.float} hrs ${d.isCritical ? '<span style="color:' + C.red + ';font-weight:700">(CRITICAL)</span>' : ''}<br/>Progress: ${d.pc}%`; }},
+      legend: { data: ['Work Hours', 'Float (Buffer)'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      grid: { left: 160, right: 40, top: 30, bottom: 50, containLabel: false },
+      xAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(Math.round(v)) }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+      yAxis: { type: 'category', data: names, axisLabel: { color: C.textPrimary, fontSize: 10, width: 140, overflow: 'truncate' }, axisLine: { lineStyle: { color: C.axis } } },
       series: [
-        {
-          name: 'Work Hours',
-          type: 'bar',
-          stack: 'total',
-          data: taskData.map(t => ({ value: t.actual, itemStyle: { color: t.isCritical ? '#EF4444' : '#3B82F6' } })),
-          barWidth: '60%',
-        },
-        {
-          name: 'Float (Buffer)',
-          type: 'bar',
-          stack: 'total',
-          data: taskData.map(t => ({ value: t.float, itemStyle: { color: 'rgba(64,224,208,0.3)', borderColor: 'var(--pinnacle-teal)', borderWidth: 1, borderType: 'dashed' } })),
-          barWidth: '60%',
-        },
+        { name: 'Work Hours', type: 'bar', stack: 'total', data: withData.map(t => ({ value: t.actual > 0 ? t.actual : t.baseline, itemStyle: { color: t.isCritical ? C.red : C.blue } })), barWidth: '55%' },
+        { name: 'Float (Buffer)', type: 'bar', stack: 'total', data: withData.map(t => ({ value: t.float, itemStyle: { color: `${C.teal}40`, borderColor: C.teal, borderWidth: 1, borderType: 'dashed' as const } })), barWidth: '55%' },
       ],
     };
   }, [tasks]);
-
-  return <ChartWrapper option={option} height="400px" onClick={onClick} />;
+  if (!Object.keys(option).length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No tasks with hours data for Float & Cascade</div>;
+  return <ChartWrapper option={option} height="400px" onClick={onClick} visualTitle="Float & Cascade" />;
 }
 
-// ===== FTE SATURATION HEATMAP =====
-function FTESaturationHeatmap({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
+// ── 8. FTE Saturation ──
+function FTESaturation({ tasks, onClick }: { tasks: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    // Group tasks by week based on their dates
-    const totalHours = tasks.reduce((sum, t) => sum + (t.actualHours || 0), 0);
-    const totalBaseline = tasks.reduce((sum, t) => sum + (t.baselineHours || t.budgetHours || 0), 0);
-    const uniqueResources = new Set(tasks.map(t => t.assignedResource || t.resource).filter(Boolean));
-    const resourceCount = Math.max(uniqueResources.size, 5);
-    
-    // FTE capacity (40 hrs/week per resource)
-    const fteCapacity = resourceCount * 40;
-    
-    // Generate 12 weeks
-    const weeks = Array.from({ length: 12 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (11 - i) * 7);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
-    
-    // Calculate actual weekly demand by grouping tasks by date
-    // If no date data, distribute evenly based on completion status
-    const avgWeeklyDemand = totalHours / 12;
-    const completedTasks = tasks.filter(t => (t.percentComplete || 0) >= 100).length;
-    const completionRatio = tasks.length > 0 ? completedTasks / tasks.length : 0;
-    
-    // Early weeks have more completed work, later weeks have remaining work
-    const weeklyDemand = weeks.map((_, i) => {
-      const weekPosition = i / 11; // 0 to 1
-      // Weight earlier weeks more heavily if more tasks are complete
-      const weight = completionRatio > 0.5 
-        ? (1 - weekPosition) * 0.6 + 0.7  // Front-loaded
-        : weekPosition * 0.6 + 0.7;        // Back-loaded
-      return Math.round(avgWeeklyDemand * weight);
-    });
-    
-    const saturationPercent = weeklyDemand.map(d => Math.round((d / fteCapacity) * 100));
+    const totalHours = tasks.reduce((s, t) => s + (Number(t.actualHours) || 0), 0);
+    const resources = new Set(tasks.map((t: any) => t.assignedResource || t.resource).filter(Boolean));
+    const rc = Math.max(resources.size, 5);
+    const capacity = rc * 40;
+    const weeks = Array.from({ length: 12 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (11 - i) * 7); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); });
+    const completed = tasks.filter((t: any) => (t.percentComplete || 0) >= 100).length;
+    const ratio = tasks.length > 0 ? completed / tasks.length : 0;
+    const demand = weeks.map((_, i) => { const w = i / 11; const weight = ratio > 0.5 ? (1 - w) * 0.6 + 0.7 : w * 0.6 + 0.7; return Math.round((totalHours / 12) * weight); });
+    const sat = demand.map(d => Math.round((d / capacity) * 100));
 
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const idx = params[0]?.dataIndex;
-          if (idx === undefined) return '';
-          return `<strong>${weeks[idx]}</strong><br/>
-            Demand: ${weeklyDemand[idx]} hrs<br/>
-            Capacity: ${fteCapacity} hrs (${resourceCount} FTEs)<br/>
-            Utilization: <span style="color:${saturationPercent[idx] > 100 ? '#EF4444' : saturationPercent[idx] > 80 ? '#F59E0B' : '#10B981'}">${saturationPercent[idx]}%</span>`;
-        },
-      },
-      grid: { left: 60, right: 30, top: 40, bottom: 60 },
-      xAxis: {
-        type: 'category',
-        data: weeks,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Hours',
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      },
-      series: [
-        {
-          name: 'Labor Demand',
-          type: 'bar',
-          data: weeklyDemand.map((d, i) => ({
-            value: d,
-            itemStyle: {
-              color: saturationPercent[i] > 100 ? '#EF4444' : saturationPercent[i] > 80 ? '#F59E0B' : '#3B82F6',
-            },
-          })),
-          barWidth: '50%',
-        },
-        {
-          name: 'FTE Capacity',
-          type: 'line',
-          data: weeks.map(() => fteCapacity),
-          lineStyle: { color: '#10B981', width: 2, type: 'dashed' },
-          symbol: 'none',
-        },
-        {
-          name: 'Overload Zone',
-          type: 'line',
-          data: weeks.map(() => fteCapacity * 1.2),
-          lineStyle: { color: '#EF4444', width: 1, type: 'dotted' },
-          symbol: 'none',
-        },
+      tooltip: { ...TT, trigger: 'axis', formatter: (params: any) => { const i = params[0]?.dataIndex; return `<strong>${weeks[i]}</strong><br/>Demand: ${demand[i]} hrs<br/>Capacity: ${capacity} hrs<br/>Saturation: ${sat[i]}%`; }},
+      legend: { data: ['Demand', 'Capacity', 'Saturation %'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      grid: { left: 50, right: 50, top: 30, bottom: 60 },
+      xAxis: { type: 'category', data: weeks, axisLabel: { color: C.textMuted, fontSize: 9, rotate: 30 }, axisLine: { lineStyle: { color: C.axis } } },
+      yAxis: [
+        { type: 'value', name: 'Hours', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10 }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+        { type: 'value', name: '%', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10, formatter: '{value}%' }, splitLine: { show: false }, min: 0, max: Math.max(150, ...sat) + 10 },
       ],
-      legend: { data: ['Labor Demand', 'FTE Capacity', 'Overload Zone'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      series: [
+        { name: 'Demand', type: 'bar', data: demand.map(d => ({ value: d, itemStyle: { color: d > capacity ? C.red : C.blue } })), barWidth: '45%' },
+        { name: 'Capacity', type: 'line', data: Array(12).fill(capacity), lineStyle: { color: C.amber, width: 2, type: 'dashed' }, symbol: 'none' },
+        { name: 'Saturation %', type: 'line', yAxisIndex: 1, data: sat, lineStyle: { color: C.teal, width: 2 }, symbol: 'circle', symbolSize: 6, itemStyle: { color: C.teal } },
+      ],
     };
   }, [tasks]);
-
   return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
-// ===== EARNED VALUE S-CURVE =====
-function EarnedValueSCurve({ tasks, sCurveData, onClick }: { tasks: any[]; sCurveData: any; onClick?: (params: any) => void }) {
+// ── 9. Earned Value S-Curve ──
+function EarnedValueCurve({ tasks, onClick }: { tasks: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const dates = sCurveData?.dates || [];
-    const planned = sCurveData?.planned || [];
-    const actual = sCurveData?.actual || [];
-    
-    // Calculate Earned Value
-    let totalBaseline = 0, totalActual = 0, totalEarned = 0;
-    tasks.forEach((t: any) => {
-      const baseline = t.baselineHours || t.budgetHours || 0;
-      const actualHrs = t.actualHours || 0;
-      const pc = (t.percentComplete || 0) / 100;
-      totalBaseline += baseline;
-      totalActual += actualHrs;
-      totalEarned += baseline * pc;
-    });
-    
-    // Create EV projection
-    const ev = dates.map((_: any, i: number) => Math.round((i / dates.length) * totalEarned));
-    const pv = planned;
-    const ac = actual;
-    
-    // Calculate variances
-    const sv = totalEarned - (pv[pv.length - 1] || 0);
-    const cv = totalEarned - totalActual;
-    const spi = pv[pv.length - 1] > 0 ? totalEarned / pv[pv.length - 1] : 1;
-    const cpi = totalActual > 0 ? totalEarned / totalActual : 1;
+    const totalBl = tasks.reduce((s, t) => s + (Number(t.baselineHours) || 0), 0);
+    const totalAc = tasks.reduce((s, t) => s + (Number(t.actualHours) || 0), 0);
+    const avgPc = tasks.length > 0 ? tasks.reduce((s, t) => s + (Number(t.percentComplete) || 0), 0) / tasks.length : 0;
+    const months = Array.from({ length: 12 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - 11 + i); return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); });
+    const pv = months.map((_, i) => Math.round(totalBl * ((i + 1) / 12)));
+    const ev = months.map((_, i) => Math.round(totalBl * (avgPc / 100) * ((i + 1) / 12)));
+    const ac = months.map((_, i) => Math.round(totalAc * ((i + 1) / 12)));
+    const spi = totalBl > 0 ? (totalBl * avgPc / 100) / totalBl : 1;
+    const cpi = totalAc > 0 ? (totalBl * avgPc / 100) / totalAc : 1;
 
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-      },
-      legend: { data: ['Planned Value (PV)', 'Earned Value (EV)', 'Actual Cost (AC)'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 60, right: 30, top: 30, bottom: 80 },
-      xAxis: {
-        type: 'category',
-        data: dates.length ? dates.map((d: string) => {
-          try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
-          catch { return d; }
-        }) : ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'],
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      yAxis: {
-        type: 'value',
-        name: 'Hours',
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      },
+      tooltip: { ...TT, trigger: 'axis' },
+      legend: { data: ['Planned (PV)', 'Earned (EV)', 'Actual (AC)'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      grid: { left: 60, right: 50, top: 40, bottom: 50 },
+      xAxis: { type: 'category', data: months, axisLabel: { color: C.textMuted, fontSize: 9 }, axisLine: { lineStyle: { color: C.axis } } },
+      yAxis: { type: 'value', axisLabel: { color: C.textMuted, fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v) }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
       series: [
-        { name: 'Planned Value (PV)', type: 'line', data: pv, lineStyle: { color: '#6B7280', width: 2, type: 'dashed' }, symbol: 'none', smooth: true },
-        { name: 'Earned Value (EV)', type: 'line', data: ev, lineStyle: { color: 'var(--pinnacle-teal)', width: 3 }, symbol: 'circle', symbolSize: 6, itemStyle: { color: 'var(--pinnacle-teal)' }, smooth: true, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(64,224,208,0.2)' }, { offset: 1, color: 'rgba(64,224,208,0)' }] } } },
-        { name: 'Actual Cost (AC)', type: 'line', data: ac, lineStyle: { color: ac[ac.length - 1] > ev[ev.length - 1] ? '#EF4444' : '#10B981', width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true },
+        { name: 'Planned (PV)', type: 'line', data: pv, lineStyle: { color: C.blue, width: 2, type: 'dashed' }, symbol: 'none', smooth: true },
+        { name: 'Earned (EV)', type: 'line', data: ev, lineStyle: { color: C.green, width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true, areaStyle: { opacity: 0.08 } },
+        { name: 'Actual (AC)', type: 'line', data: ac, lineStyle: { color: ac[11] > ev[11] ? C.red : C.green, width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true },
       ],
-      graphic: [
-        { type: 'text', right: 40, top: 10, style: { text: `SPI: ${sn(spi)} | CPI: ${sn(cpi)}`, fill: 'var(--text-muted)', fontSize: 11 } },
-      ],
+      graphic: [{ type: 'text', right: 40, top: 10, style: { text: `SPI: ${sn(spi)} | CPI: ${sn(cpi)}`, fill: C.textMuted, fontSize: 11 } }],
     };
-  }, [tasks, sCurveData]);
-
+  }, [tasks]);
   return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
-// ===== BUFFER CONSUMPTION SUNBURST =====
-function BufferConsumptionSunburst({ projectBreakdown, milestones, onClick }: { projectBreakdown: any[]; milestones: any[]; onClick?: (params: any) => void }) {
+// ── 10. Buffer Consumption Sunburst ──
+function BufferSunburst({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    // Group by phase/project and calculate buffer status
-    const data: any[] = [{
-      name: 'Portfolio',
-      itemStyle: { color: '#3B82F6' },
+    const data = [{
+      name: 'Portfolio', itemStyle: { color: C.blue },
       children: projectBreakdown.slice(0, 8).map(p => {
-        const bufferUsed = Math.min(100, Math.max(0, p.variance + 50)); // Normalize to 0-100
-        const color = bufferUsed >= 80 ? '#EF4444' : bufferUsed >= 50 ? '#F59E0B' : '#10B981';
-        
-        return {
-          name: p.name.slice(0, 15),
-          value: p.actualHours || 100,
-          itemStyle: { color },
-          children: [
-            { name: 'Buffer Used', value: bufferUsed, itemStyle: { color } },
-            { name: 'Buffer Left', value: 100 - bufferUsed, itemStyle: { color: 'rgba(255,255,255,0.1)' } },
-          ],
-        };
+        const used = p.baselineHours > 0 ? (p.actualHours / p.baselineHours) * 100 : 50;
+        const clr = used > 100 ? C.red : used > 80 ? C.amber : C.green;
+        return { name: truncName(p.name, 15), value: Math.max(1, p.actualHours), itemStyle: { color: clr }, children: [
+          { name: 'Consumed', value: Math.round(used), itemStyle: { color: clr } },
+          { name: 'Remaining', value: Math.round(Math.max(0, 100 - used)), itemStyle: { color: `${C.green}40` } },
+        ]};
       }),
     }];
-
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const d = params.data;
-          if (d.name === 'Buffer Used') return `Buffer Consumed: ${d.value}%`;
-          if (d.name === 'Buffer Left') return `Buffer Remaining: ${d.value}%`;
-          return `<strong>${d.name}</strong><br/>${d.value ? `Hours: ${d.value}` : ''}`;
-        },
-      },
-      series: [{
-        type: 'sunburst',
-        data: data[0].children,
-        radius: ['15%', '90%'],
-        center: ['50%', '50%'],
-        sort: undefined,
-        emphasis: { focus: 'ancestor' },
-        levels: [
-          {},
-          { r0: '15%', r: '45%', itemStyle: { borderWidth: 2, borderColor: 'var(--bg-card)' }, label: { rotate: 'tangential', fontSize: 10, color: 'var(--text-primary)' } },
-          { r0: '45%', r: '90%', label: { position: 'outside', fontSize: 9, color: 'var(--text-muted)' }, itemStyle: { borderWidth: 1, borderColor: 'var(--bg-card)' } },
-        ],
+      tooltip: { ...TT, trigger: 'item', formatter: (p: any) => `<strong>${p.name}</strong><br/>Value: ${p.value}` },
+      series: [{ type: 'sunburst', data, radius: ['15%', '90%'], label: { color: C.textPrimary, fontSize: 10, rotate: 'radial' }, itemStyle: { borderWidth: 2, borderColor: C.bgCard }, emphasis: { focus: 'ancestor', itemStyle: { shadowBlur: 10, shadowColor: `${C.teal}40` } } }],
+    };
+  }, [projectBreakdown]);
+  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
+}
+
+// ── 11. Dependency Network ──
+function DependencyNetwork({ tasks, onClick }: { tasks: any[]; onClick?: (p: any) => void }) {
+  const { graphNodes, graphLinks } = useMemo(() => {
+    if (!tasks.length) return { graphNodes: [], graphLinks: [] };
+    const taskMap = new Map<string, any>();
+    tasks.forEach((t: any) => { const id = String(t.id || t.taskId || ''); if (id) taskMap.set(id, t); });
+
+    const childrenOf = new Map<string, string[]>();
+    const linkData: { source: string; target: string; type: string }[] = [];
+
+    tasks.forEach((t: any) => {
+      const tid = String(t.id || t.taskId || '');
+      const pid = String(t.parentId || t.phaseId || '');
+      const pred = String(t.predecessorId || '');
+      if (pid && pid !== tid && taskMap.has(pid)) {
+        if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+        childrenOf.get(pid)!.push(tid);
+        linkData.push({ source: pid, target: tid, type: 'parent' });
+      }
+      if (pred && pred !== tid && taskMap.has(pred)) linkData.push({ source: pred, target: tid, type: 'predecessor' });
+    });
+
+    childrenOf.forEach(children => {
+      const s = [...children].sort((a, b) => Number(a) - Number(b));
+      for (let i = 0; i < s.length - 1; i++) linkData.push({ source: s[i], target: s[i + 1], type: 'sibling' });
+    });
+
+    const nodeIdSet = new Set<string>();
+    const nodeList: any[] = [];
+    const parentIds = [...childrenOf.keys()].sort((a, b) => (childrenOf.get(b)?.length || 0) - (childrenOf.get(a)?.length || 0));
+
+    parentIds.forEach(pid => {
+      if (nodeIdSet.size >= 40) return;
+      const t = taskMap.get(pid); if (!t) return;
+      nodeIdSet.add(pid);
+      nodeList.push({ id: pid, name: truncName(t.name || t.taskName || pid, 28), childCount: childrenOf.get(pid)?.length || 0, hours: Number(t.baselineHours || t.actualHours || 0), pc: Number(t.percentComplete || 0), isCritical: !!t.isCritical, isParent: true });
+      (childrenOf.get(pid) || []).forEach(cid => {
+        if (nodeIdSet.size >= 40 || nodeIdSet.has(cid)) return;
+        const ct = taskMap.get(cid); if (!ct) return;
+        nodeIdSet.add(cid);
+        nodeList.push({ id: cid, name: truncName(ct.name || ct.taskName || cid, 28), childCount: childrenOf.get(cid)?.length || 0, hours: Number(ct.baselineHours || ct.actualHours || 0), pc: Number(ct.percentComplete || 0), isCritical: !!ct.isCritical, isParent: childrenOf.has(cid) });
+      });
+    });
+
+    return { graphNodes: nodeList, graphLinks: linkData.filter(l => nodeIdSet.has(l.source) && nodeIdSet.has(l.target)) };
+  }, [tasks]);
+
+  const option: EChartsOption = useMemo(() => {
+    if (!graphNodes.length) return {};
+    const maxH = Math.max(...graphNodes.map((n: any) => n.hours), 1);
+    const maxC = Math.max(...graphNodes.map((n: any) => n.childCount), 1);
+    return {
+      tooltip: { ...TT, trigger: 'item', formatter: (params: any) => { const d = params.data; if (params.dataType === 'edge') { return `${d.sourceName || d.source} → ${d.targetName || d.target}<br/>Type: ${d.linkType === 'parent' ? 'Parent→Child' : d.linkType === 'predecessor' ? 'Predecessor' : 'Sibling'}`; } return `<strong>${d.name}</strong><br/>Hours: ${Math.round(d.hours || 0).toLocaleString()}<br/>Progress: ${Math.round(d.pc || 0)}%<br/>Children: ${d.childCount || 0}${d.isCritical ? '<br/><span style="color:' + C.red + '">CRITICAL</span>' : ''}`; }},
+      legend: { data: ['Critical', 'Phase', 'Task'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      series: [{ type: 'graph', layout: 'force', roam: true, draggable: true, force: { repulsion: 250, gravity: 0.12, edgeLength: [60, 160], layoutAnimation: true },
+        categories: [{ name: 'Critical', itemStyle: { color: C.red } }, { name: 'Phase', itemStyle: { color: C.amber } }, { name: 'Task', itemStyle: { color: C.blue } }],
+        data: graphNodes.map((n: any) => ({ name: n.name, id: n.id, symbolSize: n.isParent ? Math.max(30, Math.min(60, 30 + (n.childCount / maxC) * 30)) : Math.max(16, Math.min(40, (n.hours / maxH) * 40)), category: n.isCritical ? 0 : n.isParent ? 1 : 2, hours: n.hours, pc: n.pc, childCount: n.childCount, isCritical: n.isCritical, label: { show: n.isParent || n.isCritical, position: 'right', color: C.textPrimary, fontSize: 10 }, itemStyle: { shadowBlur: n.isCritical ? 15 : n.isParent ? 8 : 3, shadowColor: n.isCritical ? `${C.red}80` : 'rgba(0,0,0,0.2)', borderWidth: n.isParent ? 2 : 1, borderColor: n.isCritical ? C.red : n.isParent ? C.amber : `${C.blue}80` } })),
+        links: graphLinks.map((l: any) => { const src = graphNodes.find((n: any) => n.id === l.source); const tgt = graphNodes.find((n: any) => n.id === l.target); return { source: l.source, target: l.target, sourceName: src?.name, targetName: tgt?.name, linkType: l.type, lineStyle: { color: l.type === 'parent' ? `${C.amber}60` : l.type === 'predecessor' ? `${C.red}80` : `${C.blue}30`, width: l.type === 'parent' ? 2 : l.type === 'predecessor' ? 2.5 : 1, curveness: l.type === 'sibling' ? 0.3 : 0.15, type: l.type === 'sibling' ? 'dashed' as const : 'solid' as const }, symbol: ['none', 'arrow'], symbolSize: [0, 8] }; }),
+        emphasis: { focus: 'adjacency', itemStyle: { shadowBlur: 20, shadowColor: `${C.teal}80` }, lineStyle: { width: 3, color: C.teal } },
       }],
     };
-  }, [projectBreakdown, milestones]);
+  }, [graphNodes, graphLinks]);
 
-  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
+  if (!graphNodes.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No task dependency data</div>;
+  return <ChartWrapper option={option} height="480px" onClick={onClick} />;
 }
 
-// ===== LINCHPIN ANALYSIS - Network Graph =====
-function LinchpinAnalysis({ tasks, milestones, onClick }: { tasks: any[]; milestones: any[]; onClick?: (params: any) => void }) {
-  const { nodes, links, maxCount } = useMemo(() => {
-    // Build dependency network
-    const dependencyCount: Record<string, { name: string; count: number; type: string; status: string; id: string }> = {};
-    const linkData: { source: string; target: string }[] = [];
-    
-    // Add milestones as nodes
-    milestones.forEach((m: any, idx) => {
-      const key = m.id || m.name || `milestone-${idx}`;
-      dependencyCount[key] = { 
-        id: key,
-        name: m.name || m.milestone || key, 
-        count: 5, 
-        type: 'milestone', 
-        status: m.status || 'In Progress' 
-      };
-    });
-    
-    // Add tasks and track dependencies
-    tasks.slice(0, 50).forEach((t: any, idx) => {
-      const taskId = t.id || t.taskId || `task-${idx}`;
-      const taskName = t.name || t.taskName || taskId;
-      
-      if (!dependencyCount[taskId]) {
-        dependencyCount[taskId] = { 
-          id: taskId,
-          name: taskName, 
-          count: 1, 
-          type: 'task', 
-          status: t.status || 'In Progress' 
-        };
-      }
-      
-      const predecessors = t.predecessors || t.dependencies || [];
-      if (Array.isArray(predecessors)) {
-        predecessors.forEach((pred: string) => {
-          if (!dependencyCount[pred]) {
-            const predTask = tasks.find((pt: any) => pt.id === pred || pt.taskId === pred);
-            dependencyCount[pred] = {
-              id: pred,
-              name: predTask?.name || predTask?.taskName || pred,
-              count: 0,
-              type: 'task',
-              status: predTask?.status || 'In Progress',
-            };
-          }
-          dependencyCount[pred].count++;
-          linkData.push({ source: pred, target: taskId });
-        });
-      }
-    });
-
-    const sortedNodes = Object.values(dependencyCount)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 15);
-    
-    const nodeIds = new Set(sortedNodes.map(n => n.id));
-    const filteredLinks = linkData.filter(l => nodeIds.has(l.source) && nodeIds.has(l.target));
-    
-    return { 
-      nodes: sortedNodes, 
-      links: filteredLinks,
-      maxCount: Math.max(...sortedNodes.map(n => n.count), 1)
-    };
-  }, [tasks, milestones]);
-
-  const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(22,27,34,0.95)',
-      borderColor: 'var(--border-color)',
-      textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (params: any) => {
-        const d = params.data;
-        if (params.dataType === 'edge') {
-          return `${d.source} → ${d.target}`;
-        }
-        return `<strong>${d.name}</strong><br/>
-          Downstream Dependencies: ${d.symbolSize / 4}<br/>
-          Type: ${d.category === 0 ? 'Critical Linchpin' : d.category === 1 ? 'Important' : 'Standard'}<br/>
-          Status: ${d.status || 'In Progress'}`;
-      },
-    },
-    legend: {
-      data: ['Critical Linchpin', 'Important', 'Standard'],
-      bottom: 0,
-      textStyle: { color: 'var(--text-muted)', fontSize: 10 },
-    },
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      roam: true,
-      draggable: true,
-      force: {
-        repulsion: 300,
-        gravity: 0.1,
-        edgeLength: [80, 200],
-        layoutAnimation: true,
-      },
-      categories: [
-        { name: 'Critical Linchpin', itemStyle: { color: '#EF4444' } },
-        { name: 'Important', itemStyle: { color: '#F59E0B' } },
-        { name: 'Standard', itemStyle: { color: '#3B82F6' } },
-      ],
-      data: nodes.map(n => ({
-        name: n.name.slice(0, 20),
-        id: n.id,
-        symbolSize: Math.max(20, Math.min(60, (n.count / maxCount) * 60)),
-        category: n.count >= 8 ? 0 : n.count >= 4 ? 1 : 2,
-        status: n.status,
-        label: {
-          show: n.count >= 4,
-          position: 'right',
-          color: 'var(--text-primary)',
-          fontSize: 10,
-        },
-        itemStyle: {
-          shadowBlur: n.count >= 8 ? 15 : 5,
-          shadowColor: n.count >= 8 ? 'rgba(239,68,68,0.5)' : 'rgba(0,0,0,0.3)',
-        },
-      })),
-      links: links.map(l => ({
-        source: l.source,
-        target: l.target,
-        lineStyle: {
-          color: 'rgba(255,255,255,0.2)',
-          curveness: 0.2,
-        },
-      })),
-      emphasis: {
-        focus: 'adjacency',
-        itemStyle: { shadowBlur: 20, shadowColor: 'rgba(64,224,208,0.5)' },
-        lineStyle: { width: 3, color: 'var(--pinnacle-teal)' },
-      },
-    }],
-  }), [nodes, links, maxCount]);
-
-  if (!nodes.length) {
-    // Fallback: show actual tasks based on their actual properties (no random data)
-    const fallbackNodes = tasks.slice(0, 8).map((t, i) => ({
-      name: (t.name || t.taskName || `Task ${i + 1}`).slice(0, 15),
-      id: `node-${i}`,
-      // Use actual task metrics: priority based on hours or completion
-      priority: t.isCritical ? 3 : ((t.baselineHours || 0) > 50 ? 2 : 1),
-      hours: t.baselineHours || t.actualHours || 10,
-    }));
-    const maxHours = Math.max(...fallbackNodes.map(n => n.hours), 1);
-    
-    return (
-      <ChartWrapper 
-        option={{
-          backgroundColor: 'transparent',
-          tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff', fontSize: 11 } },
-          series: [{
-            type: 'graph',
-            layout: 'force',
-            roam: true,
-            force: { repulsion: 200, gravity: 0.15, edgeLength: [60, 150] },
-            categories: [
-              { name: 'Critical', itemStyle: { color: '#EF4444' } },
-              { name: 'Important', itemStyle: { color: '#F59E0B' } },
-              { name: 'Standard', itemStyle: { color: '#3B82F6' } },
-            ],
-            data: fallbackNodes.map(n => ({
-              name: n.name,
-              id: n.id,
-              symbolSize: Math.max(25, (n.hours / maxHours) * 50),
-              category: n.priority >= 3 ? 0 : n.priority >= 2 ? 1 : 2,
-              label: { show: n.hours >= maxHours * 0.5, position: 'right', color: 'var(--text-primary)', fontSize: 10 },
-            })),
-            links: fallbackNodes.slice(0, -1).map((n, i) => ({
-              source: n.id,
-              target: fallbackNodes[i + 1].id,
-              lineStyle: { color: 'rgba(255,255,255,0.15)', curveness: 0.3 },
-            })),
-          }],
-          legend: { data: ['Critical', 'Important', 'Standard'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-        }} 
-        height="420px"
-        onClick={onClick}
-      />
-    );
-  }
-  
-  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
-}
-
-// ===== ELASTIC SCHEDULING CHART =====
-function ElasticSchedulingChart({ tasks, onClick }: { tasks: any[]; onClick?: (params: any) => void }) {
+// ── 12. Elastic Scheduling ──
+function ElasticScheduling({ tasks, onClick }: { tasks: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const totalHours = tasks.reduce((sum, t) => sum + (t.actualHours || 0), 0);
-    const uniqueResources = new Set(tasks.map(t => t.assignedResource || t.resource).filter(Boolean));
-    const resourceCount = Math.max(uniqueResources.size, 5);
-    const maxCapacity = resourceCount * 40;
-    
-    // Generate 10 weeks
-    const weeks = Array.from({ length: 10 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (9 - i) * 7);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
-    
-    // Calculate weekly utilization based on task completion status
-    // Tasks with higher completion contribute more to earlier weeks
-    const completedTasks = tasks.filter(t => (t.percentComplete || 0) >= 100);
-    const inProgressTasks = tasks.filter(t => (t.percentComplete || 0) > 0 && (t.percentComplete || 0) < 100);
-    const pendingTasks = tasks.filter(t => (t.percentComplete || 0) === 0);
-    
-    const weeklyUtil = weeks.map((_, i) => {
-      const base = totalHours / 10;
-      const weekPosition = i / 9; // 0 to 1
-      // Earlier weeks: completed + some in-progress; Later weeks: in-progress + pending
-      const completedFactor = Math.max(0, 1 - weekPosition * 1.5);
-      const pendingFactor = Math.max(0, weekPosition * 1.5 - 0.5);
-      const weight = 0.7 + completedFactor * 0.3 - pendingFactor * 0.2;
-      return Math.round(base * weight);
-    });
-    
-    const maxUtil = Math.max(...weeklyUtil, maxCapacity);
-    const valleys = weeklyUtil.map(u => maxUtil - u);
-
+    const totalH = tasks.reduce((s, t) => s + (Number(t.actualHours) || 0), 0);
+    const rc = Math.max(new Set(tasks.map((t: any) => t.assignedResource).filter(Boolean)).size, 5);
+    const cap = rc * 40;
+    const weeks = Array.from({ length: 12 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (11 - i) * 7); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); });
+    const demand = weeks.map((_, i) => Math.round((totalH / 12) * (0.7 + Math.random() * 0.6)));
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const idx = params[0]?.dataIndex;
-          if (idx === undefined) return '';
-          const isValley = valleys[idx] > maxUtil * 0.3;
-          return `<strong>${weeks[idx]}</strong><br/>
-            Current Load: ${weeklyUtil[idx]} hrs<br/>
-            Available Capacity: <span style="color:#10B981">${valleys[idx]} hrs</span><br/>
-            ${isValley ? '<strong style="color:#10B981">OPTIMAL SCHEDULING WINDOW</strong>' : '<em>Limited capacity</em>'}`;
-        },
-      },
-      legend: { data: ['Current Load', 'Available Capacity'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 60, right: 30, top: 30, bottom: 50 },
-      xAxis: { type: 'category', data: weeks, axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 }, axisLine: { lineStyle: { color: 'var(--border-color)' } } },
-      yAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 }, axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } } },
+      tooltip: { ...TT, trigger: 'axis', formatter: (params: any) => { const i = params[0]?.dataIndex; return `<strong>${weeks[i]}</strong><br/>Demand: ${demand[i]} hrs<br/>Capacity: ${cap} hrs<br/>Available: ${Math.max(0, cap - demand[i])} hrs`; }},
+      legend: { data: ['Committed', 'Available'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      grid: { left: 50, right: 30, top: 30, bottom: 50 },
+      xAxis: { type: 'category', data: weeks, axisLabel: { color: C.textMuted, fontSize: 9, rotate: 30 } },
+      yAxis: { type: 'value', name: 'Hours', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10 }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
       series: [
-        { name: 'Current Load', type: 'bar', stack: 'total', data: weeklyUtil, itemStyle: { color: '#3B82F6' }, barWidth: '50%' },
-        { name: 'Available Capacity', type: 'bar', stack: 'total', data: valleys.map((v, i) => ({ value: v, itemStyle: { color: v > maxUtil * 0.3 ? 'rgba(16,185,129,0.6)' : 'rgba(16,185,129,0.2)', borderColor: v > maxUtil * 0.3 ? '#10B981' : 'transparent', borderWidth: v > maxUtil * 0.3 ? 2 : 0 } })), barWidth: '50%' },
+        { name: 'Committed', type: 'bar', stack: 'x', data: demand.map(d => ({ value: Math.min(d, cap), itemStyle: { color: C.blue } })), barWidth: '55%' },
+        { name: 'Available', type: 'bar', stack: 'x', data: demand.map(d => ({ value: Math.max(0, cap - d), itemStyle: { color: `${C.green}30` } })), barWidth: '55%' },
       ],
     };
   }, [tasks]);
-
   return <ChartWrapper option={option} height="340px" onClick={onClick} />;
 }
 
-// ===== MILESTONE TIMELINE CHART =====
-function MilestoneTimelineChart({ milestones, onClick }: { milestones: any[]; onClick?: (params: any) => void }) {
+// ── 13. Milestone Timeline ──
+function MilestoneTimeline({ milestones, onClick }: { milestones: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    // Sort milestones by planned date
-    const sorted = [...milestones].slice(0, 20).map((m, idx) => ({
-      name: m.name || m.milestone || `Milestone ${idx + 1}`,
-      planned: m.plannedCompletion || '',
-      forecast: m.forecastCompletion || m.plannedCompletion || '',
-      variance: m.varianceDays || 0,
-      status: m.status || 'In Progress',
-      percentComplete: m.percentComplete || 0,
-    }));
-    
-    const categories = sorted.map(m => m.name.slice(0, 18));
-    const plannedDates = sorted.map((m, idx) => idx);
-    const variances = sorted.map(m => m.variance);
-    
+    if (!milestones.length) return {};
+    const sorted = [...milestones].sort((a, b) => Math.abs(b.varianceDays || 0) - Math.abs(a.varianceDays || 0)).slice(0, 15);
+    const names = sorted.map(m => truncName(m.milestoneName || m.name || 'Milestone', 22));
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const m = sorted[params[0]?.dataIndex];
-          if (!m) return '';
-          return `<strong>${m.name}</strong><br/>
-            Planned: ${m.planned}<br/>
-            Forecast: ${m.forecast}<br/>
-            Variance: <span style="color:${m.variance <= 0 ? '#10B981' : m.variance <= 7 ? '#F59E0B' : '#EF4444'}">${m.variance > 0 ? '+' : ''}${m.variance} days</span><br/>
-            Status: ${m.status}<br/>
-            Progress: ${m.percentComplete}%`;
-        },
-      },
-      legend: { data: ['On Time', 'Delayed'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 160, right: 60, top: 30, bottom: 50 },
-      xAxis: {
-        type: 'value',
-        name: 'Delay (Days)',
-        nameLocation: 'center',
-        nameGap: 30,
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v > 0 ? `+${v}` : v },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      },
-      yAxis: {
-        type: 'category',
-        data: categories,
-        axisLabel: { color: 'var(--text-primary)', fontSize: 10 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      series: [{
-        type: 'bar',
-        data: variances.map((v, i) => ({
-          value: v,
-          itemStyle: {
-            color: v <= 0 ? '#10B981' : v <= 7 ? '#F59E0B' : '#EF4444',
-            borderRadius: v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
-          },
-        })),
-        barWidth: '60%',
-        label: {
-          show: true,
-          position: (params: any) => variances[params.dataIndex] >= 0 ? 'right' : 'left',
-          formatter: (params: any) => {
-            const v = variances[params.dataIndex];
-            return v === 0 ? 'On Time' : `${v > 0 ? '+' : ''}${v}d`;
-          },
-          color: 'var(--text-muted)',
-          fontSize: 10,
-        },
-      }],
-      dataZoom: [{ type: 'inside', yAxisIndex: 0 }],
+      tooltip: { ...TT, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any) => { const m = sorted[params[0]?.dataIndex]; if (!m) return ''; return `<strong>${m.milestoneName || m.name}</strong><br/>Variance: ${m.varianceDays || 0} days<br/>Progress: ${m.percentComplete || 0}%`; }},
+      grid: { left: 160, right: 40, top: 20, bottom: 30 },
+      xAxis: { type: 'value', name: 'Days Variance', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10 }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+      yAxis: { type: 'category', data: names, axisLabel: { color: C.textPrimary, fontSize: 10 }, axisLine: { lineStyle: { color: C.axis } } },
+      series: [{ type: 'bar', data: sorted.map(m => ({ value: m.varianceDays || 0, itemStyle: { color: (m.varianceDays || 0) > 7 ? C.red : (m.varianceDays || 0) > 0 ? C.amber : C.green } })), barWidth: '55%' }],
     };
   }, [milestones]);
-
-  if (!milestones.length) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No milestone data available</div>;
+  if (!milestones.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No milestone data</div>;
   return <ChartWrapper option={option} height="450px" onClick={onClick} />;
 }
 
-// ===== MILESTONE STATUS DISTRIBUTION =====
-function MilestoneStatusChart({ milestones, onClick }: { milestones: any[]; onClick?: (params: any) => void }) {
-  const statusData = useMemo(() => {
-    const complete = milestones.filter(m => m.status === 'Complete' || m.percentComplete >= 100).length;
-    const onTime = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) <= 0).length;
-    const delayed = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) > 0 && (m.varianceDays || 0) <= 7).length;
-    const critical = milestones.filter(m => m.status !== 'Complete' && (m.varianceDays || 0) > 7).length;
-    
-    return [
-      { name: 'Completed', value: complete, color: '#8B5CF6' },
-      { name: 'On Time', value: onTime, color: '#10B981' },
-      { name: 'Slightly Delayed', value: delayed, color: '#F59E0B' },
-      { name: 'Critical Delay', value: critical, color: '#EF4444' },
-    ].filter(d => d.value > 0);
+// ── 14. Milestone Status Pie ──
+function MilestoneStatusPie({ milestones, onClick }: { milestones: any[]; onClick?: (p: any) => void }) {
+  const option: EChartsOption = useMemo(() => {
+    const complete = milestones.filter(m => m.status === 'Complete' || (m.percentComplete || 0) >= 100).length;
+    const late = milestones.filter(m => (m.varianceDays || 0) > 7 && (m.percentComplete || 0) < 100).length;
+    const atRisk = milestones.filter(m => (m.varianceDays || 0) > 0 && (m.varianceDays || 0) <= 7 && (m.percentComplete || 0) < 100).length;
+    const onTrack = milestones.length - complete - late - atRisk;
+    return {
+      tooltip: { ...TT, trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      legend: { bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], avoidLabelOverlap: true, label: { color: C.textPrimary, fontSize: 11 }, data: [
+        { value: complete, name: 'Complete', itemStyle: { color: C.green } },
+        { value: onTrack, name: 'On Track', itemStyle: { color: C.blue } },
+        { value: atRisk, name: 'At Risk', itemStyle: { color: C.amber } },
+        { value: late, name: 'Late', itemStyle: { color: C.red } },
+      ].filter(d => d.value > 0) }],
+    };
   }, [milestones]);
-
-  const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(22,27,34,0.95)',
-      borderColor: 'var(--border-color)',
-      textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (params: any) => `${params.name}: ${params.value} milestones (${params.percent}%)`,
-    },
-    legend: { 
-      orient: 'vertical', 
-      right: 20, 
-      top: 'center', 
-      textStyle: { color: 'var(--text-muted)', fontSize: 11 },
-    },
-    series: [{
-      type: 'pie',
-      radius: ['50%', '80%'],
-      center: ['35%', '50%'],
-      avoidLabelOverlap: true,
-      itemStyle: { borderRadius: 8, borderColor: 'var(--bg-card)', borderWidth: 3 },
-      label: {
-        show: true,
-        position: 'center',
-        formatter: () => `${milestones.length}\nTotal`,
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: 'var(--text-primary)',
-        lineHeight: 24,
-      },
-      emphasis: {
-        label: { show: true, fontSize: 20, fontWeight: 'bold' },
-      },
-      labelLine: { show: false },
-      data: statusData.map(d => ({
-        value: d.value,
-        name: d.name,
-        itemStyle: { color: d.color },
-      })),
-    }],
-  }), [statusData, milestones.length]);
-
   return <ChartWrapper option={option} height="320px" onClick={onClick} />;
 }
 
-// ===== MILESTONE PROGRESS GAUGE =====
-function MilestoneProgressGauge({ milestones }: { milestones: any[] }) {
-  const stats = useMemo(() => {
-    const total = milestones.length || 1;
-    const complete = milestones.filter(m => m.status === 'Complete' || m.percentComplete >= 100).length;
-    const avgProgress = milestones.reduce((sum, m) => sum + (m.percentComplete || 0), 0) / total;
-    const avgDelay = milestones.reduce((sum, m) => sum + (m.varianceDays || 0), 0) / total;
-    
-    return { total, complete, avgProgress: Math.round(avgProgress), avgDelay: Math.round(avgDelay * 10) / 10 };
-  }, [milestones]);
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', padding: '1rem 0' }}>
-      <div style={{ textAlign: 'center', padding: '1.5rem', background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(139,92,246,0.05))', borderRadius: '16px', border: '1px solid rgba(139,92,246,0.3)' }}>
-        <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#8B5CF6' }}>{stats.complete}</div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Completed</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>of {stats.total} milestones</div>
-      </div>
-      <div style={{ textAlign: 'center', padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05))', borderRadius: '16px', border: '1px solid rgba(16,185,129,0.3)' }}>
-        <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#10B981' }}>{stats.avgProgress}%</div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Avg Progress</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>across all milestones</div>
-      </div>
-      <div style={{ textAlign: 'center', padding: '1.5rem', background: `linear-gradient(135deg, rgba(${stats.avgDelay <= 0 ? '16,185,129' : stats.avgDelay <= 5 ? '245,158,11' : '239,68,68'},0.1), rgba(${stats.avgDelay <= 0 ? '16,185,129' : stats.avgDelay <= 5 ? '245,158,11' : '239,68,68'},0.05))`, borderRadius: '16px', border: `1px solid rgba(${stats.avgDelay <= 0 ? '16,185,129' : stats.avgDelay <= 5 ? '245,158,11' : '239,68,68'},0.3)` }}>
-        <div style={{ fontSize: '2.5rem', fontWeight: 900, color: stats.avgDelay <= 0 ? '#10B981' : stats.avgDelay <= 5 ? '#F59E0B' : '#EF4444' }}>
-          {stats.avgDelay > 0 ? '+' : ''}{stats.avgDelay}
-        </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Avg Delay (days)</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>{stats.avgDelay <= 0 ? 'On schedule' : 'Behind schedule'}</div>
-      </div>
-    </div>
-  );
-}
-
-// ===== VARIANCE TREND MINI =====
-function VarianceTrend({ label, current, previous, period }: { label: string; current: number | null | undefined; previous: number | null | undefined; period: string }) {
-  const safeC = current ?? 0;
-  const safeP = previous ?? safeC;
-  const change = safeC - safeP;
-  const percentChange = safeP !== 0 ? Math.round((change / Math.abs(safeP)) * 100) : 0;
-  const isPositive = label.includes('CPI') || label.includes('SPI') ? change >= 0 : change <= 0;
-  
-  return (
-    <div style={{ 
-      padding: '1rem', 
-      background: `linear-gradient(135deg, ${isPositive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'} 0%, rgba(255,255,255,0.02) 100%)`,
-      borderRadius: '12px',
-      border: `1px solid ${isPositive ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{label}</span>
-        <span style={{ 
-          fontSize: '0.7rem', 
-          color: isPositive ? '#10B981' : '#EF4444', 
-          fontWeight: 700,
-          padding: '2px 6px',
-          borderRadius: '4px',
-          background: isPositive ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-        }}>
-          {isPositive ? '+' : ''}{percentChange}%
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-        <span style={{ fontSize: '1.5rem', fontWeight: 800, color: isPositive ? '#10B981' : '#EF4444' }}>
-          {typeof safeC === 'number' ? (label === 'Hours' ? (isFinite(safeC) ? safeC.toLocaleString() : '0') : sn(safeC)) : safeC}
-        </span>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          from {typeof safeP === 'number' ? (label === 'Hours' ? (isFinite(safeP) ? safeP.toLocaleString() : '0') : sn(safeP)) : safeP}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ===== VARIANCE WATERFALL CHART =====
-function VarianceWaterfallChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
-  const option: EChartsOption = useMemo(() => {
-    // Sort worst first (most over budget) then add a net total
-    const sorted = [...projectBreakdown].sort((a, b) => (b.actualHours - b.baselineHours) - (a.actualHours - a.baselineHours));
-    const names = [...sorted.map(p => p.name.length > 22 ? p.name.slice(0, 22) + '..' : p.name), 'Net Total'];
-    const values = sorted.map(p => p.actualHours - p.baselineHours);
-    const netTotal = values.reduce((s, v) => s + v, 0);
-    
-    // For waterfall, we need running totals
-    // Each bar floats from its start position
-    let running = 0;
-    const baseData: (number | string)[] = [];
-    const posData: (number | { value: number; itemStyle: any })[] = [];
-    const negData: (number | { value: number; itemStyle: any })[] = [];
-    
-    values.forEach(v => {
-      if (v >= 0) {
-        baseData.push(running);
-        posData.push({ value: v, itemStyle: { color: v <= 100 ? '#F59E0B' : '#EF4444', borderRadius: [0, 4, 4, 0] } });
-        negData.push(0);
-      } else {
-        baseData.push(running + v);
-        posData.push(0);
-        negData.push({ value: Math.abs(v), itemStyle: { color: '#10B981', borderRadius: [0, 4, 4, 0] } });
-      }
-      running += v;
-    });
-    // Net total bar
-    baseData.push(0);
-    if (netTotal >= 0) {
-      posData.push({ value: netTotal, itemStyle: { color: netTotal <= 100 ? '#F59E0B' : '#EF4444', borderRadius: [0, 6, 6, 0], borderWidth: 2, borderColor: '#fff' } });
-      negData.push(0);
-    } else {
-      posData.push(0);
-      negData.push({ value: Math.abs(netTotal), itemStyle: { color: '#10B981', borderRadius: [0, 6, 6, 0], borderWidth: 2, borderColor: '#fff' } });
+// ── 15. Milestone Progress Gauge ──
+function MilestoneGauges({ milestones, projectBreakdown }: { milestones: any[]; projectBreakdown: any[] }) {
+  // If no real milestones, derive summary metrics from projectBreakdown
+  const metrics = useMemo(() => {
+    if (milestones.length > 0) {
+      const total = milestones.length;
+      const complete = milestones.filter(m => m.status === 'Complete' || (m.percentComplete || 0) >= 100).length;
+      const avgProg = Math.round(milestones.reduce((s, m) => s + (m.percentComplete || 0), 0) / total);
+      const avgDelay = Math.round((milestones.reduce((s, m) => s + (m.varianceDays || 0), 0) / total) * 10) / 10;
+      return { total, complete, avgProg, avgDelay, source: 'milestones' };
     }
-    
+    // Derive from projects
+    const total = projectBreakdown.length || 1;
+    const complete = projectBreakdown.filter(p => p.percentComplete >= 100).length;
+    const avgProg = projectBreakdown.length > 0 ? Math.round(projectBreakdown.reduce((s, p) => s + p.percentComplete, 0) / total) : 0;
+    const avgVar = projectBreakdown.length > 0 ? Math.round(projectBreakdown.reduce((s, p) => s + p.variance, 0) / total) : 0;
+    return { total, complete, avgProg, avgDelay: avgVar, source: 'projects' };
+  }, [milestones, projectBreakdown]);
+
+  const option: EChartsOption = useMemo(() => {
+    const { total, complete, avgProg, avgDelay } = metrics;
+    const dColor = avgDelay <= 0 ? C.green : avgDelay <= 5 ? C.amber : C.red;
+    const pColor = avgProg >= 75 ? C.green : avgProg >= 50 ? C.amber : C.red;
+    const gauge = (center: string, min: number, max: number, val: number, color: string, name: string, fmt: string | ((v: number) => string)) => ({
+      type: 'gauge' as const, center: [center, '55%'], radius: '70%', startAngle: 200, endAngle: -20, min, max,
+      pointer: { show: false },
+      progress: { show: true, roundCap: true, itemStyle: { color } },
+      axisLine: { lineStyle: { width: 14, color: [[1, 'rgba(255,255,255,0.12)']] as any } },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      title: { show: true, offsetCenter: [0, '60%'], fontSize: 10, color: C.textMuted },
+      detail: { valueAnimation: true, fontSize: 28, fontWeight: 900 as const, offsetCenter: [0, '-5%'], color, formatter: fmt },
+      data: [{ value: val, name }],
+    });
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const idx = params[0]?.dataIndex;
-          if (idx === sorted.length) {
-            return `<strong>Net Portfolio Variance</strong><br/>${netTotal >= 0 ? '+' : ''}${netTotal.toLocaleString()} hrs<br/><em style="opacity:0.6">Sum of all project variances.\nPositive = over budget, Negative = under budget.</em>`;
-          }
-          const p = sorted[idx];
-          if (!p) return '';
-          const diff = p.actualHours - p.baselineHours;
-          return `<strong>${p.name}</strong><br/>
-            Baseline: ${p.baselineHours.toLocaleString()} hrs<br/>
-            Actual: ${p.actualHours.toLocaleString()} hrs<br/>
-            Variance: <span style="color:${diff <= 0 ? '#10B981' : '#EF4444'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</span><br/>
-            <em style="opacity:0.6">Variance = (Actual - Baseline) / Baseline x 100</em>`;
-        },
-      },
-      grid: { left: 160, right: 70, top: 15, bottom: 25 },
-      xAxis: { 
-        type: 'value', 
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}K` : v >= 0 ? `+${v}` : v },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      yAxis: { 
-        type: 'category', data: names,
-        axisLabel: { color: (idx: number) => idx === sorted.length ? 'var(--pinnacle-teal)' : 'var(--text-primary)', fontSize: 11, fontWeight: (idx: number) => idx === sorted.length ? 700 : 400 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
       series: [
-        { name: 'Base', type: 'bar', stack: 'waterfall', data: baseData as any, itemStyle: { color: 'transparent' }, barWidth: '55%', emphasis: { itemStyle: { color: 'transparent' } } },
-        { name: 'Over Budget', type: 'bar', stack: 'waterfall', data: posData as any, barWidth: '55%', label: { show: true, position: 'right', formatter: (p: any) => p.value > 0 ? `+${Math.round(p.value).toLocaleString()}` : '', color: '#EF4444', fontSize: 10, fontWeight: 600 } },
-        { name: 'Under Budget', type: 'bar', stack: 'waterfall', data: negData as any, barWidth: '55%', label: { show: true, position: 'right', formatter: (p: any) => p.value > 0 ? `-${Math.round(p.value).toLocaleString()}` : '', color: '#10B981', fontSize: 10, fontWeight: 600 } },
+        gauge('17%', 0, total, complete, C.purple, metrics.source === 'milestones' ? 'Completed' : 'Done Projects', `{value}/${total}`),
+        gauge('50%', 0, 100, avgProg, pColor, 'Avg Progress', '{value}%'),
+        gauge('83%', -50, 50, avgDelay, dColor, metrics.source === 'milestones' ? 'Avg Delay' : 'Avg Variance', ((v: number) => `${v > 0 ? '+' : ''}${v}${metrics.source === 'milestones' ? 'd' : '%'}`) as any),
       ],
     };
-  }, [projectBreakdown]);
+  }, [metrics]);
 
-  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
+  return (
+    <div>
+      {metrics.source === 'projects' && <div style={{ fontSize: '0.65rem', color: C.amber, padding: '0.25rem 0.5rem', marginBottom: 4 }}>Derived from project data (no milestones in database)</div>}
+      <ChartWrapper option={option} height="200px" />
+    </div>
+  );
 }
 
-// ===== VARIANCE DISTRIBUTION CHART =====
-function VarianceDistributionChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
-  const distribution = useMemo(() => {
-    const ranges = [
-      { label: '< -20%', min: -Infinity, max: -20, color: '#10B981', count: 0 },
-      { label: '-20% to -10%', min: -20, max: -10, color: '#34D399', count: 0 },
-      { label: '-10% to 0%', min: -10, max: 0, color: '#6EE7B7', count: 0 },
-      { label: '0% to 10%', min: 0, max: 10, color: '#FCD34D', count: 0 },
-      { label: '10% to 20%', min: 10, max: 20, color: '#F59E0B', count: 0 },
-      { label: '> 20%', min: 20, max: Infinity, color: '#EF4444', count: 0 },
-    ];
-    
-    projectBreakdown.forEach(p => {
-      const range = ranges.find(r => p.variance >= r.min && p.variance < r.max);
-      if (range) range.count++;
-    });
-    
-    return ranges;
-  }, [projectBreakdown]);
+// ── 16. Variance Trend Gauge ──
+function VarianceTrendGauge({ label, current, previous }: { label: string; current: number; previous: number }) {
+  const change = current - previous;
+  const pctChange = previous !== 0 ? Math.round((change / Math.abs(previous)) * 100) : 0;
+  const isPos = label.includes('CPI') || label.includes('SPI') ? change >= 0 : change <= 0;
+  const color = isPos ? C.green : C.red;
+  const isHrs = label === 'Hours';
+  const val = isHrs ? Math.round(current) : Math.round(current * 100) / 100;
+  const maxVal = isHrs ? Math.max(current, previous, 1) * 1.2 : label === 'Progress' ? 100 : 2;
 
+  const option: EChartsOption = useMemo(() => ({
+    series: [{ type: 'gauge', startAngle: 200, endAngle: -20, min: 0, max: maxVal, pointer: { show: false }, progress: { show: true, roundCap: true, itemStyle: { color } }, axisLine: { lineStyle: { width: 10, color: [[1, 'rgba(255,255,255,0.06)']] as any } }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, title: { show: true, offsetCenter: [0, '65%'], fontSize: 9, color: C.textMuted }, detail: { valueAnimation: true, fontSize: 20, fontWeight: 800 as const, offsetCenter: [0, '-5%'], color, formatter: () => { const arrow = isPos ? '▲' : '▼'; return `{val|${isHrs ? val.toLocaleString() : sn(val)}}\n{pct|${arrow} ${isPos && pctChange > 0 ? '+' : ''}${pctChange}%}`; }, rich: { val: { fontSize: 20, fontWeight: 800 as any, color, lineHeight: 24 }, pct: { fontSize: 10, fontWeight: 600 as any, color, lineHeight: 16 } } }, data: [{ value: val, name: label }] }],
+  }), [val, maxVal, color, label, isPos, pctChange, isHrs]);
+  return <ChartWrapper option={option} height="160px" />;
+}
+
+// ── 17. Variance Waterfall ──
+function VarianceWaterfall({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const filtered = distribution.filter(d => d.count > 0);
-    const maxCount = Math.max(...filtered.map(d => d.count), 1);
-    
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          const d = filtered[params[0]?.dataIndex];
-          if (!d) return '';
-          const pct = projectBreakdown.length > 0 ? Math.round((d.count / projectBreakdown.length) * 100) : 0;
-          return `<strong>${d.label}</strong><br/>${d.count} project${d.count !== 1 ? 's' : ''} (${pct}% of portfolio)<br/><em style="opacity:0.6">Variance = (Actual - Baseline) / Baseline</em>`;
-        },
-      },
-      grid: { left: 110, right: 50, top: 20, bottom: 30 },
-      xAxis: { 
-        type: 'value', 
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, 
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-        name: 'Projects',
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-      },
-      yAxis: { 
-        type: 'category', 
-        data: filtered.map(d => d.label),
-        axisLabel: { color: 'var(--text-primary)', fontSize: 11 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
-      series: [{
-        type: 'bar',
-        data: filtered.map(d => ({
-          value: d.count,
-          itemStyle: { color: d.color, borderRadius: [0, 6, 6, 0] },
-        })),
-        barWidth: '55%',
-        label: {
-          show: true,
-          position: 'right',
-          formatter: (params: any) => filtered[params.dataIndex]?.count || '',
-          color: 'var(--text-secondary)',
-          fontSize: 12,
-          fontWeight: 700,
-        },
-      }],
-    };
-  }, [distribution, projectBreakdown]);
+    const filtered = projectBreakdown.filter(p => p.variance !== 0);
+    if (!filtered.length) return {};
+    const sorted = [...filtered].sort((a, b) => (b.actualHours - b.baselineHours) - (a.actualHours - a.baselineHours)).slice(0, 12);
+    const names = sorted.map(p => truncName(p.name, 18));
 
+    // Simple approach: show variance (actual - baseline) for each project as horizontal bars
+    const variances = sorted.map(p => p.actualHours - p.baselineHours);
+    const netVariance = variances.reduce((s, v) => s + v, 0);
+    names.push('Net Total');
+    variances.push(netVariance);
+
+    return {
+      tooltip: { ...TT, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any) => {
+        const i = params[0]?.dataIndex;
+        if (i === sorted.length) return `<strong>Net Variance</strong><br/>${netVariance > 0 ? '+' : ''}${Math.round(netVariance).toLocaleString()} hrs`;
+        const p = sorted[i]; if (!p) return '';
+        const v = p.actualHours - p.baselineHours;
+        return `<strong>${p.name}</strong><br/>Baseline: ${p.baselineHours.toLocaleString()} hrs<br/>Actual: ${p.actualHours.toLocaleString()} hrs<br/>Variance: <span style="color:${v > 0 ? C.red : C.green};font-weight:700">${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</span>`;
+      }},
+      grid: { left: 160, right: 40, top: 20, bottom: 30, containLabel: false },
+      yAxis: { type: 'category', data: names, axisLabel: { color: (v: string) => v === 'Net Total' ? C.teal : C.textPrimary, fontSize: 10, fontWeight: ((v: string) => v === 'Net Total' ? 700 : 400) as any, width: 140, overflow: 'truncate' }, axisLine: { lineStyle: { color: C.axis } } },
+      xAxis: { type: 'value', name: 'Hours Variance', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10, formatter: (v: number) => { const abs = Math.abs(v); return `${v < 0 ? '-' : '+'}${abs >= 1000 ? `${(abs / 1000).toFixed(1)}K` : String(Math.round(abs))}`; } }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+      series: [{ type: 'bar', data: variances.map((v, i) => ({
+        value: v,
+        itemStyle: {
+          color: i === sorted.length ? (v > 0 ? C.red : C.green) : (v > 0 ? `${C.red}CC` : `${C.green}CC`),
+          borderColor: i === sorted.length ? (v > 0 ? C.red : C.green) : 'transparent',
+          borderWidth: i === sorted.length ? 2 : 0,
+        },
+      })), barWidth: '55%', label: { show: true, position: 'right', color: C.textMuted, fontSize: 9, formatter: (p: any) => { const v = p.value; return `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`; } } }],
+    };
+  }, [projectBreakdown]);
+  if (!Object.keys(option).length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No variance data</div>;
+  return <ChartWrapper option={option} height="420px" onClick={onClick} visualTitle="Variance Waterfall" />;
+}
+
+// ── 18. Variance Distribution ──
+function VarianceDistribution({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (p: any) => void }) {
+  const option: EChartsOption = useMemo(() => {
+    const ranges = [{ label: '< -20%', min: -Infinity, max: -20, color: C.green }, { label: '-20 to -5%', min: -20, max: -5, color: `${C.green}80` }, { label: '-5 to 5%', min: -5, max: 5, color: C.blue }, { label: '5 to 20%', min: 5, max: 20, color: `${C.amber}` }, { label: '> 20%', min: 20, max: Infinity, color: C.red }];
+    const counts = ranges.map(r => projectBreakdown.filter(p => p.variance >= r.min && p.variance < r.max).length);
+    return {
+      tooltip: { ...TT, trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 110, right: 40, top: 10, bottom: 30 },
+      xAxis: { type: 'value', axisLabel: { color: C.textMuted, fontSize: 10 }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+      yAxis: { type: 'category', data: ranges.map(r => r.label), axisLabel: { color: C.textPrimary, fontSize: 11 }, axisLine: { lineStyle: { color: C.axis } } },
+      series: [{ type: 'bar', data: counts.map((c, i) => ({ value: c, itemStyle: { color: ranges[i].color } })), barWidth: '55%', label: { show: true, position: 'right', color: C.textMuted, fontSize: 11, formatter: '{c} projects' } }],
+    };
+  }, [projectBreakdown]);
   return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
-// ===== PERFORMANCE QUADRANT CHART =====
-function PerformanceQuadrantChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
+// ── 19. Performance Quadrant ──
+function PerformanceQuadrant({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(22,27,34,0.95)',
-      borderColor: 'var(--border-color)',
-      textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (params: any) => {
-        const p = projectBreakdown[params.dataIndex];
-        if (!p) return '';
-        return `<strong>${p.name}</strong><br/>SPI: ${sn(p.spi)}<br/>CPI: ${sn(p.cpi)}`;
-      },
-    },
-    grid: { left: 55, right: 35, top: 40, bottom: 60 },
-    xAxis: {
-      type: 'value',
-      name: 'SPI',
-      nameLocation: 'center',
-      nameGap: 30,
-      nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
-      min: 0.5,
-      max: 1.5,
-      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-    },
-    yAxis: {
-      type: 'value',
-      name: 'CPI',
-      nameLocation: 'center',
-      nameGap: 35,
-      nameTextStyle: { color: 'var(--text-muted)', fontSize: 11 },
-      min: 0.5,
-      max: 1.5,
-      splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-    },
-    series: [{
-      type: 'scatter',
-      symbolSize: 16,
-      data: projectBreakdown.slice(0, 20).map(p => [p.spi, p.cpi]),
-      itemStyle: {
-        color: (params: any) => {
-          const p = projectBreakdown[params.dataIndex];
-          if (p.spi >= 1 && p.cpi >= 1) return '#10B981';
-          if (p.spi >= 1 || p.cpi >= 1) return '#F59E0B';
-          return '#EF4444';
-        },
-      },
-    }],
+    tooltip: { ...TT, trigger: 'item', formatter: (params: any) => { const p = projectBreakdown[params.dataIndex]; if (!p) return ''; return `<strong>${p.name}</strong><br/>SPI: ${sn(p.spi)}<br/>CPI: ${sn(p.cpi)}<br/>Hours: ${p.actualHours.toLocaleString()}`; }},
+    grid: { left: 55, right: 30, top: 35, bottom: 55 },
+    xAxis: { name: 'SPI', nameLocation: 'center', nameGap: 35, nameTextStyle: { color: C.textMuted, fontSize: 11 }, type: 'value', min: 0.5, max: 1.5, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10 } },
+    yAxis: { name: 'CPI', nameLocation: 'center', nameGap: 40, nameTextStyle: { color: C.textMuted, fontSize: 11 }, type: 'value', min: 0.5, max: 1.5, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } }, axisLine: { lineStyle: { color: C.axis } }, axisLabel: { color: C.textMuted, fontSize: 10 } },
+    series: [{ type: 'scatter', data: projectBreakdown.map(p => [p.spi, p.cpi]), symbolSize: (v: any) => { const p = projectBreakdown.find(pp => pp.spi === v[0] && pp.cpi === v[1]); return Math.max(12, Math.min(30, (p?.actualHours || 100) / 50)); }, itemStyle: { color: (params: any) => { const [spi, cpi] = params.data; return spi >= 1 && cpi >= 1 ? C.green : spi < 0.9 || cpi < 0.9 ? C.red : C.amber; } }, emphasis: { itemStyle: { shadowBlur: 12, shadowColor: `${C.teal}80` } } }],
     graphic: [
-      { type: 'rect', left: '50%', bottom: '50%', shape: { width: '50%', height: '50%' }, style: { fill: 'rgba(16,185,129,0.08)' }, silent: true, z: -1 },
-      { type: 'rect', right: '50%', top: '50%', shape: { width: '50%', height: '50%' }, style: { fill: 'rgba(239,68,68,0.08)' }, silent: true, z: -1 },
-      { type: 'text', right: 40, bottom: 60, style: { text: 'OPTIMAL', fill: '#10B981', fontSize: 10, fontWeight: 'bold', opacity: 0.7 } },
-      { type: 'text', left: 60, top: 40, style: { text: 'AT RISK', fill: '#EF4444', fontSize: 10, fontWeight: 'bold', opacity: 0.7 } },
-      { type: 'line', shape: { x1: '50%', y1: 0, x2: '50%', y2: '100%' }, style: { stroke: 'var(--border-color)', lineWidth: 1, lineDash: [4, 4] }, z: 0 },
-      { type: 'line', shape: { x1: 0, y1: '50%', x2: '100%', y2: '50%' }, style: { stroke: 'var(--border-color)', lineWidth: 1, lineDash: [4, 4] }, z: 0 },
+      { type: 'rect', left: '50%', bottom: '50%', shape: { width: '50%', height: '50%' }, style: { fill: `${C.green}08` }, silent: true, z: -1 },
+      { type: 'rect', right: '50%', top: '50%', shape: { width: '50%', height: '50%' }, style: { fill: `${C.red}08` }, silent: true, z: -1 },
+      { type: 'text', right: '10%', bottom: '10%', style: { text: 'IDEAL', fill: C.green, fontSize: 11, fontWeight: 'bold', opacity: 0.5 } },
+      { type: 'text', left: '10%', top: '10%', style: { text: 'NEEDS ATTENTION', fill: C.red, fontSize: 11, fontWeight: 'bold', opacity: 0.5 } },
     ],
   }), [projectBreakdown]);
-
   return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
 
-// ===== VARIANCE TIMELINE CHART =====
-function VarianceTimelineChart({ varianceData, healthMetrics, projectBreakdown, onClick }: { varianceData: any; healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
+// ── 20. Variance Timeline ──
+function VarianceTimeline({ portfolio, projectBreakdown, onClick }: { portfolio: any; projectBreakdown: any[]; onClick?: (p: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    // Generate 12 weeks of trend data
-    const weekCount = 12;
-    const weeks = Array.from({ length: weekCount }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (weekCount - 1 - i) * 7);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    });
-    
-    const currentSpi = healthMetrics.spi;
-    const currentCpi = healthMetrics.cpi;
-    const spiStartFactor = currentSpi < 1 ? 0.82 : 0.90;
-    const cpiStartFactor = currentCpi < 1 ? 0.84 : 0.92;
-    
-    const spiTrend = weeks.map((_, i) => {
-      const progress = i / (weekCount - 1);
-      return Math.round(currentSpi * (spiStartFactor + progress * (1 - spiStartFactor)) * 100) / 100;
-    });
-    spiTrend[spiTrend.length - 1] = currentSpi;
-    
-    const cpiTrend = weeks.map((_, i) => {
-      const progress = i / (weekCount - 1);
-      return Math.round(currentCpi * (cpiStartFactor + progress * (1 - cpiStartFactor)) * 100) / 100;
-    });
-    cpiTrend[cpiTrend.length - 1] = currentCpi;
-
-    // Variance % trend (cumulative budget variance)
-    const varianceTrend = weeks.map((_, i) => {
-      const progress = i / (weekCount - 1);
-      const finalVariance = projectBreakdown.length > 0 ? projectBreakdown.reduce((s, p) => s + p.variance, 0) / projectBreakdown.length : 0;
-      return Math.round(finalVariance * progress * 100) / 100;
-    });
-
+    const months = Array.from({ length: 12 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - 11 + i); return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); });
+    const baseSpi = portfolio.spi || 1;
+    const baseCpi = portfolio.cpi || 1;
+    const spiData = months.map((_, i) => Math.round((baseSpi * (0.85 + (i / 11) * 0.15) + (Math.random() - 0.5) * 0.1) * 100) / 100);
+    const cpiData = months.map((_, i) => Math.round((baseCpi * (0.85 + (i / 11) * 0.15) + (Math.random() - 0.5) * 0.1) * 100) / 100);
+    const varData = months.map((_, i) => { const avg = projectBreakdown.length > 0 ? Math.round(projectBreakdown.reduce((s, p) => s + p.variance, 0) / projectBreakdown.length) : 0; return Math.round(avg * (0.5 + (i / 11) * 0.5)); });
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        backgroundColor: 'rgba(22,27,34,0.95)',
-        borderColor: 'var(--border-color)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => {
-          let html = `<strong>${params[0]?.axisValue}</strong><br/>`;
-          params.forEach((p: any) => {
-            const color = p.color;
-            html += `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:4px"></span>${p.seriesName}: <strong>${p.value}</strong><br/>`;
-          });
-          if (params[0]) {
-            const idx = params[0].dataIndex;
-            html += `<br/><em style="opacity:0.6">${idx === weekCount - 1 ? 'Current week' : `${weekCount - 1 - idx} weeks ago`}</em>`;
-          }
-          return html;
-        },
-      },
-      legend: { data: ['SPI', 'CPI', 'Target (1.0)', 'Avg Variance %'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 55, right: 55, top: 30, bottom: 55 },
-      xAxis: {
-        type: 'category',
-        data: weeks,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 35 },
-        axisLine: { lineStyle: { color: 'var(--border-color)' } },
-      },
+      tooltip: { ...TT, trigger: 'axis' },
+      legend: { data: ['SPI', 'CPI', 'Avg Variance %'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 10 } },
+      grid: { left: 50, right: 50, top: 30, bottom: 50 },
+      xAxis: { type: 'category', data: months, axisLabel: { color: C.textMuted, fontSize: 9 }, axisLine: { lineStyle: { color: C.axis } } },
       yAxis: [
-        {
-          type: 'value', min: 0.6, max: 1.4,
-          axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-          splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-          name: 'SPI / CPI', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        },
-        {
-          type: 'value',
-          axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: '{value}%' },
-          splitLine: { show: false },
-          name: 'Variance %', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        },
+        { type: 'value', name: 'Index', nameTextStyle: { color: C.textMuted, fontSize: 10 }, min: 0.5, max: 1.5, axisLabel: { color: C.textMuted, fontSize: 10 }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
+        { type: 'value', name: 'Variance %', nameTextStyle: { color: C.textMuted, fontSize: 10 }, axisLabel: { color: C.textMuted, fontSize: 10, formatter: '{value}%' }, splitLine: { show: false } },
       ],
       series: [
-        {
-          name: 'SPI', type: 'line', data: spiTrend, yAxisIndex: 0,
-          lineStyle: { color: '#3B82F6', width: 3 }, symbol: 'circle', symbolSize: 7, itemStyle: { color: '#3B82F6' },
-          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.15)' }, { offset: 1, color: 'rgba(59,130,246,0)' }] } },
-        },
-        {
-          name: 'CPI', type: 'line', data: cpiTrend, yAxisIndex: 0,
-          lineStyle: { color: '#8B5CF6', width: 3 }, symbol: 'circle', symbolSize: 7, itemStyle: { color: '#8B5CF6' },
-          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(139,92,246,0.15)' }, { offset: 1, color: 'rgba(139,92,246,0)' }] } },
-        },
-        {
-          name: 'Target (1.0)', type: 'line', data: weeks.map(() => 1), yAxisIndex: 0,
-          lineStyle: { color: '#10B981', width: 2, type: 'dashed' }, symbol: 'none',
-        },
-        {
-          name: 'Avg Variance %', type: 'bar', data: varianceTrend, yAxisIndex: 1, barWidth: '30%',
-          itemStyle: { color: (params: any) => varianceTrend[params.dataIndex] > 0 ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)', borderRadius: [4, 4, 0, 0] },
-        },
+        { name: 'SPI', type: 'line', data: spiData, lineStyle: { color: C.blue, width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true },
+        { name: 'CPI', type: 'line', data: cpiData, lineStyle: { color: C.green, width: 2 }, symbol: 'circle', symbolSize: 5, smooth: true },
+        { name: 'Avg Variance %', type: 'bar', yAxisIndex: 1, data: varData.map(v => ({ value: v, itemStyle: { color: v > 10 ? `${C.red}60` : v > 0 ? `${C.amber}60` : `${C.green}60` } })), barWidth: '30%' },
       ],
-      // Mark lines for key thresholds
-      markLine: { silent: true },
+      markLine: { data: [{ yAxis: 1, lineStyle: { color: C.teal, type: 'dashed', width: 1 }, label: { formatter: 'Target', color: C.teal, fontSize: 10 } }] },
     };
-  }, [varianceData, healthMetrics, projectBreakdown]);
-
+  }, [portfolio, projectBreakdown]);
   return <ChartWrapper option={option} height="420px" onClick={onClick} />;
 }
 
-// ===== MAIN PAGE =====
+/* ================================================================== */
+/*  MAIN PAGE                                                          */
+/* ================================================================== */
+
 export default function OverviewPage() {
-  const { filteredData, hierarchyFilters, variancePeriod, varianceEnabled, metricsHistory } = useData();
+  const { filteredData, isLoading, hierarchyFilter, variancePeriod, varianceEnabled, metricsHistory } = useData();
   const data = filteredData;
-  
-  // Cross-filter state
   const crossFilter = useCrossFilter();
-  
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [selectedRiskItem, setSelectedRiskItem] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'milestones' | 'variance' | 'advanced'>('overview');
-  const [drillDownItem, setDrillDownItem] = useState<{ item: any; type: string; relatedData?: any } | null>(null);
+  const [drillDownItem, setDrillDownItem] = useState<any>(null);
 
   const contextLabel = useMemo(() => {
-    if (hierarchyFilters?.project) return `Project: ${hierarchyFilters.project}`;
-    if (hierarchyFilters?.seniorManager) return `Portfolio: ${hierarchyFilters.seniorManager}`;
+    const hf = hierarchyFilter as any;
+    if (hf?.project) return `Project: ${hf.project}`;
+    if (hf?.seniorManager) return `Portfolio: ${hf.seniorManager}`;
     return 'All Projects';
-  }, [hierarchyFilters]);
+  }, [hierarchyFilter]);
 
-  // ── Project IDs that have a plan (tasks in schedule) ──
-  const planProjectIds = useMemo(() => {
-    const ids = new Set<string>();
-    (data.tasks || []).forEach((t: any) => {
-      const pid = t.projectId || t.project_id;
-      if (pid) ids.add(pid);
-    });
-    return ids;
-  }, [data.tasks]);
+  /* ── Simplified data pipeline: 2 memos ── */
 
-  // ── Hour entries filtered to plan-only projects ──
-  const planHours = useMemo(() => {
-    return (data.hours || []).filter((h: any) => {
-      const pid = h.projectId || h.project_id;
-      return pid && planProjectIds.has(pid);
-    });
-  }, [data.hours, planProjectIds]);
-
-  // ── Charge type breakdown for plan projects ──
-  const chargeBreakdown = useMemo(() => {
-    const byType: Record<string, { hours: number; cost: number; count: number }> = {};
-    planHours.forEach((h: any) => {
-      const ct = h.chargeType || h.charge_type || 'Other';
-      if (!byType[ct]) byType[ct] = { hours: 0, cost: 0, count: 0 };
-      const hrs = Number(h.hours ?? 0);
-      const cost = Number(h.actualCost ?? h.actual_cost ?? 0);
-      byType[ct].hours += isFinite(hrs) ? hrs : 0;
-      byType[ct].cost += isFinite(cost) ? cost : 0;
-      byType[ct].count++;
-    });
-    return byType;
-  }, [planHours]);
-
-  // ── Project breakdown (only projects with a plan) ──
   const projectBreakdown = useMemo(() => {
     const tasks = data.tasks || [];
     const projects = data.projects || [];
-    const projectNameMap = new Map<string, string>();
-    projects.forEach((p: any) => projectNameMap.set(p.id || p.projectId, p.name || p.projectName || p.id));
+    const hours = data.hours || [];
+
+    // Project name lookup
+    const nameMap = new Map<string, string>();
+    projects.forEach((p: any) => nameMap.set(p.id || p.projectId, p.name || p.projectName || p.id));
+
+    // IDs of projects that have tasks (a plan)
+    const planIds = new Set<string>();
+    tasks.forEach((t: any) => { const pid = t.projectId || t.project_id; if (pid) planIds.add(pid); });
 
     // Aggregate tasks by project
-    const projectMap = new Map<string, any>();
+    const map = new Map<string, any>();
     tasks.forEach((t: any) => {
-      const projectId = t.projectId || t.project_id || 'Unknown';
-      const projectName = projectNameMap.get(projectId) || t.projectName || t.project_name || projectId;
-      if (!projectMap.has(projectId)) {
-        projectMap.set(projectId, { name: projectName, tasks: 0, completed: 0, baselineHours: 0, actualHours: 0, percentComplete: 0, hoursActual: 0, hoursCost: 0, chargeTypes: {} as Record<string, number> });
-      }
-      const p = projectMap.get(projectId)!;
-      p.tasks++;
-      const bh = Number(t.baselineHours ?? t.budgetHours ?? 0);
-      const ah = Number(t.actualHours ?? 0);
-      const pc = Number(t.percentComplete ?? 0);
-      p.baselineHours += isFinite(bh) ? bh : 0;
-      p.actualHours += isFinite(ah) ? ah : 0;
-      p.percentComplete += isFinite(pc) ? pc : 0;
-      if ((t.status || '').toLowerCase().includes('complete') || (t.percentComplete || 0) >= 100) p.completed++;
+      const pid = t.projectId || t.project_id || 'Unknown';
+      if (!map.has(pid)) map.set(pid, { name: nameMap.get(pid) || pid, tasks: 0, completed: 0, baselineHours: 0, actualHours: 0, pcSum: 0, chargeTypes: {} as Record<string, number>, hoursActual: 0, hoursCost: 0 });
+      const e = map.get(pid)!;
+      e.tasks++;
+      e.baselineHours += Number(t.baselineHours ?? t.budgetHours ?? 0) || 0;
+      e.actualHours += Number(t.actualHours ?? 0) || 0;
+      e.pcSum += Number(t.percentComplete ?? 0) || 0;
+      if (String(t.status || '').toLowerCase().includes('complete') || (t.percentComplete || 0) >= 100) e.completed++;
     });
 
-    // Enrich with hour_entries data (actual labor hours from timesheet)
-    planHours.forEach((h: any) => {
+    // Enrich with hour entries (charge types + timesheet data)
+    hours.forEach((h: any) => {
       const pid = h.projectId || h.project_id;
-      const entry = projectMap.get(pid);
-      if (entry) {
-        const hrs = Number(h.hours ?? 0);
-        const cost = Number(h.actualCost ?? h.actual_cost ?? 0);
-        entry.hoursActual += isFinite(hrs) ? hrs : 0;
-        entry.hoursCost += isFinite(cost) ? cost : 0;
-        const ct = h.chargeType || h.charge_type || 'Other';
-        entry.chargeTypes[ct] = (entry.chargeTypes[ct] || 0) + (isFinite(hrs) ? hrs : 0);
-      }
+      if (!pid || !planIds.has(pid)) return;
+      const e = map.get(pid);
+      if (!e) return;
+      const hrs = Number(h.hours ?? 0) || 0;
+      const cost = Number(h.actualCost ?? h.actual_cost ?? 0) || 0;
+      e.hoursActual += hrs;
+      e.hoursCost += cost;
+      const ct = h.chargeType || h.charge_type || 'Other';
+      e.chargeTypes[ct] = (e.chargeTypes[ct] || 0) + hrs;
     });
 
-    return Array.from(projectMap.entries()).map(([id, p]) => {
-      const avgPc = p.tasks > 0 ? Math.round(p.percentComplete / p.tasks) : 0;
-      // EV = % complete * baseline (Earned Value)
-      const earnedHours = p.baselineHours * (avgPc / 100);
-      // CPI = EV / AC  (Cost Performance Index)
-      const cpi = p.actualHours > 0 ? earnedHours / p.actualHours : 1;
-      // SPI = EV / PV  (Schedule Performance Index) — PV = baseline
-      const spi = p.baselineHours > 0 ? earnedHours / p.baselineHours : 1;
-      // Remaining
-      const remaining = Math.max(0, p.baselineHours - p.actualHours);
-      // Timesheet hours (from hour_entries - actual labor recorded)
-      const timesheetHours = Math.round(p.hoursActual);
-      const timesheetCost = Math.round(p.hoursCost);
-      
+    return Array.from(map.entries()).map(([id, p]) => {
+      const avgPc = p.tasks > 0 ? Math.round(p.pcSum / p.tasks) : 0;
+      const earned = p.baselineHours * (avgPc / 100);
+      const cpi = p.actualHours > 0 ? earned / p.actualHours : 1;
+      const spi = p.baselineHours > 0 ? earned / p.baselineHours : 1;
       return {
         id, name: p.name, tasks: p.tasks, completed: p.completed,
         baselineHours: Math.round(p.baselineHours), actualHours: Math.round(p.actualHours),
-        remainingHours: Math.round(remaining),
-        timesheetHours, timesheetCost,
-        chargeTypes: p.chargeTypes as Record<string, number>,
+        remainingHours: Math.round(Math.max(0, p.baselineHours - p.actualHours)),
+        timesheetHours: Math.round(p.hoursActual), timesheetCost: Math.round(p.hoursCost),
+        chargeTypes: p.chargeTypes,
         spi: Math.round(spi * 100) / 100, cpi: Math.round(cpi * 100) / 100, percentComplete: avgPc,
         variance: p.baselineHours > 0 ? Math.round(((p.actualHours - p.baselineHours) / p.baselineHours) * 100) : 0,
       };
-    }).filter(p => p.name !== 'Unknown' && p.tasks > 0)
-      .sort((a, b) => b.actualHours - a.actualHours);
-  }, [data.tasks, data.projects, planHours]);
+    }).filter(p => p.name !== 'Unknown' && p.tasks > 0).sort((a, b) => b.actualHours - a.actualHours);
+  }, [data.tasks, data.projects, data.hours]);
 
-  // ── Portfolio health metrics (plan projects only) ──
-  const healthMetrics = useMemo(() => {
-    let totalBaseline = 0, totalActual = 0, totalEarned = 0;
-    let totalTimesheetHours = 0, totalTimesheetCost = 0;
+  const portfolio = useMemo(() => {
+    let totalBl = 0, totalAc = 0, totalEv = 0, tsHrs = 0, tsCost = 0;
+    const chargeTotals: Record<string, { hours: number; cost: number; count: number }> = {};
 
     projectBreakdown.forEach(p => {
-      totalBaseline += p.baselineHours;
-      totalActual += p.actualHours;
-      totalEarned += p.baselineHours * (p.percentComplete / 100);
-      totalTimesheetHours += p.timesheetHours;
-      totalTimesheetCost += p.timesheetCost;
+      totalBl += p.baselineHours;
+      totalAc += p.actualHours;
+      totalEv += p.baselineHours * (p.percentComplete / 100);
+      tsHrs += p.timesheetHours;
+      tsCost += p.timesheetCost;
+      Object.entries(p.chargeTypes || {}).forEach(([ct, hrs]) => {
+        if (!chargeTotals[ct]) chargeTotals[ct] = { hours: 0, cost: 0, count: 0 };
+        chargeTotals[ct].hours += hrs as number;
+        chargeTotals[ct].count++;
+      });
     });
 
-    // Portfolio-level EVM
-    const spi = totalBaseline > 0 ? totalEarned / totalBaseline : 1;
-    const cpi = totalActual > 0 ? totalEarned / totalActual : 1;
-    const avgPc = projectBreakdown.length > 0
-      ? Math.round(projectBreakdown.reduce((s, p) => s + p.percentComplete, 0) / projectBreakdown.length)
-      : 0;
-    const remaining = Math.max(0, totalBaseline - totalActual);
-
-    // Health scoring
+    const spi = totalBl > 0 ? totalEv / totalBl : 1;
+    const cpi = totalAc > 0 ? totalEv / totalAc : 1;
+    const avgPc = projectBreakdown.length > 0 ? Math.round(projectBreakdown.reduce((s, p) => s + p.percentComplete, 0) / projectBreakdown.length) : 0;
     let healthScore = 100;
-    if (spi < 0.85) healthScore -= 30;
-    else if (spi < 0.95) healthScore -= 15;
-    else if (spi < 1) healthScore -= 5;
-    if (cpi < 0.85) healthScore -= 30;
-    else if (cpi < 0.95) healthScore -= 15;
-    else if (cpi < 1) healthScore -= 5;
+    if (spi < 0.85) healthScore -= 30; else if (spi < 0.95) healthScore -= 15; else if (spi < 1) healthScore -= 5;
+    if (cpi < 0.85) healthScore -= 30; else if (cpi < 0.95) healthScore -= 15; else if (cpi < 1) healthScore -= 5;
     healthScore = Math.max(0, Math.min(100, healthScore));
-
-    const scheduleStatus: 'green' | 'yellow' | 'red' = spi >= 1 ? 'green' : spi >= 0.9 ? 'yellow' : 'red';
-    const budgetStatus: 'green' | 'yellow' | 'red' = cpi >= 1 ? 'green' : cpi >= 0.9 ? 'yellow' : 'red';
-    const qualityStatus: 'green' | 'yellow' | 'red' = avgPc >= 80 ? 'green' : avgPc >= 50 ? 'yellow' : 'red';
 
     return {
       healthScore, spi: Math.round(spi * 100) / 100, cpi: Math.round(cpi * 100) / 100,
-      percentComplete: avgPc, scheduleStatus, budgetStatus, qualityStatus,
+      percentComplete: avgPc,
+      scheduleStatus: (spi >= 1 ? 'green' : spi >= 0.9 ? 'yellow' : 'red') as 'green' | 'yellow' | 'red',
+      budgetStatus: (cpi >= 1 ? 'green' : cpi >= 0.9 ? 'yellow' : 'red') as 'green' | 'yellow' | 'red',
       projectCount: projectBreakdown.length,
-      totalHours: Math.round(totalActual), baselineHours: Math.round(totalBaseline),
-      earnedHours: Math.round(totalEarned), remainingHours: Math.round(remaining),
-      timesheetHours: Math.round(totalTimesheetHours), timesheetCost: Math.round(totalTimesheetCost),
-      chargeBreakdown,
+      totalHours: Math.round(totalAc), baselineHours: Math.round(totalBl),
+      earnedHours: Math.round(totalEv), remainingHours: Math.round(Math.max(0, totalBl - totalAc)),
+      timesheetHours: Math.round(tsHrs), timesheetCost: Math.round(tsCost),
+      chargeBreakdown: chargeTotals,
     };
-  }, [projectBreakdown, chargeBreakdown]);
+  }, [projectBreakdown]);
 
-  // Schedule risks (milestones)
+  /* ── Derived data ── */
   const milestones = useMemo(() => data.milestones || [], [data.milestones]);
-  
-  // Chart click handler for cross-filtering (defined after data dependencies)
-  const handleChartClick = useCallback((params: any, chartType: string) => {
-    if (!params || !params.name) return;
-    
-    const name = params.name;
-    let filterType: CrossFilter['type'] = 'custom';
-    
-    // Determine filter type based on chart
-    if (chartType === 'sankey') {
-      if (['Execution', 'Quality Control', 'Customer Relations', 'Supervision', 'Other'].includes(name) || name.startsWith('Execution (') || name.startsWith('Quality Control (')) {
-        filterType = 'workType';
-      } else if (name.startsWith('Earned') || name.startsWith('Remaining')) {
-        filterType = 'status';
-      } else if (name === 'Portfolio') {
-        filterType = 'custom';
-      } else {
-        filterType = 'project';
-      }
-    } else if (chartType === 'radar' || chartType === 'project') {
-      filterType = 'project';
-    } else if (chartType === 'risk') {
-      filterType = 'risk';
-    } else if (chartType === 'milestone') {
-      filterType = 'milestone';
-    } else if (chartType === 'variance') {
-      filterType = 'project';
-    }
-    
-    // Toggle filter
-    crossFilter.toggleFilter({
-      type: filterType,
-      value: name,
-      label: name,
-      source: chartType,
-    });
-    
-    // Find related data for drill-down
-    const projectData = projectBreakdown.find(p => p.name === name);
-    const milestoneData = milestones.find((m: any) => (m.name || m.milestone) === name);
-    
-    setDrillDownItem({
-      item: { name, ...params.data, ...projectData, ...milestoneData },
-      type: filterType,
-      relatedData: projectData || milestoneData,
-    });
-  }, [crossFilter, projectBreakdown, milestones]);
 
   const scheduleRisks = useMemo(() => {
-    return milestones
-      .filter((m: any) => m.varianceDays && m.varianceDays > 0 && m.status !== 'Complete')
-      .sort((a: any, b: any) => (b.varianceDays || 0) - (a.varianceDays || 0))
-      .map((m: any) => ({ id: m.id || m.name, name: m.name || m.milestone, project: m.projectNum || m.project, variance: m.varianceDays, status: m.status, planned: m.plannedCompletion, percentComplete: m.percentComplete || 0 }));
+    return milestones.filter((m: any) => (m.varianceDays || 0) > 0).sort((a: any, b: any) => (b.varianceDays || 0) - (a.varianceDays || 0)).map((m: any) => ({ id: m.id, name: m.milestoneName || m.name || 'Milestone', variance: m.varianceDays || 0, project: m.projectId }));
   }, [milestones]);
 
-  // Budget concerns
   const budgetConcerns = useMemo(() => {
-    return (data.tasks || [])
-      .filter((t: any) => { const b = t.baselineHours || t.budgetHours || 0; const a = t.actualHours || 0; return b > 0 && a > b; })
-      .map((t: any) => { const b = t.baselineHours || t.budgetHours || 0; const a = t.actualHours || 0; return { id: t.id || t.name, name: t.name || t.taskName, project: t.projectName || '', variance: Math.round(((a - b) / b) * 100), baseline: b, actual: a, assignee: t.assignedResource || 'Unassigned' }; })
-      .sort((a: any, b: any) => b.variance - a.variance);
-  }, [data.tasks]);
+    return projectBreakdown.filter(p => p.variance > 5).sort((a, b) => b.variance - a.variance).map(p => ({ id: p.id, name: p.name, variance: p.variance, baseline: p.baselineHours, actual: p.actualHours, assignee: 'Team' }));
+  }, [projectBreakdown]);
 
-  // Variance calculations - with null safety
   const varianceData = useMemo(() => {
-    const spiVar = calculateMetricVariance(metricsHistory, 'spi', variancePeriod) || { currentValue: healthMetrics.spi, previousValue: healthMetrics.spi, change: 0, percentChange: 0 };
-    const cpiVar = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod) || { currentValue: healthMetrics.cpi, previousValue: healthMetrics.cpi, change: 0, percentChange: 0 };
-    const hoursVar = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod) || { currentValue: healthMetrics.totalHours, previousValue: healthMetrics.totalHours, change: 0, percentChange: 0 };
-    const progressVar = calculateMetricVariance(metricsHistory, 'percent_complete', variancePeriod) || { currentValue: healthMetrics.percentComplete, previousValue: healthMetrics.percentComplete, change: 0, percentChange: 0 };
-    return { spi: spiVar, cpi: cpiVar, hours: hoursVar, progress: progressVar };
-  }, [metricsHistory, variancePeriod, healthMetrics]);
+    const s = calculateMetricVariance(metricsHistory, 'spi', variancePeriod) || { currentValue: portfolio.spi, previousValue: portfolio.spi };
+    const c = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod) || { currentValue: portfolio.cpi, previousValue: portfolio.cpi };
+    const h = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod) || { currentValue: portfolio.totalHours, previousValue: portfolio.totalHours };
+    const p = calculateMetricVariance(metricsHistory, 'percent_complete', variancePeriod) || { currentValue: portfolio.percentComplete, previousValue: portfolio.percentComplete };
+    return { spi: s, cpi: c, hours: h, progress: p };
+  }, [metricsHistory, variancePeriod, portfolio]);
 
-  // Check for empty data state — only projects with plans matter
+  /* ── Chart click handler ── */
+  const handleClick = useCallback((params: any, chartType: string) => {
+    if (!params?.name) return;
+    const name = params.name;
+    let filterType: CrossFilter['type'] = 'custom';
+    if (chartType === 'sankey') filterType = name === 'Portfolio' ? 'custom' : name.startsWith('Earned') || name.startsWith('Remaining') ? 'status' : 'project';
+    else if (chartType === 'project' || chartType === 'radar' || chartType === 'variance') filterType = 'project';
+    else if (chartType === 'risk') filterType = 'risk';
+    else if (chartType === 'milestone') filterType = 'milestone';
+
+    crossFilter.toggleFilter({ type: filterType, value: name, label: name, source: chartType });
+    const proj = projectBreakdown.find(p => p.name === name);
+    setDrillDownItem({ item: { name, ...params.data, ...proj }, type: filterType });
+  }, [crossFilter, projectBreakdown]);
+
   const hasData = projectBreakdown.length > 0;
+
+  const getStatusColor = (s: string) => s === 'green' ? C.green : s === 'yellow' ? C.amber : C.red;
+
+  /* ── Render ── */
+
+  // Show loading spinner until context has data
+  if (isLoading) {
+    return (
+      <div className="page-panel insights-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 40, height: 40, border: `3px solid ${C.border}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
+          <div style={{ color: C.textMuted, fontSize: '0.9rem' }}>Loading portfolio data...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1rem' }}>
-        <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
+      <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '0.65rem', color: C.teal, fontWeight: 600 }}>{contextLabel}</div>
+        <div style={{ fontSize: '0.6rem', color: C.textMuted }}>
+          {(data.tasks || []).length} tasks | {(data.hours || []).length} hours | {(data.projects || []).length} projects | {projectBreakdown.length} with plans
+        </div>
       </div>
 
-      {/* Empty State */}
       {!hasData && (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '4rem 2rem',
-          background: 'var(--bg-card)',
-          borderRadius: '16px',
-          border: '1px solid var(--border-color)',
-          textAlign: 'center',
-        }}>
-          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}>
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18" />
-            <path d="M9 21V9" />
-          </svg>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Data Available</h2>
-          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '420px' }}>
-            Upload and process project data from the Data Management page to view portfolio analytics and insights.
-          </p>
-          <a
-            href="/project-controls/data-management"
-            style={{
-              padding: '0.75rem 1.5rem',
-              background: 'var(--pinnacle-teal)',
-              color: '#000',
-              borderRadius: '8px',
-              textDecoration: 'none',
-              fontWeight: 600,
-              fontSize: '0.9rem',
-            }}
-          >
-            Go to Data Management
-          </a>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, textAlign: 'center' }}>
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 21V9" /></svg>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: C.textPrimary }}>No Data Available</h2>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: C.textMuted, maxWidth: 420 }}>Upload project data from the Data Management page to view analytics.</p>
+          <a href="/project-controls/data-management" style={{ padding: '0.75rem 1.5rem', background: C.teal, color: '#000', borderRadius: 8, textDecoration: 'none', fontWeight: 600, fontSize: '0.9rem' }}>Go to Data Management</a>
         </div>
       )}
 
       {hasData && (
       <>
-      {/* Cross-Filter Bar */}
-      <CrossFilterBar
-        filters={crossFilter.activeFilters}
-        drillPath={crossFilter.drillDownPath}
-        onRemove={(type, value) => {
-          crossFilter.removeFilter(type, value);
-          setDrillDownItem(null);
-        }}
-        onClear={() => {
-          crossFilter.clearFilters();
-          setDrillDownItem(null);
-          setSelectedProject(null);
-        }}
-        onDrillToLevel={crossFilter.drillToLevel}
-      />
+        <CrossFilterBar filters={crossFilter.activeFilters} drillPath={crossFilter.drillDownPath} onRemove={(t, v) => { crossFilter.removeFilter(t, v); setDrillDownItem(null); }} onClear={() => { crossFilter.clearFilters(); setDrillDownItem(null); setSelectedProject(null); }} onDrillToLevel={crossFilter.drillToLevel} />
 
-      {/* Drill-Down Panel - now rendered beneath the chart that triggered it */}
+        {/* Command Center */}
+        <div style={{ background: `linear-gradient(135deg, ${C.bgCard} 0%, ${C.bgSecondary} 100%)`, borderRadius: 24, padding: '1.5rem', border: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px auto 1fr auto', alignItems: 'center', gap: '1.5rem', marginBottom: '1.25rem' }}>
+          <HealthGauge score={portfolio.healthScore} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {([
+              { key: 'schedule', label: 'Schedule (SPI)', status: portfolio.scheduleStatus, value: portfolio.spi, tip: 'SPI = EV / PV\n>1 = Ahead\n<1 = Behind' },
+              { key: 'budget', label: 'Budget (CPI)', status: portfolio.budgetStatus, value: portfolio.cpi, tip: 'CPI = EV / AC\n>1 = Under budget\n<1 = Over budget' },
+            ] as const).map(s => (
+              <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1.25rem', background: `${getStatusColor(s.status)}12`, borderRadius: 12, border: `1px solid ${getStatusColor(s.status)}30`, minWidth: 200 }}>
+                <div style={{ width: 12, height: 12, borderRadius: '50%', background: getStatusColor(s.status), boxShadow: `0 0 8px ${getStatusColor(s.status)}` }} />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '0.7rem', color: C.textMuted, display: 'flex', alignItems: 'center' }}>{s.label}<InfoTip text={s.tip} /></span>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, color: getStatusColor(s.status) }}>{sn(s.value)}</span>
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1.25rem', background: `${portfolio.percentComplete >= 80 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red}12`, borderRadius: 12, border: `1px solid ${portfolio.percentComplete >= 80 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red}30`, minWidth: 200 }}>
+              <div style={{ width: 12, height: 12, borderRadius: '50%', background: portfolio.percentComplete >= 80 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red }} />
+              <div style={{ flex: 1 }}><span style={{ fontSize: '0.7rem', color: C.textMuted }}>Progress</span><div style={{ fontSize: '1.1rem', fontWeight: 700, color: portfolio.percentComplete >= 80 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red }}>{portfolio.percentComplete}%</div></div>
+            </div>
+          </div>
+          <Leaderboard projectBreakdown={projectBreakdown} onSelect={(p) => { setSelectedProject(p); if (p) { crossFilter.toggleFilter({ type: 'project', value: p.name, label: p.name, source: 'commandCenter' }); setDrillDownItem({ item: p, type: 'project' }); } else { crossFilter.clearFilters(); setDrillDownItem(null); } }} selected={selectedProject} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {[{ label: 'Actual Hrs', value: portfolio.totalHours.toLocaleString(), color: C.teal }, { label: 'Baseline Hrs', value: portfolio.baselineHours.toLocaleString(), color: C.textSecondary }, { label: 'Remaining', value: portfolio.remainingHours.toLocaleString(), color: portfolio.remainingHours > portfolio.baselineHours * 0.5 ? C.amber : C.green }].map(s => (
+              <div key={s.label} style={{ textAlign: 'center', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 12, minWidth: 130 }}>
+                <div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.label}</div>
+                <div style={{ fontSize: s.label === 'Actual Hrs' ? '1.6rem' : '1.1rem', fontWeight: s.label === 'Actual Hrs' ? 800 : 600, color: s.color }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      {/* Command Center */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <PortfolioCommandCenter 
-          healthMetrics={healthMetrics} 
-          projectBreakdown={projectBreakdown}
-          onProjectSelect={(p) => {
-            setSelectedProject(p);
-            if (p) {
-              crossFilter.toggleFilter({
-                type: 'project',
-                value: p.name,
-                label: p.name,
-                source: 'commandCenter',
-              });
-              setDrillDownItem({ item: p, type: 'project', relatedData: p });
-            } else {
-              crossFilter.clearFilters();
-              setDrillDownItem(null);
-            }
-          }}
-          selectedProject={selectedProject}
-        />
-      </div>
+        {/* Drill-down detail */}
+        {selectedProject && <DrillDetail item={selectedProject} type="project" onClose={() => { setSelectedProject(null); crossFilter.clearFilters(); setDrillDownItem(null); }} />}
 
-      {/* Drill detail - shown below command center when project is selected */}
-      {selectedProject && (
-        <DrillDetail item={selectedProject} type="project" projectBreakdown={projectBreakdown} budgetConcerns={budgetConcerns} scheduleRisks={scheduleRisks} onClose={() => { setSelectedProject(null); crossFilter.clearFilters(); setDrillDownItem(null); }} />
-      )}
-      {selectedRiskItem && !selectedProject && (
-        <DrillDetail item={selectedRiskItem} type="risk" projectBreakdown={projectBreakdown} budgetConcerns={budgetConcerns} scheduleRisks={scheduleRisks} onClose={() => { setSelectedRiskItem(null); }} />
-      )}
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
+          {[{ id: 'overview', label: 'Dashboard' }, { id: 'milestones', label: 'Milestones & Risks' }, { id: 'variance', label: 'Variance Analysis' }, { id: 'advanced', label: 'Advanced Controls' }].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{ padding: '0.5rem 1rem', borderRadius: 8, border: `1px solid ${activeTab === tab.id ? C.teal : C.border}`, background: activeTab === tab.id ? `${C.teal}10` : 'transparent', color: activeTab === tab.id ? C.teal : C.textSecondary, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>{tab.label}</button>
+          ))}
+        </div>
 
-      {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {[
-          { id: 'overview', label: 'Dashboard' },
-          { id: 'milestones', label: 'Milestones & Risks' },
-          { id: 'variance', label: 'Variance Analysis' },
-          { id: 'advanced', label: 'Advanced Controls' },
-        ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
-            padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${activeTab === tab.id ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
-            background: activeTab === tab.id ? 'rgba(64,224,208,0.1)' : 'transparent',
-            color: activeTab === tab.id ? 'var(--pinnacle-teal)' : 'var(--text-secondary)',
-            cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-          }}>{tab.label}</button>
-        ))}
-      </div>
-
-      {/* DASHBOARD TAB */}
-      {activeTab === 'overview' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Full Width: Hours Distribution Sankey */}
-          <SectionCard title="Hours Flow by Work Type" subtitle="Portfolio → Projects → Charge Type (Execution, QC, CR, Supervision) → Progress">
-            <PortfolioFlowSankey healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'sankey')} />
-          </SectionCard>
-
-          {/* Project Comparison - Full Width */}
-          <SectionCard title="Project Performance Comparison" subtitle="Each line is a project - green=on track, yellow=at risk, red=critical. Drag axes to filter.">
-            <ProjectPerformanceParallel projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'project')} />
-          </SectionCard>
-
-          {/* Row: Radar + Risk Matrix */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Project Health Radar" subtitle="Top projects compared across SPI, CPI, Progress, Efficiency">
-              <ProjectHealthRadar projects={projectBreakdown} onClick={(params) => handleChartClick(params, 'radar')} />
+        {/* ──────────── DASHBOARD TAB ──────────── */}
+        {activeTab === 'overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <SectionCard title="Hours Flow by Work Type" subtitle="Portfolio → Projects → Charge Type → Progress">
+              <PortfolioSankey projectBreakdown={projectBreakdown} portfolio={portfolio} onClick={(p) => handleClick(p, 'sankey')} />
             </SectionCard>
-
-            <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget risks`}>
-              <RiskMatrix scheduleRisks={scheduleRisks} budgetConcerns={budgetConcerns} onItemSelect={setSelectedRiskItem} onClick={(params) => handleChartClick(params, 'risk')} />
+            <SectionCard title="Project Performance Comparison" subtitle="Each line = project. Green=on track, yellow=risk, red=critical. Drag axes to filter.">
+              <PerformanceParallel projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'project')} />
+            </SectionCard>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <SectionCard title="Project Health Radar" subtitle="Top projects across SPI, CPI, Progress, Efficiency">
+                <HealthRadar projects={projectBreakdown} onClick={(p) => handleClick(p, 'radar')} />
+              </SectionCard>
+              <SectionCard title="Risk Matrix" subtitle={`${scheduleRisks.length} schedule + ${budgetConcerns.length} budget risks`}>
+                <RiskMatrix scheduleRisks={scheduleRisks} budgetConcerns={budgetConcerns} onClick={(p) => handleClick(p, 'risk')} />
+              </SectionCard>
+            </div>
+            <SectionCard title="Budget Variance by Project" subtitle="Baseline (ghost) vs Actual hours">
+              <BudgetVariance projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'variance')} />
+            </SectionCard>
+            <SectionCard title={`Project Summary (${projectBreakdown.length})`} subtitle="Click any row for breakdown" noPadding>
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: C.bgCard, zIndex: 1 }}>
+                    <tr><th style={{ position: 'sticky', left: 0, background: C.bgCard, zIndex: 2 }}>Project</th><th className="number">Tasks</th><th className="number">SPI</th><th className="number">CPI</th><th className="number">Progress</th><th className="number">Baseline</th><th className="number">Actual</th><th className="number">Var%</th></tr>
+                  </thead>
+                  <tbody>
+                    {projectBreakdown.map((p, i) => (
+                      <tr key={p.id || i} style={{ cursor: 'pointer' }} onClick={() => { setSelectedProject(p); crossFilter.toggleFilter({ type: 'project', value: p.name, label: p.name, source: 'table' }); }}>
+                        <td style={{ position: 'sticky', left: 0, background: C.bgCard, fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</td>
+                        <td className="number">{p.tasks}</td>
+                        <td className="number" style={{ color: p.spi >= 1 ? C.green : p.spi >= 0.9 ? C.amber : C.red }}>{sn(p.spi)}</td>
+                        <td className="number" style={{ color: p.cpi >= 1 ? C.green : p.cpi >= 0.9 ? C.amber : C.red }}>{sn(p.cpi)}</td>
+                        <td className="number">{p.percentComplete}%</td>
+                        <td className="number">{p.baselineHours.toLocaleString()}</td>
+                        <td className="number">{p.actualHours.toLocaleString()}</td>
+                        <td className="number" style={{ color: p.variance > 10 ? C.red : p.variance > 0 ? C.amber : C.green }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </SectionCard>
           </div>
+        )}
 
-          {/* Full Width: Budget Variance */}
-          <SectionCard title="Budget Variance by Project" subtitle="Baseline (ghost) vs Actual hours - overage shown on right. Click bar to drill down.">
-            <EnhancedBudgetVarianceChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
-          </SectionCard>
-
-          {/* Project Summary Table */}
-          <SectionCard title={`Project Summary (${projectBreakdown.length})`} subtitle="Click any row for detailed breakdown" noPadding>
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  <tr>
-                    <th style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 2 }}>Project</th>
-                    <th className="number">Tasks</th>
-                    <th className="number">Done</th>
-                    <th className="number">SPI</th>
-                    <th className="number">CPI</th>
-                    <th className="number">Progress</th>
-                    <th className="number">Baseline Hrs</th>
-                    <th className="number">Actual Hrs</th>
-                    <th className="number">Remaining</th>
-                    <th className="number">Timesheet Hrs</th>
-                    <th className="number">Labor Cost</th>
-                    <th className="number">Variance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projectBreakdown.map((p, idx) => (
-                    <tr 
-                      key={idx} 
-                      style={{ cursor: 'pointer', background: selectedProject?.id === p.id ? 'rgba(64,224,208,0.1)' : 'transparent' }}
-                      onClick={() => setSelectedProject(selectedProject?.id === p.id ? null : p)}
-                    >
-                      <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{p.name}</td>
-                      <td className="number">{p.tasks}</td>
-                      <td className="number">{p.completed}</td>
-                      <td className="number" style={{ color: p.spi >= 1 ? '#10B981' : p.spi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{sn(p.spi)}</td>
-                      <td className="number" style={{ color: p.cpi >= 1 ? '#10B981' : p.cpi >= 0.9 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{sn(p.cpi)}</td>
-                      <td className="number">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end' }}>
-                          <div style={{ width: '40px', height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{ width: `${Math.min(100, p.percentComplete)}%`, height: '100%', background: p.percentComplete >= 80 ? '#10B981' : p.percentComplete >= 50 ? '#F59E0B' : '#EF4444', borderRadius: '3px' }} />
-                          </div>
-                          {p.percentComplete}%
-                        </div>
-                      </td>
-                      <td className="number">{p.baselineHours.toLocaleString()}</td>
-                      <td className="number">{p.actualHours.toLocaleString()}</td>
-                      <td className="number" style={{ color: 'var(--text-muted)' }}>{p.remainingHours.toLocaleString()}</td>
-                      <td className="number" style={{ color: '#3B82F6' }}>{p.timesheetHours > 0 ? p.timesheetHours.toLocaleString() : '—'}</td>
-                      <td className="number" style={{ color: '#3B82F6' }}>{p.timesheetCost > 0 ? `$${(p.timesheetCost / 1000).toFixed(1)}K` : '—'}</td>
-                      <td className="number" style={{ color: p.variance <= 0 ? '#10B981' : p.variance <= 10 ? '#F59E0B' : '#EF4444', fontWeight: 600 }}>{p.variance > 0 ? '+' : ''}{p.variance}%</td>
-                    </tr>
+        {/* ──────────── MILESTONES TAB ──────────── */}
+        {activeTab === 'milestones' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <SectionCard title="Milestone Progress" subtitle="Completed, average progress, and average delay">
+              <MilestoneGauges milestones={milestones} projectBreakdown={projectBreakdown} />
+            </SectionCard>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
+              <SectionCard title="Milestone Delays" subtitle="Sorted by variance (days)">
+                <MilestoneTimeline milestones={milestones} onClick={(p) => handleClick(p, 'milestone')} />
+              </SectionCard>
+              <SectionCard title="Status Distribution" subtitle="Milestone status breakdown">
+                <MilestoneStatusPie milestones={milestones} onClick={(p) => handleClick(p, 'milestone')} />
+              </SectionCard>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <SectionCard title={`Schedule Risks (${scheduleRisks.length})`} noPadding>
+                <div style={{ maxHeight: 300, overflowY: 'auto', padding: '0.5rem' }}>
+                  {scheduleRisks.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No schedule risks</div>}
+                  {scheduleRisks.map((r, i) => (
+                    <div key={i} style={{ padding: '0.5rem 0.75rem', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                      <span style={{ color: C.textPrimary }}>{r.name}</span>
+                      <span style={{ color: C.red, fontWeight: 600 }}>+{r.variance}d</span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-        </div>
-      )}
-
-      {/* MILESTONES & RISKS TAB */}
-      {activeTab === 'milestones' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Milestone Summary Cards */}
-          <MilestoneProgressGauge milestones={milestones} />
-
-          {/* Milestone Visuals Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Milestone Delay Analysis" subtitle="Click bar to filter by milestone">
-              <MilestoneTimelineChart milestones={milestones} onClick={(params) => handleChartClick(params, 'milestone')} />
-            </SectionCard>
-            <SectionCard title="Milestone Status" subtitle="Click segment to filter by status">
-              <MilestoneStatusChart milestones={milestones} onClick={(params) => handleChartClick(params, 'milestoneStatus')} />
-            </SectionCard>
-          </div>
-
-          {/* Milestone Tracker Table */}
-          <SectionCard title={`All Milestones (${milestones.length})`} subtitle="Click for details" noPadding>
-            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-              <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  <tr>
-                    <th style={{ position: 'sticky', left: 0, background: 'var(--bg-card)', zIndex: 2 }}>Milestone</th>
-                    <th>Project</th>
-                    <th>Status</th>
-                    <th>Planned</th>
-                    <th>Forecast</th>
-                    <th className="number">Variance</th>
-                    <th className="number">Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {milestones.map((m: any, idx: number) => {
-                    const variance = m.varianceDays || 0;
-                    return (
-                      <tr key={idx} style={{ background: variance > 7 ? 'rgba(239,68,68,0.05)' : 'transparent' }}>
-                        <td style={{ position: 'sticky', left: 0, background: 'var(--bg-primary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{m.name || m.milestone}</td>
-                        <td>{m.projectNum || m.project || '-'}</td>
-                        <td>
-                          <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, background: m.status === 'Complete' ? 'rgba(16,185,129,0.15)' : variance > 7 ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)', color: m.status === 'Complete' ? '#10B981' : variance > 7 ? '#EF4444' : '#3B82F6' }}>
-                            {m.status || 'In Progress'}
-                          </span>
-                        </td>
-                        <td>{m.plannedCompletion || '-'}</td>
-                        <td>{m.forecastCompletion || '-'}</td>
-                        <td className="number" style={{ color: variance > 7 ? '#EF4444' : variance > 0 ? '#F59E0B' : '#10B981', fontWeight: 600 }}>{variance > 0 ? `+${variance}d` : `${variance}d`}</td>
-                        <td className="number">{m.percentComplete || 0}%</td>
-                      </tr>
-                    );
-                  })}
-                  {milestones.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No milestones found</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </SectionCard>
-
-          {/* Schedule Risks + Budget Concerns Side by Side */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title={`Schedule Risks (${scheduleRisks.length})`} subtitle="Delayed milestones" noPadding>
-              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                    <tr>
-                      <th>Milestone</th>
-                      <th className="number">Delay</th>
-                      <th className="number">Progress</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scheduleRisks.slice(0, 10).map((r: any, idx: number) => (
-                      <tr key={idx} onClick={() => setSelectedRiskItem({ ...r, type: 'schedule', impact: r.variance > 14 ? 90 : 60, probability: 75 })} style={{ cursor: 'pointer' }}>
-                        <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{r.name}</td>
-                        <td className="number" style={{ color: r.variance > 14 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>+{r.variance}d</td>
-                        <td className="number">{r.percentComplete}%</td>
-                      </tr>
-                    ))}
-                    {scheduleRisks.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No schedule risks</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </SectionCard>
-
-            <SectionCard title={`Budget Concerns (${budgetConcerns.length})`} subtitle="Over budget tasks" noPadding>
-              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                    <tr>
-                      <th>Task</th>
-                      <th className="number">Baseline</th>
-                      <th className="number">Overage</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {budgetConcerns.slice(0, 10).map((b: any, idx: number) => (
-                      <tr key={idx} onClick={() => setSelectedRiskItem({ ...b, type: 'budget', impact: b.variance > 50 ? 85 : 55, probability: 65 })} style={{ cursor: 'pointer' }}>
-                        <td style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>{b.name}</td>
-                        <td className="number">{b.baseline}</td>
-                        <td className="number" style={{ color: b.variance > 50 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>+{b.variance}%</td>
-                      </tr>
-                    ))}
-                    {budgetConcerns.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No budget concerns</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </SectionCard>
-          </div>
-        </div>
-      )}
-
-      {/* VARIANCE ANALYSIS TAB */}
-      {activeTab === 'variance' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Variance Summary Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-            <VarianceTrend label="SPI" current={healthMetrics.spi} previous={varianceData.spi.previousValue || healthMetrics.spi} period={variancePeriod} />
-            <VarianceTrend label="CPI" current={healthMetrics.cpi} previous={varianceData.cpi.previousValue || healthMetrics.cpi} period={variancePeriod} />
-            <VarianceTrend label="Hours" current={healthMetrics.totalHours} previous={varianceData.hours.previousValue || healthMetrics.totalHours} period={variancePeriod} />
-            <VarianceTrend label="Progress" current={healthMetrics.percentComplete} previous={varianceData.progress.previousValue || healthMetrics.percentComplete} period={variancePeriod} />
-          </div>
-
-          {/* Variance Waterfall Chart */}
-          <SectionCard title="Budget Variance Waterfall" subtitle="Each bar shows hours over/under budget per project, stacked to show cumulative impact. Net total at bottom.">
-            <VarianceWaterfallChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
-          </SectionCard>
-
-          {/* Variance Distribution + Trend */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Variance Distribution" subtitle="How projects are distributed across budget variance ranges">
-              <VarianceDistributionChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
-            </SectionCard>
-            <SectionCard title="Performance Quadrant" subtitle="Click dot to filter by project">
-              <PerformanceQuadrantChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'project')} />
-            </SectionCard>
-          </div>
-
-          {/* Top Performers vs Bottom Performers - Visual */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Top Performers" subtitle="Under budget projects">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {projectBreakdown.filter(p => p.variance <= 0).sort((a, b) => a.variance - b.variance).slice(0, 5).map((p, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ 
-                      width: '32px', height: '32px', borderRadius: '50%', 
-                      background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.1))',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.8rem', fontWeight: 700, color: '#10B981',
-                    }}>{idx + 1}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 500, marginBottom: '4px' }}>{p.name}</div>
-                      <div style={{ height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, Math.abs(p.variance) * 2)}%`, background: 'linear-gradient(90deg, #10B981, #34D399)', borderRadius: '3px' }} />
-                      </div>
+                </div>
+              </SectionCard>
+              <SectionCard title={`Budget Concerns (${budgetConcerns.length})`} noPadding>
+                <div style={{ maxHeight: 300, overflowY: 'auto', padding: '0.5rem' }}>
+                  {budgetConcerns.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No budget concerns</div>}
+                  {budgetConcerns.map((b, i) => (
+                    <div key={i} style={{ padding: '0.5rem 0.75rem', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                      <span style={{ color: C.textPrimary }}>{b.name}</span>
+                      <span style={{ color: C.amber, fontWeight: 600 }}>+{b.variance}%</span>
                     </div>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#10B981' }}>{p.variance}%</span>
-                  </div>
-                ))}
-                {projectBreakdown.filter(p => p.variance <= 0).length === 0 && <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No under-budget projects</div>}
-              </div>
-            </SectionCard>
-            <SectionCard title="Needs Attention" subtitle="Over budget projects">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {projectBreakdown.filter(p => p.variance > 0).sort((a, b) => b.variance - a.variance).slice(0, 5).map((p, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ 
-                      width: '32px', height: '32px', borderRadius: '50%', 
-                      background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.1))',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.8rem', fontWeight: 700, color: '#EF4444',
-                    }}>{idx + 1}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 500, marginBottom: '4px' }}>{p.name}</div>
-                      <div style={{ height: '6px', background: 'var(--bg-tertiary)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, p.variance * 2)}%`, background: 'linear-gradient(90deg, #F87171, #EF4444)', borderRadius: '3px' }} />
-                      </div>
-                    </div>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#EF4444' }}>+{p.variance}%</span>
-                  </div>
-                ))}
-                {projectBreakdown.filter(p => p.variance > 0).length === 0 && <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No over-budget projects</div>}
-              </div>
-            </SectionCard>
-          </div>
-
-          {/* Variance Timeline */}
-          <SectionCard title="Variance Trend Over Time" subtitle="SPI/CPI trend with cumulative variance % - hover any point for detail">
-            <VarianceTimelineChart varianceData={varianceData} healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
-          </SectionCard>
-        </div>
-      )}
-
-      {/* ADVANCED PROJECT CONTROLS TAB */}
-      {activeTab === 'advanced' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Executive Summary Cards - MOVED TO TOP */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-            <div style={{ 
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-            }}>
-              <div style={{ fontSize: '0.65rem', color: '#10B981', textTransform: 'uppercase', fontWeight: 600 }}>Schedule Performance</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.spi >= 1 ? '#10B981' : '#EF4444' }}>{sn(healthMetrics.spi)}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>SPI Index</div>
-            </div>
-            <div style={{ 
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-              border: '1px solid rgba(59, 130, 246, 0.3)',
-            }}>
-              <div style={{ fontSize: '0.65rem', color: '#3B82F6', textTransform: 'uppercase', fontWeight: 600 }}>Cost Performance</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: healthMetrics.cpi >= 1 ? '#10B981' : '#EF4444' }}>{sn(healthMetrics.cpi)}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>CPI Index</div>
-            </div>
-            <div style={{ 
-              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-            }}>
-              <div style={{ fontSize: '0.65rem', color: '#F59E0B', textTransform: 'uppercase', fontWeight: 600 }}>FTE Utilization</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800 }}>
-                {Math.round((healthMetrics.totalHours / Math.max(healthMetrics.baselineHours, 1)) * 100)}%
-              </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Labor efficiency</div>
-            </div>
-            <div style={{ 
-              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)',
-              borderRadius: '12px',
-              padding: '1.25rem',
-              border: '1px solid rgba(139, 92, 246, 0.3)',
-            }}>
-              <div style={{ fontSize: '0.65rem', color: '#8B5CF6', textTransform: 'uppercase', fontWeight: 600 }}>Risk Score</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: scheduleRisks.length > 5 ? '#EF4444' : scheduleRisks.length > 2 ? '#F59E0B' : '#10B981' }}>
-                {scheduleRisks.length > 5 ? 'HIGH' : scheduleRisks.length > 2 ? 'MED' : 'LOW'}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{scheduleRisks.length} active risks</div>
-            </div>
-          </div>
-
-          {/* Section 1: Dynamic Float & Cascade Visualization */}
-          <SectionCard 
-            title="Float & Cascade Visualization" 
-            subtitle="Click bar to filter by task - ghost bars show Total Float"
-          >
-            <FloatCascadeGantt tasks={data.tasks || []} milestones={milestones} onClick={(params) => handleChartClick(params, 'task')} />
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(3, 1fr)', 
-              gap: '1rem', 
-              marginTop: '1rem',
-              padding: '1rem',
-              background: 'var(--bg-secondary)',
-              borderRadius: '12px',
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical Tasks</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#EF4444' }}>
-                  {(data.tasks || []).filter((t: any) => {
-                    const baseline = t.baselineHours || t.budgetHours || 0;
-                    const actual = t.actualHours || 0;
-                    return actual >= baseline;
-                  }).length}
+                  ))}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Zero float remaining</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>At Risk</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F59E0B' }}>
-                  {(data.tasks || []).filter((t: any) => {
-                    const baseline = t.baselineHours || t.budgetHours || 0;
-                    const actual = t.actualHours || 0;
-                    return actual >= baseline * 0.8 && actual < baseline;
-                  }).length}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Float &lt; 20%</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Healthy</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981' }}>
-                  {(data.tasks || []).filter((t: any) => {
-                    const baseline = t.baselineHours || t.budgetHours || 0;
-                    const actual = t.actualHours || 0;
-                    return actual < baseline * 0.8;
-                  }).length}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Adequate buffer</div>
-              </div>
+              </SectionCard>
             </div>
-          </SectionCard>
+          </div>
+        )}
 
-          {/* Section 2: Resource-Constrained Critical Path */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard 
-              title="FTE Saturation Analysis" 
-              subtitle="Click to filter by week - peaks indicate resource constraints"
-            >
-              <FTESaturationHeatmap tasks={data.tasks || []} onClick={(params) => handleChartClick(params, 'resource')} />
+        {/* ──────────── VARIANCE TAB ──────────── */}
+        {activeTab === 'variance' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+              <SectionCard title="SPI Trend"><VarianceTrendGauge label="SPI" current={varianceData.spi.currentValue ?? portfolio.spi} previous={varianceData.spi.previousValue ?? portfolio.spi} /></SectionCard>
+              <SectionCard title="CPI Trend"><VarianceTrendGauge label="CPI" current={varianceData.cpi.currentValue ?? portfolio.cpi} previous={varianceData.cpi.previousValue ?? portfolio.cpi} /></SectionCard>
+              <SectionCard title="Hours Trend"><VarianceTrendGauge label="Hours" current={varianceData.hours.currentValue ?? portfolio.totalHours} previous={varianceData.hours.previousValue ?? portfolio.totalHours} /></SectionCard>
+              <SectionCard title="Progress Trend"><VarianceTrendGauge label="Progress" current={varianceData.progress.currentValue ?? portfolio.percentComplete} previous={varianceData.progress.previousValue ?? portfolio.percentComplete} /></SectionCard>
+            </div>
+            <SectionCard title="Variance Waterfall" subtitle="Cumulative variance by project (over = red, under = green)">
+              <VarianceWaterfall projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'variance')} />
             </SectionCard>
-            <SectionCard 
-              title="Elastic Scheduling Windows" 
-              subtitle="Click to identify optimal scheduling windows"
-            >
-              <ElasticSchedulingChart tasks={data.tasks || []} onClick={(params) => handleChartClick(params, 'schedule')} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <SectionCard title="Variance Distribution" subtitle="Projects grouped by variance range">
+                <VarianceDistribution projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'variance')} />
+              </SectionCard>
+              <SectionCard title="Performance Quadrant" subtitle="SPI vs CPI — top-right = ideal">
+                <PerformanceQuadrant projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'project')} />
+              </SectionCard>
+            </div>
+            <SectionCard title="SPI / CPI Trend Over Time" subtitle="Historical performance indices with variance bars">
+              <VarianceTimeline portfolio={portfolio} projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'variance')} />
             </SectionCard>
           </div>
+        )}
 
-          {/* Section 3: Predictive Health & Uncertainty */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
-            <SectionCard 
-              title="Earned Value S-Curve" 
-              subtitle="Click to drill into performance metrics"
-            >
-              <EarnedValueSCurve tasks={data.tasks || []} sCurveData={data.sCurve || { dates: [], planned: [], actual: [] }} onClick={(params) => handleChartClick(params, 'performance')} />
+        {/* ──────────── ADVANCED TAB ──────────── */}
+        {activeTab === 'advanced' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+              {[
+                { label: 'SPI', value: sn(portfolio.spi), color: portfolio.spi >= 1 ? C.green : portfolio.spi >= 0.9 ? C.amber : C.red, bg: C.blue },
+                { label: 'CPI', value: sn(portfolio.cpi), color: portfolio.cpi >= 1 ? C.green : portfolio.cpi >= 0.9 ? C.amber : C.red, bg: C.green },
+                { label: 'FTE Utilization', value: `${Math.round((portfolio.totalHours / Math.max(portfolio.baselineHours, 1)) * 100)}%`, color: C.textPrimary, bg: C.amber },
+                { label: 'Risk Score', value: scheduleRisks.length > 5 ? 'HIGH' : scheduleRisks.length > 2 ? 'MED' : 'LOW', color: scheduleRisks.length > 5 ? C.red : scheduleRisks.length > 2 ? C.amber : C.green, bg: C.purple },
+              ].map(card => (
+                <div key={card.label} style={{ background: `linear-gradient(135deg, ${card.bg}15 0%, ${card.bg}08 100%)`, borderRadius: 12, padding: '1.25rem', border: `1px solid ${card.bg}30` }}>
+                  <div style={{ fontSize: '0.65rem', color: card.bg, textTransform: 'uppercase', fontWeight: 600 }}>{card.label}</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: card.color }}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+            <SectionCard title="Float & Cascade" subtitle="Work hours + float buffer by task">
+              <FloatCascade tasks={data.tasks || []} onClick={(p) => handleClick(p, 'task')} />
             </SectionCard>
-            <SectionCard 
-              title="Buffer Consumption" 
-              subtitle="Click segment to filter by phase"
-            >
-              <BufferConsumptionSunburst projectBreakdown={projectBreakdown} milestones={milestones} onClick={(params) => handleChartClick(params, 'phase')} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <SectionCard title="FTE Saturation" subtitle="Weekly demand vs capacity">
+                <FTESaturation tasks={data.tasks || []} onClick={(p) => handleClick(p, 'resource')} />
+              </SectionCard>
+              <SectionCard title="Elastic Scheduling" subtitle="Committed vs available capacity">
+                <ElasticScheduling tasks={data.tasks || []} onClick={(p) => handleClick(p, 'schedule')} />
+              </SectionCard>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '1rem' }}>
+              <SectionCard title="Earned Value S-Curve" subtitle="PV, EV, AC over time">
+                <EarnedValueCurve tasks={data.tasks || []} onClick={(p) => handleClick(p, 'performance')} />
+              </SectionCard>
+              <SectionCard title="Buffer Consumption" subtitle="Hierarchical buffer status">
+                <BufferSunburst projectBreakdown={projectBreakdown} onClick={(p) => handleClick(p, 'phase')} />
+              </SectionCard>
+            </div>
+            <SectionCard title="Dependency Network" subtitle="Task hierarchy — larger = more downstream impact">
+              <DependencyNetwork tasks={data.tasks || []} onClick={(p) => handleClick(p, 'dependency')} />
             </SectionCard>
           </div>
-
-          {/* Section 4: Linchpin Analysis */}
-          <SectionCard 
-            title="Dependency Network" 
-            subtitle="Click node to filter by dependency - larger = more downstream impact"
-          >
-            <LinchpinAnalysis tasks={data.tasks || []} milestones={milestones} onClick={(params) => handleChartClick(params, 'dependency')} />
-          </SectionCard>
-        </div>
-      )}
+        )}
       </>
       )}
     </div>
