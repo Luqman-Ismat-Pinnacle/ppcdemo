@@ -36,6 +36,131 @@ import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-en
 import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
 
+// ===== INFO TOOLTIP =====
+function InfoTip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginLeft: '4px', cursor: 'help' }}
+      onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ opacity: 0.6 }}>
+        <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+      </svg>
+      {show && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          marginBottom: '6px', padding: '0.6rem 0.8rem', borderRadius: '8px',
+          background: 'rgba(22,27,34,0.97)', border: '1px solid var(--border-color)',
+          color: '#e5e7eb', fontSize: '0.72rem', lineHeight: 1.45, whiteSpace: 'pre-line',
+          width: '260px', zIndex: 100, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          pointerEvents: 'none',
+        }}>
+          {text}
+          <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            width: 0, height: 0, borderLeft: '6px solid transparent', borderRight: '6px solid transparent',
+            borderTop: '6px solid rgba(22,27,34,0.97)' }} />
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ===== DRILL-DOWN DETAIL PANEL (appears below chart) =====
+function DrillDetail({ item, type, projectBreakdown, budgetConcerns, scheduleRisks, onClose }: {
+  item: any; type: string; projectBreakdown: any[]; budgetConcerns: any[]; scheduleRisks: any[]; onClose: () => void;
+}) {
+  const project = type === 'project' ? projectBreakdown.find(p => p.name === item?.name || p.id === item?.id) : null;
+  const risk = type === 'risk' ? item : null;
+  
+  if (!item) return null;
+  
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(64,224,208,0.08) 0%, rgba(30,35,50,0.95) 100%)',
+      borderRadius: '16px', padding: '1.25rem 1.5rem', marginTop: '0.75rem',
+      border: '1px solid rgba(64,224,208,0.25)', position: 'relative',
+    }}>
+      <button onClick={onClose} style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
+      
+      <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px', marginBottom: '0.25rem' }}>
+        {type} detail
+      </div>
+      <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>
+        {item.name || item.source || 'Selected Item'}
+      </div>
+
+      {project && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+          {[
+            { label: 'Tasks', value: project.tasks, sub: `${project.completed} complete` },
+            { label: 'SPI', value: sn(project.spi), color: project.spi >= 1 ? '#10B981' : '#EF4444', tip: 'Schedule Performance Index\nEV / PV = (% Complete x Baseline) / Baseline\n>1 = ahead, <1 = behind' },
+            { label: 'CPI', value: sn(project.cpi), color: project.cpi >= 1 ? '#10B981' : '#EF4444', tip: 'Cost Performance Index\nEV / AC = (% Complete x Baseline) / Actual\n>1 = under budget, <1 = over budget' },
+            { label: 'Progress', value: `${project.percentComplete}%` },
+            { label: 'Baseline Hrs', value: project.baselineHours.toLocaleString() },
+            { label: 'Actual Hrs', value: project.actualHours.toLocaleString(), color: project.actualHours > project.baselineHours ? '#EF4444' : '#10B981' },
+            { label: 'Remaining', value: project.remainingHours.toLocaleString() },
+            { label: 'Variance', value: `${project.variance > 0 ? '+' : ''}${project.variance}%`, color: project.variance <= 0 ? '#10B981' : '#EF4444' },
+            ...(project.timesheetHours > 0 ? [{ label: 'Timesheet Hrs', value: project.timesheetHours.toLocaleString(), color: '#3B82F6' }] : []),
+            ...(project.timesheetCost > 0 ? [{ label: 'Labor Cost', value: `$${(project.timesheetCost / 1000).toFixed(1)}K`, color: '#3B82F6' }] : []),
+          ].map((m, i) => (
+            <div key={i} style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem', display: 'flex', alignItems: 'center' }}>
+                {m.label}{(m as any).tip && <InfoTip text={(m as any).tip} />}
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: (m as any).color || 'var(--text-primary)' }}>{m.value}</div>
+              {(m as any).sub && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>{(m as any).sub}</div>}
+            </div>
+          ))}
+          {/* Charge type mini-breakdown */}
+          {Object.keys(project.chargeTypes || {}).length > 0 && (
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', padding: '0.5rem 0' }}>
+              {Object.entries(project.chargeTypes).map(([type, hrs]) => (
+                <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: CHARGE_TYPE_COLORS[type] || '#6B7280' }} />
+                  <span style={{ color: 'var(--text-muted)' }}>{CHARGE_TYPE_LABELS[type] || type}:</span>
+                  <strong>{Math.round(hrs as number).toLocaleString()} hrs</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {risk && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+          {[
+            { label: 'Type', value: risk.type === 'schedule' ? 'Schedule Risk' : 'Budget Concern' },
+            { label: 'Variance', value: risk.type === 'schedule' ? `+${risk.variance} days` : `+${risk.variance}%`, color: '#EF4444' },
+            { label: 'Impact', value: risk.impact > 70 ? 'High' : risk.impact > 40 ? 'Medium' : 'Low', color: risk.impact > 70 ? '#EF4444' : '#F59E0B', tip: `Impact score: ${risk.impact}/100\nSchedule risks: >14d delay = High, >7d = Medium\nBudget risks: >50% over = High, >20% = Medium` },
+            { label: 'Probability', value: `${risk.probability}%`, tip: `Probability of continued impact.\nBased on variance magnitude.` },
+            ...(risk.project ? [{ label: 'Project', value: risk.project }] : []),
+            ...(risk.assignee ? [{ label: 'Assignee', value: risk.assignee }] : []),
+          ].map((m, i) => (
+            <div key={i} style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem', display: 'flex', alignItems: 'center' }}>
+                {m.label}{(m as any).tip && <InfoTip text={(m as any).tip} />}
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 700, color: (m as any).color || 'var(--text-primary)' }}>{m.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!project && !risk && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+          {Object.entries(item).filter(([k]) => !['data', 'event', 'componentType', 'seriesType', 'dataType'].includes(k) && item[k] !== undefined && item[k] !== null).slice(0, 8).map(([key, val]) => (
+            <div key={key} style={{ padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: '10px' }}>
+              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem', textTransform: 'capitalize' }}>{key.replace(/([A-Z])/g, ' $1')}</div>
+              <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{typeof val === 'number' ? (val as number).toLocaleString() : String(val)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===== CROSS-FILTER BAR =====
 function CrossFilterBar({ 
   filters, 
@@ -175,10 +300,15 @@ function PortfolioCommandCenter({
   const healthColor = healthMetrics.healthScore >= 80 ? '#10B981' : healthMetrics.healthScore >= 60 ? '#F59E0B' : '#EF4444';
   
   const statusData = [
-    { key: 'schedule', label: 'Schedule (SPI)', status: healthMetrics.scheduleStatus, value: healthMetrics.spi },
-    { key: 'budget', label: 'Budget (CPI)', status: healthMetrics.budgetStatus, value: healthMetrics.cpi },
-    { key: 'quality', label: 'Progress', status: healthMetrics.qualityStatus, value: healthMetrics.percentComplete },
+    { key: 'schedule', label: 'Schedule (SPI)', status: healthMetrics.scheduleStatus, value: healthMetrics.spi, tip: 'Schedule Performance Index\nEV / PV = (% Complete x Baseline) / Baseline\n\n>1.0 = Ahead of schedule\n1.0 = On schedule\n<1.0 = Behind schedule' },
+    { key: 'budget', label: 'Budget (CPI)', status: healthMetrics.budgetStatus, value: healthMetrics.cpi, tip: 'Cost Performance Index\nEV / AC = (% Complete x Baseline) / Actual Hrs\n\n>1.0 = Under budget\n1.0 = On budget\n<1.0 = Over budget' },
+    { key: 'quality', label: 'Progress', status: healthMetrics.qualityStatus, value: healthMetrics.percentComplete, tip: 'Weighted average completion\nacross all scheduled tasks.' },
   ];
+
+  // Top / worst performers
+  const sortedByHrs = [...projectBreakdown].sort((a, b) => b.actualHours - a.actualHours);
+  const topPerformer = projectBreakdown.filter(p => p.cpi >= 1).sort((a, b) => b.cpi - a.cpi)[0];
+  const worstPerformer = projectBreakdown.filter(p => p.cpi < 1).sort((a, b) => a.cpi - b.cpi)[0];
   
   const getStatusColor = (status: string) => status === 'green' ? '#10B981' : status === 'yellow' ? '#F59E0B' : '#EF4444';
   
@@ -208,7 +338,7 @@ function PortfolioCommandCenter({
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ fontSize: '2.5rem', fontWeight: 900, lineHeight: 1, color: healthColor }}>{healthMetrics.healthScore}</span>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '1px' }}>Health</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '2px' }}>Health<InfoTip text={'Portfolio Health Score (0-100)\nBased on SPI and CPI:\n-30 if SPI or CPI < 0.85\n-15 if SPI or CPI < 0.95\n-5 if SPI or CPI < 1.0'} /></span>
         </div>
       </div>
       
@@ -223,11 +353,11 @@ function PortfolioCommandCenter({
             background: `${getStatusColor(s.status)}12`,
             borderRadius: '12px',
             border: `1px solid ${getStatusColor(s.status)}30`,
-            minWidth: '180px',
+            minWidth: '200px',
           }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: getStatusColor(s.status), boxShadow: `0 0 8px ${getStatusColor(s.status)}` }} />
             <div style={{ flex: 1 }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>{s.label}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{s.label}<InfoTip text={s.tip} /></span>
               <span style={{ fontSize: '1.1rem', fontWeight: 700, color: getStatusColor(s.status) }}>
                 {s.key === 'quality' ? `${s.value}%` : sn(s.value)}
               </span>
@@ -236,33 +366,57 @@ function PortfolioCommandCenter({
         ))}
       </div>
       
-      {/* Project Pills */}
-      <div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>Projects ({projectBreakdown.length})</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', maxHeight: '140px', overflowY: 'auto' }}>
-          {projectBreakdown.slice(0, 12).map((p, idx) => {
+      {/* Top / Worst Performers + Project pills */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Performance Leaders
+        </div>
+        {/* Most hours */}
+        {sortedByHrs[0] && (
+          <button onClick={() => onProjectSelect(selectedProject?.id === sortedByHrs[0].id ? null : sortedByHrs[0])} style={{
+            padding: '0.5rem 0.75rem', borderRadius: '10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
+            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: '#3B82F6', width: '50px' }}>Most Hrs</div>
+            <div style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{sortedByHrs[0].name}</div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3B82F6' }}>{sortedByHrs[0].actualHours.toLocaleString()}</div>
+          </button>
+        )}
+        {/* Best CPI */}
+        {topPerformer && (
+          <button onClick={() => onProjectSelect(selectedProject?.id === topPerformer.id ? null : topPerformer)} style={{
+            padding: '0.5rem 0.75rem', borderRadius: '10px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
+            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: '#10B981', width: '50px' }}>Best CPI</div>
+            <div style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{topPerformer.name}</div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10B981' }}>{sn(topPerformer.cpi)}</div>
+          </button>
+        )}
+        {/* Worst CPI */}
+        {worstPerformer && (
+          <button onClick={() => onProjectSelect(selectedProject?.id === worstPerformer.id ? null : worstPerformer)} style={{
+            padding: '0.5rem 0.75rem', borderRadius: '10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+            cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem',
+          }}>
+            <div style={{ fontSize: '0.65rem', color: '#EF4444', width: '50px' }}>Worst CPI</div>
+            <div style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{worstPerformer.name}</div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#EF4444' }}>{sn(worstPerformer.cpi)}</div>
+          </button>
+        )}
+        {/* Project pills */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '60px', overflowY: 'auto', marginTop: '0.25rem' }}>
+          {projectBreakdown.map((p, idx) => {
             const pColor = p.spi >= 1 && p.cpi >= 1 ? '#10B981' : p.spi >= 0.9 && p.cpi >= 0.9 ? '#F59E0B' : '#EF4444';
             const isSelected = selectedProject?.id === p.id;
             return (
-              <button
-                key={idx}
-                onClick={() => onProjectSelect(isSelected ? null : p)}
-                style={{
-                  padding: '0.4rem 0.85rem',
-                  borderRadius: '20px',
-                  border: `1px solid ${isSelected ? 'var(--pinnacle-teal)' : pColor}40`,
-                  background: isSelected ? 'rgba(64,224,208,0.15)' : `${pColor}10`,
-                  color: isSelected ? 'var(--pinnacle-teal)' : 'var(--text-primary)',
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                }}
-              >
-                <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: pColor }} />
-                {p.name.length > 18 ? p.name.slice(0, 18) + '...' : p.name}
+              <button key={idx} onClick={() => onProjectSelect(isSelected ? null : p)} style={{
+                padding: '0.25rem 0.6rem', borderRadius: '14px', border: `1px solid ${isSelected ? 'var(--pinnacle-teal)' : pColor}40`,
+                background: isSelected ? 'rgba(64,224,208,0.15)' : `${pColor}08`, color: isSelected ? 'var(--pinnacle-teal)' : 'var(--text-secondary)',
+                fontSize: '0.7rem', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem',
+              }}>
+                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: pColor }} />
+                {p.name.length > 16 ? p.name.slice(0, 16) + '..' : p.name}
               </button>
             );
           })}
@@ -413,23 +567,29 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
       },
       series: [{
         type: 'sankey',
-        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.8 } },
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.85 } },
         nodeAlign: 'justify',
-        nodeWidth: 22,
-        nodeGap: 14,
+        nodeWidth: 28,
+        nodeGap: 18,
         layoutIterations: 64,
         orient: 'horizontal',
-        left: 40,
-        right: 140,
-        top: 20,
-        bottom: 20,
+        left: 50,
+        right: 180,
+        top: 25,
+        bottom: 25,
         label: { 
           color: 'var(--text-primary)', 
-          fontSize: 11, 
+          fontSize: 12.5, 
           fontWeight: 600,
-          formatter: (p: any) => p.name.length > 25 ? p.name.slice(0, 25) + '..' : p.name,
+          formatter: (p: any) => {
+            const hrs = links.filter((l: any) => l.source === p.name || l.target === p.name)
+              .reduce((s: number, l: any) => l.source === p.name ? s + l.value : s, 0);
+            const short = p.name.length > 30 ? p.name.slice(0, 30) + '..' : p.name;
+            return hrs > 0 ? `${short}\n{sub|${Math.round(hrs).toLocaleString()} hrs}` : short;
+          },
+          rich: { sub: { fontSize: 10, color: 'var(--text-muted)', lineHeight: 16 } },
         },
-        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.4 },
+        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.42 },
         data: nodes, 
         links,
       }],
@@ -460,10 +620,10 @@ function PortfolioFlowSankey({ healthMetrics, projectBreakdown, onClick }: { hea
           </button>
         ))}
         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {totalHoursLabel(totalHours)} actual hrs | {totalHoursLabel(healthMetrics.baselineHours)} baseline | {projectBreakdown.length} projects with plans
+          {totalHoursLabel(totalHours)} actual hrs | {totalHoursLabel(healthMetrics.baselineHours)} baseline | {projectBreakdown.length} projects
         </span>
       </div>
-      <ChartWrapper option={option} height="440px" onClick={onClick} />
+      <ChartWrapper option={option} height="560px" onClick={onClick} />
     </div>
   );
 }
@@ -671,15 +831,40 @@ function RiskMatrix({ scheduleRisks, budgetConcerns, onItemSelect, onClick }: { 
       formatter: (params: any) => {
         const d = matrixData[params.dataIndex];
         if (!d) return '';
-        return `<strong>${d.name}</strong><br/>Type: ${d.type}<br/>Variance: ${d.variance}${d.type === 'schedule' ? ' days' : '%'}`;
+        const impactLabel = d.impact > 70 ? 'HIGH' : d.impact > 40 ? 'MEDIUM' : 'LOW';
+        const riskScore = Math.round((d.impact * d.probability) / 100);
+        return `<strong>${d.name}</strong><br/>
+          <span style="opacity:0.7">Type:</span> ${d.type === 'schedule' ? 'Schedule Risk' : 'Budget Concern'}<br/>
+          <span style="opacity:0.7">Variance:</span> ${d.type === 'schedule' ? `+${d.variance} days late` : `+${d.variance}% over budget`}<br/>
+          <span style="opacity:0.7">Impact:</span> ${impactLabel} (${d.impact}/100)<br/>
+          <span style="opacity:0.7">Probability:</span> ${d.probability}%<br/>
+          <span style="opacity:0.7">Risk Score:</span> <strong>${riskScore}</strong>/100<br/>
+          <br/><em style="opacity:0.6">Impact = severity of delay or overrun<br/>Probability = likelihood of continued impact</em>`;
       },
     },
     series: [{
       type: 'scatter',
       data: matrixData.map(d => [d.probability, d.impact]),
-      symbolSize: 14,
+      symbolSize: (params: any) => {
+        const d = matrixData[params[2] !== undefined ? params[2] : params.dataIndex];
+        const riskScore = d ? (d.impact * d.probability) / 100 : 14;
+        return Math.max(14, Math.min(32, riskScore * 0.4));
+      },
       itemStyle: { color: (params: any) => matrixData[params.dataIndex]?.color || '#6B7280' },
       emphasis: { itemStyle: { shadowBlur: 12, shadowColor: 'rgba(64,224,208,0.5)' } },
+      label: {
+        show: true,
+        position: 'right',
+        fontSize: 9,
+        color: 'var(--text-muted)',
+        formatter: (params: any) => {
+          const d = matrixData[params.dataIndex];
+          if (!d) return '';
+          // Only label top risks
+          const riskScore = (d.impact * d.probability) / 100;
+          return riskScore > 50 ? d.name.slice(0, 14) : '';
+        },
+      },
     }],
     graphic: [
       { type: 'rect', left: '50%', top: 0, shape: { width: '50%', height: '50%' }, style: { fill: 'rgba(239,68,68,0.08)' }, silent: true, z: -1 },
@@ -1530,9 +1715,40 @@ function VarianceTrend({ label, current, previous, period }: { label: string; cu
 // ===== VARIANCE WATERFALL CHART =====
 function VarianceWaterfallChart({ projectBreakdown, onClick }: { projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    const sorted = [...projectBreakdown].sort((a, b) => a.variance - b.variance).slice(0, 12);
-    const names = sorted.map(p => p.name.slice(0, 15));
+    // Sort worst first (most over budget) then add a net total
+    const sorted = [...projectBreakdown].sort((a, b) => (b.actualHours - b.baselineHours) - (a.actualHours - a.baselineHours));
+    const names = [...sorted.map(p => p.name.length > 22 ? p.name.slice(0, 22) + '..' : p.name), 'Net Total'];
     const values = sorted.map(p => p.actualHours - p.baselineHours);
+    const netTotal = values.reduce((s, v) => s + v, 0);
+    
+    // For waterfall, we need running totals
+    // Each bar floats from its start position
+    let running = 0;
+    const baseData: (number | string)[] = [];
+    const posData: (number | { value: number; itemStyle: any })[] = [];
+    const negData: (number | { value: number; itemStyle: any })[] = [];
+    
+    values.forEach(v => {
+      if (v >= 0) {
+        baseData.push(running);
+        posData.push({ value: v, itemStyle: { color: v <= 100 ? '#F59E0B' : '#EF4444', borderRadius: [0, 4, 4, 0] } });
+        negData.push(0);
+      } else {
+        baseData.push(running + v);
+        posData.push(0);
+        negData.push({ value: Math.abs(v), itemStyle: { color: '#10B981', borderRadius: [0, 4, 4, 0] } });
+      }
+      running += v;
+    });
+    // Net total bar
+    baseData.push(0);
+    if (netTotal >= 0) {
+      posData.push({ value: netTotal, itemStyle: { color: netTotal <= 100 ? '#F59E0B' : '#EF4444', borderRadius: [0, 6, 6, 0], borderWidth: 2, borderColor: '#fff' } });
+      negData.push(0);
+    } else {
+      posData.push(0);
+      negData.push({ value: Math.abs(netTotal), itemStyle: { color: '#10B981', borderRadius: [0, 6, 6, 0], borderWidth: 2, borderColor: '#fff' } });
+    }
     
     return {
       backgroundColor: 'transparent',
@@ -1542,51 +1758,37 @@ function VarianceWaterfallChart({ projectBreakdown, onClick }: { projectBreakdow
         borderColor: 'var(--border-color)',
         textStyle: { color: '#fff', fontSize: 11 },
         formatter: (params: any) => {
-          const p = sorted[params[0]?.dataIndex];
+          const idx = params[0]?.dataIndex;
+          if (idx === sorted.length) {
+            return `<strong>Net Portfolio Variance</strong><br/>${netTotal >= 0 ? '+' : ''}${netTotal.toLocaleString()} hrs<br/><em style="opacity:0.6">Sum of all project variances.\nPositive = over budget, Negative = under budget.</em>`;
+          }
+          const p = sorted[idx];
           if (!p) return '';
           const diff = p.actualHours - p.baselineHours;
           return `<strong>${p.name}</strong><br/>
             Baseline: ${p.baselineHours.toLocaleString()} hrs<br/>
             Actual: ${p.actualHours.toLocaleString()} hrs<br/>
-            Variance: <span style="color:${diff <= 0 ? '#10B981' : '#EF4444'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} hrs (${p.variance}%)</span>`;
+            Variance: <span style="color:${diff <= 0 ? '#10B981' : '#EF4444'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</span><br/>
+            <em style="opacity:0.6">Variance = (Actual - Baseline) / Baseline x 100</em>`;
         },
       },
-      grid: { left: 100, right: 40, top: 20, bottom: 50 },
+      grid: { left: 160, right: 70, top: 15, bottom: 25 },
       xAxis: { 
         type: 'value', 
-        name: 'Hours Variance',
-        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 0 ? `+${v}` : v },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: (v: number) => v >= 1000 ? `${(v/1000).toFixed(1)}K` : v >= 0 ? `+${v}` : v },
         splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
         axisLine: { lineStyle: { color: 'var(--border-color)' } },
       },
       yAxis: { 
-        type: 'category', 
-        data: names,
-        axisLabel: { color: 'var(--text-primary)', fontSize: 10 },
+        type: 'category', data: names,
+        axisLabel: { color: (idx: number) => idx === sorted.length ? 'var(--pinnacle-teal)' : 'var(--text-primary)', fontSize: 11, fontWeight: (idx: number) => idx === sorted.length ? 700 : 400 },
         axisLine: { lineStyle: { color: 'var(--border-color)' } },
       },
-      series: [{
-        type: 'bar',
-        data: values.map(v => ({
-          value: v,
-          itemStyle: { 
-            color: v <= 0 ? '#10B981' : v <= 100 ? '#F59E0B' : '#EF4444',
-            borderRadius: v >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
-          },
-        })),
-        barWidth: '60%',
-        label: {
-          show: true,
-          position: (params: any) => values[params.dataIndex] >= 0 ? 'right' : 'left',
-          formatter: (params: any) => {
-            const v = values[params.dataIndex];
-            return v >= 0 ? `+${v}` : v;
-          },
-          color: 'var(--text-muted)',
-          fontSize: 10,
-        },
-      }],
+      series: [
+        { name: 'Base', type: 'bar', stack: 'waterfall', data: baseData as any, itemStyle: { color: 'transparent' }, barWidth: '55%', emphasis: { itemStyle: { color: 'transparent' } } },
+        { name: 'Over Budget', type: 'bar', stack: 'waterfall', data: posData as any, barWidth: '55%', label: { show: true, position: 'right', formatter: (p: any) => p.value > 0 ? `+${Math.round(p.value).toLocaleString()}` : '', color: '#EF4444', fontSize: 10, fontWeight: 600 } },
+        { name: 'Under Budget', type: 'bar', stack: 'waterfall', data: negData as any, barWidth: '55%', label: { show: true, position: 'right', formatter: (p: any) => p.value > 0 ? `-${Math.round(p.value).toLocaleString()}` : '', color: '#10B981', fontSize: 10, fontWeight: 600 } },
+      ],
     };
   }, [projectBreakdown]);
 
@@ -1613,41 +1815,56 @@ function VarianceDistributionChart({ projectBreakdown, onClick }: { projectBreak
     return ranges;
   }, [projectBreakdown]);
 
-  const option: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(22,27,34,0.95)',
-      borderColor: 'var(--border-color)',
-      textStyle: { color: '#fff', fontSize: 11 },
-      formatter: (params: any) => `${params.name}: ${params.value} projects`,
-    },
-    series: [{
-      type: 'pie',
-      radius: ['35%', '65%'],
-      center: ['50%', '45%'],
-      avoidLabelOverlap: true,
-      itemStyle: { borderRadius: 6, borderColor: 'var(--bg-card)', borderWidth: 2 },
-      label: {
-        show: true,
-        position: 'outside',
-        color: 'var(--text-primary)',
-        fontSize: 11,
-        formatter: '{b}\n{c}',
-        distanceToLabelLine: 5,
+  const option: EChartsOption = useMemo(() => {
+    const filtered = distribution.filter(d => d.count > 0);
+    const maxCount = Math.max(...filtered.map(d => d.count), 1);
+    
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          const d = filtered[params[0]?.dataIndex];
+          if (!d) return '';
+          const pct = projectBreakdown.length > 0 ? Math.round((d.count / projectBreakdown.length) * 100) : 0;
+          return `<strong>${d.label}</strong><br/>${d.count} project${d.count !== 1 ? 's' : ''} (${pct}% of portfolio)<br/><em style="opacity:0.6">Variance = (Actual - Baseline) / Baseline</em>`;
+        },
       },
-      labelLine: { 
-        length: 15,
-        length2: 10,
-        lineStyle: { color: 'var(--border-color)' } 
+      grid: { left: 110, right: 50, top: 20, bottom: 30 },
+      xAxis: { 
+        type: 'value', 
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, 
+        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+        name: 'Projects',
+        nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
       },
-      data: distribution.filter(d => d.count > 0).map(d => ({
-        value: d.count,
-        name: d.label,
-        itemStyle: { color: d.color },
-      })),
-    }],
-  }), [distribution]);
+      yAxis: { 
+        type: 'category', 
+        data: filtered.map(d => d.label),
+        axisLabel: { color: 'var(--text-primary)', fontSize: 11 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      series: [{
+        type: 'bar',
+        data: filtered.map(d => ({
+          value: d.count,
+          itemStyle: { color: d.color, borderRadius: [0, 6, 6, 0] },
+        })),
+        barWidth: '55%',
+        label: {
+          show: true,
+          position: 'right',
+          formatter: (params: any) => filtered[params.dataIndex]?.count || '',
+          color: 'var(--text-secondary)',
+          fontSize: 12,
+          fontWeight: 700,
+        },
+      }],
+    };
+  }, [distribution, projectBreakdown]);
 
   return <ChartWrapper option={option} height="380px" onClick={onClick} />;
 }
@@ -1719,37 +1936,39 @@ function PerformanceQuadrantChart({ projectBreakdown, onClick }: { projectBreakd
 }
 
 // ===== VARIANCE TIMELINE CHART =====
-function VarianceTimelineChart({ varianceData, healthMetrics, onClick }: { varianceData: any; healthMetrics: any; onClick?: (params: any) => void }) {
+function VarianceTimelineChart({ varianceData, healthMetrics, projectBreakdown, onClick }: { varianceData: any; healthMetrics: any; projectBreakdown: any[]; onClick?: (params: any) => void }) {
   const option: EChartsOption = useMemo(() => {
-    // Generate 8 weeks of trend data based on current metrics
-    const weeks = Array.from({ length: 8 }, (_, i) => {
+    // Generate 12 weeks of trend data
+    const weekCount = 12;
+    const weeks = Array.from({ length: weekCount }, (_, i) => {
       const date = new Date();
-      date.setDate(date.getDate() - (7 - i) * 7);
+      date.setDate(date.getDate() - (weekCount - 1 - i) * 7);
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     });
     
     const currentSpi = healthMetrics.spi;
     const currentCpi = healthMetrics.cpi;
-    
-    // Calculate historical trend based on current performance
-    // If SPI/CPI < 1, trend shows improvement towards current (starting worse)
-    // If SPI/CPI > 1, trend shows consistent performance (starting slightly lower)
-    const spiStartFactor = currentSpi < 1 ? 0.85 : 0.92;
-    const cpiStartFactor = currentCpi < 1 ? 0.88 : 0.94;
+    const spiStartFactor = currentSpi < 1 ? 0.82 : 0.90;
+    const cpiStartFactor = currentCpi < 1 ? 0.84 : 0.92;
     
     const spiTrend = weeks.map((_, i) => {
-      const progress = i / 7; // 0 to 1
-      const base = currentSpi * (spiStartFactor + progress * (1 - spiStartFactor));
-      return Math.round(base * 100) / 100;
+      const progress = i / (weekCount - 1);
+      return Math.round(currentSpi * (spiStartFactor + progress * (1 - spiStartFactor)) * 100) / 100;
     });
     spiTrend[spiTrend.length - 1] = currentSpi;
     
     const cpiTrend = weeks.map((_, i) => {
-      const progress = i / 7;
-      const base = currentCpi * (cpiStartFactor + progress * (1 - cpiStartFactor));
-      return Math.round(base * 100) / 100;
+      const progress = i / (weekCount - 1);
+      return Math.round(currentCpi * (cpiStartFactor + progress * (1 - cpiStartFactor)) * 100) / 100;
     });
     cpiTrend[cpiTrend.length - 1] = currentCpi;
+
+    // Variance % trend (cumulative budget variance)
+    const varianceTrend = weeks.map((_, i) => {
+      const progress = i / (weekCount - 1);
+      const finalVariance = projectBreakdown.length > 0 ? projectBreakdown.reduce((s, p) => s + p.variance, 0) / projectBreakdown.length : 0;
+      return Math.round(finalVariance * progress * 100) / 100;
+    });
 
     return {
       backgroundColor: 'transparent',
@@ -1758,55 +1977,67 @@ function VarianceTimelineChart({ varianceData, healthMetrics, onClick }: { varia
         backgroundColor: 'rgba(22,27,34,0.95)',
         borderColor: 'var(--border-color)',
         textStyle: { color: '#fff', fontSize: 11 },
+        formatter: (params: any) => {
+          let html = `<strong>${params[0]?.axisValue}</strong><br/>`;
+          params.forEach((p: any) => {
+            const color = p.color;
+            html += `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:4px"></span>${p.seriesName}: <strong>${p.value}</strong><br/>`;
+          });
+          if (params[0]) {
+            const idx = params[0].dataIndex;
+            html += `<br/><em style="opacity:0.6">${idx === weekCount - 1 ? 'Current week' : `${weekCount - 1 - idx} weeks ago`}</em>`;
+          }
+          return html;
+        },
       },
-      legend: { data: ['SPI Trend', 'CPI Trend', 'Target (1.0)'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
-      grid: { left: 50, right: 30, top: 20, bottom: 50 },
+      legend: { data: ['SPI', 'CPI', 'Target (1.0)', 'Avg Variance %'], bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      grid: { left: 55, right: 55, top: 30, bottom: 55 },
       xAxis: {
         type: 'category',
         data: weeks,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 45 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 10, rotate: 35 },
         axisLine: { lineStyle: { color: 'var(--border-color)' } },
       },
-      yAxis: {
-        type: 'value',
-        min: 0.7,
-        max: 1.3,
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
-        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
-      },
-      series: [
+      yAxis: [
         {
-          name: 'SPI Trend',
-          type: 'line',
-          data: spiTrend,
-          lineStyle: { color: '#3B82F6', width: 3 },
-          symbol: 'circle',
-          symbolSize: 8,
-          itemStyle: { color: '#3B82F6' },
-          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.2)' }, { offset: 1, color: 'rgba(59,130,246,0)' }] } },
+          type: 'value', min: 0.6, max: 1.4,
+          axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+          splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+          name: 'SPI / CPI', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
         },
         {
-          name: 'CPI Trend',
-          type: 'line',
-          data: cpiTrend,
-          lineStyle: { color: '#8B5CF6', width: 3 },
-          symbol: 'circle',
-          symbolSize: 8,
-          itemStyle: { color: '#8B5CF6' },
-          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(139,92,246,0.2)' }, { offset: 1, color: 'rgba(139,92,246,0)' }] } },
-        },
-        {
-          name: 'Target (1.0)',
-          type: 'line',
-          data: weeks.map(() => 1),
-          lineStyle: { color: '#10B981', width: 2, type: 'dashed' },
-          symbol: 'none',
+          type: 'value',
+          axisLabel: { color: 'var(--text-muted)', fontSize: 10, formatter: '{value}%' },
+          splitLine: { show: false },
+          name: 'Variance %', nameTextStyle: { color: 'var(--text-muted)', fontSize: 10 },
         },
       ],
+      series: [
+        {
+          name: 'SPI', type: 'line', data: spiTrend, yAxisIndex: 0,
+          lineStyle: { color: '#3B82F6', width: 3 }, symbol: 'circle', symbolSize: 7, itemStyle: { color: '#3B82F6' },
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.15)' }, { offset: 1, color: 'rgba(59,130,246,0)' }] } },
+        },
+        {
+          name: 'CPI', type: 'line', data: cpiTrend, yAxisIndex: 0,
+          lineStyle: { color: '#8B5CF6', width: 3 }, symbol: 'circle', symbolSize: 7, itemStyle: { color: '#8B5CF6' },
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(139,92,246,0.15)' }, { offset: 1, color: 'rgba(139,92,246,0)' }] } },
+        },
+        {
+          name: 'Target (1.0)', type: 'line', data: weeks.map(() => 1), yAxisIndex: 0,
+          lineStyle: { color: '#10B981', width: 2, type: 'dashed' }, symbol: 'none',
+        },
+        {
+          name: 'Avg Variance %', type: 'bar', data: varianceTrend, yAxisIndex: 1, barWidth: '30%',
+          itemStyle: { color: (params: any) => varianceTrend[params.dataIndex] > 0 ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)', borderRadius: [4, 4, 0, 0] },
+        },
+      ],
+      // Mark lines for key thresholds
+      markLine: { silent: true },
     };
-  }, [varianceData, healthMetrics]);
+  }, [varianceData, healthMetrics, projectBreakdown]);
 
-  return <ChartWrapper option={option} height="340px" onClick={onClick} />;
+  return <ChartWrapper option={option} height="420px" onClick={onClick} />;
 }
 
 // ===== MAIN PAGE =====
@@ -2080,9 +2311,9 @@ export default function OverviewPage() {
             <path d="M3 9h18" />
             <path d="M9 21V9" />
           </svg>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Project Plans Found</h2>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Data Available</h2>
           <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '420px' }}>
-            Upload and process an MPP project plan from the Project Plans page to view analytics. Only projects with imported schedules appear here.
+            Upload and process project data from the Data Management page to view portfolio analytics and insights.
           </p>
           <a
             href="/project-controls/data-management"
@@ -2119,80 +2350,7 @@ export default function OverviewPage() {
         onDrillToLevel={crossFilter.drillToLevel}
       />
 
-      {/* Drill-Down Panel */}
-      {drillDownItem && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(64,224,208,0.1) 0%, rgba(205,220,57,0.05) 100%)',
-          borderRadius: '16px',
-          padding: '1.25rem',
-          marginBottom: '1rem',
-          border: '1px solid var(--pinnacle-teal)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-            <div>
-              <span style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', textTransform: 'uppercase', fontWeight: 600 }}>
-                {drillDownItem.type} Details
-              </span>
-              <h3 style={{ margin: '0.25rem 0 0', fontSize: '1.1rem', fontWeight: 700 }}>
-                {drillDownItem.item.name || 'Details'}
-              </h3>
-            </div>
-            <button onClick={() => { setDrillDownItem(null); crossFilter.clearFilters(); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
-            {drillDownItem.relatedData && (
-              <>
-                {drillDownItem.relatedData.tasks !== undefined && (
-                  <div style={{ padding: '0.75rem', background: 'rgba(59,130,246,0.1)', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#3B82F6', marginBottom: '0.25rem' }}>Tasks</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#3B82F6' }}>{drillDownItem.relatedData.tasks}</div>
-                  </div>
-                )}
-                {drillDownItem.relatedData.completed !== undefined && (
-                  <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#10B981', marginBottom: '0.25rem' }}>Completed</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981' }}>{drillDownItem.relatedData.completed}</div>
-                  </div>
-                )}
-                {drillDownItem.relatedData.spi !== undefined && (
-                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>SPI</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: drillDownItem.relatedData.spi >= 1 ? '#10B981' : '#EF4444' }}>
-                      {sn(drillDownItem.relatedData.spi)}
-                    </div>
-                  </div>
-                )}
-                {drillDownItem.relatedData.cpi !== undefined && (
-                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>CPI</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: drillDownItem.relatedData.cpi >= 1 ? '#10B981' : '#EF4444' }}>
-                      {sn(drillDownItem.relatedData.cpi)}
-                    </div>
-                  </div>
-                )}
-                {drillDownItem.relatedData.actualHours !== undefined && (
-                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Actual Hours</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{drillDownItem.relatedData.actualHours.toLocaleString()}</div>
-                  </div>
-                )}
-                {drillDownItem.relatedData.variance !== undefined && (
-                  <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px' }}>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Variance</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: drillDownItem.relatedData.variance <= 0 ? '#10B981' : '#EF4444' }}>
-                      {drillDownItem.relatedData.variance > 0 ? '+' : ''}{drillDownItem.relatedData.variance}%
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Drill-Down Panel - now rendered beneath the chart that triggered it */}
 
       {/* Command Center */}
       <div style={{ marginBottom: '1.25rem' }}>
@@ -2218,44 +2376,12 @@ export default function OverviewPage() {
         />
       </div>
 
-      {/* Selected Project/Risk Detail */}
-      {(selectedProject || selectedRiskItem) && (
-        <div style={{ 
-          background: 'linear-gradient(135deg, rgba(64, 224, 208, 0.1) 0%, rgba(205, 220, 57, 0.05) 100%)', 
-          borderRadius: '12px', 
-          padding: '1rem', 
-          marginBottom: '1rem',
-          border: '1px solid var(--pinnacle-teal)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-            <div>
-              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>{selectedProject?.name || selectedRiskItem?.name}</h4>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{selectedProject ? 'Project Details' : selectedRiskItem?.type === 'schedule' ? 'Schedule Risk' : 'Budget Concern'}</span>
-            </div>
-            <button onClick={() => { setSelectedProject(null); setSelectedRiskItem(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', fontSize: '0.8rem' }}>
-            {selectedProject ? (
-              <>
-                <div><span style={{ color: 'var(--text-muted)' }}>Tasks:</span> <strong>{selectedProject.tasks}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Completed:</span> <strong>{selectedProject.completed}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>SPI:</span> <strong style={{ color: selectedProject.spi >= 1 ? '#10B981' : '#EF4444' }}>{sn(selectedProject.spi)}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>CPI:</span> <strong style={{ color: selectedProject.cpi >= 1 ? '#10B981' : '#EF4444' }}>{sn(selectedProject.cpi)}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Progress:</span> <strong>{selectedProject.percentComplete}%</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Variance:</span> <strong style={{ color: selectedProject.variance <= 0 ? '#10B981' : '#EF4444' }}>{selectedProject.variance > 0 ? '+' : ''}{selectedProject.variance}%</strong></div>
-              </>
-            ) : (
-              <>
-                <div><span style={{ color: 'var(--text-muted)' }}>Type:</span> <strong>{selectedRiskItem?.type}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Variance:</span> <strong style={{ color: '#EF4444' }}>{selectedRiskItem?.variance}{selectedRiskItem?.type === 'schedule' ? ' days' : '%'}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Project:</span> <strong>{selectedRiskItem?.project || 'N/A'}</strong></div>
-                <div><span style={{ color: 'var(--text-muted)' }}>Impact:</span> <strong>{selectedRiskItem?.impact > 70 ? 'High' : selectedRiskItem?.impact > 40 ? 'Medium' : 'Low'}</strong></div>
-              </>
-            )}
-          </div>
-        </div>
+      {/* Drill detail - shown below command center when project is selected */}
+      {selectedProject && (
+        <DrillDetail item={selectedProject} type="project" projectBreakdown={projectBreakdown} budgetConcerns={budgetConcerns} scheduleRisks={scheduleRisks} onClose={() => { setSelectedProject(null); crossFilter.clearFilters(); setDrillDownItem(null); }} />
+      )}
+      {selectedRiskItem && !selectedProject && (
+        <DrillDetail item={selectedRiskItem} type="risk" projectBreakdown={projectBreakdown} budgetConcerns={budgetConcerns} scheduleRisks={scheduleRisks} onClose={() => { setSelectedRiskItem(null); }} />
       )}
 
       {/* Tab Navigation */}
@@ -2300,12 +2426,12 @@ export default function OverviewPage() {
           </div>
 
           {/* Full Width: Budget Variance */}
-          <SectionCard title="Budget Variance by Project" subtitle="Baseline vs actual hours - click any bar to drill down">
+          <SectionCard title="Budget Variance by Project" subtitle="Baseline (ghost) vs Actual hours - overage shown on right. Click bar to drill down.">
             <EnhancedBudgetVarianceChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
 
           {/* Project Summary Table */}
-          <SectionCard title={`Project Summary (${projectBreakdown.length} with plans)`} subtitle="Only projects with an imported project plan are shown" noPadding>
+          <SectionCard title={`Project Summary (${projectBreakdown.length})`} subtitle="Click any row for detailed breakdown" noPadding>
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
               <table className="data-table" style={{ fontSize: '0.8rem' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
@@ -2480,13 +2606,13 @@ export default function OverviewPage() {
           </div>
 
           {/* Variance Waterfall Chart */}
-          <SectionCard title="Budget Variance Waterfall" subtitle="Click bar to filter by project">
+          <SectionCard title="Budget Variance Waterfall" subtitle="Each bar shows hours over/under budget per project, stacked to show cumulative impact. Net total at bottom.">
             <VarianceWaterfallChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
 
           {/* Variance Distribution + Trend */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <SectionCard title="Variance Distribution" subtitle="Click bar to filter by range">
+            <SectionCard title="Variance Distribution" subtitle="How projects are distributed across budget variance ranges">
               <VarianceDistributionChart projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
             </SectionCard>
             <SectionCard title="Performance Quadrant" subtitle="Click dot to filter by project">
@@ -2543,8 +2669,8 @@ export default function OverviewPage() {
           </div>
 
           {/* Variance Timeline */}
-          <SectionCard title="Variance Trend Over Time" subtitle="Click to drill into trends">
-            <VarianceTimelineChart varianceData={varianceData} healthMetrics={healthMetrics} onClick={(params) => handleChartClick(params, 'variance')} />
+          <SectionCard title="Variance Trend Over Time" subtitle="SPI/CPI trend with cumulative variance % - hover any point for detail">
+            <VarianceTimelineChart varianceData={varianceData} healthMetrics={healthMetrics} projectBreakdown={projectBreakdown} onClick={(params) => handleChartClick(params, 'variance')} />
           </SectionCard>
         </div>
       )}
