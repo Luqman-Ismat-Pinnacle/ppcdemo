@@ -22,9 +22,6 @@ export default function ResourceLevelingPage() {
 
   return (
     <div className="page-panel">
-      <div className="page-header">
-        <h1 className="page-title">Resource Leveling</h1>
-      </div>
       <div className="dashboard-grid">
         <div className="chart-card grid-full">
           <div className="chart-card-header">

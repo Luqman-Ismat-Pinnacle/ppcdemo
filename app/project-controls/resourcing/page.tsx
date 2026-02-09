@@ -4,9 +4,10 @@
  * @fileoverview Resourcing Page — Comprehensive Resource Management.
  *
  * Redesigned with the org-chart Tree as the primary component.
- * - Portfolio / Project tree views with expand/collapse on click
+ * - Single root (COO) with all portfolios, always fully expanded
+ * - Utilization-coloured nodes matching the legend
  * - Interactive hover cards on employee nodes (click-through to details)
- * - Employee detail card: suggested priority tasks + cross-team demand
+ * - Employee detail card: role-matched suggested tasks + cross-team demand
  * - Analytics tab: scorecards, utilization charts, leveling, employee table
  *
  * @module app/project-controls/resourcing/page
@@ -53,7 +54,7 @@ const fmt = (n: number, d = 0) =>
 
 function ResourcingPageLoading() {
   return (
-    <div className="page-panel full-height-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 100px)' }}>
+    <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 60px)' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ width: '48px', height: '48px', border: '3px solid var(--border-color)', borderTopColor: 'var(--pinnacle-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
         <p style={{ color: 'var(--text-secondary)' }}>Loading Resourcing...</p>
@@ -73,7 +74,6 @@ function ResourcingPageContent() {
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics'>('organization');
-  const [viewMode, setViewMode] = useState<'portfolio' | 'project'>('portfolio');
   const [selectedPortfolio, setSelectedPortfolio] = useState<string>('all');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
@@ -111,10 +111,10 @@ function ResourcingPageContent() {
         (t.employeeId || t.employee_id) === eid ||
         (t.assignedTo || '').toLowerCase().includes(ename)
       );
-      const allocatedHours = empTasks.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0);
-      const actualHours = empTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0);
+      const allocatedHours = empTasks.reduce((s: number, t: any) => s + (Number(t.baselineHours) || 0), 0);
+      const actualHours = empTasks.reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
       const taskCount = empTasks.length;
-      const completedTasks = empTasks.filter((t: any) => (t.percentComplete || 0) >= 100).length;
+      const completedTasks = empTasks.filter((t: any) => (Number(t.percentComplete) || 0) >= 100).length;
       const efficiency = allocatedHours > 0 ? Math.round((actualHours / allocatedHours) * 100) : 100;
 
       // QC pass rate
@@ -122,7 +122,7 @@ function ResourcingPageContent() {
         (qc.employeeId || qc.employee_id || qc.qcResourceId) === eid ||
         (qc.qcResourceId || '').toLowerCase().includes(ename)
       );
-      const qcPassRate = empQc.length > 0 ? Math.round(empQc.filter((q: any) => (q.qcStatus || '').toLowerCase() === 'pass' || (q.qcScore || 0) >= 80).length / empQc.length * 100) : null;
+      const qcPassRate = empQc.length > 0 ? Math.round(empQc.filter((q: any) => (q.qcStatus || '').toLowerCase() === 'pass' || (Number(q.qcScore) || 0) >= 80).length / empQc.length * 100) : null;
 
       const workHours = allocatedHours > 0 ? allocatedHours : actualHours;
       const utilization = Math.round((workHours / HOURS_PER_YEAR) * 100);
@@ -164,7 +164,7 @@ function ResourcingPageContent() {
         id: pid, name: proj.name || proj.projectName || pid,
         portfolioId: portId, portfolioName: port?.name || portId || 'Unassigned',
         taskCount: ptasks.length, employees: emps, employeeCount: emps.length,
-        totalHours: ptasks.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0),
+        totalHours: ptasks.reduce((s: number, t: any) => s + (Number(t.baselineHours) || 0), 0),
       };
     }),
     [data.projects, data.tasks, employeeMetrics, data.portfolios],
@@ -172,7 +172,7 @@ function ResourcingPageContent() {
 
   // ── Unassigned tasks sorted by criticality ────────────────────
   const getTaskCriticality = useCallback((task: any) => {
-    const isCrit = task.isCritical || task.critical || (task.totalFloat || task.float || 999) <= 0;
+    const isCrit = task.isCritical || task.critical || (Number(task.totalFloat ?? task.float ?? 999)) <= 0;
     const isLinch = task.isLinchpin || task.linchpin || (task.successors?.length || 0) > 3;
     const isHigh = (task.priority || '').toLowerCase() === 'high';
     if (isCrit) return { label: 'Critical', color: '#EF4444', score: 4 };
@@ -204,27 +204,32 @@ function ResourcingPageContent() {
     criticalTasks: unassignedTasks.filter((t: any) => getTaskCriticality(t).label === 'Critical').length,
   }), [employeeMetrics, data.projects, data.portfolios, unassignedTasks, getTaskCriticality]);
 
-  // ── Suggested tasks for an employee ───────────────────────────
+  // ── Suggested tasks for an employee (role-matched only) ───────
   const getSuggestedTasks = useCallback((emp: any) => {
-    // Find unassigned tasks that match employee's role or are on their projects
     const empRole = (emp.role || '').toLowerCase();
     const empProjects = new Set(emp.projectIds || []);
 
     return unassignedTasks
+      .filter((t: any) => {
+        // Only suggest tasks that match this employee's role
+        const taskResource = (t.resource || t.assignedResource || '').toLowerCase();
+        // Include if: no specific role required, OR role matches
+        return !taskResource || !empRole || taskResource.includes(empRole) || empRole.includes(taskResource);
+      })
       .map((t: any) => {
         const crit = getTaskCriticality(t);
-        let matchScore = crit.score * 10; // base: criticality
+        let matchScore = crit.score * 10;
         const tProjectId = t.projectId || t.project_id;
 
-        // Boost if task is on employee's existing project (context familiarity)
+        // Boost if task is on employee's existing project
         if (empProjects.has(tProjectId)) matchScore += 20;
 
-        // Boost if task resource role matches employee role
+        // Boost if task resource role explicitly matches
         const taskResource = (t.resource || t.assignedResource || '').toLowerCase();
         if (taskResource && empRole && (taskResource.includes(empRole) || empRole.includes(taskResource))) matchScore += 15;
 
         // Boost if employee has availability
-        const taskHrs = t.baselineHours || 0;
+        const taskHrs = Number(t.baselineHours) || 0;
         if (taskHrs <= emp.availableHours) matchScore += 10;
 
         return { ...t, matchScore, criticality: crit, projectName: getProjectName(tProjectId) };
@@ -238,28 +243,26 @@ function ResourcingPageContent() {
     const empRole = (emp.role || '').toLowerCase();
     const empProjects = new Set(emp.projectIds || []);
 
-    // Find projects where this employee is NOT assigned but their role is needed
     return projectsWithEmployees
       .filter(p => !empProjects.has(p.id))
       .map(proj => {
         const projTasks = data.tasks.filter((t: any) => (t.projectId || t.project_id) === proj.id);
         const unassignedOnProj = projTasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
 
-        // Count tasks matching this employee's role
         const roleMatch = unassignedOnProj.filter((t: any) => {
           const res = (t.resource || t.assignedResource || '').toLowerCase();
           return res && empRole && (res.includes(empRole) || empRole.includes(res));
         }).length;
 
-        // Count critical unassigned tasks
         const criticalCount = unassignedOnProj.filter((t: any) => getTaskCriticality(t).label === 'Critical').length;
-
         const totalUnassigned = unassignedOnProj.length;
         const demand = roleMatch * 3 + criticalCount * 5 + totalUnassigned;
 
+        // FIX: ensure numeric addition (database values may be strings)
+        const unassignedHours = unassignedOnProj.reduce((s: number, t: any) => s + (Number(t.baselineHours) || 0), 0);
+
         return {
-          ...proj, roleMatch, criticalCount, totalUnassigned, demand,
-          unassignedHours: unassignedOnProj.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0),
+          ...proj, roleMatch, criticalCount, totalUnassigned, demand, unassignedHours,
         };
       })
       .filter(p => p.demand > 0)
@@ -277,11 +280,18 @@ function ResourcingPageContent() {
   const makeEmpNode = useCallback((emp: any) => ({
     name: emp.name, id: emp.id, emp, utilization: emp.utilization,
     itemStyle: { color: getUtilColor(emp.utilization), borderColor: getUtilColor(emp.utilization) },
-    label: { backgroundColor: `${getUtilColor(emp.utilization)}20` },
+    label: { backgroundColor: `${getUtilColor(emp.utilization)}15` },
   }), []);
 
+  /** Compute average utilization for a group of employee IDs */
+  const getGroupUtilization = useCallback((empIds: Set<string>) => {
+    const emps = employeeMetrics.filter(e => empIds.has(e.id));
+    if (emps.length === 0) return 0;
+    return Math.round(emps.reduce((s, e) => s + e.utilization, 0) / emps.length);
+  }, [employeeMetrics]);
+
   const buildPortfolioTree = useMemo((): any[] => {
-    if (viewMode !== 'portfolio' || !employeeMetrics.length) return [];
+    if (!employeeMetrics.length) return [];
     const byName = new Map(employeeMetrics.map(e => [e.name.toLowerCase(), e]));
     const byMgr = new Map<string, any[]>();
     employeeMetrics.forEach(e => {
@@ -300,59 +310,82 @@ function ResourcingPageContent() {
       return n;
     };
 
-    if (data.portfolios.length > 0) {
-      const nodes: any[] = [];
-      const used = new Set<string>();
-      let portfolios = data.portfolios;
-      if (selectedPortfolio !== 'all') portfolios = portfolios.filter((p: any) => (p.id || p.portfolioId) === selectedPortfolio || p.name === selectedPortfolio);
+    // Build portfolio nodes with utilization colors
+    const portfolioNodes: any[] = [];
+    const used = new Set<string>();
+    let portfolios = data.portfolios;
+    if (selectedPortfolio !== 'all') portfolios = portfolios.filter((p: any) => (p.id || p.portfolioId) === selectedPortfolio || p.name === selectedPortfolio);
 
-      portfolios.forEach((port: any) => {
-        const pid = port.id || port.portfolioId;
-        const pname = port.name || pid;
-        const pmgr = (port.manager || '').trim().toLowerCase();
-        const pProjs = projectsWithEmployees.filter(p => p.portfolioId === pid);
-        const pEmpIds = new Set<string>();
-        pProjs.forEach(pr => pr.employees.forEach((e: any) => pEmpIds.add(e.id)));
-        const pRoots = roots.filter(e => {
-          const en = e.name.toLowerCase();
-          if (pmgr && (en === pmgr || en.includes(pmgr) || pmgr.includes(en))) return true;
-          return pEmpIds.has(e.id);
-        });
-        pRoots.forEach(r => used.add(r.id));
-        const children = pRoots.length > 0
-          ? pRoots.map(r => branch(r, 0))
-          : pProjs.map(pr => ({ name: pr.name, id: pr.id, isProject: true, employeeCount: pr.employeeCount, totalHours: pr.totalHours, children: pr.employees.map((e: any) => makeEmpNode(e)) }));
-        if (children.length) nodes.push({ name: pname, id: pid, isPortfolio: true, projectCount: pProjs.length, children });
+    portfolios.forEach((port: any) => {
+      const pid = port.id || port.portfolioId;
+      const pname = port.name || pid;
+      const pmgr = (port.manager || '').trim().toLowerCase();
+      const pProjs = projectsWithEmployees.filter(p => p.portfolioId === pid);
+      const pEmpIds = new Set<string>();
+      pProjs.forEach(pr => pr.employees.forEach((e: any) => pEmpIds.add(e.id)));
+      const pRoots = roots.filter(e => {
+        const en = e.name.toLowerCase();
+        if (pmgr && (en === pmgr || en.includes(pmgr) || pmgr.includes(en))) return true;
+        return pEmpIds.has(e.id);
       });
+      pRoots.forEach(r => used.add(r.id));
+      const children = pRoots.length > 0
+        ? pRoots.map(r => branch(r, 0))
+        : pProjs.map(pr => ({ name: pr.name, id: pr.id, isProject: true, employeeCount: pr.employeeCount, totalHours: pr.totalHours, children: pr.employees.map((e: any) => makeEmpNode(e)) }));
 
-      if (selectedPortfolio === 'all') {
-        const extra = roots.filter(r => !used.has(r.id));
-        if (extra.length) nodes.push({ name: 'Unassigned', id: 'unassigned-portfolio', isPortfolio: true, children: extra.map(r => branch(r, 0)) });
+      // Portfolio node with utilization color
+      const portUtil = getGroupUtilization(pEmpIds);
+      const portColor = getUtilColor(portUtil);
+      if (children.length) portfolioNodes.push({
+        name: pname, id: pid, isPortfolio: true, projectCount: pProjs.length,
+        utilization: portUtil,
+        itemStyle: { color: portColor, borderColor: portColor, borderWidth: 2 },
+        label: { backgroundColor: `${portColor}15` },
+        children,
+      });
+    });
+
+    if (selectedPortfolio === 'all') {
+      const extra = roots.filter(r => !used.has(r.id));
+      if (extra.length) {
+        const extraIds = new Set(extra.map(e => e.id));
+        const extraUtil = getGroupUtilization(extraIds);
+        const extraColor = getUtilColor(extraUtil);
+        portfolioNodes.push({
+          name: 'Unassigned', id: 'unassigned-portfolio', isPortfolio: true,
+          utilization: extraUtil,
+          itemStyle: { color: extraColor, borderColor: extraColor, borderWidth: 2 },
+          label: { backgroundColor: `${extraColor}15` },
+          children: extra.map(r => branch(r, 0)),
+        });
       }
-      return nodes;
     }
-    if (selectedPortfolio !== 'all') return [];
-    return roots.length ? roots.map(r => branch(r, 0)) : employeeMetrics.map(e => makeEmpNode(e));
-  }, [employeeMetrics, viewMode, data.portfolios, selectedPortfolio, projectsWithEmployees, makeEmpNode]);
 
-  const buildProjectTree = useMemo((): any[] => {
-    if (viewMode !== 'project') return [];
-    let projs = projectsWithEmployees;
-    if (selectedPortfolio !== 'all') projs = projs.filter(p => p.portfolioId === selectedPortfolio || p.portfolioName === selectedPortfolio);
-    const byPort = new Map<string, any[]>();
-    projs.forEach(p => { const k = p.portfolioName || 'Unassigned'; if (!byPort.has(k)) byPort.set(k, []); byPort.get(k)!.push(p); });
-    const result = Array.from(byPort.entries()).map(([pn, ps]) => ({
-      name: pn, id: `portfolio-${pn}`, isPortfolio: true,
-      children: ps.map(p => ({
-        name: p.name, id: p.id, isProject: true, employeeCount: p.employeeCount, totalHours: p.totalHours,
-        children: p.employees.length > 0 ? p.employees.map((e: any) => makeEmpNode(e)) : [{ name: 'No employees assigned', id: `empty-${p.id}`, isPlaceholder: true }],
-      })),
-    }));
-    if (!result.length && projs.length) return projs.map(p => ({ name: p.name, id: p.id, isProject: true, employeeCount: p.employeeCount, totalHours: p.totalHours, children: p.employees.length ? p.employees.map((e: any) => makeEmpNode(e)) : [{ name: 'No employees assigned', id: `empty-${p.id}`, isPlaceholder: true }] }));
-    return result;
-  }, [projectsWithEmployees, viewMode, selectedPortfolio, makeEmpNode]);
+    // Create COO root node
+    // Try to find the COO in the employee data
+    const coo = employeeMetrics.find(e =>
+      e.name.toLowerCase().includes('mauricio olivares') ||
+      (e.role || '').toLowerCase().includes('coo') ||
+      (e.managementLevel || '').toLowerCase().includes('chief') ||
+      (e.managementLevel || '').toLowerCase().includes('executive')
+    );
+    const overallUtil = summaryMetrics.avgUtilization;
+    const rootColor = getUtilColor(overallUtil);
+    const rootNode = {
+      name: coo ? coo.name : 'Organization',
+      id: coo ? coo.id : 'root-org',
+      isCOO: true,
+      utilization: overallUtil,
+      role: coo ? (coo.role || 'COO') : 'COO',
+      itemStyle: { color: rootColor, borderColor: rootColor, borderWidth: 3 },
+      label: { backgroundColor: `${rootColor}15` },
+      children: portfolioNodes,
+    };
 
-  const treeData = viewMode === 'portfolio' ? buildPortfolioTree : buildProjectTree;
+    return [rootNode];
+  }, [employeeMetrics, data.portfolios, selectedPortfolio, projectsWithEmployees, makeEmpNode, getGroupUtilization, summaryMetrics.avgUtilization]);
+
+  const treeData = buildPortfolioTree;
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -363,7 +396,7 @@ function ResourcingPageContent() {
     return () => { delete (window as any).__resourcingOpenEmployee; };
   }, [employeeMetrics]);
 
-  // ── ECharts tree option (click = expand/collapse, hover = interactive card) ─
+  // ── ECharts tree option ───────────────────────────────────────
   const treeOption: EChartsOption = useMemo(() => ({
     backgroundColor: 'transparent',
     tooltip: {
@@ -378,7 +411,14 @@ function ResourcingPageContent() {
       extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
       formatter: (params: any) => {
         const d = params.data;
-        if (d.isPortfolio) return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div></div>`;
+        if (d.isCOO) {
+          const uc = getUtilColor(d.utilization || 0);
+          return `<div style="padding:14px 16px;"><div style="font-weight:700;font-size:15px;margin-bottom:2px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">${d.role || 'COO'}</div><div style="display:flex;align-items:center;gap:8px;"><div style="width:36px;height:36px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:11px;color:#9ca3af;">Avg Utilization</span></div></div>`;
+        }
+        if (d.isPortfolio) {
+          const uc = getUtilColor(d.utilization || 0);
+          return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div><div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><div style="width:32px;height:32px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:10px;color:#9ca3af;">Avg Utilization</span></div></div>`;
+        }
         if (d.isProject) return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Project · ${d.employeeCount || 0} employees</div>${d.totalHours ? '<div style="font-size:11px;margin-top:4px;">' + fmt(d.totalHours) + ' total hours</div>' : ''}</div>`;
         if (d.isPlaceholder) return `<div style="padding:8px 12px;font-size:11px;color:#6B7280;">${d.name}</div>`;
         if (d.emp) {
@@ -407,32 +447,35 @@ function ResourcingPageContent() {
     series: [{
       type: 'tree',
       data: treeData,
-      top: '5%', left: '10%', bottom: '5%', right: '10%',
-      symbolSize: 14,
+      top: '2%', left: '3%', bottom: '2%', right: '15%',
+      symbolSize: 18,
       orient: 'TB',
       layout: 'orthogonal',
-      initialTreeDepth: 4,
+      initialTreeDepth: -1,  // fully expand ALL nodes
       expandAndCollapse: true,
       animationDurationUpdate: 500,
       roam: true,
       label: {
         position: 'bottom', verticalAlign: 'middle', align: 'center',
-        fontSize: 10, color: 'var(--text-primary)', borderRadius: 4, padding: [4, 6],
+        fontSize: 10, color: 'var(--text-primary)', borderRadius: 4, padding: [4, 8],
         formatter: (params: any) => {
           const d = params.data;
+          if (d.isCOO) return `{bold|${d.name}}\n{role|${d.role || 'COO'}}`;
           if (d.isPortfolio) return `{bold|${d.name}}`;
-          if (d.isProject) return `{project|${d.name.substring(0, 18)}${d.name.length > 18 ? '...' : ''}}`;
+          if (d.isProject) return `{project|${d.name.substring(0, 20)}${d.name.length > 20 ? '...' : ''}}`;
           if (d.isPlaceholder) return `{muted|${d.name}}`;
           if (d.emp) {
             const sn = d.name.split(' ').map((n: string, i: number) => i === 0 ? n : n[0] + '.').join(' ');
-            return `${sn}\n${d.utilization || 0}%`;
+            return `${sn}\n{util|${d.utilization || 0}%}`;
           }
           return d.name;
         },
         rich: {
-          bold: { fontWeight: 'bold' as any, fontSize: 12 },
+          bold: { fontWeight: 'bold' as any, fontSize: 12, lineHeight: 16 },
+          role: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
           project: { fontSize: 10, color: '#60A5FA' },
           muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
+          util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
         },
       },
       leaves: { label: { position: 'bottom', verticalAlign: 'middle', align: 'center' } },
@@ -481,7 +524,6 @@ function ResourcingPageContent() {
   if (!hasData) {
     return (
       <div className="page-panel" style={{ padding: '2rem' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem' }}>Resourcing</h1>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
           <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
           <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600 }}>No Data Available</h2>
@@ -494,7 +536,7 @@ function ResourcingPageContent() {
 
   // ── Render ────────────────────────────────────────────────────
   return (
-    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', overflow: 'hidden' }}>
+    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden', padding: '0.5rem 1rem 0.25rem', gap: '0.35rem' }}>
       {/* Success Toast */}
       {assignmentMessage && (
         <div style={{ position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)', padding: '1rem 2rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.9), rgba(16,185,129,0.8))', borderRadius: '12px', color: '#fff', fontWeight: 600, zIndex: 2000, boxShadow: '0 10px 40px rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -502,28 +544,6 @@ function ResourcingPageContent() {
           {assignmentMessage}
         </div>
       )}
-
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 0', flexShrink: 0 }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Resource Management</h1>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
-            {activeTab === 'organization' ? 'Click nodes to expand · Hover employees for details' : 'Utilization analytics and resource leveling'}
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
-            {(['organization', 'analytics'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{
-                padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                background: activeTab === tab ? 'var(--pinnacle-teal)' : 'transparent',
-                color: activeTab === tab ? '#000' : 'var(--text-primary)',
-                fontWeight: 600, fontSize: '0.8rem', textTransform: 'capitalize',
-              }}>{tab}</button>
-            ))}
-          </div>
-        </div>
-      </div>
 
       {/* ── Employee Detail Modal ──────────────────────────────── */}
       {showEmployeeModal && selectedEmployee && (() => {
@@ -576,7 +596,7 @@ function ResourcingPageContent() {
                 </div>
               )}
 
-              {/* ── Suggested Priority Tasks ──────────────────────── */}
+              {/* ── Suggested Priority Tasks (role-matched) ─────────── */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Suggested Tasks to Assign
@@ -587,17 +607,17 @@ function ResourcingPageContent() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name || t.taskName}</div>
                         <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          <span>{t.baselineHours || 0} hrs</span>
-                          <span>{t.projectName}</span>
+                          <span>{fmt(Number(t.baselineHours) || 0)} hrs</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{t.projectName}</span>
                           <span style={{ color: t.criticality.color, fontWeight: 600 }}>{t.criticality.label}</span>
                         </div>
                       </div>
-                      <button onClick={() => handleAssignTask(t, selectedEmployee)} style={{ padding: '0.35rem 0.75rem', background: 'rgba(64,224,208,0.15)', border: '1px solid rgba(64,224,208,0.3)', borderRadius: '6px', color: 'var(--pinnacle-teal)', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => handleAssignTask(t, selectedEmployee)} style={{ padding: '0.35rem 0.75rem', background: 'rgba(64,224,208,0.15)', border: '1px solid rgba(64,224,208,0.3)', borderRadius: '6px', color: 'var(--pinnacle-teal)', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         Assign
                       </button>
                     </div>
                   )) : (
-                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No unassigned tasks to suggest</div>
+                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No matching unassigned tasks for this role</div>
                   )}
                 </div>
               </div>
@@ -611,15 +631,15 @@ function ResourcingPageContent() {
                   {teamsNeeding.length > 0 ? teamsNeeding.map((team: any, i: number) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', borderRadius: '8px', marginBottom: '0.35rem', border: '1px solid var(--border-color)' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: '0.8rem' }}>{team.name}</div>
-                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          <span>{team.totalUnassigned} unassigned task{team.totalUnassigned !== 1 ? 's' : ''}</span>
+                        <div style={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{team.name}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          <span>{team.totalUnassigned} unassigned</span>
                           {team.roleMatch > 0 && <span style={{ color: '#8B5CF6' }}>{team.roleMatch} match role</span>}
                           {team.criticalCount > 0 && <span style={{ color: '#EF4444' }}>{team.criticalCount} critical</span>}
                           <span>{fmt(team.unassignedHours)} hrs</span>
                         </div>
                       </div>
-                      <button onClick={() => { setAssignmentMessage(`Suggested move: ${selectedEmployee.name} → ${team.name}`); setTimeout(() => setAssignmentMessage(null), 3000); }} style={{ padding: '0.35rem 0.75rem', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#8B5CF6', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => { setAssignmentMessage(`Suggested move: ${selectedEmployee.name} → ${team.name}`); setTimeout(() => setAssignmentMessage(null), 3000); }} style={{ padding: '0.35rem 0.75rem', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#8B5CF6', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         Suggest Move
                       </button>
                     </div>
@@ -635,54 +655,55 @@ function ResourcingPageContent() {
         );
       })()}
 
+      {/* ═══ TAB HEADER + CONTROLS ════════════════════════════════ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
+            {(['organization', 'analytics'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                padding: '0.45rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                background: activeTab === tab ? 'var(--pinnacle-teal)' : 'transparent',
+                color: activeTab === tab ? '#000' : 'var(--text-primary)',
+                fontWeight: 600, fontSize: '0.8rem', textTransform: 'capitalize',
+              }}>{tab}</button>
+            ))}
+          </div>
+          {activeTab === 'organization' && (
+            <select value={selectedPortfolio} onChange={e => setSelectedPortfolio(e.target.value)} style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}>
+              <option value="all">All Portfolios</option>
+              {data.portfolios.map((p: any) => <option key={p.portfolioId || p.id} value={p.portfolioId || p.id}>{p.name}</option>)}
+            </select>
+          )}
+        </div>
+        {activeTab === 'organization' && (
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', alignItems: 'center' }}>
+            {Object.entries(UTIL_COLORS).map(([label, color]) => (
+              <span key={label}><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: color, marginRight: '4px' }} />{label.charAt(0).toUpperCase() + label.slice(1)}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ═══ ORGANIZATION TAB ══════════════════════════════════════ */}
       {activeTab === 'organization' ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: '0.5rem' }}>
-          {/* Controls Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
-                {(['portfolio', 'project'] as const).map(mode => (
-                  <button key={mode} onClick={() => setViewMode(mode)} style={{
-                    padding: '0.4rem 0.75rem', borderRadius: '5px', border: 'none', cursor: 'pointer',
-                    background: viewMode === mode ? 'var(--bg-card)' : 'transparent',
-                    color: viewMode === mode ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-                    fontWeight: 500, fontSize: '0.75rem', textTransform: 'capitalize',
-                  }}>By {mode}</button>
-                ))}
+        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: 0 }}>
+          {treeData.length > 0 ? (
+            <ChartWrapper option={treeOption} height="100%" />
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+              <div style={{ textAlign: 'center', maxWidth: '400px' }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No organization data to display</p>
+                <p style={{ fontSize: '0.85rem' }}>No employees or portfolios found. Import data from Data Management.</p>
+                {selectedPortfolio !== 'all' && <button onClick={() => setSelectedPortfolio('all')} style={{ marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '6px', background: 'var(--pinnacle-teal)', color: '#000', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>Show All Portfolios</button>}
               </div>
-              <select value={selectedPortfolio} onChange={e => setSelectedPortfolio(e.target.value)} style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}>
-                <option value="all">All Portfolios</option>
-                {data.portfolios.map((p: any) => <option key={p.portfolioId || p.id} value={p.portfolioId || p.id}>{p.name}</option>)}
-              </select>
             </div>
-            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', alignItems: 'center' }}>
-              {Object.entries(UTIL_COLORS).map(([label, color]) => (
-                <span key={label}><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: color, marginRight: '4px' }} />{label.charAt(0).toUpperCase() + label.slice(1)}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Tree (main component — takes all remaining space) ── */}
-          <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: 0 }}>
-            {treeData.length > 0 ? (
-              <ChartWrapper option={treeOption} height="100%" />
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
-                <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                  <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No organization data to display</p>
-                  <p style={{ fontSize: '0.85rem' }}>{viewMode === 'portfolio' ? 'No employees or portfolios found.' : 'No projects found.'} Import data from Data Management.</p>
-                  {selectedPortfolio !== 'all' && <button onClick={() => setSelectedPortfolio('all')} style={{ marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '6px', background: 'var(--pinnacle-teal)', color: '#000', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>Show All Portfolios</button>}
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       ) : (
         /* ═══ ANALYTICS TAB ═══════════════════════════════════════ */
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Scorecards (moved from organization tab) */}
+          {/* Scorecards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', flexShrink: 0 }}>
             {[
               { label: 'Portfolios', value: summaryMetrics.totalPortfolios },

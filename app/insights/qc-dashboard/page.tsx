@@ -77,15 +77,6 @@ export default function QCDashboardPage() {
 
   return (
     <div className="page-panel insights-page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">QC Dashboard</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Quality control volume, pass rates, and feedback cycles
-          </p>
-        </div>
-      </div>
-
       {/* Filter Bar */}
       <div style={{ marginBottom: '1.5rem' }}>
         <InsightsFilterBar

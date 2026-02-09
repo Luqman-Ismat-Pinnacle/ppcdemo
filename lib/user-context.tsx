@@ -39,13 +39,23 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-function mapAuth0User(auth0User: { name?: string | null; email?: string | null } | null | undefined): UserInfo | null {
+function mapAuth0User(auth0User: Record<string, any> | null | undefined): UserInfo | null {
   if (!auth0User) return null;
   const name = auth0User.name ?? auth0User.email ?? 'User';
+  // Try extracting role from Auth0 custom claims, app_metadata, or user_metadata
+  const role =
+    auth0User['https://ppc.pinnacle.com/role'] ||
+    auth0User['https://ppc.pinnacle.com/roles']?.[0] ||
+    auth0User.app_metadata?.role ||
+    auth0User.user_metadata?.role ||
+    auth0User.role ||
+    (auth0User['https://ppc.pinnacle.com/job_title']) ||
+    auth0User.jobTitle ||
+    'User';
   return {
     name,
     email: auth0User.email ?? '',
-    role: 'User',
+    role,
     initials: getInitials(name),
   };
 }

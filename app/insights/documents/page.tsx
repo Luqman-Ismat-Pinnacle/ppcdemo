@@ -92,15 +92,6 @@ export default function DocumentsPage() {
 
   return (
     <div className="page-panel insights-page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Documents</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Project health, deliverables, and documentation status
-          </p>
-        </div>
-      </div>
-
       {/* Project Health Summary */}
       <div style={{ 
         display: 'grid', 

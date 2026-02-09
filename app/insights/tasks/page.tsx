@@ -1525,10 +1525,6 @@ export default function TasksPage() {
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
-        <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Task Operations</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          Task-level hours and performance for projects with imported plans - click any visual to drill down
-        </p>
       </div>
 
       {/* Empty State */}

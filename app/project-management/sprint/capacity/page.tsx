@@ -169,15 +169,6 @@ export default function CapacityPage() {
 
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 className="page-title">Capacity Planning</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            {sprint.name}: {sprint.startDate} to {sprint.endDate} ({sprint.workDays} work days)
-          </p>
-        </div>
-      </div>
-
       {/* Capacity Overview */}
       <div style={{ 
         display: 'grid', 

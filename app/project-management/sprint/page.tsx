@@ -646,7 +646,6 @@ export default function SprintPlanningPage() {
       <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Sprint Planning</h1>
             <IterationSelector iterations={iterations} selectedId={selectedIteration?.id || null} onSelect={setSelectedIterationId} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

@@ -420,13 +420,6 @@ export default function QCLogPage() {
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflow: 'auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Quality Control</h1>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
-            Track inspections, manage non-conformance, and corrective actions
-          </p>
-        </div>
-
         {/* View Tabs */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '10px' }}>
           {[

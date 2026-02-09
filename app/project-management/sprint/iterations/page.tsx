@@ -199,15 +199,6 @@ export default function IterationsPage() {
 
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 className="page-title">Iterations</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Configure sprint iterations and date ranges (ADO-style iteration paths)
-          </p>
-        </div>
-      </div>
-
       {/* Stats */}
       <div style={{ 
         display: 'grid', 

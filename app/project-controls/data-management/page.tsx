@@ -3772,19 +3772,6 @@ export default function DataManagementPage() {
     <div className="page-panel" style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0 }}>
-        <div>
-          <h1 className="page-title">Data Management</h1>
-          {uploadStatus.type && (
-            <div style={{
-              marginTop: '0.5rem', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.8rem',
-              backgroundColor: uploadStatus.type === 'success' ? 'rgba(64,224,208,0.1)' : 'rgba(239,68,68,0.1)',
-              color: uploadStatus.type === 'success' ? 'var(--pinnacle-teal)' : 'rgba(239,68,68,0.9)',
-              border: `1px solid ${uploadStatus.type === 'success' ? 'var(--pinnacle-teal)' : 'rgba(239,68,68,0.3)'}`,
-            }}>
-              {uploadStatus.message}
-            </div>
-          )}
-        </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           {supabaseEnabled && (
             <button

@@ -442,12 +442,6 @@ export default function BacklogPage() {
   return (
     <div className="page-panel full-height-page project-management-page">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Backlog</h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Prioritize and manage work items - Epic → Feature → User Story → Task
-          </p>
-        </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button className="btn btn-primary">+ New Work Item</button>
         </div>

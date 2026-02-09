@@ -750,12 +750,6 @@ export default function WBSGanttPage() {
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden', padding: '0.5rem 1rem 0.25rem', gap: '0.35rem' }}>
       {/* ── Page Header ─────────────────────────────────────────── */}
       <div className="page-header" style={{ flexShrink: 0 }}>
-        <div>
-          <h1 className="page-title">Advanced WBS & Gantt</h1>
-          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>
-            Inazuma Progress Line · Baseline Ghosting · Smart Hierarchy · Dependency Curves · FTE Sparklines
-          </p>
-        </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Search */}
           <div style={{ position: 'relative', minWidth: '180px' }}>

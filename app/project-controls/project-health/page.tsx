@@ -212,8 +212,6 @@ export default function ProjectHealthPage() {
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h1 className="page-title">Project Health</h1>
-
           {/* Current Project Name */}
           {currentHealth && (
             <span style={{

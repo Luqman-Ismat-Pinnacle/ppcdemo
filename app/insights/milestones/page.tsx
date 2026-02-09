@@ -125,15 +125,6 @@ export default function MilestonesPage() {
 
   return (
     <div className="page-panel insights-page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Portfolio Milestone Tracker</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Status, progress, and variance at a glance
-          </p>
-        </div>
-      </div>
-
       {/* Filter Bar */}
       <div style={{ marginBottom: '1.5rem' }}>
         <InsightsFilterBar

@@ -920,10 +920,6 @@ export default function DocumentsPage() {
 
   return (
     <div className="page-panel">
-      <div className="page-header">
-        <h1 className="page-title">Project Plans</h1>
-      </div>
-
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
 
         {/* Project plan status: how many have a plan, which do / don't */}

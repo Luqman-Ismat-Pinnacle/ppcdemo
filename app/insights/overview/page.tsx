@@ -2287,10 +2287,6 @@ export default function OverviewPage() {
       {/* Header */}
       <div style={{ marginBottom: '1rem' }}>
         <div style={{ fontSize: '0.65rem', color: 'var(--pinnacle-teal)', fontWeight: 600 }}>{contextLabel}</div>
-        <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0.25rem 0' }}>Executive Briefing</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          Portfolio health at a glance - click any visual to drill down
-        </p>
       </div>
 
       {/* Empty State */}

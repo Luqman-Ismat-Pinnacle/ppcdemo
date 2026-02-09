@@ -410,13 +410,6 @@ export default function HoursPage() {
   return (
     <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div>
-          <h1 className="page-title">Hours & Labor Analysis</h1>
-          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            Labor distribution, efficiency, and variance
-          </p>
-        </div>
-        
         {/* Filter Bar - Power BI style */}
         <div style={{ marginBottom: '1.5rem' }}>
           <InsightsFilterBar

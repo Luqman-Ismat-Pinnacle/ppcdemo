@@ -358,12 +358,6 @@ export default function BoardsPage() {
   return (
     <div className="page-panel full-height-page project-management-page">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Boards</h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Azure DevOps-style Kanban board with real-time sync
-          </p>
-        </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button className="btn btn-primary">+ New Work Item</button>
         </div>

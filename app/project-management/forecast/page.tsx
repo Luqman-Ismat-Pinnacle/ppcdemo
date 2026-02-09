@@ -1363,16 +1363,6 @@ export default function ForecastPage() {
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Forecasting & Scenario Analysis</h1>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
-            PO vs Costs | FTE Constraints | Cascade Impact | Monte Carlo Scenarios
-          </p>
-        </div>
-      </div>
-
       {/* Empty State */}
       {!hasData && (
         <div style={{
