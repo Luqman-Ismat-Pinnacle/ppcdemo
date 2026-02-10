@@ -72,6 +72,7 @@ stages:
               [ -n "$(AZURE_STORAGE_CONNECTION_STRING)" ]  && ENV_VARS="$ENV_VARS AZURE_STORAGE_CONNECTION_STRING=$(AZURE_STORAGE_CONNECTION_STRING)"
               [ -n "$(AZURE_FUNCTION_URL)" ]               && ENV_VARS="$ENV_VARS AZURE_FUNCTION_URL=$(AZURE_FUNCTION_URL)"
               [ -n "$(AZURE_FUNCTION_KEY)" ]               && ENV_VARS="$ENV_VARS AZURE_FUNCTION_KEY=$(AZURE_FUNCTION_KEY)"
+              [ -n "$(MPP_PARSER_URL)" ]                   && ENV_VARS="$ENV_VARS MPP_PARSER_URL=$(MPP_PARSER_URL) NEXT_PUBLIC_MPP_PARSER_URL=$(MPP_PARSER_URL)"
 
               echo "Setting environment variables on Container App..."
 

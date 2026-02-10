@@ -167,7 +167,7 @@ Point the Next.js app at the new MPP parser URL:
 | `NEXT_PUBLIC_MPP_PARSER_URL` | Project Plans / Folders page (browser) | Base URL of the MPP parser service (e.g. `https://your-mpp-api.azurewebsites.net`) |
 | `MPP_PARSER_URL` | `/api/documents/process-mpp` (server) | Same base URL for server-side MPP processing |
 
-Default when unset is `https://ppcdemo-production.up.railway.app`. After migrating api-python to Azure, set both to the new Azure host (e.g. `https://your-mpp-api.azurewebsites.net` or your Container Apps FQDN).
+**Required** — there is no default. Set both to the deployed parser host (e.g. `https://your-mpp-api.azurewebsites.net` or your Container Apps FQDN). For local development, use `http://localhost:5001`. In the Azure DevOps pipeline, set the `MPP_PARSER_URL` variable and both env vars will be injected automatically.
 
 ---
 

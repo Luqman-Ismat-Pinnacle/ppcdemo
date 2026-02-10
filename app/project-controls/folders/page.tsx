@@ -591,7 +591,11 @@ export default function DocumentsPage() {
       formData.append('file', fileData, file.fileName);
 
       // Call the Python MPP parser service
-      let MPP_PARSER_URL = process.env.NEXT_PUBLIC_MPP_PARSER_URL || 'https://ppcdemo-production.up.railway.app';
+      let MPP_PARSER_URL = process.env.NEXT_PUBLIC_MPP_PARSER_URL || '';
+
+      if (!MPP_PARSER_URL) {
+        throw new Error('MPP Parser URL is not configured. Set NEXT_PUBLIC_MPP_PARSER_URL in your environment variables (e.g. https://your-mpp-parser.azurewebsites.net).');
+      }
 
       // Ensure protocol is present
       if (MPP_PARSER_URL !== 'http://localhost:5001' && !MPP_PARSER_URL.startsWith('http')) {

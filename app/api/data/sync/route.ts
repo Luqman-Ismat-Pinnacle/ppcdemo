@@ -82,6 +82,67 @@ function cleanRecord(record: any, tableName: string) {
   return formatted;
 }
 
+/**
+ * For hour_entries, validate that FK references (task_id, phase_id) actually exist.
+ * Null out any that don't to prevent FK constraint violations.
+ */
+async function validateHourEntryFKs(records: any[]): Promise<any[]> {
+  if (records.length === 0) return records;
+
+  // Collect unique task_ids and phase_ids from the batch
+  const taskIds = new Set<string>();
+  const phaseIds = new Set<string>();
+  records.forEach(r => {
+    if (r.task_id) taskIds.add(String(r.task_id));
+    if (r.phase_id) phaseIds.add(String(r.phase_id));
+  });
+
+  const validTaskIds = new Set<string>();
+  const validPhaseIds = new Set<string>();
+
+  // Check which task_ids actually exist
+  if (taskIds.size > 0) {
+    try {
+      const arr = Array.from(taskIds);
+      const placeholders = arr.map((_, i) => `$${i + 1}`).join(', ');
+      const result = await pgQuery(`SELECT id FROM tasks WHERE id IN (${placeholders})`, arr);
+      result.rows.forEach((row: any) => validTaskIds.add(String(row.id)));
+    } catch { /* if query fails, null out all task_ids to be safe */ }
+  }
+
+  // Check which phase_ids actually exist
+  if (phaseIds.size > 0) {
+    try {
+      const arr = Array.from(phaseIds);
+      const placeholders = arr.map((_, i) => `$${i + 1}`).join(', ');
+      const result = await pgQuery(`SELECT id FROM phases WHERE id IN (${placeholders})`, arr);
+      result.rows.forEach((row: any) => validPhaseIds.add(String(row.id)));
+    } catch { /* if query fails, null out all phase_ids to be safe */ }
+  }
+
+  // Null out invalid references
+  let nulledTasks = 0;
+  let nulledPhases = 0;
+  const cleaned = records.map(r => {
+    const copy = { ...r };
+    if (copy.task_id && !validTaskIds.has(String(copy.task_id))) {
+      copy.task_id = null;
+      nulledTasks++;
+    }
+    if (copy.phase_id && !validPhaseIds.has(String(copy.phase_id))) {
+      copy.phase_id = null;
+      nulledPhases++;
+    }
+    return copy;
+  });
+
+  if (nulledTasks > 0 || nulledPhases > 0) {
+    console.log(`[Sync] hour_entries FK validation: nulled ${nulledTasks} invalid task_ids, ${nulledPhases} invalid phase_ids out of ${records.length} records`);
+  }
+
+  return cleaned;
+}
+
 // ============================================================================
 // POSTGRESQL OPERATIONS
 // ============================================================================
@@ -292,7 +353,12 @@ export async function POST(req: NextRequest) {
     if (records.length === 0) return NextResponse.json({ success: true, count: 0 });
 
     // Clean records
-    const cleanedRecords = records.map((r: any) => cleanRecord(r, tableName));
+    let cleanedRecords = records.map((r: any) => cleanRecord(r, tableName));
+
+    // For hour_entries, validate FK references before upserting
+    if (tableName === 'hour_entries' && usePostgres) {
+      cleanedRecords = await validateHourEntryFKs(cleanedRecords);
+    }
 
     // ---- Operation: update (single record) ----
     if (operation === 'update') {
