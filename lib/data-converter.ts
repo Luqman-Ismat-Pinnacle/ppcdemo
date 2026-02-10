@@ -465,6 +465,10 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
         unit_id: '',
       });
     } else {
+      // Extract first predecessor for the legacy single-predecessor fields
+      const preds = Array.isArray(r.predecessors) ? r.predecessors : [];
+      const firstPred = preds.length > 0 ? preds[0] : null;
+
       tasks.push({
         ...baseTask,
         taskId: id,
@@ -478,8 +482,17 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
         assignedResourceType: 'specific' as const,
         status: (r.outline_level ?? 0) > 3 && r.is_summary ? 'In Progress' : 'Not Started',
         priority: 'medium' as const,
-        predecessorId: null,
-        predecessorRelationship: null,
+        predecessorId: firstPred?.predecessorTaskId || null,
+        predecessorRelationship: (firstPred?.relationship as 'FS' | 'SS' | 'FF' | 'SF') || null,
+        // Full predecessors array for Gantt dependency arrows
+        predecessors: preds.map((p: any) => ({
+          id: `${id}-${p.predecessorTaskId}`,
+          taskId: id,
+          predecessorTaskId: String(p.predecessorTaskId),
+          predecessorName: p.predecessorName || '',
+          relationship: (p.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF',
+          lagDays: p.lagDays || 0,
+        })),
       });
     }
   });
@@ -804,6 +817,17 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
         actualCost: (t.actualCost as number) ?? (t.actual_cost as number) ?? 0,
         predecessorId: (t.predecessorId as string) || (t.predecessor_id as string) || null,
         predecessorRelationship: (t.predecessorRelationship as 'FS' | 'SS' | 'FF' | 'SF') || (t.predecessor_relationship as any) || null,
+        // Full predecessors array for Gantt dependency arrows
+        predecessors: Array.isArray(t.predecessors)
+          ? (t.predecessors as any[]).map((p: any) => ({
+              id: `${taskId}-${p.predecessorTaskId || p.predecessor_task_id}`,
+              taskId: taskId,
+              predecessorTaskId: String(p.predecessorTaskId || p.predecessor_task_id || ''),
+              predecessorName: (p.predecessorName || p.predecessor_name || '') as string,
+              relationship: ((p.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF'),
+              lagDays: (p.lagDays || p.lag_days || 0) as number,
+            }))
+          : [],
         createdAt: (t.createdAt as string) || now,
         updatedAt: (t.updatedAt as string) || now,
       };

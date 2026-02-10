@@ -4,7 +4,6 @@
  * @fileoverview Advanced WBS & Gantt Chart — PPC V3 Project Controls.
  *
  * Executive-level visualization with:
- * - Inazuma (Lightning) Progress Line — zigzag showing schedule deviation
  * - Collapsible WBS Hierarchy with progress-based color aggregation
  * - Baseline Ghosting — ghost bars showing original schedule creep
  * - Dependency Curves with color coding (critical / non-critical / delay)
@@ -205,7 +204,6 @@ export default function WBSGanttPage() {
 
   // ── State ──────────────────────────────────────────────────────
   const [showBaseline, setShowBaseline] = useState(true);
-  const [showInazuma, setShowInazuma] = useState(true);
   const [showDependencies, setShowDependencies] = useState(true);
   const [showSparklines, setShowSparklines] = useState(true);
 
@@ -227,7 +225,6 @@ export default function WBSGanttPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const inazumaSvgRef = useRef<SVGSVGElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const lastWbsDataKeyRef = useRef<string | null>(null);
 
@@ -655,7 +652,17 @@ export default function WBSGanttPage() {
       const tlEnd = dateColumns[dateColumns.length - 1].end.getTime();
       const tlDur = tlEnd - tlStart;
       const tlPx = dateColumns.length * columnWidth;
-      const rowMap = new Map(flatRows.map((r, i) => [r.id, i]));
+
+      // Build multiple lookup maps so we can resolve by various ID formats
+      const rowMapById = new Map<string, number>();
+      flatRows.forEach((r, i) => {
+        rowMapById.set(r.id, i);
+        // Also index by the raw ID without WBS prefix (e.g., "wbs-task-123" → "123")
+        const rawId = r.id.replace(/^wbs-(task|phase|unit|project|sub_task)-/, '');
+        if (rawId !== r.id) rowMapById.set(rawId, i);
+        // Also by taskId if present
+        if ((r as any).taskId) rowMapById.set((r as any).taskId, i);
+      });
 
       // Clear non-defs children
       Array.from(svg.children).forEach(ch => { if (ch.nodeName !== 'defs') svg.removeChild(ch); });
@@ -669,17 +676,47 @@ export default function WBSGanttPage() {
         const tx = fixedColsWidth + (tOff / tlDur) * tlPx;
 
         item.predecessors.forEach((pred: any) => {
-          const si = rowMap.get(pred.taskId);
+          // Resolve predecessor row — try predecessorTaskId (from MPP), then taskId (legacy), then with wbs prefix
+          const predId = pred.predecessorTaskId || pred.taskId || '';
+          let si = rowMapById.get(predId);
+          if (si === undefined) si = rowMapById.get(`wbs-task-${predId}`);
           if (si === undefined) return;
           const src = flatRows[si];
           if (!src.endDate) return;
-          const sy = headerHeight + si * rowHeight + rowHeight / 2;
-          const sOff = Math.max(0, Math.min(tlEnd, new Date(src.endDate).getTime()) - tlStart);
-          const sx = fixedColsWidth + (sOff / tlDur) * tlPx;
-          const cp = Math.max(Math.abs(tx - sx) * 0.5, 20);
 
+          const relationship = (pred.relationship || 'FS').toUpperCase();
+          const sy = headerHeight + si * rowHeight + rowHeight / 2;
+
+          // Determine start/end x based on relationship type
+          let fromX: number, toX: number;
+          if (relationship === 'SS') {
+            // Start-to-Start: from predecessor start to successor start
+            const sStartOff = Math.max(0, new Date(src.startDate || src.endDate).getTime() - tlStart);
+            fromX = fixedColsWidth + (sStartOff / tlDur) * tlPx;
+            toX = tx;
+          } else if (relationship === 'FF') {
+            // Finish-to-Finish: from predecessor end to successor end
+            const sEndOff = Math.max(0, Math.min(tlEnd, new Date(src.endDate).getTime()) - tlStart);
+            const tEndOff = Math.max(0, Math.min(tlEnd, new Date(item.endDate || item.startDate).getTime()) - tlStart);
+            fromX = fixedColsWidth + (sEndOff / tlDur) * tlPx;
+            toX = fixedColsWidth + (tEndOff / tlDur) * tlPx;
+          } else if (relationship === 'SF') {
+            // Start-to-Finish: from predecessor start to successor end
+            const sStartOff = Math.max(0, new Date(src.startDate || src.endDate).getTime() - tlStart);
+            const tEndOff = Math.max(0, Math.min(tlEnd, new Date(item.endDate || item.startDate).getTime()) - tlStart);
+            fromX = fixedColsWidth + (sStartOff / tlDur) * tlPx;
+            toX = fixedColsWidth + (tEndOff / tlDur) * tlPx;
+          } else {
+            // FS (Finish-to-Start) — default
+            const sOff = Math.max(0, Math.min(tlEnd, new Date(src.endDate).getTime()) - tlStart);
+            fromX = fixedColsWidth + (sOff / tlDur) * tlPx;
+            toX = tx;
+          }
+
+          const cp = Math.max(Math.abs(toX - fromX) * 0.5, 20);
           const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          path.setAttribute('d', `M${sx},${sy} C${sx + cp},${sy} ${tx - cp},${ty} ${tx},${ty}`);
+          path.setAttribute('d', `M${fromX},${sy} C${fromX + cp},${sy} ${toX - cp},${ty} ${toX},${ty}`);
+
           const crit = item.isCritical || (item as any).is_critical;
           const delay = src.endDate && item.startDate && new Date(src.endDate) > new Date(item.startDate);
           if (crit && (item.totalFloat === 0 || item.totalFloat === undefined)) {
@@ -687,58 +724,23 @@ export default function WBSGanttPage() {
           } else if (delay) {
             path.setAttribute('stroke', '#EF4444'); path.setAttribute('stroke-width', '1.5'); path.setAttribute('stroke-dasharray', '4,2');
           } else {
-            path.setAttribute('stroke', '#6B7280'); path.setAttribute('stroke-width', '1');
+            path.setAttribute('stroke', '#40E0D0'); path.setAttribute('stroke-width', '1.5');
           }
           path.setAttribute('fill', 'none');
-          path.setAttribute('marker-end', crit ? 'url(#arrowhead-red)' : 'url(#arrowhead-gray)');
-          path.setAttribute('opacity', '0.6');
+          path.setAttribute('marker-end', crit ? 'url(#arrowhead-red)' : delay ? 'url(#arrowhead-red)' : 'url(#arrowhead-teal)');
+          path.setAttribute('opacity', '0.7');
+
+          // Add relationship label on hover
+          const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+          title.textContent = `${src.name || predId} → ${item.name || ''} (${relationship}${pred.lagDays ? `, lag: ${pred.lagDays}d` : ''})`;
+          path.appendChild(title);
+
           svg.appendChild(path);
         });
       });
     };
     requestAnimationFrame(draw);
   }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight]);
-
-  // ── Draw Inazuma (Lightning) Progress Line ─────────────────────
-  useEffect(() => {
-    if (!showInazuma) return;
-    const draw = () => {
-      const svg = inazumaSvgRef.current;
-      if (!svg || !flatRows.length || !dateColumns.length) return;
-      const tlStart = dateColumns[0].start.getTime();
-      const tlEnd = dateColumns[dateColumns.length - 1].end.getTime();
-      const tlDur = tlEnd - tlStart;
-      const tlPx = dateColumns.length * columnWidth;
-      const todayT = today.getTime();
-      const todayX = fixedColsWidth + (Math.max(0, todayT - tlStart) / tlDur) * tlPx;
-
-      svg.innerHTML = '';
-      svg.style.width = `${fixedColsWidth + tlPx}px`;
-      svg.style.height = `${headerHeight + totalRowsHeight}px`;
-
-      const pts: { x: number; y: number }[] = [];
-      flatRows.forEach((item, idx) => {
-        if (!item.startDate || !item.endDate) return;
-        const iStart = new Date(item.startDate).getTime();
-        const iEnd = new Date(item.endDate).getTime();
-        if (iStart > todayT || iEnd < iStart) return;
-        const expected = Math.min(100, ((todayT - iStart) / (iEnd - iStart)) * 100);
-        const deviation = (item.percentComplete || 0) - expected;
-        pts.push({ x: todayX + (deviation / 100) * 50, y: headerHeight + idx * rowHeight + rowHeight / 2 });
-      });
-      if (pts.length < 2) return;
-
-      const d = `M ${pts.map(p => `${p.x},${p.y}`).join(' L ')}`;
-      const glow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      glow.setAttribute('d', d); glow.setAttribute('stroke', '#EF4444'); glow.setAttribute('stroke-width', '8'); glow.setAttribute('fill', 'none'); glow.setAttribute('opacity', '0.2'); glow.setAttribute('stroke-linejoin', 'round');
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      line.setAttribute('d', d); line.setAttribute('stroke', '#EF4444'); line.setAttribute('stroke-width', '3'); line.setAttribute('fill', 'none'); line.setAttribute('stroke-linejoin', 'round'); line.setAttribute('stroke-linecap', 'round'); line.setAttribute('filter', 'drop-shadow(0 0 4px rgba(239,68,68,0.5))');
-      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      label.setAttribute('x', String(todayX)); label.setAttribute('y', String(headerHeight - 5)); label.setAttribute('text-anchor', 'middle'); label.setAttribute('fill', '#EF4444'); label.setAttribute('font-size', '10'); label.setAttribute('font-weight', 'bold'); label.textContent = 'INAZUMA';
-      svg.appendChild(glow); svg.appendChild(line); svg.appendChild(label);
-    };
-    requestAnimationFrame(draw);
-  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, today, showInazuma, rowHeight, headerHeight]);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -823,7 +825,6 @@ export default function WBSGanttPage() {
       {/* ── Feature Toggles & Legend ──────────────────────────────── */}
       <div style={{ display: 'flex', gap: '1rem', padding: '0 0.5rem', fontSize: '0.7rem', color: '#888', flexShrink: 0, flexWrap: 'wrap' }}>
         {[
-          { checked: showInazuma, set: setShowInazuma, color: '#EF4444', label: 'Inazuma Line' },
           { checked: showBaseline, set: setShowBaseline, color: '#6B7280', label: 'Baseline Ghost' },
           { checked: showDependencies, set: setShowDependencies, color: '#40E0D0', label: 'Dependencies' },
           { checked: showSparklines, set: setShowSparklines, color: '#3B82F6', label: 'FTE Sparklines' },
@@ -874,10 +875,10 @@ export default function WBSGanttPage() {
             <defs>
               <marker id="arrowhead-red" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#EF4444" /></marker>
               <marker id="arrowhead-gray" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6B7280" /></marker>
+              <marker id="arrowhead-teal" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#40E0D0" /></marker>
             </defs>
           </svg>
-          {/* Inazuma SVG */}
-          <svg ref={inazumaSvgRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 15 }} />
+          {/* Inazuma line removed per user request */}
 
           {/* ── TABLE ───────────────────────────────────────────── */}
           <table ref={tableRef} className="wbs-table" style={{ tableLayout: 'fixed', width: `${tableWidth}px`, borderCollapse: 'separate', borderSpacing: 0 }}>

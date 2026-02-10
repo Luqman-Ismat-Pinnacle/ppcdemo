@@ -1494,7 +1494,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
           assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
           is_milestone: task.is_milestone || task.isMilestone || false,
-          isCritical: task.is_critical || task.isCritical || false
+          isCritical: task.is_critical || task.isCritical || false,
+          predecessors: Array.isArray(task.predecessors) ? task.predecessors : (
+            task.predecessorId || task.predecessor_id
+              ? [{ id: `${taskId}-pred`, taskId: taskId, predecessorTaskId: String(task.predecessorId || task.predecessor_id), relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS', lagDays: 0 }]
+              : []
+          ),
+          totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
         };
 
         projectItem.children?.push(taskItem);

@@ -119,6 +119,49 @@ class ProjectParser:
             except Exception:
                 pass  # MPXJ may not expose cost in some versions or file types
 
+            # ── Extract predecessor relationships using getPredecessors() ──
+            predecessors = []
+            try:
+                pred_relations = task.getPredecessors()
+                if pred_relations:
+                    for relation in pred_relations:
+                        try:
+                            target_task = relation.getTargetTask()
+                            if target_task and target_task.getUniqueID():
+                                rel_type_obj = relation.getType()
+                                rel_type = str(rel_type_obj) if rel_type_obj else 'FS'
+                                # Normalize relation type to standard abbreviations
+                                rel_type_upper = rel_type.upper().replace('_', '')
+                                if 'FINISH_START' in rel_type.upper() or rel_type_upper == 'FS':
+                                    rel_type_normalized = 'FS'
+                                elif 'START_START' in rel_type.upper() or rel_type_upper == 'SS':
+                                    rel_type_normalized = 'SS'
+                                elif 'FINISH_FINISH' in rel_type.upper() or rel_type_upper == 'FF':
+                                    rel_type_normalized = 'FF'
+                                elif 'START_FINISH' in rel_type.upper() or rel_type_upper == 'SF':
+                                    rel_type_normalized = 'SF'
+                                else:
+                                    rel_type_normalized = 'FS'
+
+                                lag_duration = relation.getLag()
+                                lag_days = 0.0
+                                if lag_duration:
+                                    try:
+                                        lag_days = self._to_float(lag_duration.getDuration())
+                                    except:
+                                        lag_days = 0.0
+
+                                predecessors.append({
+                                    'predecessorTaskId': str(target_task.getUniqueID()),
+                                    'predecessorName': str(target_task.getName() or ''),
+                                    'relationship': rel_type_normalized,
+                                    'lagDays': lag_days
+                                })
+                        except Exception as rel_err:
+                            print(f"  Warning: Could not parse relation for task {uid}: {rel_err}")
+            except Exception as pred_err:
+                print(f"  Warning: getPredecessors() failed for task {uid}: {pred_err}")
+
             node = {
                 'id': uid,
                 'name': name,
@@ -138,7 +181,8 @@ class ProjectParser:
                 'assignedResource': assigned_resource,
                 'isCritical': bool(task.getCritical()),
                 'totalSlack': self._to_float(task.getTotalSlack().getDuration()) if task.getTotalSlack() else 0.0,
-                'comments': str(task.getNotes() or "")
+                'comments': str(task.getNotes() or ""),
+                'predecessors': predecessors
             }
             all_tasks.append(node)
 
@@ -156,7 +200,7 @@ def ui():
     return render_template('index.html')
 
 @app.route('/health')
-def health(): return jsonify(status="ok", version="v15-baseline-remaining-cost")
+def health(): return jsonify(status="ok", version="v16-predecessors-relations")
 
 @app.route('/parse', methods=['POST'])
 def parse():

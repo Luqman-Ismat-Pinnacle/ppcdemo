@@ -571,18 +571,26 @@ function HoursVarianceWaterfall({ projectBreakdown }: { projectBreakdown: any[] 
 /* ================================================================== */
 
 function PredictiveBurn({ portfolio }: { portfolio: any }) {
+  const [cpiOverride, setCpiOverride] = useState<string>('');
+  const [projectionMonths, setProjectionMonths] = useState(6);
+  const [confidenceWidth, setConfidenceWidth] = useState(20);
+
+  const effectiveCpi = cpiOverride ? parseFloat(cpiOverride) : (portfolio.cpi || 1);
+
   const option: EChartsOption = useMemo(() => {
-    const months = Array.from({ length: 18 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - 11 + i); return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); });
+    const totalMonths = 12 + projectionMonths;
+    const months = Array.from({ length: totalMonths }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - 11 + i); return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); });
     const totalBl = portfolio.baselineHours || 1;
     const totalAc = portfolio.totalHours || 0;
-    const cpi = portfolio.cpi || 1;
+    const cpi = effectiveCpi > 0 ? effectiveCpi : 1;
     const todayIdx = 11;
-    const baseline = months.map((_, i) => Math.round(totalBl * Math.min(1, (i + 1) / 16)));
+    const baseline = months.map((_, i) => Math.round(totalBl * Math.min(1, (i + 1) / (totalMonths - 2))));
     const actual: (number | null)[] = months.map((_, i) => i > todayIdx ? null : Math.round(totalAc * ((i + 1) / (todayIdx + 1))));
     const projectedFinish = cpi > 0 ? Math.round(totalBl / cpi) : totalBl * 1.5;
-    const projected: (number | null)[] = months.map((_, i) => { if (i < todayIdx) return null; const rem = projectedFinish - totalAc; return Math.round(totalAc + rem * Math.min(1, (i - todayIdx) / Math.max(1, 17 - todayIdx))); });
-    const confUpper: (number | null)[] = months.map((_, i) => i < todayIdx ? null : projected[i] != null ? Math.round(projected[i]! * 1.2) : null);
-    const confLower: (number | null)[] = months.map((_, i) => i < todayIdx ? null : projected[i] != null ? Math.round(projected[i]! * 0.8) : null);
+    const projected: (number | null)[] = months.map((_, i) => { if (i < todayIdx) return null; const rem = projectedFinish - totalAc; return Math.round(totalAc + rem * Math.min(1, (i - todayIdx) / Math.max(1, totalMonths - 1 - todayIdx))); });
+    const confPct = confidenceWidth / 100;
+    const confUpper: (number | null)[] = months.map((_, i) => i < todayIdx ? null : projected[i] != null ? Math.round(projected[i]! * (1 + confPct)) : null);
+    const confLower: (number | null)[] = months.map((_, i) => i < todayIdx ? null : projected[i] != null ? Math.round(projected[i]! * (1 - confPct)) : null);
     const overBudget = projectedFinish > totalBl;
     const variance = totalBl > 0 ? Math.round(((totalAc - totalBl) / totalBl) * 100) : 0;
 
@@ -614,60 +622,48 @@ function PredictiveBurn({ portfolio }: { portfolio: any }) {
       markLine: { silent: true, data: [{ xAxis: todayIdx, lineStyle: { color: C.teal, type: 'solid', width: 2 }, label: { formatter: 'TODAY', color: C.teal, fontSize: 10, fontWeight: 'bold' } }] },
       graphic: [{ type: 'text', right: 35, top: 10, style: { text: overBudget ? `OVERRUN: +${fmtHrs(projectedFinish - totalBl)} hrs (${Math.abs(variance)}% over)` : `ON TRACK — EAC: ${fmtHrs(projectedFinish)} hrs`, fill: overBudget ? C.red : C.green, fontSize: 10, fontWeight: 'bold' } }],
     };
-  }, [portfolio]);
-  return <ChartWrapper option={option} height="380px" />;
-}
-
-/* ================================================================== */
-/*  6. MEETING SNAPSHOT & DELTA                                        */
-/* ================================================================== */
-
-interface SnapshotData { label: string; frozenAt: string; totalHours: number; baselineHours: number; percentComplete: number; projectCount: number; healthScore: number; projects: { name: string; variance: number; actualHours: number; percentComplete: number }[]; }
-
-function MeetingSnapshotDelta({ portfolio, projectBreakdown }: { portfolio: any; projectBreakdown: any[] }) {
-  const [snapshots, setSnapshots] = useState<SnapshotData[]>(() => { if (typeof window === 'undefined') return []; try { return JSON.parse(localStorage.getItem('ppc_meeting_snapshots_v2') || '[]'); } catch { return []; } });
-  const [compareIdx, setCompareIdx] = useState<number | null>(null);
-  const [scenarioLabel, setScenarioLabel] = useState('');
-  const currentSnapshot: Omit<SnapshotData, 'label' | 'frozenAt'> = useMemo(() => ({ totalHours: portfolio.totalHours, baselineHours: portfolio.baselineHours, percentComplete: portfolio.percentComplete, projectCount: projectBreakdown.length, healthScore: portfolio.healthScore, projects: projectBreakdown.map(p => ({ name: p.name, variance: p.variance, actualHours: p.actualHours, percentComplete: p.percentComplete })) }), [portfolio, projectBreakdown]);
-  const freezeSnapshot = useCallback(() => { const label = scenarioLabel || `Snapshot ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`; const snap: SnapshotData = { ...currentSnapshot, label, frozenAt: new Date().toISOString() }; const updated = [snap, ...snapshots].slice(0, 10); setSnapshots(updated); setScenarioLabel(''); if (typeof window !== 'undefined') localStorage.setItem('ppc_meeting_snapshots_v2', JSON.stringify(updated)); }, [currentSnapshot, snapshots, scenarioLabel]);
-  const compared = compareIdx != null ? snapshots[compareIdx] : null;
+  }, [portfolio, effectiveCpi, projectionMonths, confidenceWidth]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input value={scenarioLabel} onChange={e => setScenarioLabel(e.target.value)} placeholder="Scenario label..." style={{ flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem', outline: 'none' }} />
-        <button onClick={freezeSnapshot} style={{ padding: '0.35rem 0.8rem', borderRadius: 6, border: `1px solid ${C.teal}`, background: `${C.teal}15`, color: C.teal, cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700 }}>Freeze</button>
-      </div>
-      {snapshots.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{snapshots.map((s, i) => <button key={i} onClick={() => setCompareIdx(compareIdx === i ? null : i)} style={{ padding: '2px 8px', borderRadius: 4, fontSize: '0.6rem', fontWeight: 600, cursor: 'pointer', border: `1px solid ${compareIdx === i ? C.teal : C.border}`, background: compareIdx === i ? `${C.teal}15` : 'transparent', color: compareIdx === i ? C.teal : C.textMuted }}>{s.label}</button>)}</div>}
-      {compared && (
-        <div style={{ background: `${C.teal}08`, border: `1px solid ${C.teal}25`, borderRadius: 10, padding: '0.75rem' }}>
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: C.teal, marginBottom: '0.5rem' }}>Delta: {compared.label} → Now</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-            {[
-              { label: 'Progress', prev: compared.percentComplete, curr: portfolio.percentComplete, fmt: (v: number) => `${v}%` },
-              { label: 'Hours', prev: compared.totalHours, curr: portfolio.totalHours, fmt: fmtHrs },
-              { label: 'Health', prev: compared.healthScore, curr: portfolio.healthScore, fmt: (v: number) => String(Math.round(v)) },
-              { label: 'Projects', prev: compared.projectCount, curr: projectBreakdown.length, fmt: String },
-            ].map(m => { const d = m.curr - m.prev; return (
-              <div key={m.label} style={{ padding: 5, background: 'rgba(0,0,0,0.3)', borderRadius: 6, textAlign: 'center' }}>
-                <div style={{ fontSize: '0.45rem', color: C.textMuted, textTransform: 'uppercase' }}>{m.label}</div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.textPrimary }}>{m.fmt(m.curr)}</div>
-                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: m.label === 'Hours' ? (d > 0 ? C.amber : C.green) : d >= 0 ? C.green : C.red }}>{d > 0 ? '▲' : d < 0 ? '▼' : '-'} {m.label === 'Hours' ? fmtHrs(Math.abs(d)) : Math.abs(d)}</span>
-              </div>
-            ); })}
-          </div>
+      {/* Parameters bar */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>CPI Override</label>
+          <input type="number" step="0.05" min="0.1" max="3" value={cpiOverride} onChange={e => setCpiOverride(e.target.value)} placeholder={String(portfolio.cpi?.toFixed(2) || '1.00')} style={{ width: 65, padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }} />
         </div>
-      )}
-      {!snapshots.length && <div style={{ padding: '0.75rem', textAlign: 'center', color: C.textMuted, fontSize: '0.7rem', background: 'rgba(255,255,255,0.02)', borderRadius: 6 }}>Freeze the current state to start comparing.</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Projection</label>
+          <select value={projectionMonths} onChange={e => setProjectionMonths(Number(e.target.value))} style={{ padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }}>
+            {[3, 6, 9, 12, 18].map(m => <option key={m} value={m}>{m} months</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Confidence</label>
+          <select value={confidenceWidth} onChange={e => setConfidenceWidth(Number(e.target.value))} style={{ padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }}>
+            {[10, 15, 20, 30, 40].map(w => <option key={w} value={w}>±{w}%</option>)}
+          </select>
+        </div>
+        <div style={{ marginLeft: 'auto', fontSize: '0.6rem', color: C.textMuted }}>
+          Effective CPI: <strong style={{ color: effectiveCpi < 0.9 ? C.red : effectiveCpi < 1 ? C.amber : C.green }}>{effectiveCpi.toFixed(2)}</strong>
+        </div>
+      </div>
+      <ChartWrapper option={option} height="380px" />
     </div>
   );
 }
+
+/* Meeting Snapshot & Delta section removed per user request */
 
 /* ================================================================== */
 /*  7. DEPENDENCY IMPACT GRAPH                                         */
 /* ================================================================== */
 
 function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
+  const [nodeLimit, setNodeLimit] = useState(60);
+  const [layoutMode, setLayoutMode] = useState<'circular' | 'force'>('circular');
+  const [showCriticalOnly, setShowCriticalOnly] = useState(false);
+
   const { graphNodes, graphLinks, criticalPath, blockedSplash } = useMemo(() => {
     if (!tasks.length) return { graphNodes: [], graphLinks: [], criticalPath: new Set<string>(), blockedSplash: new Set<string>() };
     const taskMap = new Map<string, any>(); tasks.forEach((t: any) => { const id = String(t.id || t.taskId || ''); if (id) taskMap.set(id, t); });
@@ -678,48 +674,88 @@ function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
     });
     const nodeIdSet = new Set<string>(); const nodeList: any[] = [];
     [...childrenOf.keys()].sort((a, b) => (childrenOf.get(b)?.length || 0) - (childrenOf.get(a)?.length || 0)).forEach(pid => {
-      if (nodeIdSet.size >= 60) return; const t = taskMap.get(pid); if (!t) return; nodeIdSet.add(pid);
+      if (nodeIdSet.size >= nodeLimit) return; const t = taskMap.get(pid); if (!t) return; nodeIdSet.add(pid);
       const isCrit = !!t.isCritical || (t.totalFloat != null && Number(t.totalFloat) <= 0);
       const isBlk = String(t.status || '').toLowerCase().includes('block') || String(t.status || '').toLowerCase().includes('late');
+      if (showCriticalOnly && !isCrit && !isBlk) return;
       nodeList.push({ id: pid, name: t.name || t.taskName || pid, childCount: childrenOf.get(pid)?.length || 0, hours: Number(t.baselineHours || t.actualHours || 0), pc: Number(t.percentComplete || 0), isCritical: isCrit, isParent: true, variance: Number(t.actualHours || 0) - Number(t.baselineHours || 0), isBlocked: isBlk });
-      (childrenOf.get(pid) || []).forEach(cid => { if (nodeIdSet.size >= 60 || nodeIdSet.has(cid)) return; const ct = taskMap.get(cid); if (!ct) return; nodeIdSet.add(cid);
-        nodeList.push({ id: cid, name: ct.name || ct.taskName || cid, childCount: 0, hours: Number(ct.baselineHours || ct.actualHours || 0), pc: Number(ct.percentComplete || 0), isCritical: !!ct.isCritical || (ct.totalFloat != null && Number(ct.totalFloat) <= 0), isParent: childrenOf.has(cid), variance: Number(ct.actualHours || 0) - Number(ct.baselineHours || 0), isBlocked: String(ct.status || '').toLowerCase().includes('block') }); });
+      (childrenOf.get(pid) || []).forEach(cid => { if (nodeIdSet.size >= nodeLimit || nodeIdSet.has(cid)) return; const ct = taskMap.get(cid); if (!ct) return;
+        const cCrit = !!ct.isCritical || (ct.totalFloat != null && Number(ct.totalFloat) <= 0);
+        const cBlk = String(ct.status || '').toLowerCase().includes('block');
+        if (showCriticalOnly && !cCrit && !cBlk) return;
+        nodeIdSet.add(cid);
+        nodeList.push({ id: cid, name: ct.name || ct.taskName || cid, childCount: 0, hours: Number(ct.baselineHours || ct.actualHours || 0), pc: Number(ct.percentComplete || 0), isCritical: cCrit, isParent: childrenOf.has(cid), variance: Number(ct.actualHours || 0) - Number(ct.baselineHours || 0), isBlocked: cBlk }); });
     });
     const critSet = new Set<string>(); nodeList.forEach(n => { if (n.isCritical) critSet.add(n.id); });
     const splashSet = new Set<string>(); const propagate = (id: string) => { (successorsOf.get(id) || []).concat(childrenOf.get(id) || []).forEach(sid => { if (nodeIdSet.has(sid) && !splashSet.has(sid)) { splashSet.add(sid); propagate(sid); } }); };
     nodeList.filter(n => n.isBlocked).forEach(n => { splashSet.add(n.id); propagate(n.id); });
     return { graphNodes: nodeList, graphLinks: linkData.filter(l => nodeIdSet.has(l.source) && nodeIdSet.has(l.target)), criticalPath: critSet, blockedSplash: splashSet };
-  }, [tasks]);
+  }, [tasks, nodeLimit, showCriticalOnly]);
 
   const option: EChartsOption = useMemo(() => {
     if (!graphNodes.length) return {};
     const maxH = Math.max(...graphNodes.map(n => n.hours), 1); const maxC = Math.max(...graphNodes.map(n => n.childCount), 1);
+    const seriesBase: any = {
+      type: 'graph', roam: true, draggable: true,
+      categories: [{ name: 'Critical', itemStyle: { color: C.teal } }, { name: 'Blocked', itemStyle: { color: C.red } }, { name: 'Splash', itemStyle: { color: C.amber } }, { name: 'Phase', itemStyle: { color: C.blue } }, { name: 'Task', itemStyle: { color: `${C.blue}90` } }],
+      data: graphNodes.map(n => { const inSplash = blockedSplash.has(n.id); return {
+        name: n.name, id: n.id,
+        symbolSize: n.isParent ? Math.max(22, Math.min(50, 22 + (n.childCount / maxC) * 28)) : Math.max(10, Math.min(30, (n.hours / maxH) * 30)),
+        category: n.isBlocked ? 1 : n.isCritical ? 0 : inSplash ? 2 : n.isParent ? 3 : 4,
+        hours: n.hours, pc: n.pc, isCritical: n.isCritical, isBlocked: n.isBlocked, inSplash,
+        label: { show: n.isParent || n.isCritical || n.isBlocked, color: C.textPrimary, fontSize: 9 },
+        itemStyle: { shadowBlur: n.isBlocked ? 20 : n.isCritical ? 15 : 3, shadowColor: n.isBlocked ? `${C.red}80` : n.isCritical ? `${C.teal}80` : 'rgba(0,0,0,0.2)', borderWidth: n.isBlocked || n.isCritical ? 2.5 : 1, borderColor: n.isBlocked ? C.red : n.isCritical ? C.teal : inSplash ? C.amber : `${C.blue}40` },
+      }; }),
+      links: graphLinks.map(l => { const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target); return {
+        source: l.source, target: l.target,
+        lineStyle: { color: isCrit ? C.teal : 'source', width: isCrit ? 3 : 0.8, curveness: 0.3, opacity: isCrit ? 0.9 : 0.25 },
+      }; }),
+      emphasis: { focus: 'adjacency', lineStyle: { width: 3, opacity: 0.9 }, itemStyle: { shadowBlur: 18, shadowColor: `${C.teal}80` } },
+    };
+    if (layoutMode === 'circular') {
+      seriesBase.layout = 'circular';
+      seriesBase.circular = { rotateLabel: true };
+    } else {
+      seriesBase.layout = 'force';
+      seriesBase.force = { repulsion: 200, edgeLength: [80, 200], gravity: 0.1 };
+    }
     return {
       tooltip: { ...TT, trigger: 'item', extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:400px;white-space:normal;',
         formatter: (p: any) => { const d = p.data; if (p.dataType === 'edge') return '';
           return `<strong style="word-break:break-word;">${d.name}</strong><br/>Hours: ${Math.round(d.hours || 0)}<br/>Progress: ${Math.round(d.pc || 0)}%${d.isCritical ? '<br/><span style="color:' + C.teal + '">CRITICAL PATH</span>' : ''}${d.isBlocked ? '<br/><span style="color:' + C.red + '">BLOCKED</span>' : ''}${d.inSplash && !d.isBlocked ? '<br/><span style="color:' + C.amber + '">SPLASH ZONE</span>' : ''}`; } },
-      series: [{ type: 'graph', layout: 'circular', roam: true, draggable: true,
-        circular: { rotateLabel: true },
-        categories: [{ name: 'Critical', itemStyle: { color: C.teal } }, { name: 'Blocked', itemStyle: { color: C.red } }, { name: 'Splash', itemStyle: { color: C.amber } }, { name: 'Phase', itemStyle: { color: C.blue } }, { name: 'Task', itemStyle: { color: `${C.blue}90` } }],
-        data: graphNodes.map(n => { const inSplash = blockedSplash.has(n.id); return {
-          name: n.name, id: n.id,
-          symbolSize: n.isParent ? Math.max(22, Math.min(50, 22 + (n.childCount / maxC) * 28)) : Math.max(10, Math.min(30, (n.hours / maxH) * 30)),
-          category: n.isBlocked ? 1 : n.isCritical ? 0 : inSplash ? 2 : n.isParent ? 3 : 4,
-          hours: n.hours, pc: n.pc, isCritical: n.isCritical, isBlocked: n.isBlocked, inSplash,
-          label: { show: n.isParent || n.isCritical || n.isBlocked, color: C.textPrimary, fontSize: 9 },
-          itemStyle: { shadowBlur: n.isBlocked ? 20 : n.isCritical ? 15 : 3, shadowColor: n.isBlocked ? `${C.red}80` : n.isCritical ? `${C.teal}80` : 'rgba(0,0,0,0.2)', borderWidth: n.isBlocked || n.isCritical ? 2.5 : 1, borderColor: n.isBlocked ? C.red : n.isCritical ? C.teal : inSplash ? C.amber : `${C.blue}40` },
-        }; }),
-        links: graphLinks.map(l => { const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target); return {
-          source: l.source, target: l.target,
-          lineStyle: { color: isCrit ? C.teal : 'source', width: isCrit ? 3 : 0.8, curveness: 0.3, opacity: isCrit ? 0.9 : 0.25 },
-        }; }),
-        emphasis: { focus: 'adjacency', lineStyle: { width: 3, opacity: 0.9 }, itemStyle: { shadowBlur: 18, shadowColor: `${C.teal}80` } },
-      }],
+      series: [seriesBase],
       legend: { data: ['Critical', 'Blocked', 'Splash', 'Phase', 'Task'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 9 } },
     };
-  }, [graphNodes, graphLinks, criticalPath, blockedSplash]);
-  if (!graphNodes.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No dependency data</div>;
-  return <ChartWrapper option={option} height="520px" />;
+  }, [graphNodes, graphLinks, criticalPath, blockedSplash, layoutMode]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {/* Parameters bar */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Layout</label>
+          <select value={layoutMode} onChange={e => setLayoutMode(e.target.value as any)} style={{ padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }}>
+            <option value="circular">Circular</option>
+            <option value="force">Force-directed</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Max Nodes</label>
+          <select value={nodeLimit} onChange={e => setNodeLimit(Number(e.target.value))} style={{ padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }}>
+            {[30, 60, 100, 150].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: '0.65rem', color: C.textMuted }}>
+          <input type="checkbox" checked={showCriticalOnly} onChange={e => setShowCriticalOnly(e.target.checked)} style={{ accentColor: C.teal }} />
+          Critical/Blocked Only
+        </label>
+        <div style={{ marginLeft: 'auto', fontSize: '0.6rem', color: C.textMuted }}>
+          {graphNodes.length} nodes · {graphLinks.length} links
+        </div>
+      </div>
+      {graphNodes.length > 0 ? <ChartWrapper option={option} height="520px" /> : <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No dependency data</div>}
+    </div>
+  );
 }
 
 /* ================================================================== */
@@ -729,6 +765,9 @@ function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
 function WorkforceBurn({ hours, employees, tasks }: { hours: any[]; employees: any[]; tasks: any[] }) {
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'hours' | 'burnRate' | 'people'>('hours');
+  const [roleFilter, setRoleFilter] = useState('');
+  const [showLimit, setShowLimit] = useState(12);
 
   const data = useMemo(() => {
     const empMap = new Map<string, any>(); employees.forEach((e: any) => empMap.set(e.id || e.employeeId, e));
@@ -769,11 +808,44 @@ function WorkforceBurn({ hours, employees, tasks }: { hours: any[]; employees: a
     })).sort((a, b) => b.total - a.total);
   }, [hours, employees, tasks]);
 
+  const filteredData = useMemo(() => {
+    let result = data;
+    if (roleFilter) result = result.filter(r => r.role.toLowerCase().includes(roleFilter.toLowerCase()));
+    if (sortBy === 'burnRate') result = [...result].sort((a, b) => { const aAvg = a.people.reduce((s, p) => s + p.tasks.reduce((ss, t) => ss + t.burnRate, 0) / Math.max(1, p.tasks.length), 0) / Math.max(1, a.people.length); const bAvg = b.people.reduce((s, p) => s + p.tasks.reduce((ss, t) => ss + t.burnRate, 0) / Math.max(1, p.tasks.length), 0) / Math.max(1, b.people.length); return bAvg - aAvg; });
+    else if (sortBy === 'people') result = [...result].sort((a, b) => b.people.length - a.people.length);
+    return result;
+  }, [data, roleFilter, sortBy]);
+
   if (!data.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No workforce data</div>;
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {/* Parameters bar */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Filter Role</label>
+          <input type="text" value={roleFilter} onChange={e => setRoleFilter(e.target.value)} placeholder="Search roles..." style={{ width: 120, padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Sort</label>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} style={{ padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }}>
+            <option value="hours">Total Hours</option>
+            <option value="burnRate">Burn Rate</option>
+            <option value="people">People Count</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Show</label>
+          <select value={showLimit} onChange={e => setShowLimit(Number(e.target.value))} style={{ padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' }}>
+            {[6, 12, 20, 30].map(n => <option key={n} value={n}>{n} roles</option>)}
+          </select>
+        </div>
+        <div style={{ marginLeft: 'auto', fontSize: '0.6rem', color: C.textMuted }}>
+          {filteredData.length} roles · {filteredData.reduce((s, r) => s + r.people.length, 0)} people
+        </div>
+      </div>
     <div style={{ maxHeight: 500, overflowY: 'auto' }}>
-      {data.slice(0, 12).map(roleData => (
+      {filteredData.slice(0, showLimit).map(roleData => (
         <div key={roleData.role} style={{ marginBottom: 2 }}>
           <button onClick={() => setExpandedRole(expandedRole === roleData.role ? null : roleData.role)} style={{ width: '100%', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 8, background: expandedRole === roleData.role ? `${C.indigo}15` : 'rgba(255,255,255,0.02)', border: `1px solid ${expandedRole === roleData.role ? `${C.indigo}30` : 'transparent'}`, borderRadius: 6, cursor: 'pointer', textAlign: 'left' }}>
             <span style={{ fontSize: '0.55rem', color: expandedRole === roleData.role ? C.indigo : C.textMuted }}>{expandedRole === roleData.role ? '▼' : '▶'}</span>
@@ -814,98 +886,15 @@ function WorkforceBurn({ hours, employees, tasks }: { hours: any[]; employees: a
         </div>
       ))}
     </div>
-  );
-}
-
-/* ================================================================== */
-/*  9. PARAMETERS & SUGGESTIONS — Combines Burn + Workforce + Deps     */
-/* ================================================================== */
-
-function ParametersSuggestions({ portfolio, projectBreakdown, hours, employees, tasks }: {
-  portfolio: any; projectBreakdown: any[]; hours: any[]; employees: any[]; tasks: any[];
-}) {
-  const [activeTab, setActiveTab] = useState<'burn' | 'workforce' | 'dependencies'>('burn');
-
-  // Generate automated suggestions from data
-  const suggestions = useMemo(() => {
-    const items: { type: 'danger' | 'warning' | 'info'; text: string }[] = [];
-
-    // Budget suggestions
-    const overBudget = projectBreakdown.filter(p => p.variance > 10);
-    if (overBudget.length > 0) {
-      items.push({ type: 'danger', text: `${overBudget.length} project${overBudget.length > 1 ? 's' : ''} over budget by >10%: ${overBudget.slice(0, 3).map(p => `${p.name} (+${p.variance}%)`).join(', ')}${overBudget.length > 3 ? ` and ${overBudget.length - 3} more` : ''}. Consider resource reallocation or scope review.` });
-    }
-
-    // Progress suggestions
-    const stalled = projectBreakdown.filter(p => p.percentComplete < 30 && p.actualHours > p.baselineHours * 0.5);
-    if (stalled.length > 0) {
-      items.push({ type: 'warning', text: `${stalled.length} project${stalled.length > 1 ? 's' : ''} have <30% progress but >50% hours consumed. Review scope and resource allocation for: ${stalled.slice(0, 3).map(p => p.name).join(', ')}.` });
-    }
-
-    // Blocked tasks
-    const blocked = tasks.filter((t: any) => String(t.status || '').toLowerCase().includes('block'));
-    if (blocked.length > 0) {
-      items.push({ type: 'danger', text: `${blocked.length} blocked task${blocked.length > 1 ? 's' : ''} requiring intervention. Blocked tasks create downstream delays in the dependency chain.` });
-    }
-
-    // Completion forecast
-    if (portfolio.cpi > 0 && portfolio.cpi < 0.9) {
-      const eac = Math.round(portfolio.baselineHours / portfolio.cpi);
-      items.push({ type: 'warning', text: `At current burn rate (CPI: ${portfolio.cpi}), estimated hours at completion is ${fmtHrs(eac)} — ${fmtHrs(eac - portfolio.baselineHours)} over baseline. Consider efficiency improvements.` });
-    }
-
-    // Good news
-    const underBudget = projectBreakdown.filter(p => p.variance < -5 && p.percentComplete > 50);
-    if (underBudget.length > 0) {
-      items.push({ type: 'info', text: `${underBudget.length} project${underBudget.length > 1 ? 's' : ''} performing under budget: ${underBudget.slice(0, 3).map(p => `${p.name} (${p.variance}%)`).join(', ')}. Consider reallocating surplus resources.` });
-    }
-
-    // Critical path
-    const criticalTasks = tasks.filter((t: any) => t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0));
-    if (criticalTasks.length > 0) {
-      items.push({ type: 'info', text: `${criticalTasks.length} tasks on the critical path. Any delay to these will impact the project end date. Prioritize unblocking and resourcing these first.` });
-    }
-
-    if (items.length === 0) {
-      items.push({ type: 'info', text: 'All parameters within normal ranges. Continue monitoring.' });
-    }
-
-    return items;
-  }, [portfolio, projectBreakdown, tasks]);
-
-  const tabConfig = [
-    { key: 'burn' as const, label: 'Predictive Burn', color: C.green },
-    { key: 'workforce' as const, label: 'Workforce Burn Rate', color: C.indigo },
-    { key: 'dependencies' as const, label: 'Dependency Map', color: C.purple },
-  ];
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-      {/* Suggestions banner */}
-      <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${C.border}`, padding: '0.6rem 0.75rem' }}>
-        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Automated Suggestions</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {suggestions.map((s, i) => (
-            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', marginTop: 3, flexShrink: 0, background: s.type === 'danger' ? C.red : s.type === 'warning' ? C.amber : C.teal }} />
-              <span style={{ fontSize: '0.7rem', color: C.textSecondary, lineHeight: 1.4 }}>{s.text}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {/* Tab navigation */}
-      <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: 2, alignSelf: 'flex-start' }}>
-        {tabConfig.map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding: '5px 14px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, background: activeTab === t.key ? `${t.color}20` : 'transparent', color: activeTab === t.key ? t.color : C.textMuted }}>{t.label}</button>
-        ))}
-      </div>
-      {/* Tab content */}
-      {activeTab === 'burn' && <PredictiveBurn portfolio={portfolio} />}
-      {activeTab === 'workforce' && <WorkforceBurn hours={hours} employees={employees} tasks={tasks} />}
-      {activeTab === 'dependencies' && <DependencyImpactGraph tasks={tasks} />}
     </div>
   );
 }
+
+/* ================================================================== */
+/*  (ParametersSuggestions removed — each chart is now its own section) */
+/* ================================================================== */
+
+/* ParametersSuggestions removed — each chart now has its own SectionCard with parameters */
 
 /* ================================================================== */
 /*  SNAPSHOT EXPORT                                                     */
@@ -1038,14 +1027,19 @@ export default function OverviewV2Page() {
             <HoursVarianceWaterfall projectBreakdown={projectBreakdown} />
           </SectionCard>
 
-          {/* ═══ 5. PARAMETERS & SUGGESTIONS ═══ */}
-          <SectionCard title="Parameters & Suggestions" subtitle="Predictive burn, workforce analysis, and dependency mapping with automated recommendations" badge={<Badge label="Analysis" color={C.green} />}>
-            <ParametersSuggestions portfolio={portfolio} projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} tasks={data.tasks || []} />
+          {/* ═══ 5. PREDICTIVE BURN ═══ */}
+          <SectionCard title="Predictive Burn" subtitle="Projected hours at completion with configurable CPI, projection range, and confidence interval" badge={<Badge label="Forecast" color={C.green} />}>
+            <PredictiveBurn portfolio={portfolio} />
           </SectionCard>
 
-          {/* ═══ 6. SNAPSHOT ═══ */}
-          <SectionCard title="Meeting Snapshot & Delta" badge={<Badge label="Delta" color={C.teal} />}>
-            <MeetingSnapshotDelta portfolio={portfolio} projectBreakdown={projectBreakdown} />
+          {/* ═══ 6. WORKFORCE BURN RATE ═══ */}
+          <SectionCard title="Workforce Burn Rate" subtitle="Role-based breakdown of hours burned, efficiency, and task progress" badge={<Badge label="Workforce" color={C.indigo} />}>
+            <WorkforceBurn hours={data.hours || []} employees={data.employees || []} tasks={data.tasks || []} />
+          </SectionCard>
+
+          {/* ═══ 7. DEPENDENCY MAP ═══ */}
+          <SectionCard title="Dependency Impact Map" subtitle="Graph visualization of task dependencies, critical path, and blocked splash zones" badge={<Badge label="Dependencies" color={C.purple} />}>
+            <DependencyImpactGraph tasks={data.tasks || []} />
           </SectionCard>
         </div>
       )}
