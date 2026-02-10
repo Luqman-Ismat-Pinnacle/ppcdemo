@@ -341,6 +341,10 @@ function SiteComplianceSunburst({ data, projectBreakdown, onHierarchyClick }: {
 
     const custGroups = new Map<string, Map<string, any[]>>();
     projects.forEach((proj: any) => {
+      // Only show projects that have plans (i.e. exist in projectBreakdown)
+      const projId = proj.id || proj.projectId;
+      if (!projMap.has(projId)) return;
+
       const siteId = proj.siteId || proj.site_id;
       const site = siteMap.get(siteId);
       const custId = site?.customerId || site?.customer_id || proj.customerId || proj.customer_id;
