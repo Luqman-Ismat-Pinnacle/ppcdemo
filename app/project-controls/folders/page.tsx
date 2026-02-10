@@ -61,6 +61,8 @@ interface UploadedFile {
   status: 'uploading' | 'uploaded' | 'processing' | 'syncing' | 'complete' | 'error';
   storagePath?: string;
   healthCheck?: ProjectHealthAutoResult;
+  version?: number;
+  isCurrentVersion?: boolean;
 }
 
 const STORAGE_BUCKET = 'projectdoc';
@@ -300,6 +302,8 @@ export default function DocumentsPage() {
             status: dbDoc?.project_id ? 'complete' as const : 'uploaded' as const,
             storagePath,
             healthCheck: parseHealthCheck(dbDoc),
+            version: dbDoc?.version || 1,
+            isCurrentVersion: dbDoc?.is_current_version ?? true,
           });
         });
       }
@@ -318,6 +322,8 @@ export default function DocumentsPage() {
           status: doc.project_id ? 'complete' as const : 'uploaded' as const,
           storagePath: doc.storage_path,
           healthCheck: parseHealthCheck(doc),
+          version: doc.version || 1,
+          isCurrentVersion: doc.is_current_version ?? true,
         });
       });
 
@@ -409,7 +415,36 @@ export default function DocumentsPage() {
         f.id === fileId ? { ...f, status: 'uploaded' as const, storagePath: savedStoragePath } : f
       ));
 
-      // Also save metadata to project_documents (use data.path so setCurrentMpp/updateDocumentHealth find the row)
+      // Determine version number — check existing docs for this project
+      const existingProjectDocs = uploadedFiles.filter(
+        f => f.workdayProjectId === workdayProjectId.trim() && f.id !== fileId
+      );
+      const maxVersion = existingProjectDocs.reduce((max, f) => Math.max(max, f.version || 1), 0);
+      const newVersion = maxVersion + 1;
+
+      // Mark all previous versions for this project as non-current
+      if (existingProjectDocs.length > 0) {
+        pushLog('info', `[Versioning] Existing version(s) found — this will be v${newVersion}`);
+        try {
+          // Mark old versions as non-current in the database
+          for (const oldDoc of existingProjectDocs) {
+            await fetch('/api/data/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dataKey: 'projectDocuments',
+                operation: 'update',
+                records: [{ id: oldDoc.id, is_current_version: false }],
+              }),
+            });
+          }
+          pushLog('success', `[Versioning] ${existingProjectDocs.length} previous version(s) marked as non-current`);
+        } catch (e: any) {
+          pushLog('warning', `[Versioning] Could not update old versions: ${e.message}`);
+        }
+      }
+
+      // Save metadata to project_documents
       try {
         const docId = `DOC_${Date.now()}`;
         const docRes = await fetch('/api/data/sync', {
@@ -430,12 +465,14 @@ export default function DocumentsPage() {
               storageBucket: STORAGE_BUCKET,
               uploadedAt: new Date().toISOString(),
               isActive: true,
+              isCurrentVersion: true,
+              version: newVersion,
             }],
           }),
         });
         const docResult = await docRes.json();
         if (docRes.ok && docResult.success) {
-          pushLog('success', '[Database] Document metadata saved (project_id and storage_path)');
+          pushLog('success', `[Database] Document metadata saved (v${newVersion}, project_id: ${workdayProjectId})`);
         } else {
           pushLog('warning', `[Database] Document save failed: ${docResult.error || 'Unknown'}`);
         }
@@ -921,37 +958,112 @@ export default function DocumentsPage() {
     }
   }, [uploadedFiles, addLog, refreshData, saveLogsToProjectLog]);
 
-  // Delete file from Azure Blob Storage
+  // Delete file — clears blob, project_documents record, and all associated data
   const handleDelete = useCallback(async (fileId: string) => {
     const file = uploadedFiles.find(f => f.id === fileId);
     if (!file) return;
 
-    // Delete the file from storage
+    const projectId = file.workdayProjectId;
+
+    // 1. Delete the file from Azure Blob Storage
     if (file.storagePath) {
       addLog('info', `[Storage] Deleting ${file.fileName}...`);
-
       try {
         const { error } = await storageApi.remove([file.storagePath]);
-
         if (error) {
-          addLog('error', `[Storage] Delete failed: ${error.message}`);
-          return;
+          addLog('warning', `[Storage] Delete failed: ${error.message}`);
+        } else {
+          addLog('success', '[Storage] Blob deleted');
         }
-
-        addLog('success', '[Storage] File deleted');
       } catch (err: any) {
-        addLog('error', `[Storage] Delete error: ${err.message}`);
-        return;
+        addLog('warning', `[Storage] Delete error: ${err.message}`);
       }
     }
 
+    // 2. Delete the project_documents record from the database
+    addLog('info', '[Database] Removing document record...');
+    try {
+      await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataKey: 'projectDocuments', operation: 'delete', records: [{ id: file.id }] }),
+      });
+      addLog('success', '[Database] Document record deleted');
+    } catch (e: any) {
+      addLog('warning', `[Database] Document record delete failed: ${e.message}`);
+    }
+
+    // 3. If this file was linked to a project, clean up all associated schedule data
+    if (projectId) {
+      addLog('info', `[Database] Cleaning up schedule data for project ${projectId}...`);
+
+      // Check if there are other active MPP files for this project
+      const otherFiles = uploadedFiles.filter(f => f.id !== fileId && f.workdayProjectId === projectId);
+      const hasOtherVersions = otherFiles.length > 0;
+
+      if (!hasOtherVersions) {
+        // No other versions — remove all tasks, units, phases, and dependencies for this project
+
+        // Delete task_dependencies first (FK references tasks)
+        try {
+          // Get task IDs for this project to delete their dependencies
+          const taskIds = (filteredData?.tasks || [])
+            .filter((t: any) => (t.projectId || t.project_id) === projectId)
+            .map((t: any) => t.id || t.taskId);
+          if (taskIds.length > 0) {
+            await fetch('/api/data/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataKey: 'taskDependencies', operation: 'deleteByTaskIds', taskIds, records: [] }),
+            });
+            addLog('success', `[Database] Task dependencies cleared`);
+          }
+        } catch (e: any) {
+          addLog('warning', `[Database] Dependencies cleanup: ${e.message}`);
+        }
+
+        // Delete tasks, units, phases (order matters for FKs)
+        for (const key of ['tasks', 'units', 'phases']) {
+          try {
+            const res = await fetch('/api/data/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dataKey: key, operation: 'deleteByProjectId', projectId, records: [] }),
+            });
+            const result = await res.json();
+            if (res.ok && result.success) {
+              addLog('success', `[Database] ${key} cleared for project`);
+            }
+          } catch (e: any) {
+            addLog('warning', `[Database] ${key} cleanup: ${e.message}`);
+          }
+        }
+
+        // Reset has_schedule on the project
+        try {
+          await fetch('/api/data/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataKey: 'projects',
+              operation: 'update',
+              records: [{ id: projectId, has_schedule: false, updated_at: new Date().toISOString() }],
+            }),
+          });
+          addLog('success', '[Database] Project has_schedule reset to false');
+        } catch (e: any) {
+          addLog('warning', `[Database] Project update: ${e.message}`);
+        }
+      } else {
+        addLog('info', `[Database] Other versions exist for this project — schedule data preserved`);
+      }
+    }
+
+    // 4. Remove from local state and refresh
     setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
-    
-    // Refresh data to update WBS and other views
     await refreshData();
-    
-    addLog('success', '[Complete] File deleted');
-  }, [uploadedFiles, addLog, refreshData]);
+    addLog('success', '[Complete] File and associated data deleted');
+  }, [uploadedFiles, addLog, refreshData, filteredData]);
 
   // Match hours entries to tasks and aggregate actual cost (via server-side API)
   const [isMatching, setIsMatching] = useState(false);
@@ -1172,6 +1284,7 @@ export default function DocumentsPage() {
                   <tr>
                     <th style={{ width: '40px' }}></th>
                     <th>File Name</th>
+                    <th>Version</th>
                     <th>Size</th>
                     <th>Project ID</th>
                     <th>Health Score</th>
@@ -1181,7 +1294,7 @@ export default function DocumentsPage() {
                 </thead>
                 <tbody>
                   {uploadedFiles.map((file) => {
-                    const isCurrentVersion = filteredData?.projectDocuments?.some(
+                    const isCurrentVersion = file.isCurrentVersion ?? filteredData?.projectDocuments?.some(
                       (d: any) =>
                         (d.storagePath === file.storagePath || d.storage_path === file.storagePath) &&
                         (d.isCurrentVersion === true || d.is_current_version === true)
@@ -1238,9 +1351,36 @@ export default function DocumentsPage() {
                               fontWeight: 500,
                             }}
                           >
-                            Current version
+                            Current
                           </span>
                         )}
+                        {!isCurrentVersion && file.workdayProjectId && (
+                          <span
+                            style={{
+                              marginLeft: '0.5rem',
+                              fontSize: '0.7rem',
+                              padding: '0.15rem 0.4rem',
+                              backgroundColor: 'rgba(156,163,175,0.2)',
+                              color: 'var(--text-muted)',
+                              borderRadius: '4px',
+                              fontWeight: 500,
+                            }}
+                          >
+                            Old
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '4px',
+                          backgroundColor: isCurrentVersion ? 'rgba(64,224,208,0.12)' : 'rgba(156,163,175,0.1)',
+                          color: isCurrentVersion ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
+                        }}>
+                          v{file.version || 1}
+                        </span>
                       </td>
                       <td>{(file.fileSize / 1024 / 1024).toFixed(2)} MB</td>
                       <td>{file.workdayProjectId || '-'}</td>

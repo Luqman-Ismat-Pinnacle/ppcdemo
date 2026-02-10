@@ -295,7 +295,7 @@ export async function POST(req: NextRequest) {
     const cleanedRecords = records.map((r: any) => cleanRecord(r, tableName));
 
     // ---- Operation: update (single record) ----
-    if (operation === 'update' && tableName === 'projects') {
+    if (operation === 'update') {
       if (usePostgres) {
         const rec = cleanedRecords[0];
         const id = rec.id;
