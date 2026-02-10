@@ -102,6 +102,22 @@ export async function uploadFile(
 }
 
 /**
+ * Check if a blob exists at the given path
+ */
+export async function blobExists(
+  path: string
+): Promise<boolean> {
+  try {
+    const client = await getContainerClient();
+    if (!client) return false;
+    const blockBlobClient = client.getBlockBlobClient(path);
+    return await blockBlobClient.exists();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Download a file from Azure Blob Storage
  */
 export async function downloadFile(

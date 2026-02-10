@@ -85,32 +85,8 @@ function Badge({ label, color }: { label: string; color: string }) {
 }
 
 /* ================================================================== */
-/*  1. PULSE — Health + Progress + Burn + Decisions + KPIs + Leaders   */
+/*  1. PULSE — Health + Progress + Burn + Leaderboard                  */
 /* ================================================================== */
-
-function PulseGauge({ value, max, label, color, subtitle }: { value: number; max: number; label: string; color: string; subtitle: string }) {
-  const option: EChartsOption = useMemo(() => ({
-    series: [{
-      type: 'gauge', startAngle: 220, endAngle: -40, min: 0, max,
-      pointer: { show: false },
-      progress: { show: true, roundCap: true, itemStyle: { color }, width: 10 },
-      axisLine: { lineStyle: { width: 10, color: [[1, 'rgba(255,255,255,0.06)']] } },
-      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      title: { show: true, offsetCenter: [0, '65%'], fontSize: 9, color: C.textMuted, fontWeight: 600 },
-      detail: {
-        valueAnimation: true, fontSize: 20, fontWeight: 900,
-        offsetCenter: [0, '-5%'], color,
-        formatter: () => `{val|${max <= 2 ? sn(value) : typeof value === 'number' && value > 999 ? fmtHrs(value) : String(Math.round(value))}}\n{sub|${subtitle}}`,
-        rich: {
-          val: { fontSize: 20, fontWeight: 900, color, lineHeight: 24 },
-          sub: { fontSize: 8, fontWeight: 600, color: C.textMuted, lineHeight: 12 },
-        },
-      },
-      data: [{ value, name: label }],
-    }],
-  }), [value, max, label, color, subtitle]);
-  return <ChartWrapper option={option} height="120px" />;
-}
 
 /* ================================================================== */
 /*  DECISIONS REQUIRED — Full section with expandable task dropdowns    */
@@ -1265,66 +1241,75 @@ export default function OverviewV2Page() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
           {/* ═══ 1. PULSE ═══ */}
-          <SectionCard title="Portfolio Pulse" badge={<Badge label="Pulse" color={C.teal} />}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1rem' }}>
-              {/* Gauges column — compact */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'start' }}>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <PulseGauge value={portfolio.healthScore} max={100} label="HEALTH SCORE" color={portfolio.healthScore >= 80 ? C.green : portfolio.healthScore >= 60 ? C.amber : C.red} subtitle={`${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}% variance`} />
-                  <PulseGauge value={portfolio.percentComplete} max={100} label="PROGRESS MADE" color={portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red} subtitle={`${portfolio.projectCount} projects`} />
-                  <PulseGauge value={portfolio.totalHours} max={Math.max(portfolio.baselineHours, portfolio.totalHours) * 1.1} label="HOURS BURNED" color={portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal} subtitle={`${fmtHrs(portfolio.baselineHours)} baseline`} />
-                </div>
-                {/* Health Checks */}
-                {(() => {
-                  const blockedCount = (data.tasks || []).filter((t: any) => { const s = String(t.status || '').toLowerCase(); return s.includes('block') || s.includes('hold'); }).length;
-                  const atRiskCount = (data.tasks || []).filter((t: any) => { const s = String(t.status || '').toLowerCase(); return s.includes('risk') || s.includes('late') || s.includes('delay'); }).length;
-                  const criticalCount = (data.tasks || []).filter((t: any) => t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0)).length;
-                  const scheduleStatus = portfolio.spi >= 0.95 ? { label: 'On Track', color: C.green, icon: '\u2713' } : portfolio.spi >= 0.85 ? { label: 'At Risk', color: C.amber, icon: '\u26A0' } : { label: 'Behind', color: C.red, icon: '\u2717' };
-                  const budgetStatus = portfolio.hrsVariance <= 0 ? { label: 'Under Budget', color: C.green, icon: '\u2713' } : portfolio.hrsVariance <= 10 ? { label: 'Near Budget', color: C.amber, icon: '\u26A0' } : { label: 'Over Budget', color: C.red, icon: '\u2717' };
-                  const qualityStatus = portfolio.cpi >= 0.95 ? { label: 'Efficient', color: C.green, icon: '\u2713' } : portfolio.cpi >= 0.85 ? { label: 'Moderate', color: C.amber, icon: '\u26A0' } : { label: 'Inefficient', color: C.red, icon: '\u2717' };
-                  const checks = [
-                    { label: 'Schedule', ...scheduleStatus },
-                    { label: 'Budget', ...budgetStatus },
-                    { label: 'Efficiency', ...qualityStatus },
-                    { label: 'Blockers', color: blockedCount > 0 ? C.red : C.green, icon: blockedCount > 0 ? '\u2717' : '\u2713', value: blockedCount > 0 ? `${blockedCount} blocked` : 'None' },
-                    { label: 'At Risk', color: atRiskCount > 0 ? C.amber : C.green, icon: atRiskCount > 0 ? '\u26A0' : '\u2713', value: atRiskCount > 0 ? `${atRiskCount} tasks` : 'None' },
-                    { label: 'Critical', color: criticalCount > 0 ? C.teal : C.green, icon: criticalCount > 0 ? '\u26A0' : '\u2713', value: criticalCount > 0 ? `${criticalCount} tasks` : 'None' },
-                  ];
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, width: '100%' }}>
-                      {checks.map(c => (
-                        <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px', background: `${c.color}0A`, borderRadius: 6, border: `1px solid ${c.color}25` }}>
-                          <span style={{ fontSize: '0.7rem', color: c.color, fontWeight: 700, width: 14, textAlign: 'center' }}>{c.icon}</span>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.5rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 700 }}>{c.label}</div>
-                            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: c.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(c as any).value || (c as any).label.split(' ').pop()}</div>
-                          </div>
+          <SectionCard title="Portfolio Pulse" badge={<Badge label="Pulse" color={C.teal} />} noPadding>
+            {(() => {
+              const hsColor = portfolio.healthScore >= 80 ? C.green : portfolio.healthScore >= 60 ? C.amber : C.red;
+              const pcColor = portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red;
+              const hrsRatio = portfolio.baselineHours > 0 ? Math.min(1, portfolio.totalHours / portfolio.baselineHours) : 0;
+              const hrsBarColor = portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal;
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr', minHeight: 0 }}>
+                  {/* ── Col 1: Health Score hero ── */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.25rem 0.75rem', borderRight: `1px solid ${C.border}`, background: `linear-gradient(180deg, ${hsColor}08, transparent)` }}>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 900, color: hsColor, lineHeight: 1 }}>{portfolio.healthScore}</div>
+                    <div style={{ fontSize: '0.6rem', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 }}>Health</div>
+                    <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 8 }}>
+                      <div style={{ width: `${portfolio.healthScore}%`, height: '100%', background: hsColor, borderRadius: 2, transition: 'width 0.5s' }} />
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: varColor(portfolio.hrsVariance), fontWeight: 700, marginTop: 6 }}>
+                      {portfolio.hrsVariance > 0 ? '+' : ''}{portfolio.hrsVariance}% variance
+                    </div>
+                  </div>
+
+                  {/* ── Col 2: Metrics ── */}
+                  <div style={{ padding: '0.75rem 1rem', borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+                    {/* Progress */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                        <span style={{ fontSize: '0.65rem', color: C.textMuted, fontWeight: 600, textTransform: 'uppercase' }}>Progress</span>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 800, color: pcColor }}>{portfolio.percentComplete}%</span>
+                      </div>
+                      <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3 }}>
+                        <div style={{ width: `${portfolio.percentComplete}%`, height: '100%', background: `linear-gradient(90deg, ${pcColor}, ${pcColor}90)`, borderRadius: 3, transition: 'width 0.5s' }} />
+                      </div>
+                      <div style={{ fontSize: '0.55rem', color: C.textMuted, marginTop: 2 }}>{portfolio.projectCount} projects</div>
+                    </div>
+                    {/* Hours: Actual vs Baseline */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                        <span style={{ fontSize: '0.65rem', color: C.textMuted, fontWeight: 600, textTransform: 'uppercase' }}>Hours Burned</span>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 800, color: hrsBarColor }}>{fmtHrs(portfolio.totalHours)}</span>
+                      </div>
+                      <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, position: 'relative' }}>
+                        <div style={{ width: `${Math.min(100, hrsRatio * 100)}%`, height: '100%', background: `linear-gradient(90deg, ${hrsBarColor}, ${hrsBarColor}90)`, borderRadius: 3, transition: 'width 0.5s' }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.55rem', color: C.textMuted, marginTop: 2 }}>
+                        <span>of {fmtHrs(portfolio.baselineHours)} baseline</span>
+                        <span>{fmtHrs(portfolio.remainingHours)} remaining</span>
+                      </div>
+                    </div>
+                    {/* Metrics row */}
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      {[
+                        { label: 'Earned', value: fmtHrs(portfolio.earnedHours), color: C.green },
+                        { label: 'Cost', value: fmtCost(portfolio.timesheetCost), color: C.blue },
+                        { label: 'Variance', value: `${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}%`, color: varColor(portfolio.hrsVariance) },
+                      ].map(m => (
+                        <div key={m.label}>
+                          <div style={{ fontSize: '0.5rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 700 }}>{m.label}</div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: m.color }}>{m.value}</div>
                         </div>
                       ))}
                     </div>
-                  );
-                })()}
-              </div>
-              {/* KPI + Leaderboard column — expanded */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignContent: 'start' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, alignContent: 'start' }}>
-                  {[
-                    { label: 'Actual Hrs', value: fmtHrs(portfolio.totalHours), color: C.teal },
-                    { label: 'Baseline Hrs', value: fmtHrs(portfolio.baselineHours), color: C.textSecondary },
-                    { label: 'Earned Value', value: fmtHrs(portfolio.earnedHours), color: C.green },
-                    { label: 'Remaining', value: fmtHrs(portfolio.remainingHours), color: portfolio.remainingHours > portfolio.baselineHours * 0.5 ? C.amber : C.green },
-                    { label: 'Cost Burned', value: fmtCost(portfolio.timesheetCost), color: C.blue },
-                    { label: 'Hrs Variance', value: `${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}%`, color: varColor(portfolio.hrsVariance) },
-                  ].map(s => (
-                    <div key={s.label} style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-                    </div>
-                  ))}
+                  </div>
+
+                  {/* ── Col 3: Leaderboard ── */}
+                  <div style={{ padding: '0.5rem 0.75rem' }}>
+                    <Leaderboard projectBreakdown={projectBreakdown} onSelect={() => {}} selected={null} />
+                  </div>
                 </div>
-                <Leaderboard projectBreakdown={projectBreakdown} onSelect={() => {}} selected={null} />
-              </div>
-            </div>
+              );
+            })()}
           </SectionCard>
 
           {/* ═══ 2. DECISIONS REQUIRED ═══ */}

@@ -56,9 +56,20 @@ function cleanRecord(record: any, tableName: string) {
 
   const formatted = toDbFormat(cleaned);
 
-  // tasks table: strip employee_id to avoid schema issues
-  if (tableName === 'tasks' && 'employee_id' in formatted) {
+  // tasks table: strip columns that don't exist in the DB schema
+  if (tableName === 'tasks') {
     delete formatted.employee_id;
+    delete formatted.predecessors;       // array of objects — lives in task_dependencies table
+    delete formatted.predecessor_name;   // not a DB column
+    delete formatted.task_name;          // tasks table uses 'name' not 'task_name'
+    delete formatted.task_description;   // tasks table uses 'description' or 'notes'
+  }
+
+  // Strip any remaining array/object values that can't be stored in flat columns
+  for (const [key, value] of Object.entries(formatted)) {
+    if (Array.isArray(value)) {
+      delete formatted[key];
+    }
   }
 
   return formatted;
