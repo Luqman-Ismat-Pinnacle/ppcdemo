@@ -7,14 +7,13 @@
  * No SPI/CPI — replaced by Progress Made & Hours Burned (time-filter aware).
  *
  * Sections:
- *  1. Pulse — Health gauge + Progress Made + Hours Burned + Decisions + KPIs + Leaderboard
- *  2. Milestones — Status breakdown, upcoming, overdue, variance
- *  3. Operational Friction — Sankey with view modes (Charge Type / Role / Person)
- *  4. Risk Matrix + Hours Variance Waterfall
- *  5. Predictive Burn — Enhanced confidence band + rich tooltips
- *  6. Meeting Snapshot & Delta
- *  7. Splash Zone — Dependency graph
- *  8. Workforce Burn — Role → Employee → Task breakdown
+ *  1. Pulse — Health gauge + Progress Made + Hours Burned + KPIs + Leaderboard
+ *  2. Decisions Required — Blocked, At Risk, Critical Path expandable categories
+ *  3. Milestones — Status breakdown, upcoming, overdue, variance
+ *  4. Operational Friction — Sankey with view modes (Charge Type / Role / Person)
+ *  5. Risk Matrix (full width) + Hours Variance Waterfall (full width)
+ *  6. Parameters & Suggestions — Combines Predictive Burn + Workforce Burn + Dependencies (circular graph)
+ *  7. Meeting Snapshot & Delta
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
@@ -94,23 +93,23 @@ function PulseGauge({ value, max, label, color, subtitle }: { value: number; max
     series: [{
       type: 'gauge', startAngle: 220, endAngle: -40, min: 0, max,
       pointer: { show: false },
-      progress: { show: true, roundCap: true, itemStyle: { color }, width: 14 },
-      axisLine: { lineStyle: { width: 14, color: [[1, 'rgba(255,255,255,0.06)']] } },
+      progress: { show: true, roundCap: true, itemStyle: { color }, width: 10 },
+      axisLine: { lineStyle: { width: 10, color: [[1, 'rgba(255,255,255,0.06)']] } },
       axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      title: { show: true, offsetCenter: [0, '68%'], fontSize: 10, color: C.textMuted, fontWeight: 600 },
+      title: { show: true, offsetCenter: [0, '65%'], fontSize: 9, color: C.textMuted, fontWeight: 600 },
       detail: {
-        valueAnimation: true, fontSize: 32, fontWeight: 900,
+        valueAnimation: true, fontSize: 20, fontWeight: 900,
         offsetCenter: [0, '-5%'], color,
         formatter: () => `{val|${max <= 2 ? sn(value) : typeof value === 'number' && value > 999 ? fmtHrs(value) : String(Math.round(value))}}\n{sub|${subtitle}}`,
         rich: {
-          val: { fontSize: 32, fontWeight: 900, color, lineHeight: 36 },
-          sub: { fontSize: 9, fontWeight: 600, color: C.textMuted, lineHeight: 14 },
+          val: { fontSize: 20, fontWeight: 900, color, lineHeight: 24 },
+          sub: { fontSize: 8, fontWeight: 600, color: C.textMuted, lineHeight: 12 },
         },
       },
       data: [{ value, name: label }],
     }],
   }), [value, max, label, color, subtitle]);
-  return <ChartWrapper option={option} height="180px" />;
+  return <ChartWrapper option={option} height="120px" />;
 }
 
 /* ================================================================== */
@@ -226,12 +225,12 @@ function Leaderboard({ projectBreakdown, onSelect, selected }: { projectBreakdow
 
   const renderList = (items: any[], label: string, isWorst: boolean) => (
     <div>
-      <div style={{ fontSize: '0.5rem', fontWeight: 700, color: isWorst ? C.red : C.green, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: '0.6rem', fontWeight: 700, color: isWorst ? C.red : C.green, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 3 }}>{label}</div>
       {items.map((p, i) => (
-        <button key={p.id || i} onClick={() => onSelect(selected?.id === p.id ? null : p)} style={{ width: '100%', padding: '2px 6px', borderRadius: 4, border: selected?.id === p.id ? `1px solid ${C.teal}` : '1px solid transparent', background: selected?.id === p.id ? `${C.teal}10` : 'transparent', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ flex: 1, fontSize: '0.58rem', color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-          <span style={{ fontSize: '0.58rem', fontWeight: 700, color: valColor(p), flexShrink: 0 }}>{fmtVal(p)}</span>
-        </button>
+        <div key={p.id || i} style={{ width: '100%', padding: '3px 6px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${C.border}` }}>
+          <span title={p.name} style={{ flex: 1, fontSize: '0.7rem', color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: valColor(p), flexShrink: 0 }}>{fmtVal(p)}</span>
+        </div>
       ))}
     </div>
   );
@@ -354,7 +353,7 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
     if (viewMode === 'charge') {
       // Portfolio → Project → Charge Type
       projectBreakdown.forEach(p => {
-        const nm = truncName(p.name, 26);
+        const nm = p.name;
         add(nm, p.variance > 10 ? C.red : p.variance > 0 ? C.amber : C.green);
         const total = Math.max(p.actualHours, p.timesheetHours, 1);
         links.push({ source: 'Portfolio', target: nm, value: total });
@@ -395,7 +394,7 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
       // Charge Type → Role
       ctRoleHrs.forEach((roles, ctLabel) => {
         roles.forEach((hrs, role) => {
-          if (hrs > 0) { const rn = truncName(role, 22); add(rn, C.indigo); links.push({ source: ctLabel, target: rn, value: Math.round(hrs) }); }
+          if (hrs > 0) { add(role, C.indigo); links.push({ source: ctLabel, target: role, value: Math.round(hrs) }); }
         });
       });
     } else {
@@ -411,12 +410,11 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
         rolePersonHrs.get(role)!.set(name, (rolePersonHrs.get(role)!.get(name) || 0) + hrs);
       });
       rolePersonHrs.forEach((persons, role) => {
-        const rn = truncName(role, 22);
         const total = [...persons.values()].reduce((s, h) => s + h, 0);
-        add(rn, C.indigo);
-        links.push({ source: 'Portfolio', target: rn, value: Math.round(total) });
+        add(role, C.indigo);
+        links.push({ source: 'Portfolio', target: role, value: Math.round(total) });
         persons.forEach((hrs, name) => {
-          if (hrs > 0) { const pn = truncName(name, 22); add(pn, C.cyan); links.push({ source: rn, target: pn, value: Math.round(hrs) }); }
+          if (hrs > 0) { add(name, C.cyan); links.push({ source: role, target: name, value: Math.round(hrs) }); }
         });
       });
     }
@@ -427,18 +425,20 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
     const totalHours = validLinks.filter(l => l.source === 'Portfolio').reduce((s, l) => s + l.value, 0) || 1;
 
     return {
-      tooltip: { ...TT, trigger: 'item', formatter: (params: any) => {
+      tooltip: { ...TT, trigger: 'item', confine: false, appendToBody: true,
+        extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:500px;white-space:normal;word-wrap:break-word;',
+        formatter: (params: any) => {
         if (params.dataType === 'edge') {
           const pct = sn((params.data.value / totalHours) * 100, 1);
-          return `<strong>${params.data.source}</strong> → <strong>${params.data.target}</strong><br/>Hours: <strong>${fmtHrs(params.data.value)}</strong> (${pct}%)`;
+          return `<strong style="word-break:break-word;">${params.data.source}</strong> → <strong style="word-break:break-word;">${params.data.target}</strong><br/>Hours: <strong>${fmtHrs(params.data.value)}</strong> (${pct}%)`;
         }
-        return `<strong>${params.name}</strong>`;
+        return `<strong style="word-break:break-word;">${params.name}</strong>`;
       }},
       series: [{
         type: 'sankey', emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.85 } },
-        nodeAlign: 'justify', nodeWidth: 28, nodeGap: 28, layoutIterations: 64,
-        orient: 'horizontal', left: 50, right: 180, top: 24, bottom: 24,
-        label: { color: C.textPrimary, fontSize: 11, fontWeight: 600 },
+        nodeAlign: 'justify', nodeWidth: 28, nodeGap: 32, layoutIterations: 64,
+        orient: 'horizontal', left: 50, right: 220, top: 28, bottom: 28,
+        label: { color: C.textPrimary, fontSize: 11, fontWeight: 600, overflow: 'truncate', width: 180 },
         lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.3 },
         data: nodes, links: validLinks,
       }],
@@ -449,10 +449,10 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
   // Calculate dynamic height based on the number of nodes
   const sankeyHeight = useMemo(() => {
     const nodeCount = (option as any)?._nodeCount || 0;
-    // Estimate: each node needs ~50px of vertical space, minimum 480px
-    const calculated = Math.max(480, nodeCount * 50);
+    // Each node needs ~70px of vertical space (nodeGap 32 + node height + label space), minimum 550px
+    const calculated = Math.max(550, nodeCount * 70);
     // Cap at a reasonable maximum
-    return Math.min(calculated, 1400);
+    return Math.min(calculated, 2000);
   }, [option]);
 
   if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No data</div>;
@@ -492,8 +492,8 @@ function RiskMatrix({ projectBreakdown, tasks, onSelect }: { projectBreakdown: a
       series: [{ type: 'scatter', data: projectBreakdown.map(p => {
         const schedRisk = Math.max(0, Math.min(2, p.variance > 0 ? Math.min(2, p.variance / 50 + 0.5) : 0.2));
         const budgetRisk = Math.max(0, Math.min(2, p.actualHours > p.baselineHours ? Math.min(2, ((p.actualHours - p.baselineHours) / Math.max(p.baselineHours, 1)) * 2 + 0.5) : 0.2));
-        return { value: [schedRisk, budgetRisk], name: p.name, variance: p.variance, hours: p.actualHours, baseline: p.baselineHours, tasks: p.tasks, percentComplete: p.percentComplete, projectId: p.id, symbolSize: Math.max(14, Math.min(45, Math.sqrt(p.actualHours) * 1.4)), itemStyle: { color: varColor(p.variance), opacity: 0.85 } };
-      }), label: { show: true, position: 'right', color: C.textMuted, fontSize: 8, formatter: (p: any) => truncName(p.data.name, 12) }, emphasis: { itemStyle: { shadowBlur: 15, shadowColor: `${C.teal}80`, borderColor: C.teal, borderWidth: 2 } } }],
+        return { value: [schedRisk, budgetRisk], name: p.name, variance: p.variance, hours: p.actualHours, baseline: p.baselineHours, tasks: p.tasks, percentComplete: p.percentComplete, projectId: p.id, symbolSize: Math.max(16, Math.min(50, Math.sqrt(p.actualHours) * 1.4)), itemStyle: { color: varColor(p.variance), opacity: 0.85 } };
+      }), label: { show: true, position: 'right', color: C.textMuted, fontSize: 9, overflow: 'truncate', width: 120, formatter: (p: any) => p.data.name }, emphasis: { itemStyle: { shadowBlur: 15, shadowColor: `${C.teal}80`, borderColor: C.teal, borderWidth: 2 } } }],
     };
   }, [projectBreakdown]);
 
@@ -507,11 +507,11 @@ function RiskMatrix({ projectBreakdown, tasks, onSelect }: { projectBreakdown: a
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: drillData ? '1fr 280px' : '1fr', gap: '0.75rem' }}>
-      <ChartWrapper option={option} height="360px" onClick={(params: any) => { if (params?.data) { const p = projectBreakdown.find(pb => pb.name === params.data.name); if (p) { setDrillProject(p); onSelect(p); } } }} />
+      <ChartWrapper option={option} height="420px" onClick={(params: any) => { if (params?.data) { const p = projectBreakdown.find(pb => pb.name === params.data.name); if (p) { setDrillProject(p); onSelect(p); } } }} />
       {drillData && (
-        <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${C.border}`, padding: '0.6rem', overflowY: 'auto', maxHeight: 360 }}>
+        <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${C.border}`, padding: '0.6rem', overflowY: 'auto', maxHeight: 420 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: C.textPrimary }}>{truncName(drillData.project.name, 28)}</span>
+            <span title={drillData.project.name} style={{ fontSize: '0.75rem', fontWeight: 700, color: C.textPrimary }}>{drillData.project.name}</span>
             <button onClick={() => setDrillProject(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '0.7rem' }}>X</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 3, marginBottom: '0.4rem' }}>
@@ -519,9 +519,9 @@ function RiskMatrix({ projectBreakdown, tasks, onSelect }: { projectBreakdown: a
             <div style={{ padding: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 5, textAlign: 'center' }}><div style={{ fontSize: '0.45rem', color: C.textMuted }}>HRS</div><div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.textPrimary }}>{fmtHrs(drillData.project.actualHours)}</div></div>
             <div style={{ padding: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 5, textAlign: 'center' }}><div style={{ fontSize: '0.45rem', color: C.textMuted }}>PROG</div><div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.textPrimary }}>{drillData.project.percentComplete}%</div></div>
           </div>
-          {drillData.overBudget.length > 0 && <div style={{ marginBottom: 4 }}><div style={{ fontSize: '0.55rem', fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 2 }}>Over-Budget Tasks ({drillData.overBudget.length})</div>{drillData.overBudget.slice(0, 4).map((t: any, i: number) => <div key={i} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0' }}>{truncName(t.name || t.taskName || 'Task', 26)} <span style={{ color: C.red }}>+{Math.round(Number(t.actualHours || 0) - Number(t.baselineHours || 0))}h</span></div>)}</div>}
+          {drillData.overBudget.length > 0 && <div style={{ marginBottom: 4 }}><div style={{ fontSize: '0.55rem', fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 2 }}>Over-Budget Tasks ({drillData.overBudget.length})</div>{drillData.overBudget.slice(0, 4).map((t: any, i: number) => <div key={i} title={t.name || t.taskName || 'Task'} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name || t.taskName || 'Task'} <span style={{ color: C.red }}>+{Math.round(Number(t.actualHours || 0) - Number(t.baselineHours || 0))}h</span></div>)}</div>}
           <div style={{ fontSize: '0.55rem', fontWeight: 700, color: C.textSecondary, textTransform: 'uppercase', marginBottom: 2 }}>Phases</div>
-          {drillData.phases.slice(0, 6).map((ph, i) => { const v = ph.bl > 0 ? Math.round(((ph.hrs - ph.bl) / ph.bl) * 100) : 0; return <div key={i} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}><span>{truncName(String(ph.name), 20)} ({ph.tasks.length})</span><span style={{ color: varColor(v) }}>{fmtHrs(ph.hrs)}/{fmtHrs(ph.bl)} {v !== 0 ? `(${v > 0 ? '+' : ''}${v}%)` : ''}</span></div>; })}
+          {drillData.phases.slice(0, 6).map((ph, i) => { const v = ph.bl > 0 ? Math.round(((ph.hrs - ph.bl) / ph.bl) * 100) : 0; return <div key={i} title={String(ph.name)} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 }}>{ph.name} ({ph.tasks.length})</span><span style={{ color: varColor(v), flexShrink: 0 }}>{fmtHrs(ph.hrs)}/{fmtHrs(ph.bl)} {v !== 0 ? `(${v > 0 ? '+' : ''}${v}%)` : ''}</span></div>; })}
         </div>
       )}
     </div>
@@ -536,8 +536,8 @@ function HoursVarianceWaterfall({ projectBreakdown }: { projectBreakdown: any[] 
   const option: EChartsOption = useMemo(() => {
     if (!projectBreakdown.length) return {};
     const sorted = [...projectBreakdown].sort((a, b) => (b.actualHours - b.baselineHours) - (a.actualHours - a.baselineHours));
-    const top = sorted.slice(0, 14);
-    const names = top.map(p => truncName(p.name, 16));
+    const top = sorted.slice(0, 16);
+    const names = top.map(p => p.name);
     const totalVar = top.reduce((s, p) => s + (p.actualHours - p.baselineHours), 0);
     names.push('Net');
     const base: number[] = []; const positive: (number | string)[] = []; const negative: (number | string)[] = [];
@@ -552,8 +552,8 @@ function HoursVarianceWaterfall({ projectBreakdown }: { projectBreakdown: any[] 
         const p = top[idx]; const v = p.actualHours - p.baselineHours;
         return `<strong>${p.name}</strong><br/>Baseline: ${fmtHrs(p.baselineHours)}<br/>Actual: ${fmtHrs(p.actualHours)}<br/>Variance: <strong style="color:${varColor(p.variance)}">${v > 0 ? '+' : ''}${fmtHrs(v)} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</strong><br/>Progress: ${p.percentComplete}% | Tasks: ${p.tasks}`;
       }},
-      grid: { left: 55, right: 15, top: 15, bottom: 75 },
-      xAxis: { type: 'category', data: names, axisLabel: { color: C.textMuted, fontSize: 8, rotate: 40 }, axisLine: { lineStyle: { color: C.axis } } },
+      grid: { left: 55, right: 20, top: 15, bottom: 100 },
+      xAxis: { type: 'category', data: names, axisLabel: { color: C.textMuted, fontSize: 9, rotate: 35, overflow: 'truncate', width: 100 }, axisLine: { lineStyle: { color: C.axis } }, axisPointer: { label: { formatter: (p: any) => p.value } } },
       yAxis: { type: 'value', axisLabel: { color: C.textMuted, fontSize: 9, formatter: (v: number) => fmtHrs(v) }, splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } } },
       series: [
         { name: 'Base', type: 'bar', stack: 'w', data: base, itemStyle: { color: 'transparent' }, emphasis: { itemStyle: { color: 'transparent' } } },
@@ -563,7 +563,7 @@ function HoursVarianceWaterfall({ projectBreakdown }: { projectBreakdown: any[] 
     };
   }, [projectBreakdown]);
   if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No data</div>;
-  return <ChartWrapper option={option} height="360px" />;
+  return <ChartWrapper option={option} height="420px" />;
 }
 
 /* ================================================================== */
@@ -667,7 +667,7 @@ function MeetingSnapshotDelta({ portfolio, projectBreakdown }: { portfolio: any;
 /*  7. DEPENDENCY IMPACT GRAPH                                         */
 /* ================================================================== */
 
-function DependencyImpactGraph({ tasks, onClick }: { tasks: any[]; onClick?: (p: any) => void }) {
+function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
   const { graphNodes, graphLinks, criticalPath, blockedSplash } = useMemo(() => {
     if (!tasks.length) return { graphNodes: [], graphLinks: [], criticalPath: new Set<string>(), blockedSplash: new Set<string>() };
     const taskMap = new Map<string, any>(); tasks.forEach((t: any) => { const id = String(t.id || t.taskId || ''); if (id) taskMap.set(id, t); });
@@ -678,12 +678,12 @@ function DependencyImpactGraph({ tasks, onClick }: { tasks: any[]; onClick?: (p:
     });
     const nodeIdSet = new Set<string>(); const nodeList: any[] = [];
     [...childrenOf.keys()].sort((a, b) => (childrenOf.get(b)?.length || 0) - (childrenOf.get(a)?.length || 0)).forEach(pid => {
-      if (nodeIdSet.size >= 45) return; const t = taskMap.get(pid); if (!t) return; nodeIdSet.add(pid);
+      if (nodeIdSet.size >= 60) return; const t = taskMap.get(pid); if (!t) return; nodeIdSet.add(pid);
       const isCrit = !!t.isCritical || (t.totalFloat != null && Number(t.totalFloat) <= 0);
       const isBlk = String(t.status || '').toLowerCase().includes('block') || String(t.status || '').toLowerCase().includes('late');
-      nodeList.push({ id: pid, name: truncName(t.name || t.taskName || pid, 24), childCount: childrenOf.get(pid)?.length || 0, hours: Number(t.baselineHours || t.actualHours || 0), pc: Number(t.percentComplete || 0), isCritical: isCrit, isParent: true, variance: Number(t.actualHours || 0) - Number(t.baselineHours || 0), isBlocked: isBlk });
-      (childrenOf.get(pid) || []).forEach(cid => { if (nodeIdSet.size >= 45 || nodeIdSet.has(cid)) return; const ct = taskMap.get(cid); if (!ct) return; nodeIdSet.add(cid);
-        nodeList.push({ id: cid, name: truncName(ct.name || ct.taskName || cid, 24), childCount: 0, hours: Number(ct.baselineHours || ct.actualHours || 0), pc: Number(ct.percentComplete || 0), isCritical: !!ct.isCritical || (ct.totalFloat != null && Number(ct.totalFloat) <= 0), isParent: childrenOf.has(cid), variance: Number(ct.actualHours || 0) - Number(ct.baselineHours || 0), isBlocked: String(ct.status || '').toLowerCase().includes('block') }); });
+      nodeList.push({ id: pid, name: t.name || t.taskName || pid, childCount: childrenOf.get(pid)?.length || 0, hours: Number(t.baselineHours || t.actualHours || 0), pc: Number(t.percentComplete || 0), isCritical: isCrit, isParent: true, variance: Number(t.actualHours || 0) - Number(t.baselineHours || 0), isBlocked: isBlk });
+      (childrenOf.get(pid) || []).forEach(cid => { if (nodeIdSet.size >= 60 || nodeIdSet.has(cid)) return; const ct = taskMap.get(cid); if (!ct) return; nodeIdSet.add(cid);
+        nodeList.push({ id: cid, name: ct.name || ct.taskName || cid, childCount: 0, hours: Number(ct.baselineHours || ct.actualHours || 0), pc: Number(ct.percentComplete || 0), isCritical: !!ct.isCritical || (ct.totalFloat != null && Number(ct.totalFloat) <= 0), isParent: childrenOf.has(cid), variance: Number(ct.actualHours || 0) - Number(ct.baselineHours || 0), isBlocked: String(ct.status || '').toLowerCase().includes('block') }); });
     });
     const critSet = new Set<string>(); nodeList.forEach(n => { if (n.isCritical) critSet.add(n.id); });
     const splashSet = new Set<string>(); const propagate = (id: string) => { (successorsOf.get(id) || []).concat(childrenOf.get(id) || []).forEach(sid => { if (nodeIdSet.has(sid) && !splashSet.has(sid)) { splashSet.add(sid); propagate(sid); } }); };
@@ -695,18 +695,31 @@ function DependencyImpactGraph({ tasks, onClick }: { tasks: any[]; onClick?: (p:
     if (!graphNodes.length) return {};
     const maxH = Math.max(...graphNodes.map(n => n.hours), 1); const maxC = Math.max(...graphNodes.map(n => n.childCount), 1);
     return {
-      tooltip: { ...TT, trigger: 'item', formatter: (p: any) => { const d = p.data; if (p.dataType === 'edge') return ''; return `<strong>${d.name}</strong><br/>Hours: ${Math.round(d.hours || 0)}<br/>Progress: ${Math.round(d.pc || 0)}%${d.isCritical ? '<br/><span style="color:' + C.teal + '">CRITICAL PATH</span>' : ''}${d.isBlocked ? '<br/><span style="color:' + C.red + '">BLOCKED</span>' : ''}${d.inSplash && !d.isBlocked ? '<br/><span style="color:' + C.amber + '">SPLASH ZONE</span>' : ''}`; } },
-      series: [{ type: 'graph', layout: 'force', roam: true, draggable: true, force: { repulsion: 250, gravity: 0.1, edgeLength: [50, 160] },
+      tooltip: { ...TT, trigger: 'item', extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:400px;white-space:normal;',
+        formatter: (p: any) => { const d = p.data; if (p.dataType === 'edge') return '';
+          return `<strong style="word-break:break-word;">${d.name}</strong><br/>Hours: ${Math.round(d.hours || 0)}<br/>Progress: ${Math.round(d.pc || 0)}%${d.isCritical ? '<br/><span style="color:' + C.teal + '">CRITICAL PATH</span>' : ''}${d.isBlocked ? '<br/><span style="color:' + C.red + '">BLOCKED</span>' : ''}${d.inSplash && !d.isBlocked ? '<br/><span style="color:' + C.amber + '">SPLASH ZONE</span>' : ''}`; } },
+      series: [{ type: 'graph', layout: 'circular', roam: true, draggable: true,
+        circular: { rotateLabel: true },
         categories: [{ name: 'Critical', itemStyle: { color: C.teal } }, { name: 'Blocked', itemStyle: { color: C.red } }, { name: 'Splash', itemStyle: { color: C.amber } }, { name: 'Phase', itemStyle: { color: C.blue } }, { name: 'Task', itemStyle: { color: `${C.blue}90` } }],
-        data: graphNodes.map(n => { const inSplash = blockedSplash.has(n.id); return { name: n.name, id: n.id, symbolSize: n.isParent ? Math.max(28, Math.min(55, 28 + (n.childCount / maxC) * 27)) : Math.max(12, Math.min(35, (n.hours / maxH) * 35)), category: n.isBlocked ? 1 : n.isCritical ? 0 : inSplash ? 2 : n.isParent ? 3 : 4, hours: n.hours, pc: n.pc, isCritical: n.isCritical, isBlocked: n.isBlocked, inSplash, label: { show: n.isParent || n.isCritical || n.isBlocked, position: 'right', color: C.textPrimary, fontSize: 9 }, itemStyle: { shadowBlur: n.isBlocked ? 20 : n.isCritical ? 15 : 3, shadowColor: n.isBlocked ? `${C.red}80` : n.isCritical ? `${C.teal}80` : 'rgba(0,0,0,0.2)', borderWidth: n.isBlocked || n.isCritical ? 2.5 : 1.5, borderColor: n.isBlocked ? C.red : n.isCritical ? C.teal : inSplash ? C.amber : `${C.blue}60` } }; }),
-        links: graphLinks.map(l => { const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target); return { source: l.source, target: l.target, lineStyle: { color: isCrit ? C.teal : `${C.blue}25`, width: isCrit ? 3.5 : 1.2, curveness: 0.15 }, symbol: ['none', 'arrow'], symbolSize: [0, 7] }; }),
-        emphasis: { focus: 'adjacency', itemStyle: { shadowBlur: 18, shadowColor: `${C.teal}80` } },
+        data: graphNodes.map(n => { const inSplash = blockedSplash.has(n.id); return {
+          name: n.name, id: n.id,
+          symbolSize: n.isParent ? Math.max(22, Math.min(50, 22 + (n.childCount / maxC) * 28)) : Math.max(10, Math.min(30, (n.hours / maxH) * 30)),
+          category: n.isBlocked ? 1 : n.isCritical ? 0 : inSplash ? 2 : n.isParent ? 3 : 4,
+          hours: n.hours, pc: n.pc, isCritical: n.isCritical, isBlocked: n.isBlocked, inSplash,
+          label: { show: n.isParent || n.isCritical || n.isBlocked, color: C.textPrimary, fontSize: 9 },
+          itemStyle: { shadowBlur: n.isBlocked ? 20 : n.isCritical ? 15 : 3, shadowColor: n.isBlocked ? `${C.red}80` : n.isCritical ? `${C.teal}80` : 'rgba(0,0,0,0.2)', borderWidth: n.isBlocked || n.isCritical ? 2.5 : 1, borderColor: n.isBlocked ? C.red : n.isCritical ? C.teal : inSplash ? C.amber : `${C.blue}40` },
+        }; }),
+        links: graphLinks.map(l => { const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target); return {
+          source: l.source, target: l.target,
+          lineStyle: { color: isCrit ? C.teal : 'source', width: isCrit ? 3 : 0.8, curveness: 0.3, opacity: isCrit ? 0.9 : 0.25 },
+        }; }),
+        emphasis: { focus: 'adjacency', lineStyle: { width: 3, opacity: 0.9 }, itemStyle: { shadowBlur: 18, shadowColor: `${C.teal}80` } },
       }],
       legend: { data: ['Critical', 'Blocked', 'Splash', 'Phase', 'Task'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 9 } },
     };
   }, [graphNodes, graphLinks, criticalPath, blockedSplash]);
   if (!graphNodes.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No dependency data</div>;
-  return <ChartWrapper option={option} height="460px" onClick={onClick} />;
+  return <ChartWrapper option={option} height="520px" />;
 }
 
 /* ================================================================== */
@@ -781,7 +794,7 @@ function WorkforceBurn({ hours, employees, tasks }: { hours: any[]; employees: a
                     <div style={{ marginLeft: 20, paddingLeft: 8, borderLeft: `1px solid ${C.cyan}20` }}>
                       {person.tasks.map(task => (
                         <div key={task.id} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 55px 55px 50px', gap: 4, padding: '3px 4px', fontSize: '0.6rem', borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
-                          <span style={{ color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
+                          <span title={task.name} style={{ color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.name}</span>
                           <span style={{ color: C.textMuted, textAlign: 'right' }}>{fmtHrs(task.hours)}h</span>
                           <span style={{ color: task.burnRate > 110 ? C.red : task.burnRate > 90 ? C.amber : C.green, textAlign: 'right', fontWeight: 600 }}>{task.burnRate}% burn</span>
                           <span style={{ color: C.textMuted, textAlign: 'right' }}>{task.remaining > 0 ? `${fmtHrs(task.remaining)}h left` : 'done'}</span>
@@ -800,6 +813,96 @@ function WorkforceBurn({ hours, employees, tasks }: { hours: any[]; employees: a
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  9. PARAMETERS & SUGGESTIONS — Combines Burn + Workforce + Deps     */
+/* ================================================================== */
+
+function ParametersSuggestions({ portfolio, projectBreakdown, hours, employees, tasks }: {
+  portfolio: any; projectBreakdown: any[]; hours: any[]; employees: any[]; tasks: any[];
+}) {
+  const [activeTab, setActiveTab] = useState<'burn' | 'workforce' | 'dependencies'>('burn');
+
+  // Generate automated suggestions from data
+  const suggestions = useMemo(() => {
+    const items: { type: 'danger' | 'warning' | 'info'; text: string }[] = [];
+
+    // Budget suggestions
+    const overBudget = projectBreakdown.filter(p => p.variance > 10);
+    if (overBudget.length > 0) {
+      items.push({ type: 'danger', text: `${overBudget.length} project${overBudget.length > 1 ? 's' : ''} over budget by >10%: ${overBudget.slice(0, 3).map(p => `${p.name} (+${p.variance}%)`).join(', ')}${overBudget.length > 3 ? ` and ${overBudget.length - 3} more` : ''}. Consider resource reallocation or scope review.` });
+    }
+
+    // Progress suggestions
+    const stalled = projectBreakdown.filter(p => p.percentComplete < 30 && p.actualHours > p.baselineHours * 0.5);
+    if (stalled.length > 0) {
+      items.push({ type: 'warning', text: `${stalled.length} project${stalled.length > 1 ? 's' : ''} have <30% progress but >50% hours consumed. Review scope and resource allocation for: ${stalled.slice(0, 3).map(p => p.name).join(', ')}.` });
+    }
+
+    // Blocked tasks
+    const blocked = tasks.filter((t: any) => String(t.status || '').toLowerCase().includes('block'));
+    if (blocked.length > 0) {
+      items.push({ type: 'danger', text: `${blocked.length} blocked task${blocked.length > 1 ? 's' : ''} requiring intervention. Blocked tasks create downstream delays in the dependency chain.` });
+    }
+
+    // Completion forecast
+    if (portfolio.cpi > 0 && portfolio.cpi < 0.9) {
+      const eac = Math.round(portfolio.baselineHours / portfolio.cpi);
+      items.push({ type: 'warning', text: `At current burn rate (CPI: ${portfolio.cpi}), estimated hours at completion is ${fmtHrs(eac)} — ${fmtHrs(eac - portfolio.baselineHours)} over baseline. Consider efficiency improvements.` });
+    }
+
+    // Good news
+    const underBudget = projectBreakdown.filter(p => p.variance < -5 && p.percentComplete > 50);
+    if (underBudget.length > 0) {
+      items.push({ type: 'info', text: `${underBudget.length} project${underBudget.length > 1 ? 's' : ''} performing under budget: ${underBudget.slice(0, 3).map(p => `${p.name} (${p.variance}%)`).join(', ')}. Consider reallocating surplus resources.` });
+    }
+
+    // Critical path
+    const criticalTasks = tasks.filter((t: any) => t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0));
+    if (criticalTasks.length > 0) {
+      items.push({ type: 'info', text: `${criticalTasks.length} tasks on the critical path. Any delay to these will impact the project end date. Prioritize unblocking and resourcing these first.` });
+    }
+
+    if (items.length === 0) {
+      items.push({ type: 'info', text: 'All parameters within normal ranges. Continue monitoring.' });
+    }
+
+    return items;
+  }, [portfolio, projectBreakdown, tasks]);
+
+  const tabConfig = [
+    { key: 'burn' as const, label: 'Predictive Burn', color: C.green },
+    { key: 'workforce' as const, label: 'Workforce Burn Rate', color: C.indigo },
+    { key: 'dependencies' as const, label: 'Dependency Map', color: C.purple },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {/* Suggestions banner */}
+      <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${C.border}`, padding: '0.6rem 0.75rem' }}>
+        <div style={{ fontSize: '0.65rem', fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Automated Suggestions</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {suggestions.map((s, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', marginTop: 3, flexShrink: 0, background: s.type === 'danger' ? C.red : s.type === 'warning' ? C.amber : C.teal }} />
+              <span style={{ fontSize: '0.7rem', color: C.textSecondary, lineHeight: 1.4 }}>{s.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Tab navigation */}
+      <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: 2, alignSelf: 'flex-start' }}>
+        {tabConfig.map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{ padding: '5px 14px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, background: activeTab === t.key ? `${t.color}20` : 'transparent', color: activeTab === t.key ? t.color : C.textMuted }}>{t.label}</button>
+        ))}
+      </div>
+      {/* Tab content */}
+      {activeTab === 'burn' && <PredictiveBurn portfolio={portfolio} />}
+      {activeTab === 'workforce' && <WorkforceBurn hours={hours} employees={employees} tasks={tasks} />}
+      {activeTab === 'dependencies' && <DependencyImpactGraph tasks={tasks} />}
     </div>
   );
 }
@@ -881,28 +984,32 @@ export default function OverviewV2Page() {
 
           {/* ═══ 1. PULSE ═══ */}
           <SectionCard title="Portfolio Pulse" badge={<Badge label="Pulse" color={C.teal} />}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <PulseGauge value={portfolio.healthScore} max={100} label="HEALTH SCORE" color={portfolio.healthScore >= 80 ? C.green : portfolio.healthScore >= 60 ? C.amber : C.red} subtitle={`${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}% hrs variance`} />
-              <PulseGauge value={portfolio.percentComplete} max={100} label="PROGRESS MADE" color={portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red} subtitle={`${portfolio.projectCount} projects`} />
-              <PulseGauge value={portfolio.totalHours} max={Math.max(portfolio.baselineHours, portfolio.totalHours) * 1.1} label="HOURS BURNED" color={portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal} subtitle={`${fmtHrs(portfolio.baselineHours)} baseline`} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, alignContent: 'start' }}>
-                {[
-                  { label: 'Actual Hrs', value: fmtHrs(portfolio.totalHours), color: C.teal },
-                  { label: 'Baseline Hrs', value: fmtHrs(portfolio.baselineHours), color: C.textSecondary },
-                  { label: 'Earned Value', value: fmtHrs(portfolio.earnedHours), color: C.green },
-                  { label: 'Remaining', value: fmtHrs(portfolio.remainingHours), color: portfolio.remainingHours > portfolio.baselineHours * 0.5 ? C.amber : C.green },
-                  { label: 'Cost Burned', value: fmtCost(portfolio.timesheetCost), color: C.blue },
-                  { label: 'Hrs Variance', value: `${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}%`, color: varColor(portfolio.hrsVariance) },
-                ].map(s => (
-                  <div key={s.label} style={{ padding: '4px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: 6, textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.45rem', color: C.textMuted, textTransform: 'uppercase' }}>{s.label}</div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-                  </div>
-                ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1rem' }}>
+              {/* Gauges column — compact */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'start' }}>
+                <PulseGauge value={portfolio.healthScore} max={100} label="HEALTH SCORE" color={portfolio.healthScore >= 80 ? C.green : portfolio.healthScore >= 60 ? C.amber : C.red} subtitle={`${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}% variance`} />
+                <PulseGauge value={portfolio.percentComplete} max={100} label="PROGRESS MADE" color={portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red} subtitle={`${portfolio.projectCount} projects`} />
+                <PulseGauge value={portfolio.totalHours} max={Math.max(portfolio.baselineHours, portfolio.totalHours) * 1.1} label="HOURS BURNED" color={portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal} subtitle={`${fmtHrs(portfolio.baselineHours)} baseline`} />
               </div>
-              <Leaderboard projectBreakdown={projectBreakdown} onSelect={() => {}} selected={null} />
+              {/* KPI + Leaderboard column — expanded */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignContent: 'start' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, alignContent: 'start' }}>
+                  {[
+                    { label: 'Actual Hrs', value: fmtHrs(portfolio.totalHours), color: C.teal },
+                    { label: 'Baseline Hrs', value: fmtHrs(portfolio.baselineHours), color: C.textSecondary },
+                    { label: 'Earned Value', value: fmtHrs(portfolio.earnedHours), color: C.green },
+                    { label: 'Remaining', value: fmtHrs(portfolio.remainingHours), color: portfolio.remainingHours > portfolio.baselineHours * 0.5 ? C.amber : C.green },
+                    { label: 'Cost Burned', value: fmtCost(portfolio.timesheetCost), color: C.blue },
+                    { label: 'Hrs Variance', value: `${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}%`, color: varColor(portfolio.hrsVariance) },
+                  ].map(s => (
+                    <div key={s.label} style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>{s.label}</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: s.color }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <Leaderboard projectBreakdown={projectBreakdown} onSelect={() => {}} selected={null} />
+              </div>
             </div>
           </SectionCard>
 
@@ -921,34 +1028,24 @@ export default function OverviewV2Page() {
             <OperationalSankey projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} />
           </SectionCard>
 
-          {/* ═══ 4. RISK + VARIANCE ═══ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <SectionCard title="Risk Matrix" subtitle="Click a dot for task/phase breakdown" badge={<Badge label="Risk" color={C.red} />}>
-              <RiskMatrix projectBreakdown={projectBreakdown} tasks={data.tasks || []} onSelect={() => {}} />
-            </SectionCard>
-            <SectionCard title="Hours Variance" subtitle="Waterfall: over (red) vs under (green) per project" badge={<Badge label="Variance" color={C.amber} />}>
-              <HoursVarianceWaterfall projectBreakdown={projectBreakdown} />
-            </SectionCard>
-          </div>
+          {/* ═══ 4. RISK MATRIX — full width ═══ */}
+          <SectionCard title="Risk Matrix" subtitle="Click a dot for task/phase breakdown" badge={<Badge label="Risk" color={C.red} />}>
+            <RiskMatrix projectBreakdown={projectBreakdown} tasks={data.tasks || []} onSelect={() => {}} />
+          </SectionCard>
 
-          {/* ═══ 5. PREDICTIVE BURN ═══ */}
-          <SectionCard title="Predictive Burn" subtitle="Confidence band (+/- 20%) with dashed borders. Hover any point for details." badge={<Badge label="Forecast" color={C.green} />}>
-            <PredictiveBurn portfolio={portfolio} />
+          {/* ═══ 4B. HOURS VARIANCE — full width ═══ */}
+          <SectionCard title="Hours Variance" subtitle="Waterfall: over (red) vs under (green) per project" badge={<Badge label="Variance" color={C.amber} />}>
+            <HoursVarianceWaterfall projectBreakdown={projectBreakdown} />
+          </SectionCard>
+
+          {/* ═══ 5. PARAMETERS & SUGGESTIONS ═══ */}
+          <SectionCard title="Parameters & Suggestions" subtitle="Predictive burn, workforce analysis, and dependency mapping with automated recommendations" badge={<Badge label="Analysis" color={C.green} />}>
+            <ParametersSuggestions portfolio={portfolio} projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} tasks={data.tasks || []} />
           </SectionCard>
 
           {/* ═══ 6. SNAPSHOT ═══ */}
           <SectionCard title="Meeting Snapshot & Delta" badge={<Badge label="Delta" color={C.teal} />}>
             <MeetingSnapshotDelta portfolio={portfolio} projectBreakdown={projectBreakdown} />
-          </SectionCard>
-
-          {/* ═══ 7. SPLASH ZONE ═══ */}
-          <SectionCard title="Dependency Impact — Splash Zone" subtitle="Blocked = RED, Splash = Amber, Critical = Teal" badge={<Badge label="Dependencies" color={C.purple} />}>
-            <DependencyImpactGraph tasks={data.tasks || []} />
-          </SectionCard>
-
-          {/* ═══ 8. WORKFORCE BURN ═══ */}
-          <SectionCard title="Workforce Burn Rate" subtitle="Role → Employee → Tasks. Expand to see burn rate, progress, estimated time remaining." badge={<Badge label="Workforce" color={C.indigo} />}>
-            <WorkforceBurn hours={data.hours || []} employees={data.employees || []} tasks={data.tasks || []} />
           </SectionCard>
         </div>
       )}
