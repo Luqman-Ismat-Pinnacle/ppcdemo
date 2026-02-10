@@ -1098,17 +1098,33 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     const taskDeps = (data as any).taskDependencies || [];
     const depsBySuccessor = new Map<string, any[]>();
     taskDeps.forEach((d: any) => {
-      const succId = d.successorTaskId || d.successor_task_id;
-      const predId = d.predecessorTaskId || d.predecessor_task_id;
+      const succId = String(d.successorTaskId || d.successor_task_id || '');
+      const predId = String(d.predecessorTaskId || d.predecessor_task_id || '');
       if (!succId || !predId) return;
-      if (!depsBySuccessor.has(succId)) depsBySuccessor.set(succId, []);
-      depsBySuccessor.get(succId)!.push({
+      const dep = {
         id: d.id,
         taskId: succId,
         predecessorTaskId: predId,
         relationship: d.relationshipType || d.relationship_type || 'FS',
         lagDays: d.lagDays || d.lag_days || 0,
-      });
+      };
+      if (!depsBySuccessor.has(succId)) depsBySuccessor.set(succId, []);
+      depsBySuccessor.get(succId)!.push(dep);
+    });
+
+    // Also build a quick predecessor lookup from the tasks' own predecessor_id column (legacy single-predecessor)
+    // This ensures arrows even if task_dependencies table hasn't been populated yet
+    tasks.forEach((task: any) => {
+      const taskId = String(task.id || task.taskId || '');
+      const predId = String(task.predecessorId || task.predecessor_id || '');
+      if (!taskId || !predId || depsBySuccessor.has(taskId)) return;
+      depsBySuccessor.set(taskId, [{
+        id: `${taskId}-pred`,
+        taskId,
+        predecessorTaskId: predId,
+        relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS',
+        lagDays: 0,
+      }]);
     });
 
     // Extract work items if available (new consolidated structure)
@@ -1300,7 +1316,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
               assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
               assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
               is_milestone: task.is_milestone || task.isMilestone || false,
-              isCritical: task.is_critical || task.isCritical || false
+              isCritical: task.is_critical || task.isCritical || false,
+              predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
+                ? task.predecessors
+                : depsBySuccessor.get(String(taskId)) || [],
+              totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
             };
             phaseItem.children?.push(taskItem);
           });
@@ -1433,7 +1453,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
             assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
             is_milestone: task.is_milestone || task.isMilestone || false,
-            isCritical: task.is_critical || task.isCritical || false
+            isCritical: task.is_critical || task.isCritical || false,
+            predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
+              ? task.predecessors
+              : depsBySuccessor.get(String(taskId)) || [],
+            totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
           };
           phaseItem.children?.push(taskItem);
         });
@@ -1515,11 +1539,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           isCritical: task.is_critical || task.isCritical || false,
           predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
             ? task.predecessors
-            : depsBySuccessor.get(taskId) || (
-              task.predecessorId || task.predecessor_id
-                ? [{ id: `${taskId}-pred`, taskId: taskId, predecessorTaskId: String(task.predecessorId || task.predecessor_id), relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS', lagDays: 0 }]
-                : []
-            ),
+            : depsBySuccessor.get(String(taskId)) || [],
           totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
         };
 

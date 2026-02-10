@@ -669,6 +669,15 @@ export default function WBSGanttPage() {
       svg.style.width = `${fixedColsWidth + tlPx}px`;
       svg.style.height = `${headerHeight + totalRowsHeight}px`;
 
+      // Debug: log how many rows have predecessors
+      const withPreds = flatRows.filter(r => r.predecessors?.length);
+      if (typeof window !== 'undefined') {
+        console.log(`[Gantt Arrows] ${flatRows.length} rows, ${withPreds.length} with predecessors, ${rowMapById.size} in rowMap`);
+        if (withPreds.length > 0) {
+          console.log(`[Gantt Arrows] Sample predecessor:`, withPreds[0].id, withPreds[0].predecessors?.[0]);
+        }
+      }
+
       flatRows.forEach((item, idx) => {
         if (!item.predecessors?.length || !item.startDate) return;
         const ty = headerHeight + idx * rowHeight + rowHeight / 2;

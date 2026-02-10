@@ -152,6 +152,11 @@ export default function DocumentsPage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStage, setProcessingStage] = useState<{
+    step: number;
+    label: string;
+    fileName: string;
+  } | null>(null);
   const [workdayProjectId, setWorkdayProjectId] = useState('');
   const [availableWorkdayProjects, setAvailableWorkdayProjects] = useState<DropdownOption[]>([]);
   const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
@@ -553,6 +558,7 @@ export default function DocumentsPage() {
     if (!file || !file.storagePath) return;
 
     setIsProcessing(true);
+    setProcessingStage({ step: 1, label: 'Downloading from storage...', fileName: file.fileName });
 
     setUploadedFiles(prev => prev.map(f =>
       f.id === fileId ? { ...f, status: 'processing' as const } : f
@@ -578,6 +584,7 @@ export default function DocumentsPage() {
       pushLog('success', '[Storage] File downloaded');
 
       // Step 2: Send to MPXJ Python parser
+      setProcessingStage({ step: 2, label: 'Parsing MPP file with MPXJ...', fileName: file.fileName });
       pushLog('info', '[MPXJ] Parsing MPP file...');
 
       const formData = new FormData();
@@ -619,6 +626,7 @@ export default function DocumentsPage() {
       });
 
       // Convert flat MPP data to proper hierarchy using our converter
+      setProcessingStage({ step: 3, label: 'Converting data hierarchy...', fileName: file.fileName });
       const timestamp = Date.now();
       const projectId = file.workdayProjectId || `PRJ_MPP_${timestamp}`;
       
@@ -656,6 +664,7 @@ export default function DocumentsPage() {
       pushLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
 
       // Auto project health check
+      setProcessingStage({ step: 4, label: 'Running health checks...', fileName: file.fileName });
       const healthResult = runProjectHealthAutoCheck(convertedData);
       pushLog(healthResult.issues.length > 0 ? 'warning' : 'success', `[Health] Score: ${healthResult.score}% (${healthResult.passed}/${healthResult.totalChecks})${healthResult.issues.length > 0 ? ` · Issues: ${healthResult.issues.join('; ')}` : ''}`);
 
@@ -667,7 +676,8 @@ export default function DocumentsPage() {
       pushLog('info', `[MPP Parser] Units from file: ${unitsList || 'none'}`);
       pushLog('info', `[MPP Parser] Tasks from file: ${(convertedData.tasks?.length || 0)} total; sample: ${taskSample || 'none'}`);
 
-      // Step 3: Sync to Supabase
+      // Step 5: Sync to database
+      setProcessingStage({ step: 5, label: 'Syncing to database...', fileName: file.fileName });
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'syncing' as const } : f
       ));
@@ -937,6 +947,7 @@ export default function DocumentsPage() {
       await saveLogsToProjectLog(logEntries, existingProjectId);
 
       // Complete the process
+      setProcessingStage({ step: 6, label: 'Complete!', fileName: file.fileName });
       pushLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'complete' as const, healthCheck: healthResult } : f
@@ -955,6 +966,8 @@ export default function DocumentsPage() {
       ));
     } finally {
       setIsProcessing(false);
+      // Clear the processing stage after a brief delay so user sees "Complete!"
+      setTimeout(() => setProcessingStage(null), 2000);
     }
   }, [uploadedFiles, addLog, refreshData, saveLogsToProjectLog]);
 
@@ -1261,6 +1274,85 @@ export default function DocumentsPage() {
             </div>
           </div>
         </div>
+
+        {/* Processing Progress Overlay */}
+        {processingStage && (
+          <div className="chart-card grid-full" style={{ border: '1px solid var(--pinnacle-teal)', borderColor: processingStage.step === 6 ? '#10B981' : 'var(--pinnacle-teal)' }}>
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                {processingStage.step < 6 ? (
+                  <div style={{
+                    width: '32px', height: '32px', borderRadius: '50%',
+                    border: '3px solid var(--pinnacle-teal)', borderTopColor: 'transparent',
+                    animation: 'spin 1s linear infinite',
+                  }} />
+                ) : (
+                  <div style={{
+                    width: '32px', height: '32px', borderRadius: '50%',
+                    backgroundColor: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Processing: {processingStage.fileName}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    {processingStage.label}
+                  </div>
+                </div>
+              </div>
+
+              {/* Step indicators */}
+              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.75rem' }}>
+                {[
+                  { step: 1, label: 'Download' },
+                  { step: 2, label: 'Parse' },
+                  { step: 3, label: 'Convert' },
+                  { step: 4, label: 'Health Check' },
+                  { step: 5, label: 'Sync' },
+                  { step: 6, label: 'Done' },
+                ].map(({ step, label }) => (
+                  <div key={step} style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{
+                      height: '4px',
+                      borderRadius: '2px',
+                      backgroundColor: step < processingStage.step ? '#10B981'
+                        : step === processingStage.step ? 'var(--pinnacle-teal)'
+                        : 'var(--bg-tertiary)',
+                      transition: 'background-color 0.3s ease',
+                    }} />
+                    <div style={{
+                      fontSize: '0.65rem',
+                      color: step <= processingStage.step ? 'var(--text-secondary)' : 'var(--text-muted)',
+                      marginTop: '4px',
+                      fontWeight: step === processingStage.step ? 600 : 400,
+                    }}>
+                      {label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Progress bar */}
+              <div style={{
+                height: '6px', borderRadius: '3px', backgroundColor: 'var(--bg-tertiary)', overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(processingStage.step / 6) * 100}%`,
+                  borderRadius: '3px',
+                  backgroundColor: processingStage.step === 6 ? '#10B981' : 'var(--pinnacle-teal)',
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+            </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
 
         {/* Uploaded Files */}
         <div className="chart-card grid-full">
