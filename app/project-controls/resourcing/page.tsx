@@ -427,17 +427,21 @@ function ResourcingPageContent() {
 
   const treeData = buildPortfolioTree;
 
-  // Dynamic tree height based on leaf count for proper spacing
-  const treeLeafCount = useMemo(() => {
-    const countLeaves = (nodes: any[]): number =>
-      nodes.reduce((sum: number, n: any) => {
-        if (!n.children || n.children.length === 0) return sum + 1;
-        return sum + countLeaves(n.children);
-      }, 0);
-    return countLeaves(treeData);
-  }, [treeData]);
+  // Count leaves per portfolio for proportional height allocation
+  const countLeaves = (nodes: any[]): number =>
+    nodes.reduce((sum: number, n: any) => {
+      if (!n.children || n.children.length === 0) return sum + 1;
+      return sum + countLeaves(n.children);
+    }, 0);
 
-  const dynamicTreeHeight = Math.max(600, treeLeafCount * 42);
+  const portfolioLeafCounts = useMemo(() =>
+    treeData.map(p => ({ name: p.name, leaves: countLeaves([p]) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [treeData],
+  );
+
+  const totalLeaves = portfolioLeafCounts.reduce((s, p) => s + p.leaves, 0);
+  const dynamicTreeHeight = Math.max(600, totalLeaves * 44 + treeData.length * 60);
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -448,100 +452,164 @@ function ResourcingPageContent() {
     return () => { delete (window as any).__resourcingOpenEmployee; };
   }, [employeeMetrics]);
 
-  // ── ECharts tree option ───────────────────────────────────────
-  const treeOption: EChartsOption = useMemo(() => ({
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      enterable: true,
-      hideDelay: 400,
-      backgroundColor: 'rgba(22,27,34,0.97)',
-      borderColor: 'rgba(255,255,255,0.1)',
-      borderWidth: 1,
-      padding: 0,
-      textStyle: { color: '#fff', fontSize: 11 },
-      extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
+  // Portfolio color palette for tree series
+  const PORTFOLIO_COLORS = ['#40E0D0', '#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EC4899', '#06B6D4', '#FF9800', '#6366F1', '#EF4444'];
+
+  // ── ECharts tree option — multiple series (one per portfolio) with legend ──
+  const treeOption: EChartsOption = useMemo(() => {
+    if (treeData.length === 0) return { series: [] };
+
+    // Shared tooltip formatter
+    const tooltipFormatter = (params: any) => {
+      const d = params.data;
+      if (d.isPortfolio) {
+        const uc = getUtilColor(d.utilization || 0);
+        return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div><div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><div style="width:32px;height:32px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:10px;color:#9ca3af;">Avg Utilization</span></div></div>`;
+      }
+      if (d.isProject) return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Project · ${d.employeeCount || 0} employees</div>${d.totalHours ? '<div style="font-size:11px;margin-top:4px;">' + fmt(d.totalHours) + ' total hours</div>' : ''}</div>`;
+      if (d.isPlaceholder) return `<div style="padding:8px 12px;font-size:11px;color:#6B7280;">${d.name}</div>`;
+      if (d.emp) {
+        const e = d.emp;
+        const uc = getUtilColor(e.utilization);
+        return `<div style="padding:14px 16px;min-width:240px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+            <div><div style="font-weight:700;font-size:14px;">${e.name}</div><div style="font-size:11px;color:#9ca3af;">${e.role}</div></div>
+            <div style="width:40px;height:40px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${uc};background:${uc}15;">${e.utilization}%</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:11px;margin-bottom:10px;">
+            <div style="color:#9ca3af;">Tasks</div><div style="font-weight:600;">${e.taskCount}</div>
+            <div style="color:#9ca3af;">Allocated</div><div style="font-weight:600;">${fmt(e.allocatedHours)} hrs</div>
+            <div style="color:#9ca3af;">Available</div><div style="font-weight:600;color:#10B981;">${fmt(e.availableHours)} hrs</div>
+            <div style="color:#9ca3af;">Projects</div><div style="font-weight:600;">${e.projects?.length || 0}</div>
+            ${e.qcPassRate !== null ? `<div style="color:#9ca3af;">QC Rate</div><div style="font-weight:600;">${e.qcPassRate}%</div>` : ''}
+          </div>
+          <button onclick="window.__resourcingOpenEmployee('${e.id}')" style="width:100%;padding:8px;border:none;border-radius:6px;background:rgba(64,224,208,0.15);color:#40E0D0;font-weight:600;font-size:12px;cursor:pointer;transition:background 0.15s;">
+            View Details & Assign Tasks →
+          </button>
+        </div>`;
+      }
+      return `<div style="padding:8px 12px;"><strong>${d.name}</strong></div>`;
+    };
+
+    // Shared label config
+    const sharedLabel = {
+      position: 'right' as const,
+      verticalAlign: 'middle' as const,
+      align: 'left' as const,
+      fontSize: 10.5,
+      color: '#f4f4f5',
+      borderRadius: 4,
+      padding: [5, 10] as [number, number],
+      distance: 8,
       formatter: (params: any) => {
         const d = params.data;
-        if (d.isPortfolio) {
-          const uc = getUtilColor(d.utilization || 0);
-          return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div><div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><div style="width:32px;height:32px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:10px;color:#9ca3af;">Avg Utilization</span></div></div>`;
-        }
-        if (d.isProject) return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Project · ${d.employeeCount || 0} employees</div>${d.totalHours ? '<div style="font-size:11px;margin-top:4px;">' + fmt(d.totalHours) + ' total hours</div>' : ''}</div>`;
-        if (d.isPlaceholder) return `<div style="padding:8px 12px;font-size:11px;color:#6B7280;">${d.name}</div>`;
+        if (d.isPortfolio) return `{bold|${d.name}}\n{portSub|${d.projectCount || 0} projects · ${d.utilization || 0}% util}`;
+        if (d.isProject) return `{project|${d.name.substring(0, 28)}${d.name.length > 28 ? '...' : ''}}`;
+        if (d.isPlaceholder) return `{muted|${d.name}}`;
         if (d.emp) {
-          const e = d.emp;
-          const uc = getUtilColor(e.utilization);
-          return `<div style="padding:14px 16px;min-width:240px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-              <div><div style="font-weight:700;font-size:14px;">${e.name}</div><div style="font-size:11px;color:#9ca3af;">${e.role}</div></div>
-              <div style="width:40px;height:40px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${uc};background:${uc}15;">${e.utilization}%</div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:11px;margin-bottom:10px;">
-              <div style="color:#9ca3af;">Tasks</div><div style="font-weight:600;">${e.taskCount}</div>
-              <div style="color:#9ca3af;">Allocated</div><div style="font-weight:600;">${fmt(e.allocatedHours)} hrs</div>
-              <div style="color:#9ca3af;">Available</div><div style="font-weight:600;color:#10B981;">${fmt(e.availableHours)} hrs</div>
-              <div style="color:#9ca3af;">Projects</div><div style="font-weight:600;">${e.projects?.length || 0}</div>
-              ${e.qcPassRate !== null ? `<div style="color:#9ca3af;">QC Rate</div><div style="font-weight:600;">${e.qcPassRate}%</div>` : ''}
-            </div>
-            <button onclick="window.__resourcingOpenEmployee('${e.id}')" style="width:100%;padding:8px;border:none;border-radius:6px;background:rgba(64,224,208,0.15);color:#40E0D0;font-weight:600;font-size:12px;cursor:pointer;transition:background 0.15s;">
-              View Details & Assign Tasks →
-            </button>
-          </div>`;
+          return `{empName|${d.name}}\n{empRole|${d.emp?.role || ''}}\n{util|${d.utilization || 0}%}`;
         }
-        return `<div style="padding:8px 12px;"><strong>${d.name}</strong></div>`;
+        return d.name;
       },
-    },
-    series: [{
-      type: 'tree',
-      data: treeData,
-      top: '4%', left: '4%', bottom: '4%', right: '4%',
-      symbolSize: (value: any, params: any) => {
-        const d = params?.data;
-        if (d?.isPortfolio) return 24;
-        if (d?.isProject) return 18;
-        return 14;
+      rich: {
+        bold: { fontWeight: 'bold' as any, fontSize: 14, lineHeight: 20, color: '#40E0D0' },
+        portSub: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
+        empName: { fontSize: 10.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16 },
+        empRole: { fontSize: 8.5, color: '#a1a1aa', lineHeight: 13 },
+        role: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
+        project: { fontSize: 10.5, color: '#60A5FA', lineHeight: 16 },
+        muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
+        util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
       },
-      orient: 'LR',
-      layout: 'orthogonal',
-      edgeShape: 'polyline',
-      edgeForkPosition: '50%',
-      initialTreeDepth: -1,
-      expandAndCollapse: true,
-      animationDurationUpdate: 500,
-      roam: true,
-      label: {
-        position: 'right', verticalAlign: 'middle', align: 'left',
-        fontSize: 10.5, color: '#f4f4f5', borderRadius: 4, padding: [5, 10], distance: 8,
-        formatter: (params: any) => {
-          const d = params.data;
-          if (d.isPortfolio) return `{bold|${d.name}}\n{portSub|${d.projectCount || 0} projects · ${d.utilization || 0}% util}`;
-          if (d.isProject) return `{project|${d.name.substring(0, 22)}${d.name.length > 22 ? '...' : ''}}`;
-          if (d.isPlaceholder) return `{muted|${d.name}}`;
-          if (d.emp) {
-            return `{empName|${d.name}}\n{empRole|${d.emp?.role || ''}}\n{util|${d.utilization || 0}%}`;
-          }
-          return d.name;
+    };
+
+    // Calculate vertical space allocation per portfolio based on leaf count
+    const totalLf = portfolioLeafCounts.reduce((s, p) => s + p.leaves, 0) || 1;
+    const GAP = 2; // percent gap between trees
+    const HEADER = 6; // percent reserved for legend
+    const usable = 100 - HEADER - GAP * treeData.length;
+
+    let topAccum = HEADER;
+
+    // Build one tree series per portfolio
+    const series: any[] = treeData.map((portfolioNode, idx) => {
+      const leafPct = (portfolioLeafCounts[idx]?.leaves || 1) / totalLf;
+      const heightPct = Math.max(8, leafPct * usable); // at least 8% height
+      const seriesColor = PORTFOLIO_COLORS[idx % PORTFOLIO_COLORS.length];
+
+      const top = `${topAccum}%`;
+      const bottom = `${Math.max(0, 100 - topAccum - heightPct)}%`;
+      topAccum += heightPct + GAP;
+
+      return {
+        type: 'tree',
+        name: portfolioNode.name,
+        data: [portfolioNode],
+        top,
+        left: '3%',
+        bottom,
+        right: '35%',
+        orient: 'LR',
+        layout: 'orthogonal',
+        edgeShape: 'polyline',
+        edgeForkPosition: '50%',
+        initialTreeDepth: -1,
+        expandAndCollapse: true,
+        animationDuration: 400,
+        animationDurationUpdate: 500,
+        roam: true,
+        symbolSize: (value: any, params: any) => {
+          const d = params?.data;
+          if (d?.isPortfolio) return 26;
+          if (d?.isProject) return 18;
+          return 12;
         },
-        rich: {
-          bold: { fontWeight: 'bold' as any, fontSize: 13, lineHeight: 18, color: '#40E0D0' },
-          portSub: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
-          empName: { fontSize: 10.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16 },
-          empRole: { fontSize: 8.5, color: '#a1a1aa', lineHeight: 13 },
-          role: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
-          project: { fontSize: 10, color: '#60A5FA', lineHeight: 15 },
-          muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
-          util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
+        itemStyle: {
+          color: seriesColor,
+          borderColor: seriesColor,
+          borderWidth: 1.5,
         },
+        label: sharedLabel,
+        leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
+        lineStyle: { color: `${seriesColor}50`, width: 1.5, curveness: 0.5 },
+        emphasis: {
+          focus: 'descendant',
+          itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: `${seriesColor}80` },
+        },
+      };
+    });
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'item',
+        enterable: true,
+        hideDelay: 400,
+        backgroundColor: 'rgba(22,27,34,0.97)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        padding: 0,
+        textStyle: { color: '#fff', fontSize: 11 },
+        extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
+        formatter: tooltipFormatter,
       },
-      leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
-      lineStyle: { color: '#3f3f46', width: 1.5, curveness: 0.5 },
-      emphasis: {
-        focus: 'descendant',
-        itemStyle: { borderWidth: 3, shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' },
+      legend: {
+        top: '1%',
+        left: 'center',
+        orient: 'horizontal' as const,
+        data: treeData.map((p, idx) => ({
+          name: p.name,
+          icon: 'roundRect',
+          itemStyle: { color: PORTFOLIO_COLORS[idx % PORTFOLIO_COLORS.length] },
+        })),
+        textStyle: { color: '#a1a1aa', fontSize: 11 },
+        itemGap: 20,
+        itemWidth: 14,
+        itemHeight: 10,
       },
-    }],
-  }), [treeData]);
+      series,
+    };
+  }, [treeData, portfolioLeafCounts]);
 
   // ── Analytics charts ──────────────────────────────────────────
   const sortedEmployeesByUtil = useMemo(() =>
@@ -647,6 +715,7 @@ function ResourcingPageContent() {
     const roleWeekHours = new Map<string, Map<number, number>>();
     const empWeekHours = new Map<string, Map<number, number>>();
     const empNameMap = new Map<string, string>(); // empKey → display name
+    const empRoleMap = new Map<string, string>(); // empKey → role
 
     planTasks.forEach((t: any) => {
       const sMs = new Date(t.startDate || t.start_date).getTime();
@@ -655,33 +724,105 @@ function ResourcingPageContent() {
       const durationWeeks = Math.max(1, Math.round((eMs - sMs) / msPerWeek));
       const hrsPerWeek = hrs / durationWeeks;
 
-      // Determine role and employee
+      // Determine employee(s) — split comma-separated resource lists
       const eid = t.employeeId || t.employee_id || '';
-      const assignedName = (t.assignedTo || t.resource || t.assignedResource || '').trim();
-      let role = empIdToRole.get(eid) || empNameToRole.get(assignedName.toLowerCase()) || t.resource || t.assignedResource || 'Unassigned';
-      if (!role || role === 'N/A') role = 'Unassigned';
-      let empName = empIdToName.get(eid) || assignedName || 'Unassigned';
+      const rawAssigned = (t.assignedTo || t.resource || t.assignedResource || '').trim();
 
-      // By role
-      if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
-      const roleMap = roleWeekHours.get(role)!;
+      // Split into individual resource names (handle comma, semicolon, " and " separators)
+      const resourceNames: string[] = rawAssigned
+        ? rawAssigned.split(/[,;]|\band\b/i).map((s: string) => s.trim()).filter((s: string) => s.length > 0)
+        : [];
 
-      // By employee
-      const empKey = eid || empName;
-      if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
-      empNameMap.set(empKey, empName);
-      const empMap = empWeekHours.get(empKey)!;
+      // If we have an employeeId, use that as primary
+      if (eid && empIdToRole.get(eid)) {
+        const individuals = [{ eid, name: empIdToName.get(eid) || rawAssigned || 'Unknown', role: empIdToRole.get(eid)! }];
 
-      displayWeeks.forEach((w, wi) => {
-        const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
-        if (sMs < wEnd && eMs >= w.start) {
-          roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerWeek);
-          empMap.set(wi, (empMap.get(wi) || 0) + hrsPerWeek);
+        // If there are additional comma-separated names, add those too
+        if (resourceNames.length > 1) {
+          resourceNames.forEach(rn => {
+            const rnLower = rn.toLowerCase();
+            if (rnLower === (empIdToName.get(eid) || '').toLowerCase()) return; // skip the primary
+            const rnRole = empNameToRole.get(rnLower) || 'Unassigned';
+            individuals.push({ eid: rn, name: rn, role: rnRole });
+          });
         }
-      });
+
+        const hrsPerPerson = hrsPerWeek / individuals.length;
+
+        individuals.forEach(ind => {
+          let role = ind.role;
+          if (!role || role === 'N/A') role = 'Unassigned';
+
+          // By role — individual role per person
+          if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
+          const roleMap = roleWeekHours.get(role)!;
+
+          // By employee
+          const empKey = ind.eid || ind.name;
+          if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
+          empNameMap.set(empKey, ind.name);
+          empRoleMap.set(empKey, role);
+          const empMap = empWeekHours.get(empKey)!;
+
+          displayWeeks.forEach((w, wi) => {
+            const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
+            if (sMs < wEnd && eMs >= w.start) {
+              roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerPerson);
+              empMap.set(wi, (empMap.get(wi) || 0) + hrsPerPerson);
+            }
+          });
+        });
+      } else if (resourceNames.length > 0) {
+        // No employeeId — split by resource names
+        const hrsPerPerson = hrsPerWeek / resourceNames.length;
+
+        resourceNames.forEach(rn => {
+          const rnLower = rn.toLowerCase();
+          let role = empNameToRole.get(rnLower) || 'Unassigned';
+          if (!role || role === 'N/A') role = 'Unassigned';
+
+          // By role — individual role per person
+          if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
+          const roleMap = roleWeekHours.get(role)!;
+
+          // By employee
+          const empKey = rn;
+          if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
+          empNameMap.set(empKey, rn);
+          empRoleMap.set(empKey, role);
+          const empMap = empWeekHours.get(empKey)!;
+
+          displayWeeks.forEach((w, wi) => {
+            const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
+            if (sMs < wEnd && eMs >= w.start) {
+              roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerPerson);
+              empMap.set(wi, (empMap.get(wi) || 0) + hrsPerPerson);
+            }
+          });
+        });
+      } else {
+        // No resource info at all — assign to 'Unassigned'
+        const role = 'Unassigned';
+        if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
+        const roleMap = roleWeekHours.get(role)!;
+
+        const empKey = 'unassigned';
+        if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
+        empNameMap.set(empKey, 'Unassigned');
+        empRoleMap.set(empKey, role);
+        const empMap = empWeekHours.get(empKey)!;
+
+        displayWeeks.forEach((w, wi) => {
+          const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
+          if (sMs < wEnd && eMs >= w.start) {
+            roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerWeek);
+            empMap.set(wi, (empMap.get(wi) || 0) + hrsPerWeek);
+          }
+        });
+      }
     });
 
-    return { displayWeeks, roleWeekHours, empWeekHours, empNameMap, msPerWeek, empIdToRole };
+    return { displayWeeks, roleWeekHours, empWeekHours, empNameMap, empRoleMap, msPerWeek, empIdToRole };
   }, [data.tasks, data.employees]);
 
   // ── Heatmap by ROLE ──
@@ -756,7 +897,7 @@ function ResourcingPageContent() {
   // ── Heatmap by EMPLOYEE ──
   const heatmapByEmployeeOption: EChartsOption | null = useMemo(() => {
     if (!heatmapSharedData) return null;
-    const { displayWeeks, empWeekHours, empNameMap, empIdToRole } = heatmapSharedData;
+    const { displayWeeks, empWeekHours, empNameMap, empRoleMap, empIdToRole } = heatmapSharedData;
 
     // Each individual employee as a row
     const sortedEmps = [...empWeekHours.entries()]
@@ -792,7 +933,7 @@ function ResourcingPageContent() {
           const week = displayWeeks[wi]?.label;
           const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
           const uc = getUtilColor(utilPct);
-          const role = empIdToRole.get(emp.key) || '';
+          const role = empRoleMap.get(emp.key) || empIdToRole.get(emp.key) || '';
           return `<div style="padding:2px 0"><strong>${emp.name}</strong>${role ? `<br/><span style="color:#9ca3af">${role}</span>` : ''}<br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr weekly capacity</div>`;
         },
       },

@@ -666,65 +666,244 @@ function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
 
   const { graphNodes, graphLinks, criticalPath, blockedSplash } = useMemo(() => {
     if (!tasks.length) return { graphNodes: [], graphLinks: [], criticalPath: new Set<string>(), blockedSplash: new Set<string>() };
-    const taskMap = new Map<string, any>(); tasks.forEach((t: any) => { const id = String(t.id || t.taskId || ''); if (id) taskMap.set(id, t); });
-    const childrenOf = new Map<string, string[]>(); const linkData: { source: string; target: string }[] = []; const successorsOf = new Map<string, string[]>();
-    tasks.forEach((t: any) => { const tid = String(t.id || t.taskId || ''); const pid = String(t.parentId || t.phaseId || ''); const pred = String(t.predecessorId || '');
-      if (pid && pid !== tid && taskMap.has(pid)) { if (!childrenOf.has(pid)) childrenOf.set(pid, []); childrenOf.get(pid)!.push(tid); linkData.push({ source: pid, target: tid }); }
-      if (pred && pred !== tid && taskMap.has(pred)) { linkData.push({ source: pred, target: tid }); if (!successorsOf.has(pred)) successorsOf.set(pred, []); successorsOf.get(pred)!.push(tid); }
+
+    // Build task map with multiple key formats for robust lookup
+    const taskMap = new Map<string, any>();
+    tasks.forEach((t: any) => {
+      const id = String(t.id || t.taskId || '');
+      if (id) {
+        taskMap.set(id, t);
+        // Also index by raw numeric ID if prefixed
+        if (id.includes('-')) {
+          const rawId = id.split('-').pop() || '';
+          if (rawId && !taskMap.has(rawId)) taskMap.set(rawId, t);
+        }
+      }
     });
-    const nodeIdSet = new Set<string>(); const nodeList: any[] = [];
-    [...childrenOf.keys()].sort((a, b) => (childrenOf.get(b)?.length || 0) - (childrenOf.get(a)?.length || 0)).forEach(pid => {
-      if (nodeIdSet.size >= nodeLimit) return; const t = taskMap.get(pid); if (!t) return; nodeIdSet.add(pid);
+
+    const childrenOf = new Map<string, string[]>();
+    const linkData: { source: string; target: string }[] = [];
+    const successorsOf = new Map<string, string[]>();
+    const linkSet = new Set<string>(); // deduplicate links
+
+    const addLink = (from: string, to: string) => {
+      const key = `${from}->${to}`;
+      if (linkSet.has(key)) return;
+      linkSet.add(key);
+      linkData.push({ source: from, target: to });
+    };
+
+    tasks.forEach((t: any) => {
+      const tid = String(t.id || t.taskId || '');
+      if (!tid) return;
+
+      // Parent-child relationships
+      const pid = String(t.parentId || t.phaseId || '');
+      if (pid && pid !== tid && pid !== 'undefined' && pid !== 'null' && taskMap.has(pid)) {
+        if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+        childrenOf.get(pid)!.push(tid);
+        addLink(pid, tid);
+      }
+
+      // Legacy single predecessorId
+      const pred = String(t.predecessorId || t.predecessor_id || '');
+      if (pred && pred !== tid && pred !== 'undefined' && pred !== 'null' && taskMap.has(pred)) {
+        addLink(pred, tid);
+        if (!successorsOf.has(pred)) successorsOf.set(pred, []);
+        successorsOf.get(pred)!.push(tid);
+      }
+
+      // New predecessors[] array (from MPP parser)
+      if (Array.isArray(t.predecessors)) {
+        t.predecessors.forEach((p: any) => {
+          const predId = String(p.predecessorTaskId || p.taskId || '');
+          if (predId && predId !== tid && predId !== 'undefined' && predId !== 'null') {
+            // Try direct match, then raw numeric lookup
+            const resolvedId = taskMap.has(predId) ? predId : null;
+            if (resolvedId) {
+              addLink(resolvedId, tid);
+              if (!successorsOf.has(resolvedId)) successorsOf.set(resolvedId, []);
+              successorsOf.get(resolvedId)!.push(tid);
+            }
+          }
+        });
+      }
+    });
+
+    // Build node list — prioritize tasks with the most connections
+    const connectionCount = new Map<string, number>();
+    taskMap.forEach((_, id) => {
+      const count = (childrenOf.get(id)?.length || 0) + (successorsOf.get(id)?.length || 0);
+      connectionCount.set(id, count);
+    });
+
+    // Sort by connection count (most connected first)
+    const sortedIds = [...connectionCount.entries()]
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id);
+
+    // If no connections found at all, fall back to tasks with hours/data
+    if (sortedIds.length === 0) {
+      tasks.slice(0, nodeLimit).forEach((t: any) => {
+        const id = String(t.id || t.taskId || '');
+        if (id) sortedIds.push(id);
+      });
+    }
+
+    const nodeIdSet = new Set<string>();
+    const nodeList: any[] = [];
+
+    sortedIds.forEach(id => {
+      if (nodeIdSet.size >= nodeLimit) return;
+      const t = taskMap.get(id);
+      if (!t || nodeIdSet.has(id)) return;
+
       const isCrit = !!t.isCritical || (t.totalFloat != null && Number(t.totalFloat) <= 0);
       const isBlk = String(t.status || '').toLowerCase().includes('block') || String(t.status || '').toLowerCase().includes('late');
       if (showCriticalOnly && !isCrit && !isBlk) return;
-      nodeList.push({ id: pid, name: t.name || t.taskName || pid, childCount: childrenOf.get(pid)?.length || 0, hours: Number(t.baselineHours || t.actualHours || 0), pc: Number(t.percentComplete || 0), isCritical: isCrit, isParent: true, variance: Number(t.actualHours || 0) - Number(t.baselineHours || 0), isBlocked: isBlk });
-      (childrenOf.get(pid) || []).forEach(cid => { if (nodeIdSet.size >= nodeLimit || nodeIdSet.has(cid)) return; const ct = taskMap.get(cid); if (!ct) return;
+
+      nodeIdSet.add(id);
+      const isParent = childrenOf.has(id) || (successorsOf.get(id)?.length || 0) > 0;
+      nodeList.push({
+        id, name: t.name || t.taskName || id,
+        childCount: (childrenOf.get(id)?.length || 0) + (successorsOf.get(id)?.length || 0),
+        hours: Number(t.baselineHours || t.actualHours || 0),
+        pc: Number(t.percentComplete || 0),
+        isCritical: isCrit, isParent,
+        variance: Number(t.actualHours || 0) - Number(t.baselineHours || 0),
+        isBlocked: isBlk,
+      });
+
+      // Also add connected nodes
+      const connected = [
+        ...(childrenOf.get(id) || []),
+        ...(successorsOf.get(id) || []),
+      ];
+      connected.forEach(cid => {
+        if (nodeIdSet.size >= nodeLimit || nodeIdSet.has(cid)) return;
+        const ct = taskMap.get(cid);
+        if (!ct) return;
         const cCrit = !!ct.isCritical || (ct.totalFloat != null && Number(ct.totalFloat) <= 0);
         const cBlk = String(ct.status || '').toLowerCase().includes('block');
         if (showCriticalOnly && !cCrit && !cBlk) return;
         nodeIdSet.add(cid);
-        nodeList.push({ id: cid, name: ct.name || ct.taskName || cid, childCount: 0, hours: Number(ct.baselineHours || ct.actualHours || 0), pc: Number(ct.percentComplete || 0), isCritical: cCrit, isParent: childrenOf.has(cid), variance: Number(ct.actualHours || 0) - Number(ct.baselineHours || 0), isBlocked: cBlk }); });
+        nodeList.push({
+          id: cid, name: ct.name || ct.taskName || cid,
+          childCount: (childrenOf.get(cid)?.length || 0) + (successorsOf.get(cid)?.length || 0),
+          hours: Number(ct.baselineHours || ct.actualHours || 0),
+          pc: Number(ct.percentComplete || 0),
+          isCritical: cCrit, isParent: childrenOf.has(cid) || (successorsOf.get(cid)?.length || 0) > 0,
+          variance: Number(ct.actualHours || 0) - Number(ct.baselineHours || 0),
+          isBlocked: cBlk,
+        });
+      });
     });
-    const critSet = new Set<string>(); nodeList.forEach(n => { if (n.isCritical) critSet.add(n.id); });
-    const splashSet = new Set<string>(); const propagate = (id: string) => { (successorsOf.get(id) || []).concat(childrenOf.get(id) || []).forEach(sid => { if (nodeIdSet.has(sid) && !splashSet.has(sid)) { splashSet.add(sid); propagate(sid); } }); };
+
+    const critSet = new Set<string>();
+    nodeList.forEach(n => { if (n.isCritical) critSet.add(n.id); });
+
+    const splashSet = new Set<string>();
+    const propagate = (id: string) => {
+      (successorsOf.get(id) || []).concat(childrenOf.get(id) || []).forEach(sid => {
+        if (nodeIdSet.has(sid) && !splashSet.has(sid)) { splashSet.add(sid); propagate(sid); }
+      });
+    };
     nodeList.filter(n => n.isBlocked).forEach(n => { splashSet.add(n.id); propagate(n.id); });
-    return { graphNodes: nodeList, graphLinks: linkData.filter(l => nodeIdSet.has(l.source) && nodeIdSet.has(l.target)), criticalPath: critSet, blockedSplash: splashSet };
+
+    return {
+      graphNodes: nodeList,
+      graphLinks: linkData.filter(l => nodeIdSet.has(l.source) && nodeIdSet.has(l.target)),
+      criticalPath: critSet,
+      blockedSplash: splashSet,
+    };
   }, [tasks, nodeLimit, showCriticalOnly]);
 
   const option: EChartsOption = useMemo(() => {
-    if (!graphNodes.length) return {};
-    const maxH = Math.max(...graphNodes.map(n => n.hours), 1); const maxC = Math.max(...graphNodes.map(n => n.childCount), 1);
-    const seriesBase: any = {
-      type: 'graph', roam: true, draggable: true,
-      categories: [{ name: 'Critical', itemStyle: { color: C.teal } }, { name: 'Blocked', itemStyle: { color: C.red } }, { name: 'Splash', itemStyle: { color: C.amber } }, { name: 'Phase', itemStyle: { color: C.blue } }, { name: 'Task', itemStyle: { color: `${C.blue}90` } }],
-      data: graphNodes.map(n => { const inSplash = blockedSplash.has(n.id); return {
+    if (!graphNodes.length) return { series: [] };
+    const maxH = Math.max(...graphNodes.map(n => n.hours), 1);
+    const maxC = Math.max(...graphNodes.map(n => n.childCount), 1);
+
+    const nodeData = graphNodes.map(n => {
+      const inSplash = blockedSplash.has(n.id);
+      return {
         name: n.name, id: n.id,
-        symbolSize: n.isParent ? Math.max(22, Math.min(50, 22 + (n.childCount / maxC) * 28)) : Math.max(10, Math.min(30, (n.hours / maxH) * 30)),
+        symbolSize: n.isParent
+          ? Math.max(22, Math.min(50, 22 + (n.childCount / maxC) * 28))
+          : Math.max(12, Math.min(30, 12 + (n.hours / maxH) * 18)),
         category: n.isBlocked ? 1 : n.isCritical ? 0 : inSplash ? 2 : n.isParent ? 3 : 4,
         hours: n.hours, pc: n.pc, isCritical: n.isCritical, isBlocked: n.isBlocked, inSplash,
-        label: { show: n.isParent || n.isCritical || n.isBlocked, color: C.textPrimary, fontSize: 9 },
-        itemStyle: { shadowBlur: n.isBlocked ? 20 : n.isCritical ? 15 : 3, shadowColor: n.isBlocked ? `${C.red}80` : n.isCritical ? `${C.teal}80` : 'rgba(0,0,0,0.2)', borderWidth: n.isBlocked || n.isCritical ? 2.5 : 1, borderColor: n.isBlocked ? C.red : n.isCritical ? C.teal : inSplash ? C.amber : `${C.blue}40` },
-      }; }),
-      links: graphLinks.map(l => { const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target); return {
+        label: {
+          show: n.isParent || n.isCritical || n.isBlocked,
+          color: C.textPrimary, fontSize: 9,
+        },
+        itemStyle: {
+          shadowBlur: n.isBlocked ? 20 : n.isCritical ? 15 : 3,
+          shadowColor: n.isBlocked ? 'rgba(239,68,68,0.5)' : n.isCritical ? 'rgba(64,224,208,0.5)' : 'rgba(0,0,0,0.2)',
+          borderWidth: n.isBlocked || n.isCritical ? 2.5 : 1,
+          borderColor: n.isBlocked ? C.red : n.isCritical ? C.teal : inSplash ? C.amber : 'rgba(59,130,246,0.25)',
+        },
+      };
+    });
+
+    const linkItems = graphLinks.map(l => {
+      const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target);
+      return {
         source: l.source, target: l.target,
-        lineStyle: { color: isCrit ? C.teal : 'source', width: isCrit ? 3 : 0.8, curveness: 0.3, opacity: isCrit ? 0.9 : 0.25 },
-      }; }),
-      emphasis: { focus: 'adjacency', lineStyle: { width: 3, opacity: 0.9 }, itemStyle: { shadowBlur: 18, shadowColor: `${C.teal}80` } },
+        lineStyle: {
+          color: isCrit ? C.teal : 'rgba(255,255,255,0.15)',
+          width: isCrit ? 3 : 0.8,
+          curveness: 0.3,
+          opacity: isCrit ? 0.9 : 0.4,
+        },
+      };
+    });
+
+    const seriesBase: any = {
+      type: 'graph', roam: true, draggable: true,
+      categories: [
+        { name: 'Critical', itemStyle: { color: C.teal } },
+        { name: 'Blocked', itemStyle: { color: C.red } },
+        { name: 'Splash', itemStyle: { color: C.amber } },
+        { name: 'Phase', itemStyle: { color: C.blue } },
+        { name: 'Task', itemStyle: { color: 'rgba(59,130,246,0.56)' } },
+      ],
+      data: nodeData,
+      links: linkItems,
+      emphasis: {
+        focus: 'adjacency',
+        lineStyle: { width: 3, opacity: 0.9 },
+        itemStyle: { shadowBlur: 18, shadowColor: 'rgba(64,224,208,0.5)' },
+      },
     };
+
     if (layoutMode === 'circular') {
       seriesBase.layout = 'circular';
       seriesBase.circular = { rotateLabel: true };
     } else {
       seriesBase.layout = 'force';
-      seriesBase.force = { repulsion: 200, edgeLength: [80, 200], gravity: 0.1 };
+      seriesBase.force = { repulsion: 260, edgeLength: [80, 220], gravity: 0.08 };
     }
+
     return {
-      tooltip: { ...TT, trigger: 'item', extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:400px;white-space:normal;',
-        formatter: (p: any) => { const d = p.data; if (p.dataType === 'edge') return '';
-          return `<strong style="word-break:break-word;">${d.name}</strong><br/>Hours: ${Math.round(d.hours || 0)}<br/>Progress: ${Math.round(d.pc || 0)}%${d.isCritical ? '<br/><span style="color:' + C.teal + '">CRITICAL PATH</span>' : ''}${d.isBlocked ? '<br/><span style="color:' + C.red + '">BLOCKED</span>' : ''}${d.inSplash && !d.isBlocked ? '<br/><span style="color:' + C.amber + '">SPLASH ZONE</span>' : ''}`; } },
+      tooltip: {
+        ...TT, trigger: 'item',
+        extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:400px;white-space:normal;',
+        formatter: (p: any) => {
+          const d = p.data;
+          if (p.dataType === 'edge') {
+            return `<span style="color:${C.textMuted};font-size:11px;">${d.source} → ${d.target}</span>`;
+          }
+          if (!d) return '';
+          return `<strong style="word-break:break-word;">${d.name || ''}</strong><br/>Hours: ${Math.round(d.hours || 0)}<br/>Progress: ${Math.round(d.pc || 0)}%${d.isCritical ? '<br/><span style="color:' + C.teal + '">CRITICAL PATH</span>' : ''}${d.isBlocked ? '<br/><span style="color:' + C.red + '">BLOCKED</span>' : ''}${d.inSplash && !d.isBlocked ? '<br/><span style="color:' + C.amber + '">SPLASH ZONE</span>' : ''}`;
+        },
+      },
       series: [seriesBase],
-      legend: { data: ['Critical', 'Blocked', 'Splash', 'Phase', 'Task'], bottom: 0, textStyle: { color: C.textMuted, fontSize: 9 } },
+      legend: {
+        data: ['Critical', 'Blocked', 'Splash', 'Phase', 'Task'],
+        bottom: 0,
+        textStyle: { color: C.textMuted, fontSize: 9 },
+      },
     };
   }, [graphNodes, graphLinks, criticalPath, blockedSplash, layoutMode]);
 
