@@ -591,6 +591,156 @@ function ResourcingPageContent() {
     setLevelingResult(runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS));
   }, [data.tasks, data.employees, data.hours]);
 
+  // ── Resource Heatmap — weekly utilization by role from project plan ──
+  const heatmapOption: EChartsOption = useMemo(() => {
+    // Build role → employee ID map
+    const empRoleMap = new Map<string, string>();
+    data.employees.forEach((e: any) => {
+      const eid = e.id || e.employeeId;
+      const role = e.jobTitle || e.role || 'Unknown';
+      empRoleMap.set(eid, role);
+      empRoleMap.set((e.name || '').toLowerCase(), role);
+    });
+
+    // Only tasks with dates and hours (from project plan)
+    const planTasks = data.tasks.filter((t: any) => {
+      const s = t.startDate || t.start_date;
+      const e = t.endDate || t.end_date || t.finishDate || t.finish_date;
+      const hrs = Number(t.baselineHours || t.baseline_hours) || 0;
+      return s && e && hrs > 0;
+    });
+
+    if (planTasks.length === 0) return null;
+
+    // Determine date range
+    const allDates: number[] = [];
+    planTasks.forEach((t: any) => {
+      allDates.push(new Date(t.startDate || t.start_date).getTime());
+      allDates.push(new Date(t.endDate || t.end_date || t.finishDate || t.finish_date).getTime());
+    });
+    const minDate = Math.min(...allDates);
+    const maxDate = Math.max(...allDates);
+
+    // Build weeks array
+    const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+    const weeks: { start: number; label: string }[] = [];
+    let cursor = minDate;
+    while (cursor <= maxDate + msPerWeek) {
+      const d = new Date(cursor);
+      weeks.push({ start: cursor, label: `${d.getMonth() + 1}/${d.getDate()}` });
+      cursor += msPerWeek;
+    }
+    // Cap to ~26 weeks max for readability
+    const displayWeeks = weeks.length > 26
+      ? weeks.filter((_, i) => i % Math.ceil(weeks.length / 26) === 0).slice(0, 26)
+      : weeks;
+
+    // Accumulate hours per role per week
+    const roleWeekHours = new Map<string, Map<number, number>>();
+
+    planTasks.forEach((t: any) => {
+      const sMs = new Date(t.startDate || t.start_date).getTime();
+      const eMs = new Date(t.endDate || t.end_date || t.finishDate || t.finish_date).getTime();
+      const hrs = Number(t.baselineHours || t.baseline_hours) || 0;
+      const durationWeeks = Math.max(1, Math.round((eMs - sMs) / msPerWeek));
+      const hrsPerWeek = hrs / durationWeeks;
+
+      // Determine role
+      const eid = t.employeeId || t.employee_id || '';
+      const assignedName = (t.assignedTo || t.resource || t.assignedResource || '').toLowerCase();
+      let role = empRoleMap.get(eid) || empRoleMap.get(assignedName) || t.resource || t.assignedResource || 'Unassigned';
+      if (!role || role === 'N/A') role = 'Unassigned';
+
+      if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
+      const weekMap = roleWeekHours.get(role)!;
+
+      displayWeeks.forEach((w, wi) => {
+        const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
+        // Check if task overlaps this week
+        if (sMs < wEnd && eMs >= w.start) {
+          weekMap.set(wi, (weekMap.get(wi) || 0) + hrsPerWeek);
+        }
+      });
+    });
+
+    // Sort roles by total hours (highest demand first)
+    const sortedRoles = [...roleWeekHours.entries()]
+      .map(([role, wm]) => ({ role, total: [...wm.values()].reduce((s, v) => s + v, 0) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 20)
+      .map(r => r.role);
+
+    // Build heatmap data: [weekIdx, roleIdx, value]
+    const heatData: [number, number, number][] = [];
+    let maxVal = 0;
+    sortedRoles.forEach((role, ri) => {
+      const weekMap = roleWeekHours.get(role)!;
+      displayWeeks.forEach((_, wi) => {
+        const val = Math.round(weekMap.get(wi) || 0);
+        heatData.push([wi, ri, val]);
+        if (val > maxVal) maxVal = val;
+      });
+    });
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        position: 'top',
+        backgroundColor: 'rgba(22,27,34,0.97)',
+        borderColor: '#3f3f46',
+        textStyle: { color: '#fff', fontSize: 11 },
+        extraCssText: 'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);',
+        formatter: (params: any) => {
+          const [wi, ri, val] = params.data;
+          const role = sortedRoles[ri];
+          const week = displayWeeks[wi]?.label;
+          const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
+          const uc = getUtilColor(utilPct);
+          return `<strong>${role}</strong><br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr capacity`;
+        },
+      },
+      grid: { top: 30, left: 160, right: 30, bottom: 50 },
+      xAxis: {
+        type: 'category',
+        data: displayWeeks.map(w => w.label),
+        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45 },
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
+      },
+      yAxis: {
+        type: 'category',
+        data: sortedRoles,
+        axisLabel: {
+          color: '#d4d4d8', fontSize: 10,
+          formatter: (v: string) => v.length > 22 ? v.substring(0, 20) + '...' : v,
+        },
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+      },
+      visualMap: {
+        min: 0,
+        max: Math.max(maxVal, HOURS_PER_WEEK),
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        top: 0,
+        itemWidth: 14,
+        itemHeight: 120,
+        textStyle: { color: '#a1a1aa', fontSize: 9 },
+        inRange: {
+          color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'],
+        },
+      },
+      series: [{
+        type: 'heatmap',
+        data: heatData,
+        label: { show: false },
+        emphasis: {
+          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' },
+        },
+      }],
+    } as EChartsOption;
+  }, [data.tasks, data.employees]);
+
   // ── Empty state ───────────────────────────────────────────────
   if (!hasData) {
     return (
@@ -837,6 +987,25 @@ function ResourcingPageContent() {
               </div>
             </div>
           </div>
+
+          {/* ═══ RESOURCE HEATMAP — Weekly utilization by role from project plan ═══ */}
+          {heatmapOption && (
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700 }}>Resource Heatmap</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>Weekly planned hours by role — derived from project plan task schedules</div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#161b22' }} /> Low
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10B981' }} /> Optimal
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#F59E0B' }} /> Busy
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#EF4444' }} /> Overloaded
+                </div>
+              </div>
+              <ChartWrapper option={heatmapOption} height="400px" />
+            </div>
+          )}
 
           {/* Resource Leveling */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
