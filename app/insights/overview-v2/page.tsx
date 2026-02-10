@@ -332,10 +332,10 @@ function MilestoneMetrics({ milestones }: { milestones: any[] }) {
 /*  3. SANKEY — View modes: Charge Type / Role / Person                */
 /* ================================================================== */
 
-function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
-  projectBreakdown: any[]; hours: any[]; employees: any[]; onClick?: (p: any) => void;
+function OperationalSankey({ projectBreakdown, hours, employees, tasks, onClick }: {
+  projectBreakdown: any[]; hours: any[]; employees: any[]; tasks: any[]; onClick?: (p: any) => void;
 }) {
-  const [viewMode, setViewMode] = useState<'charge' | 'role' | 'person'>('charge');
+  const [viewMode, setViewMode] = useState<'charge' | 'role' | 'phase'>('charge');
 
   const empMap = useMemo(() => {
     const m = new Map<string, any>();
@@ -366,28 +366,28 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
         });
       });
     } else if (viewMode === 'role') {
-      // Portfolio → Charge Type → Role
+      // Portfolio → Charge Type → Role → Employee (4 levels)
       const ctRoleHrs = new Map<string, Map<string, number>>();
-      const projCtHrs = new Map<string, Map<string, number>>();
+      const roleEmpHrs = new Map<string, Map<string, number>>();
       hours.forEach((h: any) => {
         const ct = h.chargeType || h.charge_type || 'Other';
         const emp = empMap.get(h.employeeId || h.employee_id);
         const role = emp?.role || emp?.jobTitle || 'Unknown';
+        const empName = emp?.name || 'Unknown';
         const hrs = Number(h.hours || 0); if (hrs <= 0) return;
         const pid = h.projectId || h.project_id;
-        const pName = projectBreakdown.find(p => p.id === pid)?.name;
-        if (!pName) return;
-        if (!projCtHrs.has(pName)) projCtHrs.set(pName, new Map());
-        projCtHrs.get(pName)!.set(ct, (projCtHrs.get(pName)!.get(ct) || 0) + hrs);
+        if (!projectBreakdown.find(p => p.id === pid)) return;
+        // Charge Type → Role
         const ctLabel = CHARGE_LABELS[ct] || ct;
         if (!ctRoleHrs.has(ctLabel)) ctRoleHrs.set(ctLabel, new Map());
         ctRoleHrs.get(ctLabel)!.set(role, (ctRoleHrs.get(ctLabel)!.get(role) || 0) + hrs);
+        // Role → Employee
+        if (!roleEmpHrs.has(role)) roleEmpHrs.set(role, new Map());
+        roleEmpHrs.get(role)!.set(empName, (roleEmpHrs.get(role)!.get(empName) || 0) + hrs);
       });
       // Portfolio → Charge Type
-      const ctTotals = new Map<string, number>();
       ctRoleHrs.forEach((roles, ctLabel) => {
         const total = [...roles.values()].reduce((s, h) => s + h, 0);
-        ctTotals.set(ctLabel, total);
         add(ctLabel, CHARGE_COLORS[Object.keys(CHARGE_LABELS).find(k => CHARGE_LABELS[k] === ctLabel) || ''] || '#6B7280');
         links.push({ source: 'Portfolio', target: ctLabel, value: Math.round(total) });
       });
@@ -397,24 +397,44 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
           if (hrs > 0) { add(role, C.indigo); links.push({ source: ctLabel, target: role, value: Math.round(hrs) }); }
         });
       });
-    } else {
-      // Portfolio → Role → Person
-      const rolePersonHrs = new Map<string, Map<string, number>>();
-      hours.forEach((h: any) => {
-        const emp = empMap.get(h.employeeId || h.employee_id);
-        if (!emp) return;
-        const role = emp.role || emp.jobTitle || 'Unknown';
-        const name = emp.name || 'Unknown';
-        const hrs = Number(h.hours || 0); if (hrs <= 0) return;
-        if (!rolePersonHrs.has(role)) rolePersonHrs.set(role, new Map());
-        rolePersonHrs.get(role)!.set(name, (rolePersonHrs.get(role)!.get(name) || 0) + hrs);
+      // Role → Employee (top employees per role)
+      roleEmpHrs.forEach((emps, role) => {
+        const sorted = [...emps.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+        sorted.forEach(([empName, hrs]) => {
+          if (hrs > 0) {
+            // Ensure unique name (employee names might collide with role names)
+            const displayName = added.has(empName) ? `${empName} ` : empName;
+            add(displayName, C.cyan);
+            links.push({ source: role, target: displayName, value: Math.round(hrs) });
+          }
+        });
       });
-      rolePersonHrs.forEach((persons, role) => {
-        const total = [...persons.values()].reduce((s, h) => s + h, 0);
-        add(role, C.indigo);
-        links.push({ source: 'Portfolio', target: role, value: Math.round(total) });
-        persons.forEach((hrs, name) => {
-          if (hrs > 0) { add(name, C.cyan); links.push({ source: role, target: name, value: Math.round(hrs) }); }
+    } else {
+      // By Phase: Portfolio → Project → Phase
+      const projPhaseHrs = new Map<string, Map<string, number>>();
+      (tasks || []).forEach((t: any) => {
+        const pid = t.projectId || t.project_id || '';
+        const proj = projectBreakdown.find(p => p.id === pid);
+        if (!proj) return;
+        const phase = t.phaseName || t.parentName || t.phaseId || 'Ungrouped';
+        const hrs = Number(t.actualHours || t.baselineHours || 0);
+        if (hrs <= 0) return;
+        if (!projPhaseHrs.has(proj.name)) projPhaseHrs.set(proj.name, new Map());
+        projPhaseHrs.get(proj.name)!.set(phase, (projPhaseHrs.get(proj.name)!.get(phase) || 0) + hrs);
+      });
+      projPhaseHrs.forEach((phases, projName) => {
+        const projTotal = [...phases.values()].reduce((s, h) => s + h, 0);
+        const proj = projectBreakdown.find(p => p.name === projName);
+        add(projName, proj && proj.variance > 10 ? C.red : proj && proj.variance > 0 ? C.amber : C.green);
+        links.push({ source: 'Portfolio', target: projName, value: Math.round(projTotal) });
+        // Project → Phase (top phases)
+        const sorted = [...phases.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+        sorted.forEach(([phase, hrs]) => {
+          if (hrs > 0) {
+            const phaseLabel = added.has(phase) ? `${phase} (${projName.substring(0, 8)})` : phase;
+            add(phaseLabel, C.purple);
+            links.push({ source: projName, target: phaseLabel, value: Math.round(hrs) });
+          }
         });
       });
     }
@@ -444,14 +464,12 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
       }],
       _nodeCount: nodes.length,
     };
-  }, [projectBreakdown, hours, employees, empMap, viewMode]);
+  }, [projectBreakdown, hours, employees, tasks, empMap, viewMode]);
 
   // Calculate dynamic height based on the number of nodes
   const sankeyHeight = useMemo(() => {
     const nodeCount = (option as any)?._nodeCount || 0;
-    // Each node needs ~70px of vertical space (nodeGap 32 + node height + label space), minimum 550px
     const calculated = Math.max(550, nodeCount * 70);
-    // Cap at a reasonable maximum
     return Math.min(calculated, 2000);
   }, [option]);
 
@@ -460,10 +478,13 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: 2 }}>
-          {([['charge', 'Charge Type'], ['role', 'By Role'], ['person', 'By Person']] as const).map(([k, l]) => (
+          {([['charge', 'Charge Type'], ['role', 'By Role'], ['phase', 'By Phase']] as const).map(([k, l]) => (
             <button key={k} onClick={() => setViewMode(k)} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600, background: viewMode === k ? `${C.teal}20` : 'transparent', color: viewMode === k ? C.teal : C.textMuted }}>{l}</button>
           ))}
         </div>
+        <span style={{ fontSize: '0.55rem', color: C.textMuted, fontStyle: 'italic' }}>
+          {viewMode === 'charge' ? 'Portfolio → Project → Charge Type' : viewMode === 'role' ? 'Portfolio → Charge Type → Role → Employee' : 'Portfolio → Project → Phase'}
+        </span>
         <span style={{ fontSize: '0.65rem', color: C.textMuted, marginLeft: 'auto' }}>{fmtHrs(projectBreakdown.reduce((s, p) => s + Math.max(p.actualHours, p.timesheetHours), 0))} total hrs</span>
       </div>
       <ChartWrapper option={option} height={`${sankeyHeight}px`} onClick={onClick} isEmpty={!Object.keys(option).length} />
@@ -532,25 +553,33 @@ function RiskMatrix({ projectBreakdown, tasks, onSelect }: { projectBreakdown: a
 /*  4B. HOURS VARIANCE WATERFALL                                       */
 /* ================================================================== */
 
-function HoursVarianceWaterfall({ projectBreakdown }: { projectBreakdown: any[] }) {
+function HoursVarianceWaterfall({ projectBreakdown, tasks }: { projectBreakdown: any[]; tasks: any[] }) {
+  const [drillProject, setDrillProject] = useState<any>(null);
+
+  const sorted = useMemo(() => [...projectBreakdown].sort((a, b) => (b.actualHours - b.baselineHours) - (a.actualHours - a.baselineHours)).slice(0, 16), [projectBreakdown]);
+
+  const tasksByProject = useMemo(() => {
+    const m = new Map<string, any[]>();
+    tasks.forEach((t: any) => { const pid = t.projectId || t.project_id || ''; if (!m.has(pid)) m.set(pid, []); m.get(pid)!.push(t); });
+    return m;
+  }, [tasks]);
+
   const option: EChartsOption = useMemo(() => {
-    if (!projectBreakdown.length) return {};
-    const sorted = [...projectBreakdown].sort((a, b) => (b.actualHours - b.baselineHours) - (a.actualHours - a.baselineHours));
-    const top = sorted.slice(0, 16);
-    const names = top.map(p => p.name);
-    const totalVar = top.reduce((s, p) => s + (p.actualHours - p.baselineHours), 0);
+    if (!sorted.length) return {};
+    const names = sorted.map(p => p.name);
+    const totalVar = sorted.reduce((s, p) => s + (p.actualHours - p.baselineHours), 0);
     names.push('Net');
     const base: number[] = []; const positive: (number | string)[] = []; const negative: (number | string)[] = [];
     let running = 0;
-    top.forEach(p => { const v = p.actualHours - p.baselineHours; if (v >= 0) { base.push(running); positive.push(v); negative.push('-'); running += v; } else { running += v; base.push(running); positive.push('-'); negative.push(Math.abs(v)); } });
+    sorted.forEach(p => { const v = p.actualHours - p.baselineHours; if (v >= 0) { base.push(running); positive.push(v); negative.push('-'); running += v; } else { running += v; base.push(running); positive.push('-'); negative.push(Math.abs(v)); } });
     if (totalVar >= 0) { base.push(0); positive.push(totalVar); negative.push('-'); } else { base.push(0); positive.push('-'); negative.push(Math.abs(totalVar)); }
 
     return {
       tooltip: { ...TT, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (params: any) => {
         const idx = params[0]?.dataIndex; if (idx == null) return '';
-        if (idx === top.length) return `<strong>Net Variance</strong><br/>${totalVar >= 0 ? '+' : ''}${fmtHrs(totalVar)} hrs`;
-        const p = top[idx]; const v = p.actualHours - p.baselineHours;
-        return `<strong>${p.name}</strong><br/>Baseline: ${fmtHrs(p.baselineHours)}<br/>Actual: ${fmtHrs(p.actualHours)}<br/>Variance: <strong style="color:${varColor(p.variance)}">${v > 0 ? '+' : ''}${fmtHrs(v)} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</strong><br/>Progress: ${p.percentComplete}% | Tasks: ${p.tasks}`;
+        if (idx === sorted.length) return `<strong>Net Variance</strong><br/>${totalVar >= 0 ? '+' : ''}${fmtHrs(totalVar)} hrs`;
+        const p = sorted[idx]; const v = p.actualHours - p.baselineHours;
+        return `<strong>${p.name}</strong><br/>Baseline: ${fmtHrs(p.baselineHours)}<br/>Actual: ${fmtHrs(p.actualHours)}<br/>Variance: <strong style="color:${varColor(p.variance)}">${v > 0 ? '+' : ''}${fmtHrs(v)} hrs (${p.variance > 0 ? '+' : ''}${p.variance}%)</strong><br/>Progress: ${p.percentComplete}% | Tasks: ${p.tasks}<br/><span style="color:${C.teal}">Click for breakdown</span>`;
       }},
       grid: { left: 55, right: 20, top: 15, bottom: 100 },
       xAxis: { type: 'category', data: names, axisLabel: { color: C.textMuted, fontSize: 9, rotate: 35, overflow: 'truncate', width: 100 }, axisLine: { lineStyle: { color: C.axis } }, axisPointer: { label: { formatter: (p: any) => p.value } } },
@@ -561,9 +590,94 @@ function HoursVarianceWaterfall({ projectBreakdown }: { projectBreakdown: any[] 
         { name: 'Under', type: 'bar', stack: 'w', data: negative, itemStyle: { color: C.green, borderRadius: [3, 3, 0, 0] }, label: { show: true, position: 'top', color: C.green, fontSize: 8, formatter: (p: any) => p.value !== '-' && p.value > 0 ? `-${fmtHrs(p.value)}` : '' } },
       ],
     };
-  }, [projectBreakdown]);
+  }, [sorted]);
+
+  const drillData = useMemo(() => {
+    if (!drillProject) return null;
+    const pTasks = tasksByProject.get(drillProject.id) || [];
+    // Group by phase
+    const phases = new Map<string, { name: string; tasks: any[]; hrs: number; bl: number }>();
+    pTasks.forEach((t: any) => {
+      const ph = t.phaseName || t.parentName || t.phaseId || 'Ungrouped';
+      if (!phases.has(ph)) phases.set(ph, { name: ph, tasks: [], hrs: 0, bl: 0 });
+      const p = phases.get(ph)!; p.tasks.push(t); p.hrs += Number(t.actualHours || 0); p.bl += Number(t.baselineHours || t.budgetHours || 0);
+    });
+    // Top over-budget tasks
+    const overBudget = pTasks.filter((t: any) => { const bl = Number(t.baselineHours || 0); return bl > 0 && Number(t.actualHours || 0) > bl * 1.1; }).sort((a: any, b: any) => (Number(b.actualHours || 0) - Number(b.baselineHours || 0)) - (Number(a.actualHours || 0) - Number(a.baselineHours || 0)));
+    // Employees on this project
+    const empHrs = new Map<string, { name: string; hours: number }>();
+    pTasks.forEach((t: any) => {
+      const name = t.assignedTo || t.resource || '';
+      if (!name) return;
+      const hrs = Number(t.actualHours || 0);
+      if (!empHrs.has(name)) empHrs.set(name, { name, hours: 0 });
+      empHrs.get(name)!.hours += hrs;
+    });
+    const topEmployees = [...empHrs.values()].sort((a, b) => b.hours - a.hours).slice(0, 6);
+    return { project: drillProject, phases: [...phases.values()].sort((a, b) => b.hrs - a.hrs), overBudget, topEmployees };
+  }, [drillProject, tasksByProject]);
+
   if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No data</div>;
-  return <ChartWrapper option={option} height="420px" />;
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: drillData ? '1fr 280px' : '1fr', gap: '0.75rem' }}>
+      <ChartWrapper option={option} height="420px" onClick={(params: any) => {
+        const idx = params?.dataIndex;
+        if (idx != null && idx < sorted.length) {
+          const p = sorted[idx];
+          if (p) setDrillProject(p);
+        }
+      }} />
+      {drillData && (
+        <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${C.border}`, padding: '0.6rem', overflowY: 'auto', maxHeight: 420 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+            <span title={drillData.project.name} style={{ fontSize: '0.75rem', fontWeight: 700, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{drillData.project.name}</span>
+            <button onClick={() => setDrillProject(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '0.7rem', flexShrink: 0 }}>X</button>
+          </div>
+          {/* Metrics strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 3, marginBottom: '0.5rem' }}>
+            <div style={{ padding: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 5, textAlign: 'center' }}><div style={{ fontSize: '0.45rem', color: C.textMuted }}>VAR</div><div style={{ fontSize: '0.8rem', fontWeight: 700, color: varColor(drillData.project.variance) }}>{drillData.project.variance > 0 ? '+' : ''}{drillData.project.variance}%</div></div>
+            <div style={{ padding: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 5, textAlign: 'center' }}><div style={{ fontSize: '0.45rem', color: C.textMuted }}>ACTUAL</div><div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.textPrimary }}>{fmtHrs(drillData.project.actualHours)}</div></div>
+            <div style={{ padding: 4, background: 'rgba(0,0,0,0.3)', borderRadius: 5, textAlign: 'center' }}><div style={{ fontSize: '0.45rem', color: C.textMuted }}>BASELINE</div><div style={{ fontSize: '0.8rem', fontWeight: 700, color: C.textPrimary }}>{fmtHrs(drillData.project.baselineHours)}</div></div>
+          </div>
+          {/* Over-budget tasks */}
+          {drillData.overBudget.length > 0 && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.55rem', fontWeight: 700, color: C.red, textTransform: 'uppercase', marginBottom: 2 }}>Over-Budget Tasks ({drillData.overBudget.length})</div>
+              {drillData.overBudget.slice(0, 5).map((t: any, i: number) => (
+                <div key={i} title={t.name || t.taskName} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, marginRight: 6 }}>{t.name || t.taskName || 'Task'}</span>
+                  <span style={{ color: C.red, flexShrink: 0 }}>+{fmtHrs(Math.round(Number(t.actualHours || 0) - Number(t.baselineHours || 0)))}h</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Top employees */}
+          {drillData.topEmployees.length > 0 && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '0.55rem', fontWeight: 700, color: C.cyan, textTransform: 'uppercase', marginBottom: 2 }}>Top Contributors</div>
+              {drillData.topEmployees.map((e, i) => (
+                <div key={i} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0', display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 }}>{e.name}</span>
+                  <span style={{ color: C.cyan, flexShrink: 0 }}>{fmtHrs(Math.round(e.hours))}h</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Phases */}
+          <div style={{ fontSize: '0.55rem', fontWeight: 700, color: C.textSecondary, textTransform: 'uppercase', marginBottom: 2 }}>Phases</div>
+          {drillData.phases.slice(0, 6).map((ph, i) => {
+            const v = ph.bl > 0 ? Math.round(((ph.hrs - ph.bl) / ph.bl) * 100) : 0;
+            return (
+              <div key={i} title={String(ph.name)} style={{ fontSize: '0.6rem', color: C.textMuted, padding: '2px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: 8 }}>{ph.name} ({ph.tasks.length})</span>
+                <span style={{ color: varColor(v), flexShrink: 0 }}>{fmtHrs(ph.hrs)}/{fmtHrs(ph.bl)} {v !== 0 ? `(${v > 0 ? '+' : ''}${v}%)` : ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ================================================================== */
@@ -1154,10 +1268,42 @@ export default function OverviewV2Page() {
           <SectionCard title="Portfolio Pulse" badge={<Badge label="Pulse" color={C.teal} />}>
             <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '1rem' }}>
               {/* Gauges column — compact */}
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'start' }}>
-                <PulseGauge value={portfolio.healthScore} max={100} label="HEALTH SCORE" color={portfolio.healthScore >= 80 ? C.green : portfolio.healthScore >= 60 ? C.amber : C.red} subtitle={`${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}% variance`} />
-                <PulseGauge value={portfolio.percentComplete} max={100} label="PROGRESS MADE" color={portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red} subtitle={`${portfolio.projectCount} projects`} />
-                <PulseGauge value={portfolio.totalHours} max={Math.max(portfolio.baselineHours, portfolio.totalHours) * 1.1} label="HOURS BURNED" color={portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal} subtitle={`${fmtHrs(portfolio.baselineHours)} baseline`} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'start' }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <PulseGauge value={portfolio.healthScore} max={100} label="HEALTH SCORE" color={portfolio.healthScore >= 80 ? C.green : portfolio.healthScore >= 60 ? C.amber : C.red} subtitle={`${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}% variance`} />
+                  <PulseGauge value={portfolio.percentComplete} max={100} label="PROGRESS MADE" color={portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red} subtitle={`${portfolio.projectCount} projects`} />
+                  <PulseGauge value={portfolio.totalHours} max={Math.max(portfolio.baselineHours, portfolio.totalHours) * 1.1} label="HOURS BURNED" color={portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal} subtitle={`${fmtHrs(portfolio.baselineHours)} baseline`} />
+                </div>
+                {/* Health Checks */}
+                {(() => {
+                  const blockedCount = (data.tasks || []).filter((t: any) => { const s = String(t.status || '').toLowerCase(); return s.includes('block') || s.includes('hold'); }).length;
+                  const atRiskCount = (data.tasks || []).filter((t: any) => { const s = String(t.status || '').toLowerCase(); return s.includes('risk') || s.includes('late') || s.includes('delay'); }).length;
+                  const criticalCount = (data.tasks || []).filter((t: any) => t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0)).length;
+                  const scheduleStatus = portfolio.spi >= 0.95 ? { label: 'On Track', color: C.green, icon: '\u2713' } : portfolio.spi >= 0.85 ? { label: 'At Risk', color: C.amber, icon: '\u26A0' } : { label: 'Behind', color: C.red, icon: '\u2717' };
+                  const budgetStatus = portfolio.hrsVariance <= 0 ? { label: 'Under Budget', color: C.green, icon: '\u2713' } : portfolio.hrsVariance <= 10 ? { label: 'Near Budget', color: C.amber, icon: '\u26A0' } : { label: 'Over Budget', color: C.red, icon: '\u2717' };
+                  const qualityStatus = portfolio.cpi >= 0.95 ? { label: 'Efficient', color: C.green, icon: '\u2713' } : portfolio.cpi >= 0.85 ? { label: 'Moderate', color: C.amber, icon: '\u26A0' } : { label: 'Inefficient', color: C.red, icon: '\u2717' };
+                  const checks = [
+                    { label: 'Schedule', ...scheduleStatus },
+                    { label: 'Budget', ...budgetStatus },
+                    { label: 'Efficiency', ...qualityStatus },
+                    { label: 'Blockers', color: blockedCount > 0 ? C.red : C.green, icon: blockedCount > 0 ? '\u2717' : '\u2713', value: blockedCount > 0 ? `${blockedCount} blocked` : 'None' },
+                    { label: 'At Risk', color: atRiskCount > 0 ? C.amber : C.green, icon: atRiskCount > 0 ? '\u26A0' : '\u2713', value: atRiskCount > 0 ? `${atRiskCount} tasks` : 'None' },
+                    { label: 'Critical', color: criticalCount > 0 ? C.teal : C.green, icon: criticalCount > 0 ? '\u26A0' : '\u2713', value: criticalCount > 0 ? `${criticalCount} tasks` : 'None' },
+                  ];
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, width: '100%' }}>
+                      {checks.map(c => (
+                        <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 8px', background: `${c.color}0A`, borderRadius: 6, border: `1px solid ${c.color}25` }}>
+                          <span style={{ fontSize: '0.7rem', color: c.color, fontWeight: 700, width: 14, textAlign: 'center' }}>{c.icon}</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.5rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 700 }}>{c.label}</div>
+                            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: c.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(c as any).value || (c as any).label.split(' ').pop()}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               {/* KPI + Leaderboard column — expanded */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignContent: 'start' }}>
@@ -1193,7 +1339,7 @@ export default function OverviewV2Page() {
 
           {/* ═══ 3. OPERATIONAL FRICTION ═══ */}
           <SectionCard title="Operational Friction" subtitle="View by Charge Type, Role, or Person" badge={<Badge label="Flow" color={C.blue} />}>
-            <OperationalSankey projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} />
+            <OperationalSankey projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} tasks={data.tasks || []} />
           </SectionCard>
 
           {/* ═══ 4. RISK MATRIX — full width ═══ */}
@@ -1203,7 +1349,7 @@ export default function OverviewV2Page() {
 
           {/* ═══ 4B. HOURS VARIANCE — full width ═══ */}
           <SectionCard title="Hours Variance" subtitle="Waterfall: over (red) vs under (green) per project" badge={<Badge label="Variance" color={C.amber} />}>
-            <HoursVarianceWaterfall projectBreakdown={projectBreakdown} />
+            <HoursVarianceWaterfall projectBreakdown={projectBreakdown} tasks={data.tasks || []} />
           </SectionCard>
 
           {/* ═══ 5. PREDICTIVE BURN ═══ */}

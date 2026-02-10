@@ -986,20 +986,52 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Storage Warning */}
+        {/* Storage Warning — Enhanced */}
         {!storageConfigured && (
-          <div className="chart-card grid-full" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px' }}>
-            <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F59E0B" strokeWidth="2" style={{ flexShrink: 0 }}>
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-              <div>
-                <div style={{ fontWeight: 600, color: '#F59E0B', fontSize: '0.9rem' }}>Azure Blob Storage Not Connected</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  File uploads require <code>AZURE_STORAGE_CONNECTION_STRING</code> to be configured in your environment variables.
-                  Existing documents from the database are shown below. To enable uploads, add the connection string for the <strong>projectdoc</strong> storage account in Azure App Service Configuration.
+          <div className="chart-card grid-full" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '12px' }}>
+            <div style={{ padding: '1.25rem 1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#F59E0B" strokeWidth="2" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#F59E0B', fontSize: '1rem', marginBottom: '0.25rem' }}>Azure Blob Storage Not Connected</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    File uploads and downloads are currently unavailable because the storage connection could not be established.
+                    Existing documents from the database are still shown below.
+                  </div>
                 </div>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '1rem', marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>What&apos;s happening</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  The application tried to connect to Azure Blob Storage (container: <code style={{ background: 'rgba(245,158,11,0.15)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>projectdoc</code>) but the environment variable
+                  <code style={{ background: 'rgba(245,158,11,0.15)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>AZURE_STORAGE_CONNECTION_STRING</code> is either missing or invalid.
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '1rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>How to fix</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {[
+                    { step: '1', text: 'Verify the connection string exists in Azure DevOps Pipeline Variables (Settings > Pipelines > ppc_final > Variables)' },
+                    { step: '2', text: 'Trigger a new deployment by pushing to main — the pipeline will inject the variable into the Container App' },
+                    { step: '3', text: 'Or set it directly: Azure Portal > Container App (ppc1) > Settings > Environment Variables > Add AZURE_STORAGE_CONNECTION_STRING' },
+                    { step: '4', text: 'After setting, the Container App will restart automatically. Refresh this page to verify.' },
+                  ].map(s => (
+                    <div key={s.step} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#F59E0B', flexShrink: 0 }}>{s.step}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{s.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: 'rgba(59,130,246,0.08)', borderRadius: '6px', border: '1px solid rgba(59,130,246,0.2)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                <strong style={{ color: '#3B82F6' }}>Note:</strong> If this is a local development environment, add the connection string to your <code>.env.local</code> file.
+                For production, the Azure DevOps pipeline (ID: 457) is already configured to pass this variable during deployment.
               </div>
             </div>
           </div>
@@ -1047,22 +1079,28 @@ export default function DocumentsPage() {
 
             {/* Upload Button */}
             <div style={{ marginTop: '1.5rem' }}>
+              {!storageConfigured && (
+                <div style={{ marginBottom: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(239,68,68,0.08)', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.25)', fontSize: '0.78rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#EF4444" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+                  <span>Uploads disabled — Azure Blob Storage is not connected. See the configuration guide above.</span>
+                </div>
+              )}
               <button
                 onClick={handleUpload}
-                disabled={!selectedFile || isUploading}
+                disabled={!selectedFile || isUploading || !storageConfigured}
                 style={{
                   width: '100%',
                   padding: '0.75rem 1.5rem',
-                  backgroundColor: selectedFile && !isUploading ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  backgroundColor: selectedFile && !isUploading && storageConfigured ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
                   border: 'none',
                   borderRadius: '6px',
-                  color: selectedFile && !isUploading ? '#000' : 'var(--text-muted)',
-                  cursor: selectedFile && !isUploading ? 'pointer' : 'not-allowed',
+                  color: selectedFile && !isUploading && storageConfigured ? '#000' : 'var(--text-muted)',
+                  cursor: selectedFile && !isUploading && storageConfigured ? 'pointer' : 'not-allowed',
                   fontSize: '0.875rem',
                   fontWeight: 500,
                 }}
               >
-                {isUploading ? 'Uploading...' : 'Upload MPP File'}
+                {isUploading ? 'Uploading...' : !storageConfigured ? 'Storage Not Connected' : 'Upload MPP File'}
               </button>
             </div>
           </div>
