@@ -1,35 +1,35 @@
 'use client';
 
 /**
- * InactivityLogout – signs user out after 1 hour of no activity.
- * Uses NextAuth session. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
- * When auth is disabled, no NextAuth hooks are called.
+ * InactivityLogout – logs user out after 1 hour of no activity.
+ * Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
  */
 
-import { useSession, signOut } from 'next-auth/react';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import { useEffect, useRef, useCallback } from 'react';
 
+// Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
 const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 const INACTIVITY_MS = 60 * 60 * 1000; // 1 hour
 
-function InactivityLogoutInner({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession();
+export default function InactivityLogout({ children }: { children: React.ReactNode }) {
+  const { user } = useUser();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const logout = useCallback(() => {
-    signOut({ callbackUrl: '/' });
+    window.location.href = '/api/auth/logout';
   }, []);
 
   const resetTimer = useCallback(() => {
-    if (!session) return;
+    if (AUTH_DISABLED || !user) return;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = setTimeout(logout, INACTIVITY_MS);
-  }, [session, logout]);
+  }, [user, logout]);
 
   useEffect(() => {
-    if (!session) return;
+    if (AUTH_DISABLED || !user) return;
 
     resetTimer();
 
@@ -42,12 +42,7 @@ function InactivityLogoutInner({ children }: { children: React.ReactNode }) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [session, resetTimer]);
+  }, [user, resetTimer]);
 
   return <>{children}</>;
-}
-
-export default function InactivityLogout({ children }: { children: React.ReactNode }) {
-  if (AUTH_DISABLED) return <>{children}</>;
-  return <InactivityLogoutInner>{children}</InactivityLogoutInner>;
 }

@@ -2,25 +2,26 @@
 
 /**
  * User Context for PPC V3
- * Integrates with NextAuth for authentication (Microsoft Entra ID).
- * After sign-in, the user's name/email is matched against the employees table
- * to pull their role (done server-side in the JWT callback).
- * Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass and use a demo user.
  *
- * When auth is disabled, NextAuth hooks are NOT called (no SessionProvider).
+ * Auth0 handles authentication. After login, we match the user's name/email
+ * against the employees table to pull their role, department, etc.
+ * Shows a "Fetching Profile" screen while the employee lookup happens.
+ *
+ * Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass Auth0 and use a demo user.
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
-import { useSession, signIn, signOut } from 'next-auth/react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useUser as useAuth0User } from '@auth0/nextjs-auth0/client';
 
 export interface UserInfo {
   name: string;
   email: string;
   role: string;
   initials: string;
-  employeeId?: string;
+  employeeId?: string | null;
   department?: string;
   managementLevel?: string;
+  jobTitle?: string;
 }
 
 interface UserContextValue {
@@ -37,12 +38,7 @@ const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 
 function getInitials(name: string): string {
   if (!name) return '?';
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  return name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2);
 }
 
 const DEMO_USER: UserInfo = {
@@ -53,58 +49,138 @@ const DEMO_USER: UserInfo = {
 };
 
 /**
- * Authenticated UserProvider: uses NextAuth session.
+ * Fetching Profile screen — shown after Auth0 login while matching employee
  */
-function AuthenticatedUserProvider({ children }: { children: ReactNode }) {
-  const { data: session, status } = useSession();
-
-  const user: UserInfo | null = session?.user
-    ? {
-        name: session.user.name || 'User',
-        email: session.user.email || '',
-        role: (session.user as any).role || 'User',
-        initials: getInitials(session.user.name || 'User'),
-        employeeId: (session.user as any).employeeId || undefined,
-        department: (session.user as any).department || undefined,
-        managementLevel: (session.user as any).managementLevel || undefined,
-      }
-    : null;
-
-  const login = () => signIn(undefined, { callbackUrl: window.location.href });
-  const logout = () => signOut({ callbackUrl: '/' });
-
-  const value: UserContextValue = {
-    user,
-    login,
-    logout,
-    isLoggedIn: !!session,
-    isLoading: status === 'loading',
-  };
-
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+function FetchingProfile() {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: '100vh', background: 'transparent',
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          width: 48, height: 48,
+          border: '3px solid rgba(63,63,70,0.5)',
+          borderTopColor: '#40E0D0',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          margin: '0 auto 1.25rem',
+        }} />
+        <p style={{
+          color: '#40E0D0', fontSize: '1rem', fontWeight: 600,
+          margin: '0 0 0.5rem',
+        }}>
+          Fetching Profile
+        </p>
+        <p style={{ color: '#a1a1aa', fontSize: '0.75rem', margin: 0 }}>
+          Matching your account to the employee directory...
+        </p>
+      </div>
+    </div>
+  );
 }
 
-/**
- * Demo UserProvider: no auth hooks, uses static demo user.
- */
-function DemoUserProvider({ children }: { children: ReactNode }) {
-  const value: UserContextValue = {
-    user: DEMO_USER,
-    login: () => {},
-    logout: () => {},
-    isLoggedIn: true,
-    isLoading: false,
-  };
-
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
-}
-
-/**
- * UserProvider: delegates to authenticated or demo provider based on config.
- */
 export function UserProvider({ children }: { children: ReactNode }) {
-  if (AUTH_DISABLED) return <DemoUserProvider>{children}</DemoUserProvider>;
-  return <AuthenticatedUserProvider>{children}</AuthenticatedUserProvider>;
+  const { user: auth0User, isLoading: auth0Loading } = useAuth0User();
+  const [enrichedUser, setEnrichedUser] = useState<UserInfo | null>(null);
+  const [fetchingProfile, setFetchingProfile] = useState(false);
+  const [fetched, setFetched] = useState(false);
+
+  // After Auth0 gives us a user, match against employees table
+  useEffect(() => {
+    if (AUTH_DISABLED || !auth0User || fetched) return;
+
+    const matchEmployee = async () => {
+      setFetchingProfile(true);
+      try {
+        const res = await fetch('/api/auth/employee-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: auth0User.name || '',
+            email: auth0User.email || '',
+          }),
+        });
+        const data = await res.json();
+
+        if (data.success && data.employee) {
+          setEnrichedUser({
+            name: data.employee.name || auth0User.name || 'User',
+            email: data.employee.email || auth0User.email || '',
+            role: data.employee.role,
+            initials: getInitials(data.employee.name || auth0User.name || 'User'),
+            employeeId: data.employee.employeeId,
+            department: data.employee.department,
+            managementLevel: data.employee.managementLevel,
+            jobTitle: data.employee.jobTitle,
+          });
+        } else {
+          // No match — use Auth0 info with default role
+          setEnrichedUser({
+            name: auth0User.name || 'User',
+            email: auth0User.email || '',
+            role: 'User',
+            initials: getInitials(auth0User.name || 'User'),
+          });
+        }
+      } catch (err) {
+        console.error('[UserContext] Employee match failed:', err);
+        // Fallback to Auth0 info
+        setEnrichedUser({
+          name: auth0User.name || 'User',
+          email: auth0User.email || '',
+          role: 'User',
+          initials: getInitials(auth0User.name || 'User'),
+        });
+      }
+      setFetchingProfile(false);
+      setFetched(true);
+    };
+
+    matchEmployee();
+  }, [auth0User, fetched]);
+
+  // Reset when user logs out
+  useEffect(() => {
+    if (!auth0User && fetched) {
+      setEnrichedUser(null);
+      setFetched(false);
+    }
+  }, [auth0User, fetched]);
+
+  const login = () => {
+    if (AUTH_DISABLED) return;
+    window.location.href = '/api/auth/login';
+  };
+
+  const logout = () => {
+    if (AUTH_DISABLED) return;
+    window.location.href = '/api/auth/logout';
+  };
+
+  const user = AUTH_DISABLED ? DEMO_USER : enrichedUser;
+  const isLoading = AUTH_DISABLED ? false : (auth0Loading || fetchingProfile);
+
+  // Show "Fetching Profile" screen while matching employee
+  if (!AUTH_DISABLED && auth0User && fetchingProfile) {
+    return (
+      <UserContext.Provider value={{ user: null, login, logout, isLoggedIn: false, isLoading: true }}>
+        <FetchingProfile />
+      </UserContext.Provider>
+    );
+  }
+
+  return (
+    <UserContext.Provider value={{
+      user,
+      login,
+      logout,
+      isLoggedIn: AUTH_DISABLED ? true : !!enrichedUser,
+      isLoading,
+    }}>
+      {children}
+    </UserContext.Provider>
+  );
 }
 
 export function useUser() {

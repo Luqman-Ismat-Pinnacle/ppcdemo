@@ -1,27 +1,32 @@
 'use client';
 
 /**
- * AuthGuard – redirects unauthenticated users to sign in.
- * Uses NextAuth session. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
- * When auth is disabled, no NextAuth hooks are called (SessionProvider is absent).
+ * AuthGuard – redirects unauthenticated users to Auth0 login.
+ * Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
  */
 
-import { useSession, signIn } from 'next-auth/react';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import { useEffect } from 'react';
 
+// Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
 const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 
-function AuthGuardInner({ children }: { children: React.ReactNode }) {
-  const { data: session, status } = useSession();
+export default function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useUser();
 
+  // Hooks must be called unconditionally — redirect effect runs only when auth is active
   useEffect(() => {
-    if (status === 'loading') return;
-    if (!session) {
-      signIn(undefined, { callbackUrl: window.location.href });
+    if (AUTH_DISABLED) return;
+    if (isLoading) return;
+    if (!user) {
+      window.location.href = '/api/auth/login';
     }
-  }, [session, status]);
+  }, [user, isLoading]);
 
-  if (status === 'loading') {
+  // When auth is disabled, render children immediately
+  if (AUTH_DISABLED) return <>{children}</>;
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -32,7 +37,7 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -44,9 +49,4 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
-}
-
-export default function AuthGuard({ children }: { children: React.ReactNode }) {
-  if (AUTH_DISABLED) return <>{children}</>;
-  return <AuthGuardInner>{children}</AuthGuardInner>;
 }

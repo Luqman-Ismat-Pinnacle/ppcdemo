@@ -1,52 +1,42 @@
 'use client';
 
-import { useSession, signIn, signOut } from 'next-auth/react';
-import { Button } from '@/components/ui';
+import { useUser } from '@auth0/nextjs-auth0/client';
 
 export default function AuthButtons() {
-  const { data: session, status } = useSession();
+  const { user, isLoading } = useUser();
 
-  if (status === 'loading') {
-    return (
-      <Button variant="secondary" size="sm" loading>
-        Loading...
-      </Button>
-    );
-  }
+  if (isLoading) return null;
 
-  if (session?.user) {
+  if (user) {
     return (
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          {session.user.image && (
-            <img
-              src={session.user.image}
-              alt={session.user.name || 'User'}
-              className="w-8 h-8 rounded-full border-2 border-[var(--pinnacle-teal)]"
-            />
-          )}
-          <span className="text-sm text-[var(--text-primary)]">
-            {session.user.name}
-          </span>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => signOut({ callbackUrl: '/' })}
+        <span className="text-sm text-[var(--text-primary)]">{user.name}</span>
+        <button
+          onClick={() => (window.location.href = '/api/auth/logout')}
+          style={{
+            padding: '4px 10px', borderRadius: 6,
+            border: '1px solid var(--border-color)',
+            background: 'transparent', color: '#EF4444',
+            fontSize: '0.75rem', cursor: 'pointer',
+          }}
         >
           Logout
-        </Button>
+        </button>
       </div>
     );
   }
 
   return (
-    <Button
-      variant="primary"
-      size="sm"
-      onClick={() => signIn()}
+    <button
+      onClick={() => (window.location.href = '/api/auth/login')}
+      style={{
+        padding: '4px 10px', borderRadius: 6,
+        border: '1px solid var(--border-color)',
+        background: 'transparent', color: 'var(--pinnacle-teal)',
+        fontSize: '0.75rem', cursor: 'pointer',
+      }}
     >
       Login
-    </Button>
+    </button>
   );
 }
