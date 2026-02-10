@@ -74,7 +74,6 @@ function ResourcingPageContent() {
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics'>('organization');
-  const [selectedPortfolio, setSelectedPortfolio] = useState<string>('all');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
@@ -182,13 +181,9 @@ function ResourcingPageContent() {
   }, []);
 
   const unassignedTasks = useMemo(() => {
-    let tasks = data.tasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
-    if (selectedPortfolio !== 'all') {
-      const pids = projectsWithEmployees.filter(p => p.portfolioId === selectedPortfolio || p.portfolioName === selectedPortfolio).map(p => p.id);
-      tasks = tasks.filter((t: any) => pids.includes(t.projectId || t.project_id));
-    }
+    const tasks = data.tasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
     return tasks.sort((a: any, b: any) => getTaskCriticality(b).score - getTaskCriticality(a).score);
-  }, [data.tasks, selectedPortfolio, projectsWithEmployees, getTaskCriticality]);
+  }, [data.tasks, getTaskCriticality]);
 
   // ── Summary metrics ───────────────────────────────────────────
   const summaryMetrics = useMemo(() => ({
@@ -310,13 +305,11 @@ function ResourcingPageContent() {
       return n;
     };
 
-    // Build portfolio nodes with utilization colors
+    // Build all portfolio nodes — each becomes a separate root
     const portfolioNodes: any[] = [];
     const used = new Set<string>();
-    let portfolios = data.portfolios;
-    if (selectedPortfolio !== 'all') portfolios = portfolios.filter((p: any) => (p.id || p.portfolioId) === selectedPortfolio || p.name === selectedPortfolio);
 
-    portfolios.forEach((port: any) => {
+    data.portfolios.forEach((port: any) => {
       const pid = port.id || port.portfolioId;
       const pname = port.name || pid;
       const pmgr = (port.manager || '').trim().toLowerCase();
@@ -345,67 +338,26 @@ function ResourcingPageContent() {
       });
     });
 
-    if (selectedPortfolio === 'all') {
-      const extra = roots.filter(r => !used.has(r.id));
-      if (extra.length) {
-        const extraIds = new Set(extra.map(e => e.id));
-        const extraUtil = getGroupUtilization(extraIds);
-        const extraColor = getUtilColor(extraUtil);
-        portfolioNodes.push({
-          name: 'Unassigned', id: 'unassigned-portfolio', isPortfolio: true,
-          utilization: extraUtil,
-          itemStyle: { color: extraColor, borderColor: extraColor, borderWidth: 2 },
-          label: { backgroundColor: `${extraColor}15` },
-          children: extra.map(r => branch(r, 0)),
-        });
-      }
+    // Add unassigned employees as a separate portfolio root
+    const extra = roots.filter(r => !used.has(r.id));
+    if (extra.length) {
+      const extraIds = new Set(extra.map(e => e.id));
+      const extraUtil = getGroupUtilization(extraIds);
+      const extraColor = getUtilColor(extraUtil);
+      portfolioNodes.push({
+        name: 'Unassigned', id: 'unassigned-portfolio', isPortfolio: true,
+        utilization: extraUtil,
+        itemStyle: { color: extraColor, borderColor: extraColor, borderWidth: 2 },
+        label: { backgroundColor: `${extraColor}15` },
+        children: extra.map(r => branch(r, 0)),
+      });
     }
 
-    // Create COO root node
-    // Try to find the COO in the employee data
-    const coo = employeeMetrics.find(e =>
-      e.name.toLowerCase().includes('mauricio olivares') ||
-      (e.role || '').toLowerCase().includes('coo') ||
-      (e.managementLevel || '').toLowerCase().includes('chief') ||
-      (e.managementLevel || '').toLowerCase().includes('executive')
-    );
-    const overallUtil = summaryMetrics.avgUtilization;
-    const rootColor = getUtilColor(overallUtil);
-    const rootNode = {
-      name: coo ? coo.name : 'Organization',
-      id: coo ? coo.id : 'root-org',
-      isCOO: true,
-      utilization: overallUtil,
-      role: coo ? (coo.role || 'COO') : 'COO',
-      itemStyle: { color: rootColor, borderColor: rootColor, borderWidth: 3 },
-      label: { backgroundColor: `${rootColor}15` },
-      children: portfolioNodes,
-    };
-
-    return [rootNode];
-  }, [employeeMetrics, data.portfolios, selectedPortfolio, projectsWithEmployees, makeEmpNode, getGroupUtilization, summaryMetrics.avgUtilization]);
+    // Return all portfolio nodes as separate roots (no COO wrapper)
+    return portfolioNodes;
+  }, [employeeMetrics, data.portfolios, projectsWithEmployees, makeEmpNode, getGroupUtilization]);
 
   const treeData = buildPortfolioTree;
-
-  // ── Calculate dynamic tree height based on leaf node count ────
-  const treeLeafCount = useMemo(() => {
-    let count = 0;
-    const walk = (nodes: any[]) => {
-      nodes.forEach(n => {
-        if (n.children && n.children.length > 0) walk(n.children);
-        else count++;
-      });
-    };
-    walk(treeData);
-    return count;
-  }, [treeData]);
-
-  const dynamicTreeHeight = useMemo(() => {
-    // Each leaf node needs ~65px of vertical space for TB layout
-    const calculated = Math.max(700, treeLeafCount * 65);
-    // Cap at a reasonable max
-    return Math.min(calculated, 4000);
-  }, [treeLeafCount]);
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -431,10 +383,6 @@ function ResourcingPageContent() {
       extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
       formatter: (params: any) => {
         const d = params.data;
-        if (d.isCOO) {
-          const uc = getUtilColor(d.utilization || 0);
-          return `<div style="padding:14px 16px;"><div style="font-weight:700;font-size:15px;margin-bottom:2px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">${d.role || 'COO'}</div><div style="display:flex;align-items:center;gap:8px;"><div style="width:36px;height:36px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:11px;color:#9ca3af;">Avg Utilization</span></div></div>`;
-        }
         if (d.isPortfolio) {
           const uc = getUtilColor(d.utilization || 0);
           return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div><div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><div style="width:32px;height:32px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:10px;color:#9ca3af;">Avg Utilization</span></div></div>`;
@@ -467,25 +415,21 @@ function ResourcingPageContent() {
     series: [{
       type: 'tree',
       data: treeData,
-      top: 40, left: 60, bottom: 40, right: 120,
-      symbolSize: 20,
-      orient: 'LR',
+      top: '2%', left: '3%', bottom: '2%', right: '15%',
+      symbolSize: 18,
+      orient: 'TB',
       layout: 'orthogonal',
-      edgeShape: 'polyline',
-      edgeForkPosition: '50%',
       initialTreeDepth: -1,  // fully expand ALL nodes
       expandAndCollapse: true,
       animationDurationUpdate: 500,
       roam: true,
       label: {
-        position: 'right', verticalAlign: 'middle', align: 'left',
-        fontSize: 11, color: 'var(--text-primary)', borderRadius: 4, padding: [6, 12],
-        distance: 14,
+        position: 'bottom', verticalAlign: 'middle', align: 'center',
+        fontSize: 10, color: 'var(--text-primary)', borderRadius: 4, padding: [4, 8],
         formatter: (params: any) => {
           const d = params.data;
-          if (d.isCOO) return `{bold|${d.name}}\n{role|${d.role || 'COO'}}`;
           if (d.isPortfolio) return `{bold|${d.name}}`;
-          if (d.isProject) return `{project|${d.name.substring(0, 24)}${d.name.length > 24 ? '...' : ''}}`;
+          if (d.isProject) return `{project|${d.name.substring(0, 20)}${d.name.length > 20 ? '...' : ''}}`;
           if (d.isPlaceholder) return `{muted|${d.name}}`;
           if (d.emp) {
             const sn = d.name.split(' ').map((n: string, i: number) => i === 0 ? n : n[0] + '.').join(' ');
@@ -494,14 +438,14 @@ function ResourcingPageContent() {
           return d.name;
         },
         rich: {
-          bold: { fontWeight: 'bold' as any, fontSize: 13, lineHeight: 20 },
-          role: { fontSize: 10, color: '#9ca3af', lineHeight: 16 },
-          project: { fontSize: 11, color: '#60A5FA', lineHeight: 18 },
-          muted: { fontSize: 10, color: '#6B7280', fontStyle: 'italic' as any, lineHeight: 16 },
-          util: { fontSize: 10, color: '#9ca3af', lineHeight: 16 },
+          bold: { fontWeight: 'bold' as any, fontSize: 12, lineHeight: 16 },
+          role: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
+          project: { fontSize: 10, color: '#60A5FA' },
+          muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
+          util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
         },
       },
-      leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
+      leaves: { label: { position: 'bottom', verticalAlign: 'middle', align: 'center' } },
       lineStyle: { color: 'var(--border-color)', width: 1.5, curveness: 0.5 },
       emphasis: {
         focus: 'descendant',
@@ -691,12 +635,7 @@ function ResourcingPageContent() {
               }}>{tab}</button>
             ))}
           </div>
-          {activeTab === 'organization' && (
-            <select value={selectedPortfolio} onChange={e => setSelectedPortfolio(e.target.value)} style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem' }}>
-              <option value="all">All Portfolios</option>
-              {data.portfolios.map((p: any) => <option key={p.portfolioId || p.id} value={p.portfolioId || p.id}>{p.name}</option>)}
-            </select>
-          )}
+          
         </div>
         {activeTab === 'organization' && (
           <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', alignItems: 'center' }}>
@@ -709,16 +648,16 @@ function ResourcingPageContent() {
 
       {/* ═══ ORGANIZATION TAB ══════════════════════════════════════ */}
       {activeTab === 'organization' ? (
-        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: `${dynamicTreeHeight}px` }}>
+        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: 0 }}>
           {treeData.length > 0 ? (
-            <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
+            <ChartWrapper option={treeOption} height="100%" />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
               <div style={{ textAlign: 'center', maxWidth: '400px' }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
                 <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No organization data to display</p>
                 <p style={{ fontSize: '0.85rem' }}>No employees or portfolios found. Import data from Data Management.</p>
-                {selectedPortfolio !== 'all' && <button onClick={() => setSelectedPortfolio('all')} style={{ marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '6px', background: 'var(--pinnacle-teal)', color: '#000', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>Show All Portfolios</button>}
+                
               </div>
             </div>
           )}

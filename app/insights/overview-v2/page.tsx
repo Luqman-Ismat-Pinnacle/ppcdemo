@@ -21,7 +21,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import type { EChartsOption } from 'echarts';
-import useCrossFilter from '@/lib/hooks/useCrossFilter';
+// cross-filtering removed per user request
 import {
   calculateMetricVariance,
   getComparisonDates,
@@ -825,13 +825,9 @@ function MeetingSnapshotButton() {
 /* ================================================================== */
 
 export default function OverviewV2Page() {
-  const { filteredData, isLoading, hierarchyFilter, setHierarchyFilter, variancePeriod, metricsHistory } = useData();
+  const { filteredData, isLoading, variancePeriod, metricsHistory } = useData();
   const data = filteredData;
-  const crossFilter = useCrossFilter();
   const [aggregateBy, setAggregateBy] = useState<'project' | 'site'>('project');
-  const [selectedProject, setSelectedProject] = useState<any>(null);
-
-  const contextLabel = useMemo(() => { const hf = hierarchyFilter as any; if (hf?.project) return `Project: ${hf.project}`; if (hf?.path?.[2]) return `Site: ${hf.path[2]}`; if (hf?.path?.[1]) return `Client: ${hf.path[1]}`; return 'All Projects'; }, [hierarchyFilter]);
 
   const projectBreakdown = useMemo(() => {
     const tasks = data.tasks || []; const projects = data.projects || []; const hours = data.hours || []; const sites = data.sites || [];
@@ -868,7 +864,7 @@ export default function OverviewV2Page() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <div>
           <div style={{ fontSize: '0.55rem', color: C.teal, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 1 }}>Meeting Command Center</div>
-          <div style={{ fontSize: '0.6rem', color: C.textMuted }}>{contextLabel} | {projectBreakdown.length} {aggregateBy === 'site' ? 'sites' : 'projects'} | {(data.tasks || []).length} tasks</div>
+          <div style={{ fontSize: '0.6rem', color: C.textMuted }}>{projectBreakdown.length} {aggregateBy === 'site' ? 'sites' : 'projects'} | {(data.tasks || []).length} tasks</div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: 2 }}>
@@ -906,7 +902,7 @@ export default function OverviewV2Page() {
                   </div>
                 ))}
               </div>
-              <Leaderboard projectBreakdown={projectBreakdown} onSelect={(p) => { setSelectedProject(p); if (p) crossFilter.toggleFilter({ type: 'project', value: p.name, label: p.name, source: 'leaderboard' }); }} selected={selectedProject} />
+              <Leaderboard projectBreakdown={projectBreakdown} onSelect={() => {}} selected={null} />
             </div>
           </SectionCard>
 
@@ -922,13 +918,13 @@ export default function OverviewV2Page() {
 
           {/* ═══ 3. OPERATIONAL FRICTION ═══ */}
           <SectionCard title="Operational Friction" subtitle="View by Charge Type, Role, or Person" badge={<Badge label="Flow" color={C.blue} />}>
-            <OperationalSankey projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} onClick={(p) => { if (p?.name) crossFilter.toggleFilter({ type: 'project', value: p.name, label: p.name, source: 'sankey' }); }} />
+            <OperationalSankey projectBreakdown={projectBreakdown} hours={data.hours || []} employees={data.employees || []} />
           </SectionCard>
 
           {/* ═══ 4. RISK + VARIANCE ═══ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <SectionCard title="Risk Matrix" subtitle="Click a dot for task/phase breakdown" badge={<Badge label="Risk" color={C.red} />}>
-              <RiskMatrix projectBreakdown={projectBreakdown} tasks={data.tasks || []} onSelect={(p) => { setSelectedProject(p); crossFilter.toggleFilter({ type: 'project', value: p.name, label: p.name, source: 'risk' }); }} />
+              <RiskMatrix projectBreakdown={projectBreakdown} tasks={data.tasks || []} onSelect={() => {}} />
             </SectionCard>
             <SectionCard title="Hours Variance" subtitle="Waterfall: over (red) vs under (green) per project" badge={<Badge label="Variance" color={C.amber} />}>
               <HoursVarianceWaterfall projectBreakdown={projectBreakdown} />
@@ -947,7 +943,7 @@ export default function OverviewV2Page() {
 
           {/* ═══ 7. SPLASH ZONE ═══ */}
           <SectionCard title="Dependency Impact — Splash Zone" subtitle="Blocked = RED, Splash = Amber, Critical = Teal" badge={<Badge label="Dependencies" color={C.purple} />}>
-            <DependencyImpactGraph tasks={data.tasks || []} onClick={(p) => { if (p?.name) crossFilter.toggleFilter({ type: 'custom', value: p.name, label: p.name, source: 'dep' }); }} />
+            <DependencyImpactGraph tasks={data.tasks || []} />
           </SectionCard>
 
           {/* ═══ 8. WORKFORCE BURN ═══ */}
