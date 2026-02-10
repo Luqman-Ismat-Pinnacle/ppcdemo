@@ -26,6 +26,7 @@ import Navigation from './Navigation';
 import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
 import StatusAndLogsDropdown from './StatusAndLogsDropdown';
+import NotificationBell from './NotificationBell';
 
 /**
  * Header component displaying the main application header.
@@ -99,6 +100,8 @@ export default function Header() {
         <DateFilterControl />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <HierarchyFilter />
+        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+        <NotificationBell />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         {/* Profile Dropdown */}
         <div ref={profileRef} style={{ position: 'relative' }}>
