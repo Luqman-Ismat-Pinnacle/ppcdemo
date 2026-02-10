@@ -113,28 +113,94 @@ function PulseGauge({ value, max, label, color, subtitle }: { value: number; max
   return <ChartWrapper option={option} height="180px" />;
 }
 
-function BlockerPulse({ tasks }: { tasks: any[] }) {
-  const stats = useMemo(() => {
-    const blocked = tasks.filter((t: any) => { const s = String(t.status || '').toLowerCase(); return s.includes('block') || s.includes('hold'); }).length;
-    const atRisk = tasks.filter((t: any) => { const s = String(t.status || '').toLowerCase(); const bl = Number(t.baselineHours || 0); const ac = Number(t.actualHours || 0); return s.includes('risk') || s.includes('late') || s.includes('delay') || (bl > 0 && ac > bl * 1.2); }).length;
-    const critical = tasks.filter((t: any) => t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0)).length;
-    return { blocked, atRisk, critical, total: blocked + atRisk };
-  }, [tasks]);
-  const items = [
-    { label: 'Blocked', count: stats.blocked, color: C.red },
-    { label: 'At Risk', count: stats.atRisk, color: C.amber },
-    { label: 'Critical Path', count: stats.critical, color: C.teal },
+/* ================================================================== */
+/*  DECISIONS REQUIRED — Full section with expandable task dropdowns    */
+/* ================================================================== */
+
+function useDecisionTasks(tasks: any[], projects: any[]) {
+  return useMemo(() => {
+    const projNameMap = new Map<string, string>();
+    projects.forEach((p: any) => projNameMap.set(p.id || p.projectId, p.name || p.projectName || p.id));
+
+    const blocked: any[] = []; const atRisk: any[] = []; const critical: any[] = [];
+    tasks.forEach((t: any) => {
+      const s = String(t.status || '').toLowerCase();
+      const bl = Number(t.baselineHours || 0);
+      const ac = Number(t.actualHours || 0);
+      const pc = Number(t.percentComplete || 0);
+      const pid = t.projectId || t.project_id || '';
+      const enriched = { ...t, _projName: projNameMap.get(pid) || pid, _bl: bl, _ac: ac, _pc: pc, _var: bl > 0 ? Math.round(((ac - bl) / bl) * 100) : 0 };
+
+      if (s.includes('block') || s.includes('hold')) { blocked.push(enriched); return; }
+      if (s.includes('risk') || s.includes('late') || s.includes('delay') || (bl > 0 && ac > bl * 1.2)) { atRisk.push(enriched); return; }
+      if (t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0)) { critical.push(enriched); }
+    });
+    return { blocked, atRisk, critical, total: blocked.length + atRisk.length };
+  }, [tasks, projects]);
+}
+
+function DecisionsRequired({ tasks, projects }: { tasks: any[]; projects: any[] }) {
+  const { blocked, atRisk, critical, total } = useDecisionTasks(tasks, projects);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const categories = [
+    { key: 'blocked', label: 'Blocked / On Hold', tasks: blocked, color: C.red, desc: 'Tasks currently blocked or on hold requiring executive intervention' },
+    { key: 'atRisk', label: 'At Risk / Over Budget', tasks: atRisk, color: C.amber, desc: 'Tasks flagged as at risk, late, delayed, or >20% over budget hours' },
+    { key: 'critical', label: 'Critical Path', tasks: critical, color: C.teal, desc: 'Tasks on the critical path — zero float, any delay impacts the whole project' },
   ];
+
+  if (total === 0 && critical.length === 0) {
+    return <div style={{ padding: '1rem', textAlign: 'center', color: C.green, fontSize: '0.75rem', fontWeight: 600 }}>All clear — no blockers or at-risk items.</div>;
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ fontSize: '0.6rem', fontWeight: 700, color: stats.total > 0 ? C.red : C.green, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-        {stats.total > 0 ? `${stats.total} Decisions Required` : 'Clear'}
+      {/* Summary strip */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        {categories.map(cat => (
+          <div key={cat.key} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 6, background: cat.tasks.length > 0 ? `${cat.color}12` : 'rgba(255,255,255,0.02)', border: `1px solid ${cat.tasks.length > 0 ? `${cat.color}25` : 'transparent'}` }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: cat.tasks.length > 0 ? cat.color : `${C.textMuted}30` }} />
+            <span style={{ fontSize: '0.65rem', color: C.textMuted }}>{cat.label}</span>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: cat.tasks.length > 0 ? cat.color : C.textMuted }}>{cat.tasks.length}</span>
+          </div>
+        ))}
       </div>
-      {items.map(item => (
-        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 6, background: item.count > 0 ? `${item.color}10` : 'rgba(255,255,255,0.02)', border: `1px solid ${item.count > 0 ? `${item.color}25` : 'transparent'}` }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: item.count > 0 ? item.color : `${C.textMuted}30`, flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: '0.6rem', color: C.textMuted }}>{item.label}</span>
-          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: item.count > 0 ? item.color : C.textMuted }}>{item.count}</span>
+      {/* Expandable categories */}
+      {categories.map(cat => cat.tasks.length > 0 && (
+        <div key={cat.key} style={{ borderRadius: 8, border: `1px solid ${cat.color}20`, overflow: 'hidden' }}>
+          <button onClick={() => setExpanded(expanded === cat.key ? null : cat.key)} style={{ width: '100%', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, background: expanded === cat.key ? `${cat.color}10` : 'rgba(255,255,255,0.02)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+            <span style={{ fontSize: '0.6rem', color: expanded === cat.key ? cat.color : C.textMuted }}>{expanded === cat.key ? '▼' : '▶'}</span>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700, color: cat.color }}>{cat.label}</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: cat.color }}>{cat.tasks.length}</span>
+          </button>
+          {expanded === cat.key && (
+            <div style={{ padding: '0 8px 8px', maxHeight: 350, overflowY: 'auto' }}>
+              <div style={{ fontSize: '0.55rem', color: C.textMuted, padding: '4px 4px 6px', borderBottom: `1px solid ${C.border}` }}>{cat.desc}</div>
+              {/* Header row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 60px 60px 55px 50px', gap: 4, padding: '5px 4px', fontSize: '0.5rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 700, borderBottom: `1px solid ${C.border}` }}>
+                <span>Task</span><span>Project</span><span style={{ textAlign: 'right' }}>Actual</span><span style={{ textAlign: 'right' }}>Baseline</span><span style={{ textAlign: 'right' }}>Variance</span><span style={{ textAlign: 'right' }}>Progress</span>
+              </div>
+              {cat.tasks.slice(0, 25).map((t: any, i: number) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 60px 60px 55px 50px', gap: 4, padding: '4px 4px', fontSize: '0.62rem', borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
+                  <span style={{ color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.name || t.taskName || ''}>{t.name || t.taskName || 'Unknown'}</span>
+                  <span style={{ color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t._projName}>{truncName(t._projName, 20)}</span>
+                  <span style={{ textAlign: 'right', color: C.textMuted }}>{fmtHrs(t._ac)}h</span>
+                  <span style={{ textAlign: 'right', color: C.textMuted }}>{fmtHrs(t._bl)}h</span>
+                  <span style={{ textAlign: 'right', color: varColor(t._var), fontWeight: 600 }}>{t._var > 0 ? '+' : ''}{t._var}%</span>
+                  <span style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2 }}>
+                        <div style={{ width: `${Math.min(100, t._pc)}%`, height: '100%', background: t._pc >= 90 ? C.green : t._pc >= 50 ? C.amber : C.red, borderRadius: 2 }} />
+                      </div>
+                      <span style={{ fontSize: '0.5rem', color: C.textMuted }}>{t._pc}%</span>
+                    </div>
+                  </span>
+                </div>
+              ))}
+              {cat.tasks.length > 25 && <div style={{ padding: '4px', fontSize: '0.6rem', color: C.textMuted, textAlign: 'center' }}>+ {cat.tasks.length - 25} more</div>}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -814,8 +880,7 @@ export default function OverviewV2Page() {
               <PulseGauge value={portfolio.percentComplete} max={100} label="PROGRESS MADE" color={portfolio.percentComplete >= 75 ? C.green : portfolio.percentComplete >= 50 ? C.amber : C.red} subtitle={`${portfolio.projectCount} projects`} />
               <PulseGauge value={portfolio.totalHours} max={Math.max(portfolio.baselineHours, portfolio.totalHours) * 1.1} label="HOURS BURNED" color={portfolio.totalHours > portfolio.baselineHours ? C.red : C.teal} subtitle={`${fmtHrs(portfolio.baselineHours)} baseline`} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 1fr', gap: '0.75rem' }}>
-              <BlockerPulse tasks={data.tasks || []} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, alignContent: 'start' }}>
                 {[
                   { label: 'Actual Hrs', value: fmtHrs(portfolio.totalHours), color: C.teal },
@@ -835,7 +900,12 @@ export default function OverviewV2Page() {
             </div>
           </SectionCard>
 
-          {/* ═══ 2. MILESTONES ═══ */}
+          {/* ═══ 2. DECISIONS REQUIRED ═══ */}
+          <SectionCard title="Decisions Required" subtitle="Blocked, At Risk, and Critical Path tasks. Expand each category for details." badge={<Badge label="Action" color={C.red} />}>
+            <DecisionsRequired tasks={data.tasks || []} projects={data.projects || []} />
+          </SectionCard>
+
+          {/* ═══ 3. MILESTONES ═══ */}
           <SectionCard title="Milestone Metrics" badge={<Badge label="Milestones" color={C.amber} />}>
             <MilestoneMetrics milestones={allMilestones} />
           </SectionCard>

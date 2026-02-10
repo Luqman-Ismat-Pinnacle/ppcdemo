@@ -1,12 +1,12 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useSession, signIn, signOut } from 'next-auth/react';
 import { Button } from '@/components/ui';
 
 export default function AuthButtons() {
-  const { user, isLoading } = useUser();
+  const { data: session, status } = useSession();
 
-  if (isLoading) {
+  if (status === 'loading') {
     return (
       <Button variant="secondary" size="sm" loading>
         Loading...
@@ -14,25 +14,25 @@ export default function AuthButtons() {
     );
   }
 
-  if (user) {
+  if (session?.user) {
     return (
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
-          {user.picture && (
+          {session.user.image && (
             <img
-              src={user.picture}
-              alt={user.name || 'User'}
+              src={session.user.image}
+              alt={session.user.name || 'User'}
               className="w-8 h-8 rounded-full border-2 border-[var(--pinnacle-teal)]"
             />
           )}
           <span className="text-sm text-[var(--text-primary)]">
-            {user.name}
+            {session.user.name}
           </span>
         </div>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => (window.location.href = '/api/auth/logout')}
+          onClick={() => signOut({ callbackUrl: '/' })}
         >
           Logout
         </Button>
@@ -44,7 +44,7 @@ export default function AuthButtons() {
     <Button
       variant="primary"
       size="sm"
-      onClick={() => (window.location.href = '/api/auth/login')}
+      onClick={() => signIn()}
     >
       Login
     </Button>

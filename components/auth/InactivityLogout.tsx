@@ -1,35 +1,34 @@
 'use client';
 
 /**
- * InactivityLogout – logs user out after 1 hour of no activity.
- * Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
+ * InactivityLogout – signs user out after 1 hour of no activity.
+ * Uses NextAuth session. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
  */
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useSession, signOut } from 'next-auth/react';
 import { useEffect, useRef, useCallback } from 'react';
 
-// Auth0 is enabled by default. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
 const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 const INACTIVITY_MS = 60 * 60 * 1000; // 1 hour
 
 export default function InactivityLogout({ children }: { children: React.ReactNode }) {
-  const { user } = useUser();
+  const { data: session } = useSession();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const logout = useCallback(() => {
-    window.location.href = '/api/auth/logout';
+    signOut({ callbackUrl: '/' });
   }, []);
 
   const resetTimer = useCallback(() => {
-    if (AUTH_DISABLED || !user) return;
+    if (AUTH_DISABLED || !session) return;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = setTimeout(logout, INACTIVITY_MS);
-  }, [user, logout]);
+  }, [session, logout]);
 
   useEffect(() => {
-    if (AUTH_DISABLED || !user) return;
+    if (AUTH_DISABLED || !session) return;
 
     resetTimer();
 
@@ -42,7 +41,7 @@ export default function InactivityLogout({ children }: { children: React.ReactNo
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [user, resetTimer]);
+  }, [session, resetTimer]);
 
   return <>{children}</>;
 }
