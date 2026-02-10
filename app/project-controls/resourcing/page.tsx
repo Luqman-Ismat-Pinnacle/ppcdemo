@@ -387,6 +387,26 @@ function ResourcingPageContent() {
 
   const treeData = buildPortfolioTree;
 
+  // ── Calculate dynamic tree height based on leaf node count ────
+  const treeLeafCount = useMemo(() => {
+    let count = 0;
+    const walk = (nodes: any[]) => {
+      nodes.forEach(n => {
+        if (n.children && n.children.length > 0) walk(n.children);
+        else count++;
+      });
+    };
+    walk(treeData);
+    return count;
+  }, [treeData]);
+
+  const dynamicTreeHeight = useMemo(() => {
+    // Each leaf node needs ~65px of vertical space for TB layout
+    const calculated = Math.max(700, treeLeafCount * 65);
+    // Cap at a reasonable max
+    return Math.min(calculated, 4000);
+  }, [treeLeafCount]);
+
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
     (window as any).__resourcingOpenEmployee = (empId: string) => {
@@ -447,22 +467,25 @@ function ResourcingPageContent() {
     series: [{
       type: 'tree',
       data: treeData,
-      top: '2%', left: '3%', bottom: '2%', right: '15%',
-      symbolSize: 18,
-      orient: 'TB',
+      top: 40, left: 60, bottom: 40, right: 120,
+      symbolSize: 20,
+      orient: 'LR',
       layout: 'orthogonal',
+      edgeShape: 'polyline',
+      edgeForkPosition: '50%',
       initialTreeDepth: -1,  // fully expand ALL nodes
       expandAndCollapse: true,
       animationDurationUpdate: 500,
       roam: true,
       label: {
-        position: 'bottom', verticalAlign: 'middle', align: 'center',
-        fontSize: 10, color: 'var(--text-primary)', borderRadius: 4, padding: [4, 8],
+        position: 'right', verticalAlign: 'middle', align: 'left',
+        fontSize: 11, color: 'var(--text-primary)', borderRadius: 4, padding: [6, 12],
+        distance: 14,
         formatter: (params: any) => {
           const d = params.data;
           if (d.isCOO) return `{bold|${d.name}}\n{role|${d.role || 'COO'}}`;
           if (d.isPortfolio) return `{bold|${d.name}}`;
-          if (d.isProject) return `{project|${d.name.substring(0, 20)}${d.name.length > 20 ? '...' : ''}}`;
+          if (d.isProject) return `{project|${d.name.substring(0, 24)}${d.name.length > 24 ? '...' : ''}}`;
           if (d.isPlaceholder) return `{muted|${d.name}}`;
           if (d.emp) {
             const sn = d.name.split(' ').map((n: string, i: number) => i === 0 ? n : n[0] + '.').join(' ');
@@ -471,14 +494,14 @@ function ResourcingPageContent() {
           return d.name;
         },
         rich: {
-          bold: { fontWeight: 'bold' as any, fontSize: 12, lineHeight: 16 },
-          role: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
-          project: { fontSize: 10, color: '#60A5FA' },
-          muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
-          util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
+          bold: { fontWeight: 'bold' as any, fontSize: 13, lineHeight: 20 },
+          role: { fontSize: 10, color: '#9ca3af', lineHeight: 16 },
+          project: { fontSize: 11, color: '#60A5FA', lineHeight: 18 },
+          muted: { fontSize: 10, color: '#6B7280', fontStyle: 'italic' as any, lineHeight: 16 },
+          util: { fontSize: 10, color: '#9ca3af', lineHeight: 16 },
         },
       },
-      leaves: { label: { position: 'bottom', verticalAlign: 'middle', align: 'center' } },
+      leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
       lineStyle: { color: 'var(--border-color)', width: 1.5, curveness: 0.5 },
       emphasis: {
         focus: 'descendant',
@@ -686,9 +709,9 @@ function ResourcingPageContent() {
 
       {/* ═══ ORGANIZATION TAB ══════════════════════════════════════ */}
       {activeTab === 'organization' ? (
-        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', minHeight: 0 }}>
+        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: `${dynamicTreeHeight}px` }}>
           {treeData.length > 0 ? (
-            <ChartWrapper option={treeOption} height="100%" />
+            <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
               <div style={{ textAlign: 'center', maxWidth: '400px' }}>

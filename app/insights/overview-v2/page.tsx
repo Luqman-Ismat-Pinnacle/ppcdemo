@@ -436,27 +436,37 @@ function OperationalSankey({ projectBreakdown, hours, employees, onClick }: {
       }},
       series: [{
         type: 'sankey', emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.85 } },
-        nodeAlign: 'justify', nodeWidth: 22, nodeGap: 14, layoutIterations: 64,
-        orient: 'horizontal', left: 40, right: 160, top: 15, bottom: 15,
-        label: { color: C.textPrimary, fontSize: 10.5, fontWeight: 600 },
-        lineStyle: { color: 'gradient', curveness: 0.45, opacity: 0.35 },
+        nodeAlign: 'justify', nodeWidth: 28, nodeGap: 28, layoutIterations: 64,
+        orient: 'horizontal', left: 50, right: 180, top: 24, bottom: 24,
+        label: { color: C.textPrimary, fontSize: 11, fontWeight: 600 },
+        lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.3 },
         data: nodes, links: validLinks,
       }],
+      _nodeCount: nodes.length,
     };
   }, [projectBreakdown, hours, employees, empMap, viewMode]);
+
+  // Calculate dynamic height based on the number of nodes
+  const sankeyHeight = useMemo(() => {
+    const nodeCount = (option as any)?._nodeCount || 0;
+    // Estimate: each node needs ~50px of vertical space, minimum 480px
+    const calculated = Math.max(480, nodeCount * 50);
+    // Cap at a reasonable maximum
+    return Math.min(calculated, 1400);
+  }, [option]);
 
   if (!projectBreakdown.length) return <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No data</div>;
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: 2 }}>
           {([['charge', 'Charge Type'], ['role', 'By Role'], ['person', 'By Person']] as const).map(([k, l]) => (
-            <button key={k} onClick={() => setViewMode(k)} style={{ padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 600, background: viewMode === k ? `${C.teal}20` : 'transparent', color: viewMode === k ? C.teal : C.textMuted }}>{l}</button>
+            <button key={k} onClick={() => setViewMode(k)} style={{ padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600, background: viewMode === k ? `${C.teal}20` : 'transparent', color: viewMode === k ? C.teal : C.textMuted }}>{l}</button>
           ))}
         </div>
         <span style={{ fontSize: '0.65rem', color: C.textMuted, marginLeft: 'auto' }}>{fmtHrs(projectBreakdown.reduce((s, p) => s + Math.max(p.actualHours, p.timesheetHours), 0))} total hrs</span>
       </div>
-      <ChartWrapper option={option} height="460px" onClick={onClick} isEmpty={!Object.keys(option).length} />
+      <ChartWrapper option={option} height={`${sankeyHeight}px`} onClick={onClick} isEmpty={!Object.keys(option).length} />
     </div>
   );
 }
