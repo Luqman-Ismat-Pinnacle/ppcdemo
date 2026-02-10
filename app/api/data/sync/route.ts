@@ -65,6 +65,13 @@ function cleanRecord(record: any, tableName: string) {
     delete formatted.task_description;   // tasks table uses 'description' or 'notes'
   }
 
+  // task_dependencies: strip columns not in schema
+  if (tableName === 'task_dependencies') {
+    delete formatted.predecessor_name;
+    delete formatted.lag;
+    delete formatted.task_id;
+  }
+
   // Strip any remaining array/object values that can't be stored in flat columns
   for (const [key, value] of Object.entries(formatted)) {
     if (Array.isArray(value)) {
@@ -237,6 +244,16 @@ export async function POST(req: NextRequest) {
       const supabase = await getSupabaseClient();
       if (!supabase) return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
       await supabase.from('project_documents').update(updates).eq('storage_path', path);
+      return NextResponse.json({ success: true });
+    }
+
+    // ---- Operation: deleteByTaskIds (for task_dependencies) ----
+    if (operation === 'deleteByTaskIds' && body.taskIds && Array.isArray(body.taskIds)) {
+      const taskIds = body.taskIds.map(String);
+      if (taskIds.length > 0 && usePostgres) {
+        const placeholders = taskIds.map((_: string, i: number) => `$${i + 1}`).join(', ');
+        await pgQuery(`DELETE FROM ${tableName} WHERE successor_task_id IN (${placeholders})`, taskIds);
+      }
       return NextResponse.json({ success: true });
     }
 

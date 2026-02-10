@@ -1076,6 +1076,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     phaseCount: data.phases?.length || 0,
     unitCount: data.units?.length || 0,
     taskCount: tasks.length,
+    taskDepsCount: ((data as any).taskDependencies || []).length,
     taskActualCostSum: Math.round(taskActualCostSum * 100) / 100,
     taskActualHoursSum: Math.round(taskActualHoursSum * 100) / 100,
     taskRemainingHoursSum: Math.round(taskRemainingHoursSum * 100) / 100,
@@ -1092,6 +1093,23 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     const projects = (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
     const tasks = data.tasks || [];
     const employees = data.employees || [];
+
+    // Build a map of task dependencies from the DB (successor_task_id → array of predecessor links)
+    const taskDeps = (data as any).taskDependencies || [];
+    const depsBySuccessor = new Map<string, any[]>();
+    taskDeps.forEach((d: any) => {
+      const succId = d.successorTaskId || d.successor_task_id;
+      const predId = d.predecessorTaskId || d.predecessor_task_id;
+      if (!succId || !predId) return;
+      if (!depsBySuccessor.has(succId)) depsBySuccessor.set(succId, []);
+      depsBySuccessor.get(succId)!.push({
+        id: d.id,
+        taskId: succId,
+        predecessorTaskId: predId,
+        relationship: d.relationshipType || d.relationship_type || 'FS',
+        lagDays: d.lagDays || d.lag_days || 0,
+      });
+    });
 
     // Extract work items if available (new consolidated structure)
     const workItems = data.workItems || [];
@@ -1495,11 +1513,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
           is_milestone: task.is_milestone || task.isMilestone || false,
           isCritical: task.is_critical || task.isCritical || false,
-          predecessors: Array.isArray(task.predecessors) ? task.predecessors : (
-            task.predecessorId || task.predecessor_id
-              ? [{ id: `${taskId}-pred`, taskId: taskId, predecessorTaskId: String(task.predecessorId || task.predecessor_id), relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS', lagDays: 0 }]
-              : []
-          ),
+          predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
+            ? task.predecessors
+            : depsBySuccessor.get(taskId) || (
+              task.predecessorId || task.predecessor_id
+                ? [{ id: `${taskId}-pred`, taskId: taskId, predecessorTaskId: String(task.predecessorId || task.predecessor_id), relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS', lagDays: 0 }]
+                : []
+            ),
           totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
         };
 

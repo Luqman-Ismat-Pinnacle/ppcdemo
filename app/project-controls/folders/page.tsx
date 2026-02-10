@@ -799,6 +799,50 @@ export default function DocumentsPage() {
         }
       }
 
+      // Sync task dependencies (predecessors) to task_dependencies table
+      // Only include deps where BOTH predecessor and successor exist in the tasks table (FK constraint)
+      const taskIdSet = new Set((convertedData.tasks || []).map((t: any) => String(t.id || t.taskId)));
+      const depRecords: any[] = [];
+      (convertedData.tasks || []).forEach((task: any) => {
+        const preds = task.predecessors || [];
+        preds.forEach((pred: any) => {
+          const predId = String(pred.predecessorTaskId || '');
+          const succId = String(task.id || task.taskId);
+          if (predId && taskIdSet.has(predId) && taskIdSet.has(succId) && predId !== succId) {
+            depRecords.push({
+              id: pred.id || `${succId}-${predId}`,
+              predecessorTaskId: predId,
+              successorTaskId: succId,
+              relationshipType: pred.relationship || 'FS',
+              lagDays: pred.lagDays || 0,
+            });
+          }
+        });
+      });
+      if (depRecords.length > 0) {
+        // Clear existing dependencies for this project's tasks first
+        try {
+          const taskIds = (convertedData.tasks || []).map((t: any) => t.id || t.taskId);
+          await fetch('/api/data/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataKey: 'taskDependencies', operation: 'deleteByTaskIds', taskIds, records: [] }),
+          });
+        } catch { /* best effort */ }
+
+        const depResponse = await fetch('/api/data/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataKey: 'taskDependencies', records: depRecords }),
+        });
+        const depResult = await depResponse.json();
+        if (!depResponse.ok || !depResult.success) {
+          pushLog('warning', `[Supabase] Dependencies: ${depResult.error || 'Failed'}`);
+        } else {
+          pushLog('success', `[Supabase] Dependencies synced: ${depRecords.length}`);
+        }
+      }
+
       // Mark this file as the current version for the project in the Documents folder
       try {
         const setCurrentRes = await fetch('/api/data/sync', {
