@@ -73,7 +73,8 @@ function ResourcingPageContent() {
   const { filteredData, fullData, setData, refreshData } = useData();
 
   // ── State ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'organization' | 'analytics'>('organization');
+  const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
+  const [heatmapView, setHeatmapView] = useState<'role' | 'employee'>('role');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
@@ -591,15 +592,19 @@ function ResourcingPageContent() {
     setLevelingResult(runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS));
   }, [data.tasks, data.employees, data.hours]);
 
-  // ── Resource Heatmap — weekly utilization by role from project plan ──
-  const heatmapOption: EChartsOption = useMemo(() => {
-    // Build role → employee ID map
-    const empRoleMap = new Map<string, string>();
+  // ── Resource Heatmap — shared data layer for both views ──
+  const heatmapSharedData = useMemo(() => {
+    // Build employee lookup maps
+    const empIdToName = new Map<string, string>();
+    const empIdToRole = new Map<string, string>();
+    const empNameToRole = new Map<string, string>();
     data.employees.forEach((e: any) => {
       const eid = e.id || e.employeeId;
+      const name = e.name || 'Unknown';
       const role = e.jobTitle || e.role || 'Unknown';
-      empRoleMap.set(eid, role);
-      empRoleMap.set((e.name || '').toLowerCase(), role);
+      empIdToName.set(eid, name);
+      empIdToRole.set(eid, role);
+      empNameToRole.set(name.toLowerCase(), role);
     });
 
     // Only tasks with dates and hours (from project plan)
@@ -621,22 +626,27 @@ function ResourcingPageContent() {
     const minDate = Math.min(...allDates);
     const maxDate = Math.max(...allDates);
 
-    // Build weeks array
+    // Build weeks array with YEAR in labels
     const msPerWeek = 7 * 24 * 60 * 60 * 1000;
     const weeks: { start: number; label: string }[] = [];
     let cursor = minDate;
     while (cursor <= maxDate + msPerWeek) {
       const d = new Date(cursor);
-      weeks.push({ start: cursor, label: `${d.getMonth() + 1}/${d.getDate()}` });
+      const mon = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const yr = d.getFullYear();
+      weeks.push({ start: cursor, label: `${mon}/${day}/${yr}` });
       cursor += msPerWeek;
     }
-    // Cap to ~26 weeks max for readability
-    const displayWeeks = weeks.length > 26
-      ? weeks.filter((_, i) => i % Math.ceil(weeks.length / 26) === 0).slice(0, 26)
+    // Cap to ~30 weeks max for readability
+    const displayWeeks = weeks.length > 30
+      ? weeks.filter((_, i) => i % Math.ceil(weeks.length / 30) === 0).slice(0, 30)
       : weeks;
 
-    // Accumulate hours per role per week
+    // Accumulate hours per role per week AND per employee per week
     const roleWeekHours = new Map<string, Map<number, number>>();
+    const empWeekHours = new Map<string, Map<number, number>>();
+    const empNameMap = new Map<string, string>(); // empKey → display name
 
     planTasks.forEach((t: any) => {
       const sMs = new Date(t.startDate || t.start_date).getTime();
@@ -645,32 +655,46 @@ function ResourcingPageContent() {
       const durationWeeks = Math.max(1, Math.round((eMs - sMs) / msPerWeek));
       const hrsPerWeek = hrs / durationWeeks;
 
-      // Determine role
+      // Determine role and employee
       const eid = t.employeeId || t.employee_id || '';
-      const assignedName = (t.assignedTo || t.resource || t.assignedResource || '').toLowerCase();
-      let role = empRoleMap.get(eid) || empRoleMap.get(assignedName) || t.resource || t.assignedResource || 'Unassigned';
+      const assignedName = (t.assignedTo || t.resource || t.assignedResource || '').trim();
+      let role = empIdToRole.get(eid) || empNameToRole.get(assignedName.toLowerCase()) || t.resource || t.assignedResource || 'Unassigned';
       if (!role || role === 'N/A') role = 'Unassigned';
+      let empName = empIdToName.get(eid) || assignedName || 'Unassigned';
 
+      // By role
       if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
-      const weekMap = roleWeekHours.get(role)!;
+      const roleMap = roleWeekHours.get(role)!;
+
+      // By employee
+      const empKey = eid || empName;
+      if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
+      empNameMap.set(empKey, empName);
+      const empMap = empWeekHours.get(empKey)!;
 
       displayWeeks.forEach((w, wi) => {
         const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
-        // Check if task overlaps this week
         if (sMs < wEnd && eMs >= w.start) {
-          weekMap.set(wi, (weekMap.get(wi) || 0) + hrsPerWeek);
+          roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerWeek);
+          empMap.set(wi, (empMap.get(wi) || 0) + hrsPerWeek);
         }
       });
     });
 
-    // Sort roles by total hours (highest demand first)
+    return { displayWeeks, roleWeekHours, empWeekHours, empNameMap, msPerWeek, empIdToRole };
+  }, [data.tasks, data.employees]);
+
+  // ── Heatmap by ROLE ──
+  const heatmapByRoleOption: EChartsOption | null = useMemo(() => {
+    if (!heatmapSharedData) return null;
+    const { displayWeeks, roleWeekHours } = heatmapSharedData;
+
+    // Each individual role gets its own row
     const sortedRoles = [...roleWeekHours.entries()]
       .map(([role, wm]) => ({ role, total: [...wm.values()].reduce((s, v) => s + v, 0) }))
       .sort((a, b) => b.total - a.total)
-      .slice(0, 20)
       .map(r => r.role);
 
-    // Build heatmap data: [weekIdx, roleIdx, value]
     const heatData: [number, number, number][] = [];
     let maxVal = 0;
     sortedRoles.forEach((role, ri) => {
@@ -682,28 +706,29 @@ function ResourcingPageContent() {
       });
     });
 
+    const dynamicHeight = Math.max(400, sortedRoles.length * 28 + 100);
+
     return {
       backgroundColor: 'transparent',
       tooltip: {
-        position: 'top',
-        backgroundColor: 'rgba(22,27,34,0.97)',
-        borderColor: '#3f3f46',
+        position: 'top', confine: true,
+        backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
         textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);',
+        extraCssText: 'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px;white-space:normal;',
         formatter: (params: any) => {
           const [wi, ri, val] = params.data;
           const role = sortedRoles[ri];
           const week = displayWeeks[wi]?.label;
           const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
           const uc = getUtilColor(utilPct);
-          return `<strong>${role}</strong><br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr capacity`;
+          return `<div style="padding:2px 0"><strong>${role}</strong><br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr weekly capacity</div>`;
         },
       },
-      grid: { top: 30, left: 160, right: 30, bottom: 50 },
+      grid: { top: 40, left: 200, right: 40, bottom: 60 },
       xAxis: {
         type: 'category',
         data: displayWeeks.map(w => w.label),
-        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45 },
+        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
         axisLine: { lineStyle: { color: '#3f3f46' } },
         splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
       },
@@ -711,35 +736,94 @@ function ResourcingPageContent() {
         type: 'category',
         data: sortedRoles,
         axisLabel: {
-          color: '#d4d4d8', fontSize: 10,
-          formatter: (v: string) => v.length > 22 ? v.substring(0, 20) + '...' : v,
+          color: '#d4d4d8', fontSize: 10, interval: 0,
+          formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
         },
         axisLine: { lineStyle: { color: '#3f3f46' } },
       },
       visualMap: {
-        min: 0,
-        max: Math.max(maxVal, HOURS_PER_WEEK),
-        calculable: true,
-        orient: 'horizontal',
-        left: 'center',
-        top: 0,
-        itemWidth: 14,
-        itemHeight: 120,
+        min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
+        calculable: true, orient: 'horizontal', left: 'center', top: 0,
+        itemWidth: 14, itemHeight: 140,
         textStyle: { color: '#a1a1aa', fontSize: 9 },
-        inRange: {
-          color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'],
+        inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
+      },
+      series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
+      _dynamicHeight: dynamicHeight,
+    } as any;
+  }, [heatmapSharedData]);
+
+  // ── Heatmap by EMPLOYEE ──
+  const heatmapByEmployeeOption: EChartsOption | null = useMemo(() => {
+    if (!heatmapSharedData) return null;
+    const { displayWeeks, empWeekHours, empNameMap, empIdToRole } = heatmapSharedData;
+
+    // Each individual employee as a row
+    const sortedEmps = [...empWeekHours.entries()]
+      .map(([key, wm]) => ({ key, name: empNameMap.get(key) || key, total: [...wm.values()].reduce((s, v) => s + v, 0) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 40); // top 40 employees
+
+    const empLabels = sortedEmps.map(e => e.name);
+
+    const heatData: [number, number, number][] = [];
+    let maxVal = 0;
+    sortedEmps.forEach((emp, ei) => {
+      const weekMap = empWeekHours.get(emp.key)!;
+      displayWeeks.forEach((_, wi) => {
+        const val = Math.round(weekMap.get(wi) || 0);
+        heatData.push([wi, ei, val]);
+        if (val > maxVal) maxVal = val;
+      });
+    });
+
+    const dynamicHeight = Math.max(400, sortedEmps.length * 26 + 100);
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        position: 'top', confine: true,
+        backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
+        textStyle: { color: '#fff', fontSize: 11 },
+        extraCssText: 'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px;white-space:normal;',
+        formatter: (params: any) => {
+          const [wi, ei, val] = params.data;
+          const emp = sortedEmps[ei];
+          const week = displayWeeks[wi]?.label;
+          const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
+          const uc = getUtilColor(utilPct);
+          const role = empIdToRole.get(emp.key) || '';
+          return `<div style="padding:2px 0"><strong>${emp.name}</strong>${role ? `<br/><span style="color:#9ca3af">${role}</span>` : ''}<br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr weekly capacity</div>`;
         },
       },
-      series: [{
-        type: 'heatmap',
-        data: heatData,
-        label: { show: false },
-        emphasis: {
-          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' },
+      grid: { top: 40, left: 200, right: 40, bottom: 60 },
+      xAxis: {
+        type: 'category',
+        data: displayWeeks.map(w => w.label),
+        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
+      },
+      yAxis: {
+        type: 'category',
+        data: empLabels,
+        axisLabel: {
+          color: '#d4d4d8', fontSize: 10, interval: 0,
+          formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
         },
-      }],
-    } as EChartsOption;
-  }, [data.tasks, data.employees]);
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+      },
+      visualMap: {
+        min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
+        calculable: true, orient: 'horizontal', left: 'center', top: 0,
+        itemWidth: 14, itemHeight: 140,
+        textStyle: { color: '#a1a1aa', fontSize: 9 },
+        inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
+      },
+      series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
+      _dynamicHeight: dynamicHeight,
+    } as any;
+  }, [heatmapSharedData]);
 
   // ── Empty state ───────────────────────────────────────────────
   if (!hasData) {
@@ -900,13 +984,17 @@ function ResourcingPageContent() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
-            {(['organization', 'analytics'] as const).map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            {([
+              { key: 'organization' as const, label: 'Organization' },
+              { key: 'analytics' as const, label: 'Analytics' },
+              { key: 'heatmap' as const, label: 'Resource Heatmap' },
+            ]).map(tab => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                 padding: '0.45rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                background: activeTab === tab ? 'var(--pinnacle-teal)' : 'transparent',
-                color: activeTab === tab ? '#000' : 'var(--text-primary)',
-                fontWeight: 600, fontSize: '0.8rem', textTransform: 'capitalize',
-              }}>{tab}</button>
+                background: activeTab === tab.key ? 'var(--pinnacle-teal)' : 'transparent',
+                color: activeTab === tab.key ? '#000' : 'var(--text-primary)',
+                fontWeight: 600, fontSize: '0.8rem',
+              }}>{tab.label}</button>
             ))}
           </div>
           
@@ -918,9 +1006,17 @@ function ResourcingPageContent() {
             ))}
           </div>
         )}
+        {activeTab === 'heatmap' && (
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            {heatmapView === 'role'
+              ? `${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`
+              : `${heatmapSharedData ? [...heatmapSharedData.empWeekHours.keys()].length : 0} employees`
+            } across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
+          </div>
+        )}
       </div>
 
-      {/* ═══ ORGANIZATION TAB ══════════════════════════════════════ */}
+      {/* ═══ TABS CONTENT ══════════════════════════════════════════ */}
       {activeTab === 'organization' ? (
         <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: 0 }}>
           {treeData.length > 0 ? (
@@ -937,7 +1033,7 @@ function ResourcingPageContent() {
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === 'analytics' ? (
         /* ═══ ANALYTICS TAB ═══════════════════════════════════════ */
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Scorecards */}
@@ -988,25 +1084,6 @@ function ResourcingPageContent() {
             </div>
           </div>
 
-          {/* ═══ RESOURCE HEATMAP — Weekly utilization by role from project plan ═══ */}
-          {heatmapOption && (
-            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700 }}>Resource Heatmap</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>Weekly planned hours by role — derived from project plan task schedules</div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#161b22' }} /> Low
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10B981' }} /> Optimal
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#F59E0B' }} /> Busy
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#EF4444' }} /> Overloaded
-                </div>
-              </div>
-              <ChartWrapper option={heatmapOption} height="400px" />
-            </div>
-          )}
-
           {/* Resource Leveling */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1053,7 +1130,69 @@ function ResourcingPageContent() {
             </div>
           </div>
         </div>
-      )}
+      ) : activeTab === 'heatmap' ? (
+        /* ═══ RESOURCE HEATMAP TAB ═══════════════════════════════════ */
+        <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Header with view toggle */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>Resource Heatmap</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Weekly planned hours derived from project plan task schedules — {heatmapView === 'role' ? 'grouped by individual role' : 'grouped by individual employee'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                {/* Color legend */}
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#161b22', border: '1px solid #3f3f46' }} /> Low
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10B981' }} /> Optimal
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#F59E0B' }} /> Busy
+                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#EF4444' }} /> Overloaded
+                </div>
+                {/* View toggle */}
+                <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px' }}>
+                  {(['role', 'employee'] as const).map(v => (
+                    <button key={v} onClick={() => setHeatmapView(v)} style={{
+                      padding: '0.35rem 0.85rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
+                      background: heatmapView === v ? 'rgba(64,224,208,0.2)' : 'transparent',
+                      color: heatmapView === v ? '#40E0D0' : 'var(--text-muted)',
+                      fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize',
+                    }}>By {v}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Heatmap chart */}
+            {heatmapView === 'role' ? (
+              heatmapByRoleOption ? (
+                <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 500}px`} />
+              ) : (
+                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                  </svg>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+                </div>
+              )
+            ) : (
+              heatmapByEmployeeOption ? (
+                <ChartWrapper option={heatmapByEmployeeOption} height={`${(heatmapByEmployeeOption as any)._dynamicHeight || 500}px`} />
+              ) : (
+                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                  </svg>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
