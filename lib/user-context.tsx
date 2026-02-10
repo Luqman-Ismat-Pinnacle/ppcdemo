@@ -6,6 +6,8 @@
  * After sign-in, the user's name/email is matched against the employees table
  * to pull their role (done server-side in the JWT callback).
  * Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass and use a demo user.
+ *
+ * When auth is disabled, NextAuth hooks are NOT called (no SessionProvider).
  */
 
 import React, { createContext, useContext, ReactNode } from 'react';
@@ -51,45 +53,58 @@ const DEMO_USER: UserInfo = {
 };
 
 /**
- * UserProvider: wraps NextAuth session state.
- * Falls back to demo user when AUTH_DISABLED.
+ * Authenticated UserProvider: uses NextAuth session.
  */
-export function UserProvider({ children }: { children: ReactNode }) {
+function AuthenticatedUserProvider({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
 
-  const user: UserInfo | null = AUTH_DISABLED
-    ? DEMO_USER
-    : session?.user
-      ? {
-          name: session.user.name || 'User',
-          email: session.user.email || '',
-          role: (session.user as any).role || 'User',
-          initials: getInitials(session.user.name || 'User'),
-          employeeId: (session.user as any).employeeId || undefined,
-          department: (session.user as any).department || undefined,
-          managementLevel: (session.user as any).managementLevel || undefined,
-        }
-      : null;
+  const user: UserInfo | null = session?.user
+    ? {
+        name: session.user.name || 'User',
+        email: session.user.email || '',
+        role: (session.user as any).role || 'User',
+        initials: getInitials(session.user.name || 'User'),
+        employeeId: (session.user as any).employeeId || undefined,
+        department: (session.user as any).department || undefined,
+        managementLevel: (session.user as any).managementLevel || undefined,
+      }
+    : null;
 
-  const login = () => {
-    if (AUTH_DISABLED) return;
-    signIn(undefined, { callbackUrl: window.location.href });
-  };
-
-  const logout = () => {
-    if (AUTH_DISABLED) return;
-    signOut({ callbackUrl: '/' });
-  };
+  const login = () => signIn(undefined, { callbackUrl: window.location.href });
+  const logout = () => signOut({ callbackUrl: '/' });
 
   const value: UserContextValue = {
-    user: AUTH_DISABLED ? DEMO_USER : user,
+    user,
     login,
     logout,
-    isLoggedIn: AUTH_DISABLED ? true : !!session,
-    isLoading: AUTH_DISABLED ? false : status === 'loading',
+    isLoggedIn: !!session,
+    isLoading: status === 'loading',
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+}
+
+/**
+ * Demo UserProvider: no auth hooks, uses static demo user.
+ */
+function DemoUserProvider({ children }: { children: ReactNode }) {
+  const value: UserContextValue = {
+    user: DEMO_USER,
+    login: () => {},
+    logout: () => {},
+    isLoggedIn: true,
+    isLoading: false,
+  };
+
+  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+}
+
+/**
+ * UserProvider: delegates to authenticated or demo provider based on config.
+ */
+export function UserProvider({ children }: { children: ReactNode }) {
+  if (AUTH_DISABLED) return <DemoUserProvider>{children}</DemoUserProvider>;
+  return <AuthenticatedUserProvider>{children}</AuthenticatedUserProvider>;
 }
 
 export function useUser() {

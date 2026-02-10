@@ -3,6 +3,7 @@
 /**
  * AuthGuard – redirects unauthenticated users to sign in.
  * Uses NextAuth session. Set NEXT_PUBLIC_AUTH_DISABLED=true to bypass.
+ * When auth is disabled, no NextAuth hooks are called (SessionProvider is absent).
  */
 
 import { useSession, signIn } from 'next-auth/react';
@@ -10,18 +11,15 @@ import { useEffect } from 'react';
 
 const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
 
-export default function AuthGuard({ children }: { children: React.ReactNode }) {
+function AuthGuardInner({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
 
   useEffect(() => {
-    if (AUTH_DISABLED) return;
     if (status === 'loading') return;
     if (!session) {
       signIn(undefined, { callbackUrl: window.location.href });
     }
   }, [session, status]);
-
-  if (AUTH_DISABLED) return <>{children}</>;
 
   if (status === 'loading') {
     return (
@@ -46,4 +44,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+export default function AuthGuard({ children }: { children: React.ReactNode }) {
+  if (AUTH_DISABLED) return <>{children}</>;
+  return <AuthGuardInner>{children}</AuthGuardInner>;
 }
