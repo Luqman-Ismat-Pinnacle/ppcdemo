@@ -882,7 +882,7 @@ CREATE TABLE IF NOT EXISTS project_documents (
     'DRD', 'QMP', 'SOP', 'Workflow', 'MPP', 'Excel', 'PDF', 'Word', 'Other'
   )),
   storage_path VARCHAR(500) NOT NULL,
-  storage_bucket VARCHAR(100) DEFAULT 'project-documents',
+  storage_bucket VARCHAR(100) DEFAULT 'projectdoc',
   uploaded_by VARCHAR(255),
   uploaded_at TIMESTAMP DEFAULT NOW(),
   description TEXT,

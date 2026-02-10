@@ -2,7 +2,7 @@
  * @fileoverview Azure Blob Storage Utility
  *
  * Provides upload, download, list, and delete operations for
- * the 'project-documents' container on Azure Blob Storage.
+ * the 'projectdoc' container on Azure Blob Storage.
  * Server-side only (uses connection string).
  *
  * @module lib/azure-storage
@@ -17,7 +17,7 @@ import {
 const AZURE_STORAGE_CONNECTION_STRING =
   process.env.AZURE_STORAGE_CONNECTION_STRING || '';
 
-const CONTAINER_NAME = 'project-documents';
+const CONTAINER_NAME = 'projectdoc';
 
 let containerClient: ContainerClient | null = null;
 

@@ -63,7 +63,7 @@ interface UploadedFile {
   healthCheck?: ProjectHealthAutoResult;
 }
 
-const STORAGE_BUCKET = 'project-documents';
+const STORAGE_BUCKET = 'projectdoc';
 
 // Azure Blob Storage API helpers (server-side via /api/storage)
 const storageApi = {
@@ -155,6 +155,7 @@ export default function DocumentsPage() {
   const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [expandedHealthFileId, setExpandedHealthFileId] = useState<string | null>(null);
+  const [storageConfigured, setStorageConfigured] = useState(true);
   
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
@@ -202,109 +203,126 @@ export default function DocumentsPage() {
     }
   };
 
+  /** Parse a DB document's health_check_json into our typed result */
+  const parseHealthCheck = (dbDoc: any): ProjectHealthAutoResult | undefined => {
+    if (dbDoc?.health_check_json) {
+      try {
+        const parsed = typeof dbDoc.health_check_json === 'string'
+          ? JSON.parse(dbDoc.health_check_json)
+          : dbDoc.health_check_json;
+        if (parsed.score !== undefined) {
+          return {
+            score: parsed.score,
+            passed: parsed.passed ?? 0,
+            failed: parsed.failed ?? (parsed.totalChecks - parsed.passed) ?? 0,
+            totalChecks: parsed.totalChecks ?? 0,
+            issues: parsed.issues ?? [],
+            results: parsed.results ?? [],
+          };
+        }
+      } catch { /* ignore */ }
+    } else if (dbDoc?.health_score != null) {
+      return { score: dbDoc.health_score, passed: 0, failed: 0, totalChecks: 0, issues: [], results: [] };
+    }
+    return undefined;
+  };
+
   const loadStoredFiles = async () => {
     try {
-      console.log('[loadStoredFiles] Fetching files from Azure Blob Storage...');
-      // Fetch files from Azure Blob Storage
-      const { data: storageFiles, error: storageError } = await storageApi.list('mpp', 100);
+      console.log('[loadStoredFiles] Fetching files...');
 
-      console.log('[loadStoredFiles] Storage response:', { count: storageFiles?.length, error: storageError });
-
-      if (storageError) {
-        console.error('Error loading files from storage:', storageError);
-        return;
+      // ── 1. Always fetch database documents first (reliable source) ──
+      let dbDocs: any[] = [];
+      try {
+        const dbRes = await fetch('/api/data');
+        const dbJson = await dbRes.json();
+        const rawDocs = dbJson?.data?.projectDocuments || dbJson?.projectDocuments || [];
+        dbDocs = rawDocs.map((d: any) => ({
+          id: d.id || d.documentId,
+          file_name: d.fileName || d.file_name || d.name,
+          storage_path: d.storagePath || d.storage_path,
+          project_id: d.projectId || d.project_id,
+          health_score: d.healthScore ?? d.health_score,
+          health_check_json: d.healthCheckJson || d.health_check_json,
+          uploaded_at: d.uploadedAt || d.uploaded_at,
+          file_size: d.fileSize ?? d.file_size ?? 0,
+          is_current_version: d.isCurrentVersion ?? d.is_current_version,
+        }));
+        console.log('[loadStoredFiles] DB docs:', dbDocs.length);
+      } catch (dbErr) {
+        console.error('[loadStoredFiles] DB fetch error:', dbErr);
       }
 
-      // Fetch document metadata from database via API
-      const dbRes = await fetch('/api/data');
-      const dbJson = await dbRes.json();
-      const dbDocs = (dbJson?.projectDocuments || []).map((d: any) => ({
-        id: d.id,
-        file_name: d.fileName,
-        storage_path: d.storagePath,
-        project_id: d.projectId,
-        health_score: d.healthScore,
-        health_check_json: d.healthCheckJson,
-        uploaded_at: d.uploadedAt,
-        file_size: d.fileSize,
-      }));
-      const dbError = dbRes.ok ? null : new Error('Failed to fetch documents');
-
-      console.log('[loadStoredFiles] DB docs response:', { count: dbDocs?.length, error: dbError });
-
-      if (dbError) {
-        console.error('Error loading document metadata:', dbError);
-      }
-
-      // Create a map of storage path -> db document
-      const dbDocMap = new Map<string, any>();
-      (dbDocs || []).forEach((doc: any) => {
-        if (doc.storage_path) {
-          dbDocMap.set(doc.storage_path, doc);
+      // ── 2. Try Azure Blob Storage (may fail if not configured) ─────
+      let storageFiles: any[] | null = null;
+      let storageFailed = false;
+      try {
+        const { data, error } = await storageApi.list('mpp', 100);
+        if (error) {
+          console.warn('[loadStoredFiles] Storage list error:', error.message);
+          storageFailed = true;
+        } else {
+          storageFiles = data;
         }
+      } catch (storageErr) {
+        console.warn('[loadStoredFiles] Storage unreachable:', storageErr);
+        storageFailed = true;
+      }
+
+      setStorageConfigured(!storageFailed);
+
+      // ── 3. Build the file list ─────────────────────────────────────
+      const dbDocMap = new Map<string, any>();
+      dbDocs.forEach(doc => {
+        if (doc.storage_path) dbDocMap.set(doc.storage_path, doc);
       });
 
-      console.log('[loadStoredFiles] Storage files:', storageFiles?.map(f => f.name));
-      
-      if (storageFiles && storageFiles.length > 0) {
-        const mppFiles = storageFiles.filter(f => f.name.toLowerCase().endsWith('.mpp'));
-        console.log('[loadStoredFiles] MPP files after filter:', mppFiles.length);
-        
-        const files: UploadedFile[] = mppFiles
-          .map(f => {
-            const storagePath = `mpp/${f.name}`;
-            const dbDoc = dbDocMap.get(storagePath);
-            
-            // Parse health check from health_check_json if available
-            let healthCheck: ProjectHealthAutoResult | undefined;
-            if (dbDoc?.health_check_json) {
-              try {
-                const parsed = typeof dbDoc.health_check_json === 'string' 
-                  ? JSON.parse(dbDoc.health_check_json) 
-                  : dbDoc.health_check_json;
-                if (parsed.score !== undefined) {
-                  // Ensure results array exists (may be missing from older saves)
-                  healthCheck = {
-                    score: parsed.score,
-                    passed: parsed.passed ?? 0,
-                    failed: parsed.failed ?? (parsed.totalChecks - parsed.passed) ?? 0,
-                    totalChecks: parsed.totalChecks ?? 0,
-                    issues: parsed.issues ?? [],
-                    results: parsed.results ?? [], // Ensure results is always an array
-                  };
-                }
-              } catch (e) {
-                console.warn('Failed to parse health check:', e);
-              }
-            } else if (dbDoc?.health_score !== null && dbDoc?.health_score !== undefined) {
-              // If we have health_score but not full JSON, create a minimal result
-              healthCheck = {
-                score: dbDoc.health_score,
-                passed: 0,
-                failed: 0,
-                totalChecks: 0,
-                issues: [],
-                results: []
-              };
-            }
-            
-            return {
-              id: dbDoc?.id || f.id || f.name,
-              fileName: f.name,
-              fileSize: dbDoc?.file_size || f.metadata?.size || 0,
-              uploadedAt: new Date(dbDoc?.uploaded_at || f.created_at || Date.now()),
-              workdayProjectId: dbDoc?.project_id || undefined,
-              status: dbDoc?.project_id ? 'complete' as const : 'uploaded' as const,
-              storagePath,
-              healthCheck,
-            };
-          });
+      const files: UploadedFile[] = [];
+      const usedDbIds = new Set<string>();
 
-        console.log('[loadStoredFiles] Setting uploadedFiles:', files.length, 'files');
-        setUploadedFiles(files);
-      } else {
-        console.log('[loadStoredFiles] No storage files found or empty array');
+      // If storage returned files, cross-reference with DB
+      if (storageFiles && storageFiles.length > 0) {
+        const mppFiles = storageFiles.filter((f: any) =>
+          (f.name || '').toLowerCase().endsWith('.mpp')
+        );
+        mppFiles.forEach((f: any) => {
+          // Storage list may return names with or without the prefix
+          const nameOnly = (f.name || '').replace(/^mpp\//, '');
+          const storagePath = f.name?.startsWith('mpp/') ? f.name : `mpp/${f.name}`;
+          const dbDoc = dbDocMap.get(storagePath) || dbDocMap.get(f.name);
+          if (dbDoc) usedDbIds.add(dbDoc.id);
+          files.push({
+            id: dbDoc?.id || f.id || nameOnly,
+            fileName: nameOnly || f.name,
+            fileSize: dbDoc?.file_size || f.size || 0,
+            uploadedAt: new Date(dbDoc?.uploaded_at || f.lastModified || Date.now()),
+            workdayProjectId: dbDoc?.project_id || undefined,
+            status: dbDoc?.project_id ? 'complete' as const : 'uploaded' as const,
+            storagePath,
+            healthCheck: parseHealthCheck(dbDoc),
+          });
+        });
       }
+
+      // Always add DB-only documents (not matched to storage files)
+      dbDocs.forEach(doc => {
+        if (usedDbIds.has(doc.id)) return;
+        const fileName = doc.file_name || doc.storage_path?.split('/').pop() || 'Unknown';
+        if (!fileName.toLowerCase().endsWith('.mpp')) return;
+        files.push({
+          id: doc.id,
+          fileName,
+          fileSize: doc.file_size || 0,
+          uploadedAt: new Date(doc.uploaded_at || Date.now()),
+          workdayProjectId: doc.project_id || undefined,
+          status: doc.project_id ? 'complete' as const : 'uploaded' as const,
+          storagePath: doc.storage_path,
+          healthCheck: parseHealthCheck(doc),
+        });
+      });
+
+      console.log('[loadStoredFiles] Total files:', files.length, '(storage:', storageFiles?.length || 0, ', db-only:', files.length - (storageFiles?.length || 0), ')');
+      setUploadedFiles(files);
     } catch (err) {
       console.error('Error loading stored files:', err);
     }
@@ -967,6 +985,25 @@ export default function DocumentsPage() {
             </div>
           </div>
         </div>
+
+        {/* Storage Warning */}
+        {!storageConfigured && (
+          <div className="chart-card grid-full" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px' }}>
+            <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F59E0B" strokeWidth="2" style={{ flexShrink: 0 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <div>
+                <div style={{ fontWeight: 600, color: '#F59E0B', fontSize: '0.9rem' }}>Azure Blob Storage Not Connected</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  File uploads require <code>AZURE_STORAGE_CONNECTION_STRING</code> to be configured in your environment variables.
+                  Existing documents from the database are shown below. To enable uploads, add the connection string for the <strong>projectdoc</strong> storage account in Azure App Service Configuration.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* File Upload */}
         <div className="chart-card grid-full">
