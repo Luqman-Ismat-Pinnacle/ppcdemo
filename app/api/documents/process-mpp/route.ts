@@ -4,7 +4,7 @@ import { toSupabaseFormat } from '@/lib/supabase';
 import { downloadFile } from '@/lib/azure-storage';
 import { query } from '@/lib/postgres';
 
-const PYTHON_SERVICE_URL = process.env.MPP_PARSER_URL || process.env.NEXT_PUBLIC_MPP_PARSER_URL || '';
+const PYTHON_SERVICE_URL = process.env.MPP_PARSER_URL || process.env.NEXT_PUBLIC_MPP_PARSER_URL || 'https://ppcdemo-production.up.railway.app';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,10 +16,6 @@ export async function POST(req: NextRequest) {
     const customerId = formData.get('customerId') as string;
     const siteId = formData.get('siteId') as string;
     
-    if (!PYTHON_SERVICE_URL) {
-      return NextResponse.json({ success: false, error: 'MPP Parser URL is not configured. Set MPP_PARSER_URL or NEXT_PUBLIC_MPP_PARSER_URL in environment variables.' }, { status: 500 });
-    }
-
     if (!documentId || !projectId) {
       return NextResponse.json({ success: false, error: 'Missing documentId or projectId' }, { status: 400 });
     }
