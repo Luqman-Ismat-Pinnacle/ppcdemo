@@ -498,6 +498,18 @@ export function DataProvider({ children }: DataProviderProps) {
       });
     }
 
+    // Filter WBS tree so only active portfolios (and their children) appear
+    if (filtered.wbsData?.items?.length) {
+      filtered.wbsData = {
+        ...filtered.wbsData,
+        items: (filtered.wbsData.items as any[]).filter((item: any) => {
+          if (item.itemType !== 'portfolio' && item.type !== 'portfolio') return true;
+          const portfolioId = (item.id || '').replace(/^wbs-portfolio-/, '');
+          return portfolioId && activePortfolioIds.has(portfolioId);
+        }),
+      };
+    }
+
     // =========================================================================
     // APPLY HIERARCHY FILTER
     // =========================================================================

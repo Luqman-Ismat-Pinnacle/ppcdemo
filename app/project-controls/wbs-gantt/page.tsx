@@ -221,6 +221,7 @@ export default function WBSGanttPage() {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
   const [barTip, setBarTip] = useState<{ row: any; x: number; y: number } | null>(null);
+  const [drillDownRow, setDrillDownRow] = useState<WBSTableRow | null>(null);
   
   // ── Refs ───────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
@@ -240,6 +241,19 @@ export default function WBSGanttPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [editingTaskId]);
+
+  // ── Actual hours drill-down: hour entries for the selected task ─
+  const drillDownTaskId = useMemo(() => {
+    if (!drillDownRow?.id) return null;
+    const match = String(drillDownRow.id).match(/^wbs-task-(.+)$/);
+    return match ? match[1] : null;
+  }, [drillDownRow?.id]);
+  const drillDownHours = useMemo(() => {
+    if (!drillDownTaskId || !data.hours?.length) return [];
+    return data.hours.filter(
+      (h: any) => (h.task_id || h.taskId) === drillDownTaskId
+    );
+  }, [drillDownTaskId, data.hours]);
 
   // ── Derived data: WBS source (respects date filter) ────────────
   const wbsDataForTable = useMemo(() => {
@@ -1008,7 +1022,19 @@ export default function WBSGanttPage() {
                     <td style={TD_FONT}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
                     <td className="number" style={TD_FONT}>{row.daysRequired != null && isFinite(Number(row.daysRequired)) ? Number(row.daysRequired).toFixed(0) : '-'}</td>
                     <td className="number" style={TD_FONT}>{row.baselineHours && isFinite(Number(row.baselineHours)) ? Number(row.baselineHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ ...TD_FONT, color: 'var(--pinnacle-teal)' }}>{row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}</td>
+                    <td
+                      className="number"
+                      style={{
+                        ...TD_FONT,
+                        color: 'var(--pinnacle-teal)',
+                        cursor: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'pointer' : 'default',
+                        textDecoration: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'underline' : 'none',
+                      }}
+                      title={(row.itemType === 'task' || row.itemType === 'sub_task') ? 'Click to view hour entries' : undefined}
+                      onClick={() => (row.itemType === 'task' || row.itemType === 'sub_task') && setDrillDownRow(row)}
+                    >
+                      {row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}
+                    </td>
                     <td className="number" style={TD_FONT}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
                     <td className="number" style={TD_FONT}>{formatCurrency(Number(row.baselineCost))}</td>
                     <td className="number" style={{ ...TD_FONT, color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(row.actualCost))}</td>
@@ -1197,6 +1223,79 @@ export default function WBSGanttPage() {
               SLIPPED {Math.round((new Date(barTip.row.endDate).getTime() - new Date(barTip.row.baselineEnd).getTime()) / (1000 * 60 * 60 * 24))} days from baseline
             </div>
           )}
+        </div>
+      )}
+
+      {/* Actual hours drill-down modal */}
+      {drillDownRow && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2000,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+          onClick={() => setDrillDownRow(null)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 12,
+              maxWidth: 560,
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: 'var(--shadow-lg)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--pinnacle-teal)' }}>
+                Actual hours — {drillDownRow.wbsCode} {drillDownRow.name}
+              </h3>
+              <button type="button" onClick={() => setDrillDownRow(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.25rem' }} aria-label="Close">×</button>
+            </div>
+            <div style={{ padding: 16, overflow: 'auto', flex: 1 }}>
+              {drillDownHours.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>No hour entries for this task in Data Management.</p>
+              ) : (
+                <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
+                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Employee</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Date</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'right' }}>Hours</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'right' }}>Cost</th>
+                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drillDownHours.map((h: any, i: number) => (
+                      <tr key={h.id || i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '8px 12px' }}>{getEmployeeName(h.employee_id || h.employeeId, employees || []) || (h.employee_id || h.employeeId) || '-'}</td>
+                        <td style={{ padding: '8px 12px' }}>{h.date ? new Date(h.date).toLocaleDateString('en-US') : '-'}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{Number(h.hours)?.toFixed(1) ?? '-'}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{h.actual_cost != null ? formatCurrency(Number(h.actual_cost)) : '-'}</td>
+                        <td style={{ padding: '8px 12px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={h.description || ''}>{h.description || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {drillDownHours.length > 0 && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12, marginBottom: 0 }}>
+                  Total: {drillDownHours.reduce((s: number, h: any) => s + (Number(h.hours) || 0), 0).toFixed(1)} hrs · {formatCurrency(drillDownHours.reduce((s: number, h: any) => s + (Number(h.actual_cost) || 0), 0))} cost
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
