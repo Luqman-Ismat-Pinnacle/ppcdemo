@@ -12,9 +12,8 @@
  * @module app/insights/documents/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import ChartCard from '@/components/charts/ChartCard';
 import TableCompareExport from '@/components/ui/TableCompareExport';
@@ -23,8 +22,6 @@ import InsightsFilterBar, { type FilterChip } from '@/components/insights/Insigh
 
 export default function DocumentsPage() {
   const { filteredData, isLoading } = useData();
-  const { routeChanging, setRouteReady } = useRouteLoading();
-  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const statusFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'status').map((f) => f.value), [pageFilters]);
@@ -94,7 +91,7 @@ export default function DocumentsPage() {
     return { projects: projectsWithHealth, avgHealth, atRisk, healthy, total: projects.length };
   }, [data.projects, data.projectHealth]);
 
-  if (isLoading || routeChanging) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel insights-page">

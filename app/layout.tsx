@@ -19,7 +19,6 @@ import { Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/layout/ThemeProvider';
 import { DataProvider } from '@/lib/data-context';
-import { RouteLoadingProvider } from '@/lib/route-loading-context';
 import { LogsProvider } from '@/lib/logs-context';
 import { UserProvider } from '@/lib/user-context';
 import Auth0Provider from '@/components/providers/Auth0Provider';
@@ -95,15 +94,13 @@ export default function RootLayout({
                   <ThemeProvider>
                     <UserProvider>
                       <DataProvider>
-                        <RouteLoadingProvider>
-                          <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
-                            <Header />
-                            <main className="main-content">
-                              {children}
-                            </main>
-                            <HelpButton />
-                          </div>
-                        </RouteLoadingProvider>
+                        <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
+                          <Header />
+                          <main className="main-content">
+                            {children}
+                          </main>
+                          <HelpButton />
+                        </div>
                       </DataProvider>
                     </UserProvider>
                   </ThemeProvider>

@@ -20,7 +20,6 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
-import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import type { Task, UserStory, Feature, Epic, Employee, ChangeLogEntry } from '@/types/data';
 
@@ -114,8 +113,6 @@ type SwimlaneType = 'none' | 'assignee' | 'priority' | 'workItemType' | 'project
 
 export default function BoardsPage() {
   const { filteredData, data, updateData, isLoading } = useData();
-  const { routeChanging, setRouteReady } = useRouteLoading();
-  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   
   // View state
   const [selectedWorkItemTypes, setSelectedWorkItemTypes] = useState<WorkItemType[]>(['Epic', 'Feature', 'User Story', 'Task', 'Bug']);
@@ -359,7 +356,7 @@ export default function BoardsPage() {
   // Get projects for project filter
   const projects = useMemo(() => filteredData.projects || [], [filteredData.projects]);
 
-  if (isLoading || routeChanging) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel full-height-page project-management-page">

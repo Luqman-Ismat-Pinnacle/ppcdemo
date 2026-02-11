@@ -12,9 +12,8 @@
  * @module app/project-management/sprint/capacity/page
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
-import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 
 interface TeamMember {
@@ -72,8 +71,6 @@ const ACTIVITY_COLORS = {
 
 export default function CapacityPage() {
   const { data, isLoading } = useData();
-  const { routeChanging, setRouteReady } = useRouteLoading();
-  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const [sprint, setSprint] = useState<Sprint>(() => {
     // Try to get current sprint from data
     const currentSprint = data.sprints?.find((s: any) => s.isCurrent);
@@ -171,7 +168,7 @@ export default function CapacityPage() {
     }));
   };
 
-  if (isLoading || routeChanging) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>

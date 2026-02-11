@@ -8,7 +8,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
-import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import { useLogs } from '@/lib/logs-context';
 import { convertMppParserOutput } from '@/lib/data-converter';
@@ -126,8 +125,6 @@ const storageApi = {
 export default function DocumentsPage() {
   const router = useRouter();
   const { refreshData, filteredData, isLoading } = useData();
-  const { routeChanging, setRouteReady } = useRouteLoading();
-  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -1170,7 +1167,7 @@ export default function DocumentsPage() {
     }
   }, [addLog, refreshData]);
 
-  if (isLoading || routeChanging) return <PageLoader message="Loading project files..." />;
+  if (isLoading) return <PageLoader message="Loading project files..." />;
 
   return (
     <div className="page-panel">

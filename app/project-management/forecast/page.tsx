@@ -19,9 +19,8 @@
  * @module app/project-management/forecast/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
@@ -1265,8 +1264,6 @@ function BurnRateTrend({ hours, projects }: { hours: any[]; projects: any[] }) {
 // ===== MAIN PAGE =====
 export default function ForecastPage() {
   const { filteredData, data: fullData, isLoading } = useData();
-  const { routeChanging, setRouteReady } = useRouteLoading();
-  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   const [fteLimit, setFteLimit] = useState(10);
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
@@ -1365,7 +1362,7 @@ export default function ForecastPage() {
     return `$${v.toFixed(0)}`;
   };
 
-  if (isLoading || routeChanging) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>

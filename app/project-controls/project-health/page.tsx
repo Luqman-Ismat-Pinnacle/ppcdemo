@@ -13,9 +13,8 @@
  * @module app/project-controls/project-health/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import { useRouteLoading } from '@/lib/route-loading-context';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import PageLoader from '@/components/ui/PageLoader';
 import type {
@@ -62,8 +61,6 @@ const FAILURE_REASONS: Exclude<HealthCheckFailureReason, null>[] = [
 
 export default function ProjectHealthPage() {
   const { filteredData, data, updateData, isLoading } = useData();
-  const { routeChanging, setRouteReady } = useRouteLoading();
-  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['scope', 'tasks', 'structure', 'resources', 'compliance'])
   );
@@ -211,7 +208,7 @@ export default function ProjectHealthPage() {
     return { total, passed, failed, pending };
   };
 
-  if (isLoading || routeChanging) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ height: 'calc(100vh - 80px)', overflow: 'auto' }}>
