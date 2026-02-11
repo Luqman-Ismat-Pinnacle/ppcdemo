@@ -15,10 +15,13 @@
 
 import React from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 
 export default function ResourceLevelingPage() {
-  const { filteredData } = useData();
+  const { filteredData, isLoading } = useData();
   const data = filteredData;
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel">

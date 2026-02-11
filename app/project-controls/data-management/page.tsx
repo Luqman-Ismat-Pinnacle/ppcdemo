@@ -663,7 +663,12 @@ export default function DataManagementPage() {
   const changeLog = data.changeLog || [];
   const changeControlSummary = data.changeControlSummary || { byProject: [], byMonth: [] };
   useEffect(() => {
-    setSupabaseEnabled(isSupabaseConfigured());
+    // Check actual DB connection via server-side API (client can't see DATABASE_URL)
+    fetch('/api/status').then(r => r.json()).then(res => {
+      setSupabaseEnabled(res.status === 'connected' || res.status === 'degraded');
+    }).catch(() => {
+      setSupabaseEnabled(isSupabaseConfigured()); // fallback to client-side check
+    });
   }, []);
 
   useEffect(() => {
@@ -3177,7 +3182,7 @@ export default function DataManagementPage() {
             )}
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span title={supabaseEnabled ? 'Supabase connected' : 'Local only'} style={{
+            <span title={supabaseEnabled ? 'Database connected' : 'Local only'} style={{
               width: '8px', height: '8px', borderRadius: '50%',
               background: supabaseEnabled ? 'var(--pinnacle-teal)' : 'rgba(255,193,7,0.9)',
               boxShadow: supabaseEnabled ? '0 0 8px var(--pinnacle-teal)' : '0 0 8px rgba(255,193,7,0.5)',

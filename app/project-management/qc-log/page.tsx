@@ -16,6 +16,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
+import PageLoader from '@/components/ui/PageLoader';
 import type { QCTask } from '@/types/data';
 import {
   type SortState,
@@ -300,7 +301,7 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
 // ============================================================================
 
 export default function QCLogPage() {
-  const { filteredData, data, updateData } = useData();
+  const { filteredData, data, updateData, isLoading } = useData();
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -415,6 +416,8 @@ export default function QCLogPage() {
     if (e.key === 'Enter') saveEdit(qcTask);
     else if (e.key === 'Escape') setEditingCell(null);
   };
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflow: 'auto' }}>

@@ -8,6 +8,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 import { useLogs } from '@/lib/logs-context';
 import { convertMppParserOutput } from '@/lib/data-converter';
 import { runProjectHealthAutoCheck, type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
@@ -123,7 +124,7 @@ const storageApi = {
 
 export default function DocumentsPage() {
   const router = useRouter();
-  const { refreshData, filteredData } = useData();
+  const { refreshData, filteredData, isLoading } = useData();
   const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -166,6 +167,29 @@ export default function DocumentsPage() {
   
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
+  const [assignPortfolioId, setAssignPortfolioId] = useState('');
+
+  // Check if the selected project has a portfolio; build portfolio options
+  const portfolioOptions: DropdownOption[] = useMemo(() => {
+    return (filteredData?.portfolios || []).map((p: any) => ({
+      id: p.id || p.portfolioId,
+      name: p.name,
+      secondary: p.manager || '',
+    }));
+  }, [filteredData?.portfolios]);
+
+  const selectedProjectMissingPortfolio = useMemo(() => {
+    if (!workdayProjectId) return false;
+    const projects = filteredData?.projects || [];
+    const proj = projects.find((p: any) => (p.id || p.projectId) === workdayProjectId);
+    if (!proj) return false;
+    const portfolioId = proj.portfolioId ?? proj.portfolio_id;
+    if (!portfolioId) return true;
+    // Also check the portfolio still exists (might have been removed with terminated manager)
+    const portfolios = filteredData?.portfolios || [];
+    const portfolioExists = portfolios.some((p: any) => (p.id || p.portfolioId) === portfolioId);
+    return !portfolioExists;
+  }, [workdayProjectId, filteredData?.projects, filteredData?.portfolios]);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {
     setLogs(prev => [...prev, {
@@ -376,7 +400,43 @@ export default function DocumentsPage() {
       return;
     }
 
+    // If portfolio was missing and user assigned one, update the project + customer chain
+    if (selectedProjectMissingPortfolio && assignPortfolioId) {
+      try {
+        // Find the selected portfolio to resolve its customer
+        const portfolio = (filteredData?.portfolios || []).find((p: any) => (p.id || p.portfolioId) === assignPortfolioId);
+        const proj = (filteredData?.projects || []).find((p: any) => (p.id || p.projectId) === workdayProjectId);
+        if (proj) {
+          // Update the project's portfolio_id
+          await fetch('/api/data/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataKey: 'projects',
+              records: [{ id: proj.id || proj.projectId, portfolio_id: assignPortfolioId }],
+            }),
+          });
+          // If the project has a customer, update the customer's portfolio_id too
+          const customerId = proj.customerId ?? proj.customer_id;
+          if (customerId) {
+            await fetch('/api/data/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dataKey: 'customers',
+                records: [{ id: customerId, portfolio_id: assignPortfolioId }],
+              }),
+            });
+          }
+          addLog('success', `Project reassigned to portfolio: ${portfolio?.name || assignPortfolioId}`);
+        }
+      } catch (err: any) {
+        addLog('warning', `Portfolio reassignment failed: ${err.message}`);
+      }
+    }
+
     setShowHierarchyModal(false);
+    setAssignPortfolioId('');
     setIsUploading(true);
     const fileId = `mpp-${Date.now()}`;
     const storagePath = `mpp/${Date.now()}_${selectedFile.name}`;
@@ -524,7 +584,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, addLog]);
+  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, filteredData?.portfolios, filteredData?.projects]);
 
   // Persist process/upload logs to project_log (parser logs)
   const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
@@ -1106,6 +1166,8 @@ export default function DocumentsPage() {
       setIsMatching(false);
     }
   }, [addLog, refreshData]);
+
+  if (isLoading) return <PageLoader message="Loading project files..." />;
 
   return (
     <div className="page-panel">
@@ -2011,6 +2073,34 @@ export default function DocumentsPage() {
                   The MPP schedule will be linked to this project. Customer and site info comes from Workday.
                 </div>
               </div>
+
+              {/* Portfolio warning — shown when selected project has no portfolio */}
+              {selectedProjectMissingPortfolio && (
+                <div style={{
+                  padding: '0.75rem 1rem',
+                  backgroundColor: 'rgba(251, 146, 60, 0.1)',
+                  border: '1px solid rgba(251, 146, 60, 0.4)',
+                  borderRadius: '6px',
+                }}>
+                  <div style={{ fontSize: '0.8rem', color: '#FB923C', fontWeight: 600, marginBottom: '0.5rem' }}>
+                    No Portfolio Assigned
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                    This project does not belong to an active portfolio (the assigned Senior Manager may have been terminated). Please assign it to a portfolio to continue.
+                  </div>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    Assign to Portfolio *
+                  </label>
+                  <SearchableDropdown
+                    value={assignPortfolioId || null}
+                    options={portfolioOptions}
+                    onChange={(id) => setAssignPortfolioId(id || '')}
+                    placeholder="Select a portfolio..."
+                    searchable={true}
+                    width="100%"
+                  />
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
@@ -2018,6 +2108,7 @@ export default function DocumentsPage() {
                 onClick={() => {
                   setShowHierarchyModal(false);
                   setWorkdayProjectId('');
+                  setAssignPortfolioId('');
                 }}
                 style={{
                   padding: '0.5rem 1rem',
@@ -2032,14 +2123,14 @@ export default function DocumentsPage() {
               </button>
               <button
                 onClick={handleUploadWithHierarchy}
-                disabled={!workdayProjectId}
+                disabled={!workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
                 style={{
                   padding: '0.5rem 1rem',
-                  backgroundColor: workdayProjectId ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                  backgroundColor: (workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)) ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
                   border: 'none',
                   borderRadius: '4px',
-                  color: workdayProjectId ? '#000' : 'var(--text-muted)',
-                  cursor: workdayProjectId ? 'pointer' : 'not-allowed',
+                  color: (workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)) ? '#000' : 'var(--text-muted)',
+                  cursor: (workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)) ? 'pointer' : 'not-allowed',
                 }}
               >
                 Upload

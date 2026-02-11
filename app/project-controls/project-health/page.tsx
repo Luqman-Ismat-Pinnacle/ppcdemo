@@ -16,6 +16,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
+import PageLoader from '@/components/ui/PageLoader';
 import type {
   ProjectHealth,
   HealthCheckItem,
@@ -59,7 +60,7 @@ const FAILURE_REASONS: Exclude<HealthCheckFailureReason, null>[] = [
 ];
 
 export default function ProjectHealthPage() {
-  const { filteredData, data, updateData } = useData();
+  const { filteredData, data, updateData, isLoading } = useData();
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['scope', 'tasks', 'structure', 'resources', 'compliance'])
   );
@@ -206,6 +207,8 @@ export default function ProjectHealthPage() {
     const pending = total - passed - failed;
     return { total, passed, failed, pending };
   };
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ height: 'calc(100vh - 80px)', overflow: 'auto' }}>

@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 
 interface Iteration {
   id: string;
@@ -63,7 +64,7 @@ function getIterationStatus(iter: Iteration): { label: string; color: string } {
 }
 
 export default function IterationsPage() {
-  const { data } = useData();
+  const { data, isLoading } = useData();
   const [iterations, setIterations] = useState<Iteration[]>(() => {
     // Build from sprints data if available
     if (data.sprints?.length) {
@@ -196,6 +197,8 @@ export default function IterationsPage() {
   }, [iterations, expandedIds]);
 
   const hasChildren = (id: string) => iterations.some(i => i.parentId === id);
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>

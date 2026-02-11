@@ -18,6 +18,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
+import PageLoader from '@/components/ui/PageLoader';
 import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
 import useCrossFilter, { CrossFilter, applyCrossFilters } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
@@ -1328,7 +1329,7 @@ function DrillDownPanel({
 
 // ===== MAIN PAGE =====
 export default function TasksPage() {
-  const { filteredData, hierarchyFilters, metricsHistory, variancePeriod } = useData();
+  const { filteredData, hierarchyFilters, metricsHistory, variancePeriod, isLoading } = useData();
   const data = filteredData;
   
   // Cross-filter state
@@ -1520,6 +1521,8 @@ export default function TasksPage() {
 
   // Check for empty data — only plan projects have tasks
   const hasData = (data.tasks?.length ?? 0) > 0;
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>

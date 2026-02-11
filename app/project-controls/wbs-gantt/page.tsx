@@ -12,12 +12,13 @@
  * - Virtual scrolling for large datasets
  * - Fit-to-view zoom, row density, Ctrl+wheel zoom
  * - Rich floating bar tooltips
- *
+ * 
  * @module app/project-controls/wbs-gantt/page
  */
 
 import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 import { useLogs } from '@/lib/logs-context';
 import { CPMEngine, CPMTask, CPMResult } from '@/lib/cpm-engine';
 import { WBSTableRow } from '@/types/wbs';
@@ -197,7 +198,7 @@ const FTESparkline = memo(function FTESparkline({
 // ═══════════════════════════════════════════════════════════════════
 
 export default function WBSGanttPage() {
-  const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter } = useData();
+  const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter, isLoading } = useData();
   const { addEngineLog } = useLogs();
   const data = filteredData;
   const employees = fullData.employees;
@@ -206,7 +207,7 @@ export default function WBSGanttPage() {
   const [showBaseline, setShowBaseline] = useState(true);
   const [showDependencies, setShowDependencies] = useState(true);
   const [showSparklines, setShowSparklines] = useState(true);
-
+  
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cpmResult, setCpmResult] = useState<CPMResult | null>(null);
   const [cpmLogs, setCpmLogs] = useState<string[]>([]);
@@ -220,7 +221,7 @@ export default function WBSGanttPage() {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
   const [barTip, setBarTip] = useState<{ row: any; x: number; y: number } | null>(null);
-
+  
   // ── Refs ───────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -755,6 +756,8 @@ export default function WBSGanttPage() {
   // RENDER
   // ═══════════════════════════════════════════════════════════════
 
+  if (isLoading) return <PageLoader />;
+
   const tableWidth = fixedColsWidth + dateColumns.length * columnWidth;
 
   return (
@@ -773,7 +776,7 @@ export default function WBSGanttPage() {
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
           </div>
-
+          
           {/* Interval Selector (primary scale) */}
           <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
             {(['week', 'month', 'quarter', 'year'] as GanttInterval[]).map(iv => (
@@ -785,7 +788,7 @@ export default function WBSGanttPage() {
               }}>{iv}</button>
             ))}
           </div>
-
+          
           {/* Zoom Controls — Fit + fine-tune +/- + Density + Today */}
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '3px 8px', border: '1px solid var(--border-color)' }}>
             {/* Fit to View */}
@@ -814,16 +817,16 @@ export default function WBSGanttPage() {
             {/* Reset */}
             <button onClick={() => { setTimelineZoom(1); setRowDensity('normal'); }} style={{ padding: '2px 6px', fontSize: '0.6rem', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer' }} title="Reset zoom & density">Reset</button>
           </div>
-
+          
           <button className="btn btn-secondary btn-sm" onClick={scrollToToday}>Today</button>
-
+          
           {/* Level Controls */}
           <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
             {([['L0', collapseAll], ['L2', () => collapseToLevel(2)], ['L3', () => collapseToLevel(3)], ['All', expandAll]] as [string, () => void][]).map(([label, fn]) => (
               <button key={label} onClick={fn} style={{ padding: '0.3rem 0.5rem', fontSize: '0.65rem', background: 'transparent', color: 'var(--text-secondary)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{label}</button>
             ))}
           </div>
-
+          
           <div style={{ width: '180px' }}>
             <SearchableDropdown options={projectOptions} value={selectedProjectId} onChange={setSelectedProjectId} placeholder="Select Project..." disabled={false} />
           </div>
@@ -841,7 +844,7 @@ export default function WBSGanttPage() {
           <label key={t.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
             <input type="checkbox" checked={t.checked} onChange={e => t.set(e.target.checked)} style={{ accentColor: t.color }} />
             <span style={{ color: t.color }}>{t.label}</span>
-          </label>
+        </label>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 4, background: '#EF4444', borderRadius: 2 }} /> Critical Path</div>
@@ -862,7 +865,7 @@ export default function WBSGanttPage() {
             <div key={m.label} className="metric-card" style={{ padding: '6px 14px', background: '#111', minWidth: '110px' }}>
               <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.label}</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 700, color: m.color }}>{m.value}</div>
-            </div>
+          </div>
           ))}
           <div style={{ flex: 1, fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {cpmLogs[cpmLogs.length - 1] || 'Analysis complete'}
@@ -949,7 +952,7 @@ export default function WBSGanttPage() {
                 const progress = row.percentComplete || 0;
                 const isExpanded = expandedIds.has(row.id);
                 const worstCase = (row as any).worstCaseStatus;
-
+                
                 // Simplified bar colour: progress-based for ALL bars (parent + leaf), critical path override
                 const barColor = isCritical ? '#EF4444' : getProgressColor(progress);
                 const typeColor = WBS_COLORS[row.itemType] || '#6B7280';
@@ -1032,20 +1035,20 @@ export default function WBSGanttPage() {
 
                         const leftPct = (Math.max(0, iStart.getTime() - tlStart.getTime()) / tlDur) * 100;
                         const widthPct = ((Math.min(iEnd.getTime(), tlEnd.getTime()) - Math.max(iStart.getTime(), tlStart.getTime())) / tlDur) * 100;
-                        const isMilestone = row.is_milestone || row.isMilestone;
+                            const isMilestone = row.is_milestone || row.isMilestone;
                         const pct = progress;
                         const blStart = (row as any).baselineStart;
                         const blEnd = (row as any).baselineEnd;
                         const hasSlipped = blEnd && new Date(blEnd) < iEnd;
 
-                        // Baseline ghost bar
-                        let baselineBar = null;
+                            // Baseline ghost bar
+                            let baselineBar = null;
                         if (showBaseline && blStart && blEnd) {
                           const bs = new Date(blStart), be = new Date(blEnd);
                           if (!Number.isNaN(bs.getTime()) && !Number.isNaN(be.getTime())) {
                             const bL = (Math.max(0, bs.getTime() - tlStart.getTime()) / tlDur) * 100;
                             const bW = ((Math.min(be.getTime(), tlEnd.getTime()) - Math.max(bs.getTime(), tlStart.getTime())) / tlDur) * 100;
-                            baselineBar = (
+                                baselineBar = (
                               <div style={{
                                 position: 'absolute', left: `calc(${dateColumns.length * 100}% * ${bL / 100})`,
                                 width: `calc(${dateColumns.length * 100}% * ${bW / 100})`, height: '6px', top: '18px',
@@ -1066,15 +1069,15 @@ export default function WBSGanttPage() {
                             ? `1px solid ${barColor}88`
                             : hasSlipped ? '1px solid #F59E0B' : 'none';
 
-                        return (
-                          <>
-                            {baselineBar}
-                            <div
+                            return (
+                              <>
+                                {baselineBar}
+                                <div
                               onMouseEnter={(e) => handleBarMouseEnter(e, row)}
                               onMouseLeave={handleBarMouseLeave}
-                              style={{
-                                position: 'absolute',
-                                left: `calc(${dateColumns.length * 100}% * ${leftPct / 100})`,
+                                  style={{
+                                    position: 'absolute',
+                                    left: `calc(${dateColumns.length * 100}% * ${leftPct / 100})`,
                                 width: `calc(${dateColumns.length * 100}% * ${widthPct / 100})`,
                                 height: barHeight, top: barTop,
                                 background: barBg, borderRadius: '3px', zIndex: 5,
@@ -1086,9 +1089,9 @@ export default function WBSGanttPage() {
                             >
                               {!isMilestone && <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '3px' }} />}
                               {isMilestone && <div style={{ width: '4px', height: '100%', background: '#ef4444', marginLeft: '-2px' }} />}
-                            </div>
-                          </>
-                        );
+                                </div>
+                              </>
+                            );
                       })();
 
                       return (

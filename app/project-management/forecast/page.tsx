@@ -21,6 +21,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import {
@@ -1262,7 +1263,7 @@ function BurnRateTrend({ hours, projects }: { hours: any[]; projects: any[] }) {
 
 // ===== MAIN PAGE =====
 export default function ForecastPage() {
-  const { filteredData, data: fullData } = useData();
+  const { filteredData, data: fullData, isLoading } = useData();
   const data = filteredData;
   const [fteLimit, setFteLimit] = useState(10);
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
@@ -1360,6 +1361,8 @@ export default function ForecastPage() {
     if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
     return `$${v.toFixed(0)}`;
   };
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>

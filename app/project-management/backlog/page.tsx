@@ -16,6 +16,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 import type { Epic, Feature, UserStory, Task, Employee, Sprint, ChangeLogEntry } from '@/types/data';
 
 // Helper functions
@@ -41,7 +42,7 @@ interface BacklogItem {
 }
 
 export default function BacklogPage() {
-  const { filteredData, data, updateData } = useData();
+  const { filteredData, data, updateData, isLoading } = useData();
   
   const [viewMode, setViewMode] = useState<ViewMode>('hierarchy');
   const [groupBy, setGroupBy] = useState<GroupBy>('epic');
@@ -247,6 +248,8 @@ export default function BacklogPage() {
       updateData({ tasks: updatedTasks });
     }
   };
+
+  if (isLoading) return <PageLoader />;
 
   // Render backlog item
   const renderBacklogItem = (item: BacklogItem, level: number = 0) => {

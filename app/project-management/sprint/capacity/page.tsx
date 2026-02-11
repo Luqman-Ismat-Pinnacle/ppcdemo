@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 
 interface TeamMember {
   id: string;
@@ -69,7 +70,7 @@ const ACTIVITY_COLORS = {
 };
 
 export default function CapacityPage() {
-  const { data } = useData();
+  const { data, isLoading } = useData();
   const [sprint, setSprint] = useState<Sprint>(() => {
     // Try to get current sprint from data
     const currentSprint = data.sprints?.find((s: any) => s.isCurrent);
@@ -166,6 +167,8 @@ export default function CapacityPage() {
       return { ...m, activities: newActivities };
     }));
   };
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>

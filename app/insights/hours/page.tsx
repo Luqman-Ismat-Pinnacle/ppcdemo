@@ -16,6 +16,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 
 /** Safe number formatting - returns '0' for NaN/Infinity */
 const sn = (v: any, decimals = 1): string => {
@@ -57,7 +58,7 @@ function formatWeekLabel(dateStr: string): string {
 }
 
 export default function HoursPage() {
-  const { filteredData, variancePeriod, varianceEnabled, metricsHistory } = useData();
+  const { filteredData, variancePeriod, varianceEnabled, metricsHistory, isLoading } = useData();
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
@@ -406,6 +407,8 @@ export default function HoursPage() {
       return row;
     });
   }, [sortedRoleRows, tableWeeks]);
+
+  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>
