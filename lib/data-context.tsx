@@ -342,7 +342,21 @@ export function DataProvider({ children }: DataProviderProps) {
    */
   const updateData = (updates: Partial<SampleData>) => {
     setData((prev) => {
-      const merged = { ...prev, ...updates };
+      const merged: SampleData = { ...prev, ...updates };
+
+      // Always re-apply global active filters when raw data changes so that
+      // any updates from Workday, imports, or Data Management immediately
+      // hide inactive / terminated employees and projects across the app.
+      if (merged.employees && Array.isArray(merged.employees)) {
+        merged.employees = filterActiveEmployees(merged.employees as any[]) as any;
+      }
+      if (merged.projects && Array.isArray(merged.projects)) {
+        merged.projects = filterActiveProjects(merged.projects as any[]) as any;
+      }
+      // NOTE: Portfolios are NEVER globally filtered here; they should remain
+      // visible in Data Management even when inactive. Individual pages decide
+      // whether to show only active portfolios.
+
       // When only wbsData is updated (e.g. CPM results), keep it and skip full transform to avoid overwriting with a fresh build
       const keys = Object.keys(updates);
       if (keys.length === 1 && keys[0] === 'wbsData') {

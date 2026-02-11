@@ -229,7 +229,7 @@ export default function SearchableDropdown({
     <div
       ref={containerRef}
       className={`searchable-dropdown ${className}`}
-      style={{ position: 'relative', display: 'inline-block', width }}
+      style={{ position: 'relative', display: 'block', width }}
       onKeyDown={handleKeyDown}
     >
       {/* Trigger */}

@@ -264,6 +264,18 @@ export default function StatusAndLogsDropdown() {
         setWorkdayMessage('Sync Failed');
         pushLog('Sync failed - check errors above', 'error');
       }
+
+      // Extra clarity for hours/tasks not returning
+      const hoursStepsSeen = errorCount.hoursTotal > 0;
+      if (!hoursStepsSeen) {
+        pushLog('No hours chunks were processed. Azure Function may not be returning hours events.', 'warning');
+      }
+      if (!summary || typeof summary !== 'object') {
+        pushLog('No summary payload was returned from Workday sync.', 'info');
+      } else {
+        const sumStr = JSON.stringify(summary);
+        pushLog(`Summary: ${sumStr}`, 'info');
+      }
       
       addEngineLog('Workday', logEntries);
       await refreshData();

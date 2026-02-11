@@ -2095,8 +2095,10 @@ export default function DataManagementPage() {
       ? [...mergedData.filter((t: any) => !t.isSubTask), ...newRows]
       : [...mergedData, ...newRows];
 
-    // Apply default filter: hide inactive/terminated rows unless showInactive is true
-    if (!showInactive) {
+    // Apply default filter: hide inactive/terminated rows unless showInactive is true.
+    // EXCEPTION: Portfolios table should always show all portfolios in Data Management
+    // (even inactive), while the rest of the app hides inactive portfolios.
+    if (!showInactive && section.key !== 'portfolios') {
       const INACTIVE_TERMS = ['terminated', 'inactive', 'closed', 'archived', 'cancelled', 'inactive_-_current'];
       const textKeys = ['name', 'taskName', 'projectName', 'projectNumber', 'status', 'description', 'employmentStatus', 'workerType'];
       processed = processed.filter((row: any) => {

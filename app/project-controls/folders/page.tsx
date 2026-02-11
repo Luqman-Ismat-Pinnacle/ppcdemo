@@ -1811,7 +1811,40 @@ export default function DocumentsPage() {
                                 </svg>
                                 View Full Health Report
                               </button>
-                              
+                              {file.storagePath && (
+                                <button
+                                  onClick={() =>
+                                    window.open(
+                                      `/project-controls/health-report?storagePath=${encodeURIComponent(
+                                        file.storagePath
+                                      )}`,
+                                      '_blank'
+                                    )
+                                  }
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    padding: '0.5rem 0.9rem',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-color)',
+                                    borderRadius: '6px',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M6 2h9l3 3v17H6z" />
+                                    <path d="M9 7h6" />
+                                    <path d="M9 11h6" />
+                                    <path d="M9 15h3" />
+                                  </svg>
+                                  Open PDF View
+                                </button>
+                              )}
+
                               {file.workdayProjectId && (
                                 <button
                                   onClick={() => router.push(`/project-controls/wbs-gantt?projectId=${file.workdayProjectId}`)}
@@ -2104,37 +2137,46 @@ export default function DocumentsPage() {
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowHierarchyModal(false);
-                  setWorkdayProjectId('');
-                  setAssignPortfolioId('');
-                }}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUploadWithHierarchy}
-                disabled={!workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: (workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)) ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: (workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)) ? '#000' : 'var(--text-muted)',
-                  cursor: (workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)) ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Upload
-              </button>
+                              <button
+                                onClick={() => {
+                                  setShowHierarchyModal(false);
+                                  setWorkdayProjectId('');
+                                  setAssignPortfolioId('');
+                                }}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  backgroundColor: 'var(--bg-tertiary)',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '4px',
+                                  color: 'var(--text-secondary)',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={handleUploadWithHierarchy}
+                                disabled={!workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  backgroundColor:
+                                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                                      ? 'var(--pinnacle-teal)'
+                                      : 'var(--bg-tertiary)',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  color:
+                                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                                      ? '#000'
+                                      : 'var(--text-muted)',
+                                  cursor:
+                                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                                      ? 'pointer'
+                                      : 'not-allowed',
+                                }}
+                              >
+                                Upload
+                              </button>
             </div>
           </div>
         </div>
