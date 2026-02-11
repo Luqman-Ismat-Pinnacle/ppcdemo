@@ -7,6 +7,8 @@
 1. **Employees** – Fetches `RPT_-_Employees`, upserts into `employees`.
 2. **Hierarchy** – Fetches Find Projects + View Project Plan Integration, upserts `portfolios`, `customers`, `sites`, `projects`, `workday_tasks`.
 3. **Hours** – Fetches Project Labor Transactions in date windows (default 30 days), upserts `phases`, `tasks`, `hour_entries`.
+
+All sync steps use `INSERT ... ON CONFLICT (id) DO UPDATE`, so re-running sync does not duplicate data; it updates existing rows by stable Workday IDs.
 4. **Matching** – Sets `hour_entries.task_id` from task/unit name in description; then aggregates `actual_hours` and `actual_cost` onto `tasks`.
 
 Pipeline (Workday → DB) is unchanged; only the runtime moves from Edge Functions to Azure Functions + Postgres.
