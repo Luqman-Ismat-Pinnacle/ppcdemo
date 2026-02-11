@@ -87,11 +87,24 @@ export async function POST(req: NextRequest) {
 // GET PROJECTS (PostgreSQL primary, Supabase fallback)
 // ============================================================================
 
+// Keywords that indicate an inactive record (case-insensitive, server-side mirror of lib/active-filters)
+const INACTIVE_KW = ['inactive', 'terminated', 'disabled', 'closed', 'cancelled', 'canceled', 'archived', 'suspended', 'deactivated', 'removed', 'offboarded'];
+
+function isProjectActive(p: any): boolean {
+  const active = p.is_active ?? p.active;
+  if (active === false) return false;
+  const status = (p.status || '').toLowerCase();
+  if (INACTIVE_KW.some(kw => status.includes(kw))) return false;
+  const name = (p.name || '').toLowerCase();
+  if (INACTIVE_KW.some(kw => name.includes(kw))) return false;
+  return true;
+}
+
 async function handleGetProjects() {
   try {
     if (isPostgresConfigured()) {
-      const result = await pgQuery('SELECT id, name, project_id, customer_id, site_id, has_schedule FROM projects ORDER BY name');
-      const projectOptions = (result.rows || []).map((p: any) => ({
+      const result = await pgQuery('SELECT id, name, project_id, customer_id, site_id, has_schedule, status, is_active FROM projects ORDER BY name');
+      const projectOptions = (result.rows || []).filter(isProjectActive).map((p: any) => ({
         id: p.id,
         name: p.name || p.id,
         secondary: p.project_id || 'Workday Project',
@@ -108,9 +121,9 @@ async function handleGetProjects() {
     }
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: projects, error } = await supabase.from('projects').select('id, name, project_id, customer_id, site_id, has_schedule').order('name');
+    const { data: projects, error } = await supabase.from('projects').select('id, name, project_id, customer_id, site_id, has_schedule, status, is_active').order('name');
     if (error) return NextResponse.json({ success: false, error: error.message, workday_projects: [] });
-    const projectOptions = (projects || []).map((p: any) => ({
+    const projectOptions = (projects || []).filter(isProjectActive).map((p: any) => ({
       id: p.id,
       name: p.name || p.id,
       secondary: p.project_id || 'Workday Project',

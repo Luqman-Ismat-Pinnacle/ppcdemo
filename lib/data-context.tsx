@@ -23,6 +23,7 @@ import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
 import { VariancePeriod, MetricsHistory } from '@/lib/variance-engine';
 import { autoRecordMetricsIfNeeded } from '@/lib/metrics-recorder';
+import { filterActiveEmployees, filterActiveProjects } from '@/lib/active-filters';
 
 // ============================================================================
 // EMPTY DATA STRUCTURE
@@ -275,17 +276,35 @@ export function DataProvider({ children }: DataProviderProps) {
             }
           }
 
-          // Filter out inactive employees globally
+          // Filter out inactive/terminated employees globally
           if (mergedData.employees && Array.isArray(mergedData.employees)) {
-            mergedData.employees = mergedData.employees.filter((e: any) => e.isActive !== false && e.status !== 'Inactive');
+            mergedData.employees = filterActiveEmployees(mergedData.employees);
           }
 
-          // Ensure Senior Managers have portfolios
+          // Filter out inactive/terminated/closed projects globally
+          if (mergedData.projects && Array.isArray(mergedData.projects)) {
+            mergedData.projects = filterActiveProjects(mergedData.projects);
+          }
+
+          // Ensure Senior Managers have portfolios (only active employees)
           if (mergedData.employees && mergedData.portfolios) {
             mergedData.portfolios = ensurePortfoliosForSeniorManagers(
               mergedData.employees as any[],
               mergedData.portfolios as any[]
             );
+
+            // Remove auto-generated portfolios whose manager is no longer active
+            const activeEmployeeNames = new Set(
+              (mergedData.employees as any[]).map((e: any) => (e.name || '').toLowerCase())
+            );
+            mergedData.portfolios = (mergedData.portfolios as any[]).filter((p: any) => {
+              // Keep portfolios that don't reference a specific manager, or whose manager is still active
+              const mgr = (p.manager || '').toLowerCase();
+              if (!mgr) return true;
+              // If it's an auto-generated portfolio, only keep if the manager is active
+              if (String(p.id || '').startsWith('PRF-AUTO-')) return activeEmployeeNames.has(mgr);
+              return true; // Keep manually-created portfolios regardless
+            });
           }
 
           if (Object.keys(mergedData).length > 0) {
