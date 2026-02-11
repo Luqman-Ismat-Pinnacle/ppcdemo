@@ -188,10 +188,13 @@ export default function DocumentsPage() {
     if (!proj) return false;
     const portfolioId = proj.portfolioId ?? proj.portfolio_id;
     if (!portfolioId) return true;
-    // Also check the portfolio still exists (might have been removed with terminated manager)
+    // Also check the portfolio still exists and is active.
+    // If the assigned portfolio is inactive, treat this as "missing active portfolio".
     const portfolios = filteredData?.portfolios || [];
-    const portfolioExists = portfolios.some((p: any) => (p.id || p.portfolioId) === portfolioId);
-    return !portfolioExists;
+    const portfolio = portfolios.find((p: any) => (p.id || p.portfolioId) === portfolioId);
+    if (!portfolio) return true;
+    const inactive = portfolio.isActive === false || portfolio.is_active === false || portfolio.active === false;
+    return inactive;
   }, [workdayProjectId, filteredData?.projects, filteredData?.portfolios]);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {

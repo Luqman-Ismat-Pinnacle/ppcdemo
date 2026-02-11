@@ -89,23 +89,12 @@ function ResourcingPageContent() {
     const f: any = filteredData || {};
     const a: any = fullData || {};
     const rawPortfolios = (f.portfolios?.length ? f.portfolios : a.portfolios) ?? [];
-    // Only show active portfolios on the Resourcing page. Data Management still
-    // sees all portfolios (even inactive) for admin purposes.
+    // Only show active portfolios on the Resourcing page.
+    // Data Management still sees all portfolios (even inactive) for admin purposes.
     const activePortfolios = rawPortfolios.filter((p: any) => {
+      // Respect only the explicit active flags coming from Data Management / Workday.
       const inactiveFlag = p.isActive === false || p.is_active === false || p.active === false;
-      const status = (p.status || '').toString().toLowerCase();
-      const name = (p.name || '').toString().toLowerCase();
-      const hasInactiveWord =
-        status.includes('inactive') ||
-        status.includes('terminated') ||
-        status.includes('archived') ||
-        status.includes('closed') ||
-        status.includes('cancelled') ||
-        status.includes('canceled');
-      const nameInactive =
-        name.includes('inactive') ||
-        name.includes('terminated');
-      return !inactiveFlag && !hasInactiveWord && !nameInactive;
+      return !inactiveFlag;
     });
     return {
       tasks: (f.tasks?.length ? f.tasks : a.tasks) ?? [],
