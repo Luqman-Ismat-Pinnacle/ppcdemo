@@ -1,17 +1,36 @@
 /**
- * @fileoverview Shared utilities for filtering inactive employees and projects.
+ * @fileoverview Shared utilities for filtering inactive/terminated employees and projects.
  *
- * IMPORTANT BEHAVIOR (per user requirements):
- * - Only respect the explicit boolean flags from Data Management / Workday:
- *     isActive / is_active / active
- * - Do NOT try to infer inactivity from status or name text like "terminated" or "inactive".
- *
- * In short: if the row is explicitly marked inactive in Data Management, it is hidden
- * everywhere else in the app; otherwise it is treated as active.
+ * Checks both the boolean `isActive` / `is_active` field AND scans the name/status
+ * strings for keywords like "inactive", "terminated", "closed", etc.
  *
  * Usage:
  *   import { isActiveEmployee, isActiveProject, filterActiveEmployees, filterActiveProjects } from '@/lib/active-filters';
  */
+
+// Keywords that indicate an inactive record (case-insensitive)
+const INACTIVE_KEYWORDS = [
+  'inactive',
+  'terminated',
+  'disabled',
+  'closed',
+  'cancelled',
+  'canceled',
+  'archived',
+  'suspended',
+  'deactivated',
+  'removed',
+  'offboarded',
+  'left company',
+  'no longer',
+];
+
+/** Returns true if the string contains any inactive keyword */
+function containsInactiveKeyword(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const lower = value.toString().toLowerCase().trim();
+  return INACTIVE_KEYWORDS.some(kw => lower.includes(kw));
+}
 
 // ---------------------------------------------------------------------------
 // EMPLOYEES
@@ -21,10 +40,19 @@
 export function isActiveEmployee(e: any): boolean {
   if (!e) return false;
 
-  // Explicit boolean field from Data Management / Workday
+  // Explicit boolean field
   const active = e.isActive ?? e.is_active ?? e.active;
-  // Only treat explicitly-false values as inactive; everything else is active.
-  return active !== false;
+  if (active === false) return false;
+
+  // Status field
+  const status = e.status ?? e.employeeStatus ?? e.employee_status ?? '';
+  if (containsInactiveKeyword(status)) return false;
+
+  // Name field — some orgs append "(Inactive)" or "(Terminated)" to the name
+  const name = e.name ?? e.employeeName ?? e.employee_name ?? '';
+  if (containsInactiveKeyword(name)) return false;
+
+  return true;
 }
 
 /** Filter an array of employees to only active ones */
@@ -41,10 +69,20 @@ export function filterActiveEmployees<T = any>(employees: T[]): T[] {
 export function isActiveProject(p: any): boolean {
   if (!p) return false;
 
-  // Explicit boolean field from Data Management / Workday
+  // Explicit boolean field
   const active = p.isActive ?? p.is_active ?? p.active;
-  // Only treat explicitly-false values as inactive; everything else is active.
-  return active !== false;
+  if (active === false) return false;
+
+  // Status field — skip "Completed" here; that's still a valid project.
+  // Only filter truly dead projects.
+  const status = p.status ?? p.projectStatus ?? p.project_status ?? '';
+  if (containsInactiveKeyword(status)) return false;
+
+  // Name field
+  const name = p.name ?? p.projectName ?? p.project_name ?? '';
+  if (containsInactiveKeyword(name)) return false;
+
+  return true;
 }
 
 /** Filter an array of projects to only active ones */
