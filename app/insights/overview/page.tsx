@@ -1,43 +1,8 @@
-'use client';
+// Route renamed: this page now simply re-exports the newer
+// executive Overview v2 experience so `/insights/overview`
+// is the single source of truth.
 
-/**
- * Overview Page — Portfolio Analytics Dashboard
- *
- * Rewritten from scratch for ECharts 6 with:
- * - Simplified 2-memo data pipeline (projectBreakdown + portfolio)
- * - All ECharts visuals — no custom SVG charts
- * - No CSS variables in ECharts options (colors baked into pinnacle-dark theme)
- * - Cross-filter + drill-down interactivity
- * - 4 tabs: Dashboard, Milestones, Variance, Advanced
- */
-
-import React, { useMemo, useState, useCallback } from 'react';
-import { useData } from '@/lib/data-context';
-import ChartWrapper from '@/components/charts/ChartWrapper';
-import type { EChartsOption } from 'echarts';
-import useCrossFilter, { type CrossFilter } from '@/lib/hooks/useCrossFilter';
-import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
-
-/* ================================================================== */
-/*  CONSTANTS                                                          */
-/* ================================================================== */
-
-const C = {
-  teal: '#40E0D0', blue: '#3B82F6', purple: '#8B5CF6', amber: '#F59E0B',
-  green: '#10B981', red: '#EF4444', pink: '#EC4899', cyan: '#06B6D4',
-  lime: '#CDDC39', orange: '#FF9800', indigo: '#6366F1',
-  textPrimary: '#f4f4f5', textMuted: '#a1a1aa', textSecondary: '#e4e4e7',
-  border: '#3f3f46', bgCard: '#18181b', bgSecondary: '#141416',
-  axis: '#3f3f46', gridLine: '#27272a',
-};
-
-const CHARGE_LABELS: Record<string, string> = { EX: 'Execution', QC: 'Quality Control', CR: 'Customer Relations', SC: 'Supervision', Other: 'Other' };
-const CHARGE_COLORS: Record<string, string> = { EX: C.blue, QC: C.purple, CR: C.amber, SC: C.cyan, Other: '#6B7280' };
-
-/** Safe number display */
-const sn = (v: any, d = 2): string => { const n = Number(v); return isFinite(n) ? n.toFixed(d) : '0'; };
-const truncName = (s: string, max = 25) => s.length > max ? s.slice(0, max) + '...' : s;
-const fmtHrs = (h: number) => h >= 1000 ? `${(h / 1000).toFixed(1)}K` : h.toLocaleString();
+export { default } from '../overview-v2/page';
 
 /** Shared tooltip config — applied at each chart, not injected by wrapper */
 const TT = {

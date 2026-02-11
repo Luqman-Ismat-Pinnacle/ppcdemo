@@ -71,7 +71,7 @@ function ResourcingPageLoading() {
 
 function ResourcingPageContent() {
   const searchParams = useSearchParams();
-  const { filteredData, fullData, setData, refreshData } = useData();
+  const { filteredData, fullData, setData, refreshData, isLoading } = useData();
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');

@@ -1167,7 +1167,13 @@ export default function DocumentsPage() {
     }
   }, [addLog, refreshData]);
 
-  if (isLoading) return <PageLoader message="Loading project files..." />;
+  // Only show the full-page loader on the very first load when we don't
+  // have any uploaded files yet and we're not actively processing.
+  // This prevents the MPXJ status log panel from being wiped when we call
+  // refreshData() after a run completes.
+  if (isLoading && uploadedFiles.length === 0 && !isProcessing) {
+    return <PageLoader message="Loading project files..." />;
+  }
 
   return (
     <div className="page-panel">
@@ -1818,7 +1824,10 @@ export default function DocumentsPage() {
                                       `/project-controls/health-report?storagePath=${encodeURIComponent(
                                         file.storagePath
                                       )}`,
-                                      '_blank'
+                                      // Open in the same tab so the user can
+                                      // immediately use the browser's Save as PDF
+                                      // instead of juggling multiple tabs.
+                                      '_self'
                                     )
                                   }
                                   style={{

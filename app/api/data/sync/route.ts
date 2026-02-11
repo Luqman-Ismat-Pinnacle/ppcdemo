@@ -241,6 +241,50 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { dataKey, records, operation, projectId, storagePath, healthScore, healthCheckJson } = body;
 
+    // ------------------------------------------------------------------
+    // Special admin operation: wipeAll — truncate all known tables.
+    // Intended for local/dev use when resetting the dataset.
+    // ------------------------------------------------------------------
+    if (operation === 'wipeAll') {
+      const tables = Array.from(new Set(Object.values(DATA_KEY_TO_TABLE)));
+
+      if (usePostgres) {
+        try {
+          const tableList = tables.join(', ');
+          await pgQuery(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`, []);
+          return NextResponse.json({ success: true, wipedTables: tables });
+        } catch (err: any) {
+          console.error('[Sync] wipeAll (Postgres) failed:', err.message);
+          return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+        }
+      }
+
+      const supabase = await getSupabaseClient();
+      if (!supabase) {
+        return NextResponse.json(
+          { success: false, error: 'Supabase not configured for wipeAll' },
+          { status: 500 },
+        );
+      }
+
+      try {
+        for (const table of tables) {
+          const { error } = await supabase.from(table).delete().neq('id', '');
+          if (error) {
+            console.error('[Sync] wipeAll (Supabase) table error:', table, error.message);
+            return NextResponse.json(
+              { success: false, error: `Failed to wipe table ${table}: ${error.message}` },
+              { status: 500 },
+            );
+          }
+        }
+        return NextResponse.json({ success: true, wipedTables: tables });
+      } catch (err: any) {
+        console.error('[Sync] wipeAll (Supabase) failed:', err.message);
+        return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+      }
+    }
+
     if (!dataKey) {
       return NextResponse.json({ success: false, error: 'Invalid request: dataKey required' }, { status: 400 });
     }

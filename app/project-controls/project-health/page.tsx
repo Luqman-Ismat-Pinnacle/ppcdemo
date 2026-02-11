@@ -211,7 +211,15 @@ export default function ProjectHealthPage() {
   if (isLoading) return <PageLoader />;
 
   return (
-    <div className="page-panel" style={{ height: 'calc(100vh - 80px)', overflow: 'auto' }}>
+    <div
+      className="page-panel"
+      style={{
+        height: 'calc(100vh - 80px)',
+        overflow: 'auto',
+        maxWidth: '1200px',
+        margin: '0 auto',
+      }}
+    >
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
