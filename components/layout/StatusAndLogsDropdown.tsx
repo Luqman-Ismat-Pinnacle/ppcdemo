@@ -520,6 +520,7 @@ export default function StatusAndLogsDropdown() {
                       ))}
                     </div>
                   )}
+                </section>
 
                 {/* Scheduled sync (Azure timer reads this from app_settings) */}
                 <section>
