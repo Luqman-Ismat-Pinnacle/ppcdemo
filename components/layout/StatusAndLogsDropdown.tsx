@@ -114,6 +114,13 @@ export default function StatusAndLogsDropdown() {
   const [workdayLogs, setWorkdayLogs] = useState<string[]>([]);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; step: string } | null>(null);
 
+  // Scheduled sync (cron) – hour/minute in UTC, saved to app_settings
+  const [scheduleHour, setScheduleHour] = useState(2);
+  const [scheduleMinute, setScheduleMinute] = useState(0);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleLoaded, setScheduleLoaded] = useState(false);
+  const [scheduleLastRun, setScheduleLastRun] = useState<string | null>(null);
+
   const checkDbConnection = async () => {
     setDbChecking(true);
     try {
@@ -137,6 +144,39 @@ export default function StatusAndLogsDropdown() {
     const interval = setInterval(checkDbConnection, REFRESH_INTERVAL);
     return () => clearInterval(interval);
   }, []);
+
+  const loadSchedule = async () => {
+    try {
+      const res = await fetch('/api/settings/workday-schedule');
+      const data = await res.json();
+      if (typeof data.hour === 'number') setScheduleHour(data.hour);
+      if (typeof data.minute === 'number') setScheduleMinute(data.minute);
+      if (data.lastRunAt) setScheduleLastRun(data.lastRunAt);
+    } catch (_) { /* ignore */ }
+    setScheduleLoaded(true);
+  };
+
+  useEffect(() => {
+    if (!isOpen) setScheduleLoaded(false);
+    else if (isOpen && activeTab === 'status' && !scheduleLoaded) loadSchedule();
+  }, [isOpen, activeTab, scheduleLoaded]);
+
+  const saveSchedule = async () => {
+    setScheduleSaving(true);
+    try {
+      const res = await fetch('/api/settings/workday-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hour: scheduleHour, minute: scheduleMinute }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+    } catch (e: any) {
+      setWorkdayMessage(e?.message || 'Could not save schedule');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
 
   const runSyncStep = async (type: string, payload: any = {}, onLog?: (msg: string) => void) => {
     const log = onLog ?? ((m: string) => setWorkdayLogs(prev => [`[${new Date().toLocaleTimeString()}] ${m}`, ...prev].slice(0, 50)));
@@ -480,6 +520,56 @@ export default function StatusAndLogsDropdown() {
                       ))}
                     </div>
                   )}
+
+                {/* Scheduled sync (Azure timer reads this from app_settings) */}
+                <section>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)', marginBottom: '8px' }}>Scheduled sync</div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    Set when the daily Workday sync runs (Azure timer). Times are in UTC.
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    <select
+                      value={scheduleHour}
+                      onChange={(e) => setScheduleHour(Number(e.target.value))}
+                      style={{ fontSize: '0.8rem', padding: '6px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>
+                      ))}
+                    </select>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>:</span>
+                    <select
+                      value={scheduleMinute}
+                      onChange={(e) => setScheduleMinute(Number(e.target.value))}
+                      style={{ fontSize: '0.8rem', padding: '6px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+                    >
+                      {[0, 15, 30, 45].map((m) => (
+                        <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>UTC</span>
+                  </div>
+                  {scheduleLastRun && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      Last run: {new Date(scheduleLastRun).toLocaleString()}
+                    </div>
+                  )}
+                  <button
+                    onClick={saveSchedule}
+                    disabled={scheduleSaving}
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      background: 'var(--pinnacle-teal)',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      cursor: scheduleSaving ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {scheduleSaving ? 'Saving…' : 'Save schedule'}
+                  </button>
                 </section>
               </div>
             )}

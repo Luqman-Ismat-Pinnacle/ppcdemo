@@ -31,7 +31,7 @@ Pipeline (Workday → DB) is unchanged; only the runtime moves from Edge Functio
    - `WORKDAY_HOURS_BASE_URL`, `WORKDAY_HOURS_QUERY_WID`, `WORKDAY_CURRENCY_RATE_TYPE_WID`, `WORKDAY_REPORTING_CURRENCY_WID`
 
 4. **Deploy**  
-   Deploy this folder as an Azure Function App (Node 18+, consumption or premium). Timer runs on schedule (default 2 AM daily). HTTP trigger for manual sync (e.g. `POST /api/WorkdaySyncHttp` with function key).
+   Deploy this folder as an Azure Function App (Node 18+, consumption or premium). See **Push to Azure** below.
 
 ## Local run
 
@@ -45,5 +45,17 @@ node run-sync.js
 
 ## Triggers
 
-- **Timer** – `WorkdaySyncTimer`: default schedule `0 0 2 * * *` (2:00 AM daily). Change in `WorkdaySyncTimer/function.json` (`schedule`).
+- **Timer** – `WorkdaySyncTimer`: runs every 15 minutes (`0 */15 * * * *`). Each tick reads the **scheduled time** from the app’s `app_settings` table (key `workday_sync_schedule`). If the current UTC time matches that hour/minute window and the last run was more than 11 hours ago, it runs the full sync. Set the time in the app: **System Health** dropdown → **Scheduled sync** → choose hour/minute (UTC) → **Save schedule**.
 - **HTTP** – `WorkdaySyncHttp`: `POST` or `GET` to the function URL (with `?code=<function-key>` or header) for manual sync.
+
+## Push to Azure
+
+From the repo root (or from `azure-functions-workday-sync`):
+
+```bash
+cd azure-functions-workday-sync
+npm install
+npx func azure functionapp publish <YOUR_FUNCTION_APP_NAME>
+```
+
+Replace `<YOUR_FUNCTION_APP_NAME>` with your Azure Function App name. Ensure Azure CLI is logged in (`az login`) and the Function App exists and uses the same Node runtime (e.g. 18). After publish, the timer will run every 15 minutes and execute the full sync when the stored schedule (UTC) is reached.

@@ -508,8 +508,9 @@ const TableFilterHeader = ({
 // ============================================================================
 
 export default function DataManagementPage() {
-  const { filteredData, updateData, hierarchyFilter, dateFilter, isLoading: contextLoading, refreshData } = useData();
-  const data = filteredData;
+  const { data: rawData, filteredData, updateData, hierarchyFilter, dateFilter, isLoading: contextLoading, refreshData } = useData();
+  // Use raw data for tables so Data Management can see and edit all portfolios (including inactive)
+  const data = rawData;
   const { user } = useUser();
   const currentUserName = user?.name || user?.email || 'System';
   const [selectedTable, setSelectedTable] = useState<string>('portfolios');
@@ -559,20 +560,20 @@ export default function DataManagementPage() {
   // Get options for a field type
   const getOptionsForType = useCallback((type: FieldType): DropdownOption[] => {
     switch (type) {
-      case 'employee': return (filteredData.employees || []).map((emp: any) => ({ id: emp.id || emp.employeeId, name: emp.name, secondary: emp.jobTitle || emp.email }));
-      case 'portfolio': return (filteredData.portfolios || []).map((p: any) => ({ id: p.id || p.portfolioId, name: p.name, secondary: p.manager }));
-      case 'customer': return (filteredData.customers || []).map((c: any) => ({ id: c.id || c.customerId, name: c.name }));
-      case 'site': return (filteredData.sites || []).map((s: any) => ({ id: s.id || s.siteId, name: s.name, secondary: s.location }));
-      case 'unit': return (filteredData.units || []).map((u: any) => ({ id: u.id || u.unitId, name: u.name, secondary: u.description }));
-      case 'project': return (filteredData.projects || []).map((p: any) => ({ id: p.id || p.projectId, name: p.name, secondary: p.manager }));
-      case 'phase': return (filteredData.phases || []).map((p: any) => ({ id: p.id || p.phaseId, name: p.name }));
-      case 'task': return (filteredData.tasks || []).map((t: any) => ({ id: t.id || t.taskId, name: t.taskName || t.name }));
+      case 'employee': return (data.employees || []).map((emp: any) => ({ id: emp.id || emp.employeeId, name: emp.name, secondary: emp.jobTitle || emp.email }));
+      case 'portfolio': return (data.portfolios || []).map((p: any) => ({ id: p.id || p.portfolioId, name: p.name, secondary: p.manager }));
+      case 'customer': return (data.customers || []).map((c: any) => ({ id: c.id || c.customerId, name: c.name }));
+      case 'site': return (data.sites || []).map((s: any) => ({ id: s.id || s.siteId, name: s.name, secondary: s.location }));
+      case 'unit': return (data.units || []).map((u: any) => ({ id: u.id || u.unitId, name: u.name, secondary: u.description }));
+      case 'project': return (data.projects || []).map((p: any) => ({ id: p.id || p.projectId, name: p.name, secondary: p.manager }));
+      case 'phase': return (data.phases || []).map((p: any) => ({ id: p.id || p.phaseId, name: p.name }));
+      case 'task': return (data.tasks || []).map((t: any) => ({ id: t.id || t.taskId, name: t.taskName || t.name }));
       case 'role':
         return ['Partner', 'Senior Manager', 'Project Manager', 'Project Lead', 'Technical Lead', 'Technical Manager', 'Technical Writer', 'QA/QC Auditor', 'Data Engineer', 'Data Scientist', 'CAD / Drafter', 'Field Technician', 'IDMS SME', 'Corrosion Engineer', 'Reliability Specialist', 'Senior Reliability Specialist', 'Senior Engineer', 'Process Engineer', 'Deployment Lead', 'Change Lead', 'Training Lead'].map(r => ({ id: r, name: r }));
-      case 'changeRequest': return (filteredData.changeRequests || []).map((cr: any) => ({ id: cr.id, name: cr.title || cr.id, secondary: cr.status }));
+      case 'changeRequest': return (data.changeRequests || []).map((cr: any) => ({ id: cr.id, name: cr.title || cr.id, secondary: cr.status }));
       default: return [];
     }
-  }, [filteredData]);
+  }, [data]);
 
 
   // Use context loading state

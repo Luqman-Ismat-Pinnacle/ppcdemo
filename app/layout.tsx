@@ -43,8 +43,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Pinnacle Project Controls',
-  description: 'A comprehensive project portfolio control system with advanced visualizations',
+  title: 'Pinnacle Project Management',
+  description: 'A comprehensive project portfolio management system with advanced visualizations',
 };
 
 // Trivial change to trigger rebuild

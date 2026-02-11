@@ -158,7 +158,9 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
           : AZURE_FUNCTION_URL;
 
         const abortController = new AbortController();
-        const timeoutId = setTimeout(() => abortController.abort(), 600000); // 10 min timeout
+        // Azure allows much longer timeouts than Supabase Edge; use 20 min for full sync including hours chunks
+        const timeoutMs = 20 * 60 * 1000;
+        const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
 
         const response = await fetch(url, {
           method: 'POST',
@@ -195,7 +197,7 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
 
         pushLine(controller, { type: 'done', success: data.success !== false, logs, summary: data.summary || data });
       } catch (err: any) {
-        const msg = err.name === 'AbortError' ? 'Azure Function timed out after 10 minutes' : (err.message || String(err));
+        const msg = err.name === 'AbortError' ? 'Azure Function timed out after 20 minutes' : (err.message || String(err));
         logAndPush(`Azure Function error: ${msg}`);
         pushLine(controller, { type: 'error', error: msg });
         pushLine(controller, { type: 'done', success: false, logs });

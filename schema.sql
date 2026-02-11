@@ -37,6 +37,7 @@ DROP TABLE IF EXISTS sites CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS portfolios CASCADE;
 DROP TABLE IF EXISTS employees CASCADE;
+DROP TABLE IF EXISTS app_settings CASCADE;
 
 -- ============================================================================
 -- SEQUENCES: Create sequences for ID generation
@@ -151,6 +152,13 @@ CREATE TABLE IF NOT EXISTS employees (
 
 CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id);
 CREATE INDEX IF NOT EXISTS idx_employees_is_active ON employees(is_active);
+
+-- APP SETTINGS (key-value for cron schedule, etc.)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- PORTFOLIOS (depends on employees)
 CREATE TABLE IF NOT EXISTS portfolios (

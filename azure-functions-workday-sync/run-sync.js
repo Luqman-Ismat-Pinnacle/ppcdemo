@@ -11,13 +11,18 @@ const { runMatchingAndAggregation } = require('./sync/matching');
 const config = require('./config');
 
 const WINDOW_DAYS = config.sync.windowDays;
-const HOURS_DAYS_BACK = config.sync.hoursDaysBack;
 
-async function runFullSync() {
+function getHoursDaysBack(override) {
+  if (typeof override === 'number' && override >= 30 && override <= 730) return override;
+  return config.sync.hoursDaysBack;
+}
+
+async function runFullSync(hoursDaysBackOverride) {
+  const HOURS_DAYS_BACK = getHoursDaysBack(hoursDaysBackOverride);
   const summary = {
     employees: null,
     hierarchy: null,
-    hours: { chunksOk: 0, chunksFail: 0, totalHours: 0 },
+    hours: { chunksOk: 0, chunksFail: 0, totalHours: 0, hoursDaysBack: HOURS_DAYS_BACK },
     matching: null,
   };
 

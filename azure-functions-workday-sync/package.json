@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "func start",
-    "test": "node run-sync.js"
+    "test": "node run-sync.js",
+    "deploy": "func azure functionapp publish ${FUNC_APP_NAME:?Set FUNC_APP_NAME to your Azure Function App name}"
   },
   "dependencies": {
     "pg": "^8.11.3"

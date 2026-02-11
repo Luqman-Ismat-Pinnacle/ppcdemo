@@ -916,9 +916,12 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     milestoneMap: buildMilestoneMap(milestoneList),
     actualHoursMap: buildTaskActualHoursMap(rawData.hours || []),
   };
+  const taskActualHoursMap = buildTaskActualHoursMap(rawData.hours || []);
   const taskActualCostFromHours = buildTaskActualCostMap(rawData.hours || []);
   const costAggregations = buildCostAggregations(rawData.costTransactions || []);
 
+  // WBS actuals: use only hour_entries (and cost transactions). When Data Management hours are empty,
+  // do not show stale task-row actual_hours/actual_cost so WBS shows 0 for labor actuals.
   const tasks = (rawData.tasks || []).map((task: any) => {
     const taskId = task.id || task.taskId;
     const delta = taskDeltas.get(taskId) || ZERO_DELTA;
@@ -926,10 +929,10 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const baseCost = task.baselineCost ?? 0;
     const adjustedBaselineHours = baseHours + delta.hours;
     const adjustedBaselineCost = baseCost + delta.cost;
-    const actualHours = task.actualHours || 0;
+    const actualHours = taskActualHoursMap.get(taskId) ?? 0;
     const taskCost = costAggregations.byTask.get(taskId) || { actual: 0, forecast: 0 };
     const laborActualFromHours = taskActualCostFromHours.get(taskId) || 0;
-    const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
+    const actualCost = laborActualFromHours + taskCost.actual;
     const nonLaborForecast = taskCost.forecast;
 
     // Use MPP parser remainingHours only - no calculation fallback
@@ -946,6 +949,7 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
       baselineStartDate: shiftDateByDays(task.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(task.baselineEndDate, delta.endDays),
       remainingHours,
+      actualHours,
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,
@@ -960,10 +964,10 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const baseCost = task.baselineCost ?? 0;
     const adjustedBaselineHours = baseHours + delta.hours;
     const adjustedBaselineCost = baseCost + delta.cost;
-    const actualHours = task.actualHours || 0;
+    const actualHours = taskActualHoursMap.get(taskId) ?? 0;
     const taskCost = costAggregations.byTask.get(taskId) || { actual: 0, forecast: 0 };
     const laborActualFromHours = taskActualCostFromHours.get(taskId) || 0;
-    const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
+    const actualCost = laborActualFromHours + taskCost.actual;
     const nonLaborForecast = taskCost.forecast;
 
     // Use MPP parser remainingHours only - no calculation fallback
@@ -980,6 +984,7 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
       baselineStartDate: shiftDateByDays(task.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(task.baselineEndDate, delta.endDays),
       remainingHours: subRemainingHours,
+      actualHours,
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,

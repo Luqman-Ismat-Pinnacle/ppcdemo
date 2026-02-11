@@ -465,6 +465,40 @@ export function DataProvider({ children }: DataProviderProps) {
     const filtered = { ...data };
 
     // =========================================================================
+    // ACTIVE PORTFOLIOS ONLY (WBS, Gantt, and app-wide views exclude inactive)
+    // Data Management uses raw `data` for editing; filteredData is for display.
+    // =========================================================================
+    const activePortfolioIds = new Set(
+      (filtered.portfolios || [])
+        .filter((p: any) => p.isActive !== false && p.is_active !== false && p.active !== false)
+        .map((p: any) => p.id || p.portfolioId)
+    );
+    if (filtered.portfolios && activePortfolioIds.size >= 0) {
+      filtered.portfolios = (filtered.portfolios as any[]).filter((p: any) =>
+        activePortfolioIds.has(p.id || p.portfolioId)
+      );
+    }
+    if (filtered.projects) {
+      filtered.projects = (filtered.projects as any[]).filter((p: any) => {
+        const pid = p.portfolioId ?? p.portfolio_id;
+        return pid && activePortfolioIds.has(pid);
+      });
+    }
+    if (filtered.customers) {
+      filtered.customers = (filtered.customers as any[]).filter((c: any) => {
+        const pid = c.portfolioId ?? c.portfolio_id;
+        return pid && activePortfolioIds.has(pid);
+      });
+    }
+    const activeCustomerIds = new Set((filtered.customers || []).map((c: any) => c.id || c.customerId));
+    if (filtered.sites && activeCustomerIds.size > 0) {
+      filtered.sites = (filtered.sites as any[]).filter((s: any) => {
+        const cid = s.customerId ?? s.customer_id;
+        return cid && activeCustomerIds.has(cid);
+      });
+    }
+
+    // =========================================================================
     // APPLY HIERARCHY FILTER
     // =========================================================================
     if (hierarchyFilter?.path && hierarchyFilter.path.length > 0) {

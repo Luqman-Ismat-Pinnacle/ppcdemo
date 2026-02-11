@@ -81,13 +81,13 @@ export default function Header() {
           <Link href="/project-controls/wbs-gantt">
             <Image
               src="/logo.png"
-              alt="Pinnacle"
+              alt="Pinnacle Project Management"
               width={100}
               height={24}
               priority
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                target.outerHTML = '<span style="font-size:0.9rem;font-weight:700;background:linear-gradient(135deg,#40E0D0,#CDDC39);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Pinnacle</span>';
+                target.outerHTML = '<span style="font-size:0.9rem;font-weight:700;background:linear-gradient(135deg,#40E0D0,#CDDC39);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Pinnacle Project Management</span>';
               }}
             />
           </Link>

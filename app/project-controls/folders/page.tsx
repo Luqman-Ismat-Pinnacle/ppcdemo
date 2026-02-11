@@ -124,7 +124,7 @@ const storageApi = {
 
 export default function DocumentsPage() {
   const router = useRouter();
-  const { refreshData, filteredData, isLoading } = useData();
+  const { refreshData, data, filteredData, isLoading } = useData();
   const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -180,16 +180,15 @@ export default function DocumentsPage() {
 
   const selectedProjectMissingPortfolio = useMemo(() => {
     if (!workdayProjectId) return false;
-    const projects = filteredData?.projects || [];
+    const projects = data?.projects || [];
     const proj = projects.find((p: any) => (p.id || p.projectId) === workdayProjectId);
     if (!proj) return false;
     const portfolioId = proj.portfolioId ?? proj.portfolio_id;
     if (!portfolioId) return true;
-    // Also check the portfolio still exists (might have been removed with terminated manager)
-    const portfolios = filteredData?.portfolios || [];
-    const portfolioExists = portfolios.some((p: any) => (p.id || p.portfolioId) === portfolioId);
-    return !portfolioExists;
-  }, [workdayProjectId, filteredData?.projects, filteredData?.portfolios]);
+    const portfolios = data?.portfolios || [];
+    const portfolio = portfolios.find((p: any) => (p.id || p.portfolioId) === portfolioId);
+    return !portfolio || portfolio.isActive === false || portfolio.is_active === false;
+  }, [workdayProjectId, data?.projects, data?.portfolios]);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {
     setLogs(prev => [...prev, {
@@ -403,9 +402,8 @@ export default function DocumentsPage() {
     // If portfolio was missing and user assigned one, update the project + customer chain
     if (selectedProjectMissingPortfolio && assignPortfolioId) {
       try {
-        // Find the selected portfolio to resolve its customer
-        const portfolio = (filteredData?.portfolios || []).find((p: any) => (p.id || p.portfolioId) === assignPortfolioId);
-        const proj = (filteredData?.projects || []).find((p: any) => (p.id || p.projectId) === workdayProjectId);
+        const portfolio = (data?.portfolios || []).find((p: any) => (p.id || p.portfolioId) === assignPortfolioId);
+        const proj = (data?.projects || []).find((p: any) => (p.id || p.projectId) === workdayProjectId);
         if (proj) {
           // Update the project's portfolio_id
           await fetch('/api/data/sync', {
@@ -584,7 +582,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, filteredData?.portfolios, filteredData?.projects]);
+  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects]);
 
   // Persist process/upload logs to project_log (parser logs)
   const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
@@ -632,6 +630,38 @@ export default function DocumentsPage() {
     };
 
     try {
+      // If project was not under an active portfolio and user chose one, reassign before processing
+      if (file.workdayProjectId && selectedProjectMissingPortfolio && assignPortfolioId) {
+        const proj = (data?.projects || []).find((p: any) => (p.id || p.projectId) === file.workdayProjectId);
+        if (proj) {
+          pushLog('info', `Reassigning project to portfolio before processing...`);
+          try {
+            await fetch('/api/data/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dataKey: 'projects',
+                records: [{ id: proj.id || proj.projectId, portfolio_id: assignPortfolioId }],
+              }),
+            });
+            const customerId = proj.customerId ?? proj.customer_id;
+            if (customerId) {
+              await fetch('/api/data/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  dataKey: 'customers',
+                  records: [{ id: customerId, portfolio_id: assignPortfolioId }],
+                }),
+              });
+            }
+            pushLog('success', 'Project reassigned to portfolio');
+          } catch (err: any) {
+            pushLog('warning', `Portfolio reassignment failed: ${err.message}`);
+          }
+        }
+      }
+
       // Step 1: Download file from Azure Blob Storage
       pushLog('info', `[Storage] Downloading ${file.fileName}...`);
 
@@ -1029,7 +1059,7 @@ export default function DocumentsPage() {
       // Clear the processing stage after a brief delay so user sees "Complete!"
       setTimeout(() => setProcessingStage(null), 2000);
     }
-  }, [uploadedFiles, addLog, refreshData, saveLogsToProjectLog]);
+  }, [uploadedFiles, addLog, refreshData, saveLogsToProjectLog, data, selectedProjectMissingPortfolio, assignPortfolioId]);
 
   // Delete file — clears blob, project_documents record, and all associated data
   const handleDelete = useCallback(async (fileId: string) => {
