@@ -22,7 +22,16 @@ export function RouteLoadingProvider({ children }: { children: React.ReactNode }
   const [routeChanging, setRouteChanging] = useState(false);
 
   useEffect(() => {
+    // Mark route as changing on navigation and automatically clear
+    // after a short delay as a safety net so we never get stuck.
     setRouteChanging(true);
+    const timeoutId = window.setTimeout(() => {
+      setRouteChanging(false);
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [pathname]);
 
   const setRouteReady = useCallback(() => {
