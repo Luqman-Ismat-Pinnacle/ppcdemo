@@ -12,8 +12,9 @@
  * @module app/project-management/sprint/iterations/page
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 
 interface Iteration {
@@ -65,6 +66,8 @@ function getIterationStatus(iter: Iteration): { label: string; color: string } {
 
 export default function IterationsPage() {
   const { data, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const [iterations, setIterations] = useState<Iteration[]>(() => {
     // Build from sprints data if available
     if (data.sprints?.length) {
@@ -198,7 +201,7 @@ export default function IterationsPage() {
 
   const hasChildren = (id: string) => iterations.some(i => i.parentId === id);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>

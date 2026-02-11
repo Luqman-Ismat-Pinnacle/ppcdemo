@@ -12,8 +12,9 @@
  * @module app/insights/milestones/page
  */
 
-import React, { useMemo, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import ChartCard from '@/components/charts/ChartCard';
@@ -37,6 +38,8 @@ function formatPercent(value: unknown): string {
 
 export default function MilestonesPage() {
   const { filteredData, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   const [scoreboardSort, setScoreboardSort] = useState<SortState | null>(null);
   const [milestonesSort, setMilestonesSort] = useState<SortState | null>(null);
@@ -124,7 +127,7 @@ export default function MilestonesPage() {
     });
   }, [filteredMilestones, milestonesSort]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   return (
     <div className="page-panel insights-page">

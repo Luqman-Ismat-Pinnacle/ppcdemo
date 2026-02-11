@@ -18,6 +18,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import { useLogs } from '@/lib/logs-context';
 import { CPMEngine, CPMTask, CPMResult } from '@/lib/cpm-engine';
@@ -199,6 +200,8 @@ const FTESparkline = memo(function FTESparkline({
 
 export default function WBSGanttPage() {
   const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const { addEngineLog } = useLogs();
   const data = filteredData;
   const employees = fullData.employees;
@@ -251,13 +254,18 @@ export default function WBSGanttPage() {
     return { ...raw, items: filterWbsItemsByPath(raw.items, hierarchyFilter.path) };
   }, [dateFilter, fullData.wbsData, data.wbsData, hierarchyFilter?.path]);
 
-  // ── Project options for CPM selector ───────────────────────────
-  const projectOptions = useMemo(() =>
-    (fullData.projects || [])
-      .filter((p: any) => p.has_schedule === true || p.hasSchedule === true)
-      .map((p: any) => ({ id: p.id || p.projectId, name: p.name, secondary: p.projectId })),
-    [fullData.projects],
-  );
+  // ── Project options for CPM selector (show all projects; sort those with schedule first) ──
+  const projectOptions = useMemo(() => {
+    const list = (fullData.projects || []).map((p: any) => ({
+      id: p.id || p.projectId,
+      name: p.name,
+      secondary: p.projectId,
+      hasSchedule: p.has_schedule === true || p.hasSchedule === true,
+    }));
+    return list
+      .sort((a: any, b: any) => (b.hasSchedule ? 1 : 0) - (a.hasSchedule ? 1 : 0))
+      .map(({ id, name, secondary }) => ({ id, name, secondary }));
+  }, [fullData.projects]);
 
   // ── Employee options for Assign dropdown ───────────────────────
   const employeeOptions = useMemo(() =>
@@ -756,7 +764,7 @@ export default function WBSGanttPage() {
   // RENDER
   // ═══════════════════════════════════════════════════════════════
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   const tableWidth = fixedColsWidth + dateColumns.length * columnWidth;
 

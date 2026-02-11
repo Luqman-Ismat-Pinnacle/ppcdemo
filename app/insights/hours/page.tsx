@@ -14,8 +14,9 @@
  * @module app/insights/hours/page
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 
 /** Safe number formatting - returns '0' for NaN/Infinity */
@@ -59,6 +60,8 @@ function formatWeekLabel(dateStr: string): string {
 
 export default function HoursPage() {
   const { filteredData, variancePeriod, varianceEnabled, metricsHistory, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
@@ -408,7 +411,7 @@ export default function HoursPage() {
     });
   }, [sortedRoleRows, tableWeeks]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   return (
     <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>

@@ -16,6 +16,7 @@
 import React, { useMemo, useState, useCallback, Suspense, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import type { EChartsOption } from 'echarts';
@@ -71,7 +72,9 @@ function ResourcingPageLoading() {
 
 function ResourcingPageContent() {
   const searchParams = useSearchParams();
-  const { filteredData, fullData, setData, refreshData } = useData();
+  const { filteredData, fullData, setData, refreshData, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
@@ -987,7 +990,7 @@ function ResourcingPageContent() {
   }, [heatmapSharedData]);
 
   // ── Loading state ───────────────────────────────────────────────
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   // ── Empty state ───────────────────────────────────────────────
   if (!hasData) {

@@ -13,15 +13,18 @@
  * @module app/project-controls/resource-leveling/page
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 
 export default function ResourceLevelingPage() {
   const { filteredData, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   return (
     <div className="page-panel">

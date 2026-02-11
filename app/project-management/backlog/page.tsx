@@ -14,8 +14,9 @@
  * @module app/project-management/backlog/page
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import PageLoader from '@/components/ui/PageLoader';
 import type { Epic, Feature, UserStory, Task, Employee, Sprint, ChangeLogEntry } from '@/types/data';
 
@@ -43,6 +44,8 @@ interface BacklogItem {
 
 export default function BacklogPage() {
   const { filteredData, data, updateData, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   
   const [viewMode, setViewMode] = useState<ViewMode>('hierarchy');
   const [groupBy, setGroupBy] = useState<GroupBy>('epic');
@@ -249,7 +252,7 @@ export default function BacklogPage() {
     }
   };
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   // Render backlog item
   const renderBacklogItem = (item: BacklogItem, level: number = 0) => {

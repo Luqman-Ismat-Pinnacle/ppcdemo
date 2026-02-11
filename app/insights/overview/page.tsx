@@ -11,8 +11,9 @@
  * - 4 tabs: Dashboard, Milestones, Variance, Advanced
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import type { EChartsOption } from 'echarts';
 import useCrossFilter, { type CrossFilter } from '@/lib/hooks/useCrossFilter';
@@ -822,6 +823,8 @@ function VarianceTimeline({ portfolio, projectBreakdown, onClick }: { portfolio:
 
 export default function OverviewPage() {
   const { filteredData, isLoading, hierarchyFilter, variancePeriod, varianceEnabled, metricsHistory } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   const crossFilter = useCrossFilter();
   const [selectedProject, setSelectedProject] = useState<any>(null);
@@ -973,8 +976,8 @@ export default function OverviewPage() {
 
   /* ── Render ── */
 
-  // Show loading spinner until context has data
-  if (isLoading) {
+  // Show loading spinner until context has data or route is ready
+  if (isLoading || routeChanging) {
     return (
       <div className="page-panel insights-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <div style={{ textAlign: 'center' }}>

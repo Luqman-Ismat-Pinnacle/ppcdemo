@@ -16,8 +16,9 @@
  *  7. Meeting Snapshot & Delta
  */
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import type { EChartsOption } from 'echarts';
 // cross-filtering removed per user request
@@ -1280,6 +1281,8 @@ function MeetingSnapshotButton() {
 
 export default function OverviewV2Page() {
   const { filteredData, isLoading, variancePeriod, metricsHistory } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   const [aggregateBy, setAggregateBy] = useState<'project' | 'site'>('project');
 
@@ -1311,7 +1314,7 @@ export default function OverviewV2Page() {
 
   const hasData = projectBreakdown.length > 0;
 
-  if (isLoading) return <div className="page-panel insights-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}><div style={{ textAlign: 'center' }}><div style={{ width: 36, height: 36, border: `3px solid ${C.border}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} /><div style={{ color: C.textMuted }}>Loading...</div></div></div>;
+  if (isLoading || routeChanging) return <div className="page-panel insights-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}><div style={{ textAlign: 'center' }}><div style={{ width: 36, height: 36, border: `3px solid ${C.border}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} /><div style={{ color: C.textMuted }}>Loading...</div></div></div>;
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>

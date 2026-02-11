@@ -13,8 +13,9 @@
  * @module app/project-management/sprint/page
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useRouteLoading } from '@/lib/route-loading-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import PageLoader from '@/components/ui/PageLoader';
 import SprintBurndownChart from '@/components/charts/SprintBurndownChart';
@@ -527,6 +528,8 @@ const VIEW_CONFIG: Record<ViewType, { label: string; icon: JSX.Element }> = {
 
 export default function SprintPlanningPage() {
   const { filteredData, isLoading } = useData();
+  const { routeChanging, setRouteReady } = useRouteLoading();
+  useEffect(() => { setRouteReady(); }, [setRouteReady]);
   const data = filteredData;
   
   const [selectedView, setSelectedView] = useState<ViewType>('board');
@@ -641,7 +644,7 @@ export default function SprintPlanningPage() {
     }));
   }, [selectedIteration?.workDays]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading || routeChanging) return <PageLoader />;
 
   return (
     <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
