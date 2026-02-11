@@ -68,9 +68,13 @@ async function matchWithPostgres() {
     unitsByProject.set(u.project_id, arr);
   });
 
+  // Build a set of valid task IDs for FK validation
+  const validTaskIds = new Set<string>(tasks.map((t: any) => t.id));
+
   const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
   let tasksMatched = 0;
   let unitsMatched = 0;
+  let skippedInvalidFK = 0;
   const updates: { id: string; task_id: string }[] = [];
 
   for (const h of unassignedHours) {
@@ -113,23 +117,22 @@ async function matchWithPostgres() {
       }
     }
 
-    if (!matched) {
-      // Fallback: match units
-      const projectUnits = unitsByProject.get(h.project_id) || [];
-      for (const unit of projectUnits) {
-        const unitName = normalize(unit.name);
-        if (unitName && (desc.includes(unitName) || (chargeCode && chargeCode.includes(unitName)))) {
-          updates.push({ id: h.id, task_id: unit.id });
-          unitsMatched++;
-          break;
-        }
-      }
-    }
+    // NOTE: Unit matching removed — unit IDs are NOT valid for hour_entries.task_id FK
+    // (the FK references tasks(id), not units(id))
   }
 
-  // Batch update hour_entries
+  // Batch update hour_entries — only with validated task IDs
   for (const u of updates) {
-    await pgQuery('UPDATE hour_entries SET task_id = $1 WHERE id = $2', [u.task_id, u.id]);
+    if (!validTaskIds.has(u.task_id)) {
+      skippedInvalidFK++;
+      continue;
+    }
+    try {
+      await pgQuery('UPDATE hour_entries SET task_id = $1 WHERE id = $2', [u.task_id, u.id]);
+    } catch (e: any) {
+      console.warn(`[Matching] Skipped task_id=${u.task_id} for hour ${u.id}: ${e.message}`);
+      skippedInvalidFK++;
+    }
   }
 
   // Aggregate actual hours/cost to tasks
@@ -150,8 +153,9 @@ async function matchWithPostgres() {
   return NextResponse.json({
     success: true,
     tasksMatched,
-    unitsMatched,
-    stillUnmatched: unassignedHours.length - tasksMatched - unitsMatched,
+    unitsMatched: 0,
+    skippedInvalidFK,
+    stillUnmatched: unassignedHours.length - tasksMatched,
     aggregated,
   });
 }
@@ -192,44 +196,35 @@ async function matchWithSupabase() {
     tasksByProject.set(t.project_id, arr);
   });
 
+  const validTaskIds = new Set<string>((tasks || []).map((t: any) => t.id));
   const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
-  let tasksMatched = 0, unitsMatched = 0;
+  let tasksMatched = 0;
   const updates: { id: string; task_id: string }[] = [];
 
   for (const h of all) {
     if (!h.project_id) continue;
     const desc = normalize(h.description || '');
     if (!desc) continue;
-    let matched = false;
     for (const task of (tasksByProject.get(h.project_id) || [])) {
       if (normalize(task.name) && desc.includes(normalize(task.name))) {
         updates.push({ id: h.id, task_id: task.id });
         tasksMatched++;
-        matched = true;
         break;
       }
     }
-    if (!matched) {
-      const projectUnits = (units || []).filter((u: any) => u.project_id === h.project_id);
-      for (const unit of projectUnits) {
-        if (normalize(unit.name) && desc.includes(normalize(unit.name))) {
-          updates.push({ id: h.id, task_id: unit.id });
-          unitsMatched++;
-          break;
-        }
-      }
-    }
+    // Unit matching removed — unit IDs violate hour_entries.task_id FK
   }
 
   for (const u of updates) {
+    if (!validTaskIds.has(u.task_id)) continue;
     await supabase.from('hour_entries').update({ task_id: u.task_id }).eq('id', u.id);
   }
 
   return NextResponse.json({
     success: true,
     tasksMatched,
-    unitsMatched,
-    stillUnmatched: all.length - tasksMatched - unitsMatched,
+    unitsMatched: 0,
+    stillUnmatched: all.length - tasksMatched,
     aggregated: 0,
   });
 }
