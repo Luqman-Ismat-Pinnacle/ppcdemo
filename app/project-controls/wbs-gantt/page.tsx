@@ -1226,73 +1226,100 @@ export default function WBSGanttPage() {
         </div>
       )}
 
-      {/* Actual hours drill-down modal */}
+      {/* Actual hours drill-down modal — themed, larger, more detail */}
       {drillDownRow && (
         <div
+          className="modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
             zIndex: 2000,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(0,0,0,0.55)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 24,
+            padding: 'var(--radius-lg)',
           }}
           onClick={() => setDrillDownRow(null)}
         >
           <div
+            role="dialog"
+            aria-labelledby="hours-breakdown-title"
             style={{
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border-color)',
-              borderRadius: 12,
-              maxWidth: 560,
+              borderRadius: 'var(--radius-lg)',
+              maxWidth: 900,
               width: '100%',
-              maxHeight: '80vh',
+              maxHeight: '88vh',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: 'var(--shadow-lg)',
+              boxShadow: 'var(--shadow-xl)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--pinnacle-teal)' }}>
-                Actual hours — {drillDownRow.wbsCode} {drillDownRow.name}
-              </h3>
-              <button type="button" onClick={() => setDrillDownRow(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.25rem' }} aria-label="Close">×</button>
-            </div>
-            <div style={{ padding: 16, overflow: 'auto', flex: 1 }}>
-              {drillDownHours.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: 0 }}>No hour entries for this task in Data Management.</p>
-              ) : (
-                <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
-                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Employee</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Date</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'right' }}>Hours</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 600, textAlign: 'right' }}>Cost</th>
-                      <th style={{ padding: '8px 12px', fontWeight: 600 }}>Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drillDownHours.map((h: any, i: number) => (
-                      <tr key={h.id || i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '8px 12px' }}>{getEmployeeName(h.employee_id || h.employeeId, employees || []) || (h.employee_id || h.employeeId) || '-'}</td>
-                        <td style={{ padding: '8px 12px' }}>{h.date ? new Date(h.date).toLocaleDateString('en-US') : '-'}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{Number(h.hours)?.toFixed(1) ?? '-'}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>{h.actual_cost != null ? formatCurrency(Number(h.actual_cost)) : '-'}</td>
-                        <td style={{ padding: '8px 12px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={h.description || ''}>{h.description || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {drillDownHours.length > 0 && (
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 12, marginBottom: 0 }}>
-                  Total: {drillDownHours.reduce((s: number, h: any) => s + (Number(h.hours) || 0), 0).toFixed(1)} hrs · {formatCurrency(drillDownHours.reduce((s: number, h: any) => s + (Number(h.actual_cost) || 0), 0))} cost
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <h2 id="hours-breakdown-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Hour entries — <span style={{ color: 'var(--pinnacle-teal)' }}>{drillDownRow.wbsCode}</span> {drillDownRow.name}
+                </h2>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Labor logged against this task from Data Management / Workday sync
                 </p>
+              </div>
+              <button type="button" onClick={() => setDrillDownRow(null)} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', cursor: 'pointer', width: 36, height: 36, borderRadius: 'var(--radius-sm)', fontSize: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label="Close">×</button>
+            </div>
+            <div style={{ padding: '1rem 1.25rem', overflow: 'auto', flex: 1, minHeight: 0 }}>
+              {drillDownHours.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  No hour entries for this task. Entries appear here after syncing from Workday or entering hours in Data Management.
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: '1rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap', padding: '0.75rem 1rem', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total hours</span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{drillDownHours.reduce((s: number, h: any) => s + (Number(h.hours) || 0), 0).toFixed(1)}</div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total cost</span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{formatCurrency(drillDownHours.reduce((s: number, h: any) => s + (Number(h.actual_cost) || 0), 0))}</div>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entries</span>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>{drillDownHours.length}</div>
+                    </div>
+                  </div>
+                  <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left' }}>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Employee</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Date</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'right' }}>Hours</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'right' }}>Actual cost</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Phase / Task</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Charge</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'right' }}>Billable</th>
+                        <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drillDownHours.map((h: any, i: number) => (
+                        <tr key={h.id || i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-primary)' }}>{getEmployeeName(h.employee_id || h.employeeId, employees || []) || (h.employee_id || h.employeeId) || '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)' }}>{h.date ? new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', color: 'var(--pinnacle-teal)', fontWeight: 500 }}>{Number(h.hours)?.toFixed(2) ?? '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', color: 'var(--text-primary)' }}>{h.actual_cost != null ? formatCurrency(Number(h.actual_cost)) : '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{(h.workday_phase || h.workday_task) ? [h.workday_phase, h.workday_task].filter(Boolean).join(' / ') : '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-secondary)' }}>{h.charge_type ?? h.chargeType ?? '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', color: 'var(--text-secondary)' }}>{h.billable_amount != null ? formatCurrency(Number(h.billable_amount)) : h.billable_rate != null ? `@ ${formatCurrency(Number(h.billable_rate))}/hr` : '-'}</td>
+                          <td style={{ padding: '0.6rem 0.75rem', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={h.description || ''}>{h.description || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           </div>

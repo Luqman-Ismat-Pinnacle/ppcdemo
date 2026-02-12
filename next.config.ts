@@ -9,6 +9,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/project-controls/project-health', destination: '/project-controls/folders', permanent: true },
+      { source: '/insights/snapshots-variance', destination: '/insights/overview', permanent: false },
     ];
   },
 

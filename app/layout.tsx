@@ -19,12 +19,14 @@ import { Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/layout/ThemeProvider';
 import { DataProvider } from '@/lib/data-context';
+import { SnapshotProvider } from '@/lib/snapshot-context';
 import { LogsProvider } from '@/lib/logs-context';
 import { UserProvider } from '@/lib/user-context';
 import Auth0Provider from '@/components/providers/Auth0Provider';
 import AuthGuard from '@/components/auth/AuthGuard';
 import InactivityLogout from '@/components/auth/InactivityLogout';
 import Header from '@/components/layout/Header';
+import SnapshotPopup from '@/components/snapshot/SnapshotPopup';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
 
@@ -94,13 +96,16 @@ export default function RootLayout({
                   <ThemeProvider>
                     <UserProvider>
                       <DataProvider>
-                        <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
-                          <Header />
-                          <main className="main-content">
-                            {children}
-                          </main>
-                          <HelpButton />
-                        </div>
+                        <SnapshotProvider>
+                          <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
+                            <Header />
+                            <main className="main-content">
+                              {children}
+                            </main>
+                            <HelpButton />
+                            <SnapshotPopup />
+                          </div>
+                        </SnapshotProvider>
                       </DataProvider>
                     </UserProvider>
                   </ThemeProvider>

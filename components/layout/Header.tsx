@@ -27,6 +27,7 @@ import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
 import StatusAndLogsDropdown from './StatusAndLogsDropdown';
 import NotificationBell from './NotificationBell';
+import { useSnapshotPopup } from '@/lib/snapshot-context';
 
 /**
  * Header component displaying the main application header.
@@ -46,6 +47,7 @@ export default function Header() {
 
   // Get user info from context
   const { user, logout: userLogout } = useUser();
+  const { openSnapshotPopup } = useSnapshotPopup();
 
 
   useEffect(() => {
@@ -100,6 +102,41 @@ export default function Header() {
         <DateFilterControl />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <HierarchyFilter />
+        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+        <button
+          type="button"
+          onClick={openSnapshotPopup}
+          aria-label="Open Snapshots & Variance"
+          title="Snapshots & Variance"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 36,
+            height: 36,
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-tertiary)',
+            color: 'var(--pinnacle-teal)',
+            cursor: 'pointer',
+            transition: 'var(--transition-fast)',
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = 'rgba(64, 224, 208, 0.12)';
+            e.currentTarget.style.borderColor = 'var(--pinnacle-teal)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = 'var(--bg-tertiary)';
+            e.currentTarget.style.borderColor = 'var(--border-color)';
+          }}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+        </button>
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <NotificationBell />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
