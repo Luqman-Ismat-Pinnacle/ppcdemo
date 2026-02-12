@@ -235,12 +235,12 @@ export default function EnhancedTooltip({
           <div style={{
             marginTop: '8px',
             padding: '8px',
-            background: 'rgba(64, 224, 208, 0.1)',
-            border: '1px solid rgba(64, 224, 208, 0.3)',
-            borderRadius: '4px',
+            background: 'var(--gradient-accent-subtle)',
+            border: '1px solid var(--border-focus)',
+            borderRadius: 'var(--radius-sm)',
             fontSize: '0.8rem',
             fontFamily: 'monospace',
-            color: 'var(--pinnacle-teal)',
+            color: 'var(--text-primary)',
           }}>
             <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text-primary)' }}>
               Calculation:

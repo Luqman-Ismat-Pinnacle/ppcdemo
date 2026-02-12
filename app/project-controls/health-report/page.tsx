@@ -121,16 +121,17 @@ export default function ProjectHealthReportPage() {
         <button
           onClick={() => window.print()}
           style={{
-            padding: '0.4rem 0.9rem',
-            borderRadius: 4,
+            padding: '0.5rem 1rem',
+            borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--border-color)',
-            background: 'var(--bg-tertiary)',
-            color: 'var(--text-primary)',
-            fontSize: '0.8rem',
+            background: 'var(--pinnacle-teal)',
+            color: '#000',
+            fontSize: '0.85rem',
+            fontWeight: 600,
             cursor: 'pointer',
           }}
         >
-          Download PDF
+          Print / Save as PDF
         </button>
       </div>
 

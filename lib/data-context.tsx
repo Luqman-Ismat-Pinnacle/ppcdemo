@@ -574,20 +574,23 @@ export function DataProvider({ children }: DataProviderProps) {
       });
     }
 
-    // Filter WBS tree: only active portfolios, exclude empty portfolios, then renumber
+    // Filter WBS tree: only active portfolios, exclude empty portfolios (no children), then deep-clone and renumber
     if (filtered.wbsData?.items?.length) {
-      const hasProjectInSubtree = (item: any): boolean => {
-        if (item.itemType === 'project' || item.type === 'project') return true;
-        if (item.children?.length) return item.children.some((c: any) => hasProjectInSubtree(c));
-        return false;
-      };
-      let wbsItems = (filtered.wbsData.items as any[]).filter((item: any) => {
-        if (item.itemType !== 'portfolio' && item.type !== 'portfolio') return true;
+      const isPortfolio = (item: any) => item.itemType === 'portfolio' || item.type === 'portfolio';
+      const wbsFiltered = (filtered.wbsData.items as any[]).filter((item: any) => {
+        if (!isPortfolio(item)) return true;
         const portfolioId = (item.id || '').replace(/^wbs-portfolio-/, '');
         if (!portfolioId || !activePortfolioIds.has(portfolioId)) return false;
-        if (!item.children?.length) return false;
-        return hasProjectInSubtree(item);
+        // Hide portfolio if it has nothing in it (no children)
+        if (!item.children || item.children.length === 0) return false;
+        return true;
       });
+      const cloneItem = (item: any): any => {
+        const c = { ...item };
+        if (c.children?.length) c.children = c.children.map((ch: any) => cloneItem(ch));
+        return c;
+      };
+      const wbsItems = wbsFiltered.map((item: any) => cloneItem(item));
       const reindexWBS = (itemList: any[], prefix = '') => {
         itemList.forEach((item: any, idx: number) => {
           item.wbsCode = prefix ? `${prefix}.${idx + 1}` : `${idx + 1}`;
