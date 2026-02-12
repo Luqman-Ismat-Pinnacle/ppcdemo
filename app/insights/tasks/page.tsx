@@ -1,15 +1,15 @@
 'use client';
 
 /**
- * @fileoverview Tasks - Production Control Center (Phase 1-5)
+ * @fileoverview Tasks — Production Floor
  * 
- * High-impact visualizations for task management:
- * - SME Saturation Heatmap (Phase 1)
- * - Technical Pipeline Sankey (Phase 2)
- * - Splash Zone Dependency Graph (Phase 3)
- * - Quality vs. Velocity Scatter (Phase 4)
- * - Operational Snapshot Ticker (Phase 5)
- * - Cross-sync filtering across all charts
+ * Granular "Production Floor" view for micro-decision making:
+ * - Phase 1: Task Lifecycle "Pulse" Timeline (time-in-state by charge type)
+ * - Phase 2: Priority & Resource Demand Engine (value vs risk scatter)
+ * - Phase 3: TPW vs Execute Drill-Down Donut
+ * - Phase 4: Contributor Efficiency Swimlanes
+ * - Phase 5: Sprint Integration Panel
+ * - Phase 6: Site/Sprint View Toggle + Ghost Bars
  * 
  * @module app/insights/tasks/page
  */
@@ -22,11 +22,7 @@ import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
 import { useRouter } from 'next/navigation';
 
-/** Safe number formatting */
-const sn = (v: any, decimals = 2): string => {
-  const n = Number(v);
-  return isFinite(n) ? n.toFixed(decimals) : '0';
-};
+// ===== THEME =====
 
 const C = {
   teal: '#40E0D0', blue: '#3B82F6', purple: '#8B5CF6', amber: '#F59E0B',
@@ -43,7 +39,9 @@ const TT = {
   extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);',
 };
 
-// ===== UI COMPONENTS =====
+const CHARGE_COLORS: Record<string, string> = { EX: C.teal, QC: C.purple, CR: C.amber, TPW: C.pink, Other: C.blue };
+
+// ===== SHARED UI =====
 
 function SectionCard({ title, subtitle, badge, children, noPadding = false, actions }: {
   title: string; subtitle?: string; badge?: React.ReactNode;
@@ -67,360 +65,489 @@ function Badge({ label, color }: { label: string; color: string }) {
   return <span style={{ fontSize: '0.55rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: `${color}18`, color, letterSpacing: 0.4, textTransform: 'uppercase', marginLeft: 4 }}>{label}</span>;
 }
 
-function CrossFilterBar({
-  filters,
-  onRemove,
-  onClear,
-}: {
-  filters: CrossFilter[];
-  onRemove: (type: string, value?: string) => void;
-  onClear: () => void;
-}) {
+function CrossFilterBar({ filters, onRemove, onClear }: { filters: CrossFilter[]; onRemove: (type: string, value?: string) => void; onClear: () => void; }) {
   if (filters.length === 0) return null;
-
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-      background: 'linear-gradient(90deg, rgba(64,224,208,0.08), rgba(205,220,57,0.05))',
-      borderRadius: '12px', border: '1px solid rgba(64,224,208,0.2)', marginBottom: '1rem', flexWrap: 'wrap',
-    }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'linear-gradient(90deg, rgba(64,224,208,0.08), rgba(205,220,57,0.05))', borderRadius: '12px', border: '1px solid rgba(64,224,208,0.2)', marginBottom: '1rem', flexWrap: 'wrap' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.teal} strokeWidth="2">
-          <polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46" />
-        </svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.teal} strokeWidth="2"><polygon points="22,3 2,3 10,12.46 10,19 14,21 14,12.46" /></svg>
         <span style={{ fontSize: '0.75rem', color: C.teal, fontWeight: 600 }}>FILTERED</span>
       </div>
-
-      {filters.map((f) => (
-        <div key={`${f.type}-${f.value}`} style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.75rem',
-          background: C.bgSecondary, borderRadius: '20px', border: `1px solid ${C.border}`,
-        }}>
+      {filters.map(f => (
+        <div key={`${f.type}-${f.value}`} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.75rem', background: C.bgSecondary, borderRadius: '20px', border: `1px solid ${C.border}` }}>
           <span style={{ fontSize: '0.65rem', color: C.textMuted, textTransform: 'uppercase' }}>{f.type}:</span>
           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: C.textPrimary }}>{f.label}</span>
           <button onClick={() => onRemove(f.type, f.value)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: '2px' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
       ))}
-
-      <button onClick={onClear} style={{ marginLeft: 'auto', padding: '0.35rem 0.75rem', borderRadius: '6px', border: `1px solid ${C.border}`, background: 'transparent', color: C.textSecondary, fontSize: '0.75rem', cursor: 'pointer' }}>
-        Clear All
-      </button>
+      <button onClick={onClear} style={{ marginLeft: 'auto', padding: '0.35rem 0.75rem', borderRadius: '6px', border: `1px solid ${C.border}`, background: 'transparent', color: C.textSecondary, fontSize: '0.75rem', cursor: 'pointer' }}>Clear All</button>
     </div>
   );
 }
 
-// ===== CHART COMPONENTS =====
+// ===== PHASE 1: TASK LIFECYCLE PULSE TIMELINE =====
 
-const SMESaturationHeatmap = ({ tasks, employees, onClick }: { tasks: any[], employees: any[], onClick?: (params: any) => void }) => {
-  const heatmapOption: EChartsOption = useMemo(() => {
-    // 1. Get technical roles
-    const roles = [...new Set(employees.map(e => e.role || 'Unknown'))].filter(r =>
-      ['Engineer', 'Analyst', 'Technical', 'Quality', 'Developer', 'Lead'].some(kw => r.toLowerCase().includes(kw.toLowerCase()))
-    ).sort();
+const TaskLifecyclePulse = ({ task, hours }: { task: any; hours: any[] }) => {
+  const lifecycle = useMemo(() => {
+    const taskId = task.taskId || task.id;
+    const taskHours = hours.filter((h: any) => h.taskId === taskId);
 
-    if (roles.length === 0) return {};
+    // Group by charge type
+    const byType: Record<string, number> = { EX: 0, QC: 0, CR: 0, TPW: 0, Other: 0 };
+    taskHours.forEach((h: any) => {
+      const ct = (h.chargeType || '').toUpperCase();
+      if (ct === 'EX') byType.EX += h.hours;
+      else if (ct === 'QC') byType.QC += h.hours;
+      else if (ct === 'CR') byType.CR += h.hours;
+      else if (ct.includes('TPW') || ct.includes('TRAIN')) byType.TPW += h.hours;
+      else byType.Other += h.hours;
+    });
 
-    // 2. Generate 12 weeks
-    const weeks: string[] = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now);
-      d.setDate(d.getDate() + (i * 7));
-      weeks.push(d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' }));
+    const totalHours = Object.values(byType).reduce((s, v) => s + v, 0);
+    const createdDate = new Date(task.createdAt || task.startDate || task.baselineStartDate);
+    const dwellDays = Math.max(1, Math.round((Date.now() - createdDate.getTime()) / (1000 * 3600 * 24)));
+
+    // Detect dominant bottleneck
+    let alert = '';
+    const nonExPct = totalHours > 0 ? ((byType.QC + byType.CR + byType.TPW) / totalHours) * 100 : 0;
+    if (nonExPct > 60 && totalHours > 0) {
+      const dominant = byType.QC >= byType.CR && byType.QC >= byType.TPW ? 'Internal QC' : byType.CR >= byType.TPW ? 'Customer Relations' : 'TPW Overhead';
+      alert = `Life-cycle Alert: Task '${task.taskName || task.name}' has existed for ${dwellDays} days, but ${Math.round(nonExPct)}% of its logged time was spent in '${dominant}' wait-states. This is a sign-off bottleneck, not an execution issue.`;
     }
 
-    // 3. Data aggregation
-    const data: [number, number, number][] = [];
-    roles.forEach((role, rIdx) => {
-      const roleEmps = employees.filter(e => e.role === role);
-      const capacity = roleEmps.length * 40;
+    return { byType, totalHours, dwellDays, alert };
+  }, [task, hours]);
 
-      weeks.forEach((week, wIdx) => {
-        const weekStart = new Date(now);
-        weekStart.setDate(weekStart.getDate() + (wIdx * 7));
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 7);
-
-        let planned = 0;
-        tasks.forEach(t => {
-          const tStart = t.startDate ? new Date(t.startDate) : null;
-          const tEnd = (t.finishDate || t.dueDate) ? new Date(t.finishDate || t.dueDate) : null;
-          if (tStart && tEnd && tStart < weekEnd && tEnd > weekStart) {
-            const isAssigned = roleEmps.some(e => e.name === (t.assignedTo || t.assignedResource));
-            if (isAssigned) {
-              const totalDays = Math.max(1, (tEnd.getTime() - tStart.getTime()) / (1000 * 3600 * 24));
-              const daily = (t.baselineHours || 0) / totalDays;
-              const overlap = (Math.min(tEnd.getTime(), weekEnd.getTime()) - Math.max(tStart.getTime(), weekStart.getTime())) / (1000 * 3600 * 24);
-              planned += daily * Math.max(0, overlap);
-            }
-          }
-        });
-
-        const sat = capacity > 0 ? Math.round((planned / capacity) * 100) : 0;
-        data.push([wIdx, rIdx, sat]);
-      });
-    });
-
-    return {
-      tooltip: { ...TT, position: 'top', formatter: (p: any) => `${roles[p.data[1]]}<br/>Week of ${weeks[p.data[0]]}: <strong>${p.data[2]}% Saturation</strong>` },
-      grid: { top: '5%', bottom: '15%', left: '15%', right: '5%' },
-      xAxis: { type: 'category', data: weeks, axisLabel: { fontSize: 9, color: C.textMuted }, splitArea: { show: true } },
-      yAxis: { type: 'category', data: roles, axisLabel: { fontSize: 9, color: C.textMuted }, splitArea: { show: true } },
-      visualMap: { min: 0, max: 100, calculable: true, orient: 'horizontal', left: 'center', bottom: '0%', inRange: { color: [C.bgSecondary, C.teal, C.amber, C.red] } },
-      series: [{ name: 'Saturation', type: 'heatmap', data, label: { show: true, fontSize: 8, formatter: (p: any) => p.data[2] > 0 ? `${p.data[2]}%` : '' }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } } }]
-    };
-  }, [tasks, employees]);
-
-  return <ChartWrapper option={heatmapOption} height="350px" onClick={onClick} />;
-};
-
-const TechnicalPipelineSankey = ({ tasks, onClick }: { tasks: any[], onClick?: (params: any) => void }) => {
-  const option: EChartsOption = useMemo(() => {
-    if (!tasks.length) return {};
-    const stages = ['Analysis', 'QC', 'Approval', 'Complete'];
-    const pNames = [...new Set(tasks.map(t => (t as any).projectName || (t as any).project_name || 'Global'))].slice(0, 5);
-
-    const nodes: any[] = [];
-    const links: any[] = [];
-    const added = new Set<string>();
-    const addNode = (name: string, color: string) => { if (!added.has(name)) { nodes.push({ name, itemStyle: { color } }); added.add(name); } };
-
-    pNames.forEach(p => addNode(p, C.teal));
-    stages.forEach((s, i) => addNode(s, [C.blue, C.purple, C.amber, C.green][i]));
-
-    pNames.forEach(p => {
-      const pTasks = tasks.filter(t => ((t as any).projectName || (t as any).project_name) === p);
-      const flow = { Analysis: 0, QC: 0, Approval: 0, Complete: 0 };
-      pTasks.forEach((t: any) => {
-        const name = (t.name || t.taskName || '').toLowerCase();
-        const hrs = Number(t.actualHours || t.baselineHours || 0);
-        const pc = Number(t.percentComplete || 0);
-        if (pc >= 100) flow.Complete += hrs;
-        else if (name.includes('qc')) flow.QC += hrs;
-        else if (name.includes('approve')) flow.Approval += hrs;
-        else flow.Analysis += hrs;
-      });
-      Object.entries(flow).forEach(([s, v]) => { if (v > 0) links.push({ source: p, target: s, value: Math.round(v) }); });
-    });
-
-    return {
-      tooltip: { ...TT, trigger: 'item' },
-      series: [{ type: 'sankey', layout: 'none', zoom: 1, emphasis: { focus: 'adjacency' }, data: nodes, links, lineStyle: { color: 'gradient', opacity: 0.4 }, label: { fontSize: 10, color: C.textPrimary } }]
-    };
-  }, [tasks]);
-
-  return <ChartWrapper option={option} height="350px" onClick={onClick} />;
-};
-
-const SplashZoneGraph = ({ tasks }: { tasks: any[] }) => {
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-
-  const { nodes, links, impactedNodeIds } = useMemo(() => {
-    const nodes: any[] = [];
-    const links: any[] = [];
-    const successors = new Map<string, string[]>();
-
-    tasks.forEach(t => {
-      const id = t.taskId || t.id;
-      if (t.predecessorId) {
-        const list = successors.get(t.predecessorId) || [];
-        list.push(id);
-        successors.set(t.predecessorId, list);
-      }
-    });
-
-    const impacted = new Set<string>();
-    if (selectedNode) {
-      const queue = [selectedNode];
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        if (!impacted.has(current)) {
-          impacted.add(current);
-          const next = successors.get(current) || [];
-          queue.push(...next);
-        }
-      }
-    }
-
-    // Limit to tasks with dependencies or late/blocked for performance/clarity
-    const relevantTasks = tasks.filter(t => t.predecessorId || t.isCritical || (t.status || '').toLowerCase().includes('block'));
-
-    relevantTasks.forEach(t => {
-      const id = t.taskId || t.id;
-      const isLate = new Date(t.finishDate || t.dueDate) < new Date() && (t.percentComplete || 0) < 100;
-      const isBlocked = (t.status || '').toLowerCase().includes('block');
-      const inSplashZone = impacted.has(id) && id !== selectedNode;
-
-      nodes.push({
-        id,
-        name: t.taskName || t.name || id,
-        value: t.baselineHours || 0,
-        symbolSize: Math.max(10, Math.min(35, (t.baselineHours || 0) / 4)),
-        itemStyle: {
-          color: id === selectedNode ? C.pink : inSplashZone ? C.red : isBlocked ? C.red : isLate ? C.amber : C.teal,
-          opacity: selectedNode && !impacted.has(id) ? 0.2 : 1
-        },
-        label: { show: (t.baselineHours || 0) > 40 || id === selectedNode }
-      });
-
-      if (t.predecessorId) {
-        links.push({
-          source: t.predecessorId,
-          target: id,
-          lineStyle: {
-            color: impacted.has(t.predecessorId) && impacted.has(id) ? C.red : C.border,
-            opacity: selectedNode && (!impacted.has(t.predecessorId) || !impacted.has(id)) ? 0.1 : 0.4
-          }
-        });
-      }
-    });
-
-    return { nodes, links, impactedNodeIds: impacted };
-  }, [tasks, selectedNode]);
-
-  const option: EChartsOption = useMemo(() => ({
-    tooltip: { ...TT, trigger: 'item' },
-    series: [{
-      type: 'graph', layout: 'force', draggable: true,
-      data: nodes, links: links,
-      force: { repulsion: 200, edgeLength: [50, 150], gravity: 0.1 },
-      label: { position: 'right', fontSize: 9, color: C.textSecondary },
-      emphasis: { focus: 'adjacency', lineStyle: { width: 3 } }
-    }]
-  }), [nodes, links]);
-
-  const onChartClick = (params: any) => {
-    if (params.dataType === 'node') {
-      setSelectedNode(params.data.id === selectedNode ? null : params.data.id);
-    } else {
-      setSelectedNode(null);
-    }
-  };
+  const segments = Object.entries(lifecycle.byType).filter(([, v]) => v > 0);
+  const total = lifecycle.totalHours || 1;
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {selectedNode && (
-        <div style={{ padding: '0.5rem 1rem', marginBottom: '0.75rem', background: `${C.pink}15`, border: `1px solid ${C.pink}40`, borderRadius: 8, fontSize: '0.7rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div><span style={{ color: C.pink, fontWeight: 700 }}>SPLASH ZONE ACTIVE:</span> {impactedNodeIds.size - 1} downstream tasks impacted by this node.</div>
-          <button onClick={() => setSelectedNode(null)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', fontSize: '0.65rem' }}>RESET</button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {/* Task header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: C.textPrimary }}>{task.taskName || task.name}</div>
+          <div style={{ fontSize: '0.65rem', color: C.textMuted }}>{task.taskId || task.id} | {(task as any).projectName || (task as any).project_name || 'Project'}</div>
+        </div>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Dwell Time</div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: lifecycle.dwellDays > 14 ? C.red : C.teal }}>{lifecycle.dwellDays}d</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Active Time</div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: C.blue }}>{lifecycle.totalHours.toFixed(1)}h</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Complete</div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: (task.percentComplete || 0) >= 100 ? C.green : C.amber }}>{task.percentComplete || 0}%</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Segmented bar */}
+      <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', background: C.bgSecondary }}>
+        {segments.map(([type, value]) => (
+          <div key={type} style={{ width: `${(value / total) * 100}%`, background: CHARGE_COLORS[type] || C.blue, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 700, color: '#000', minWidth: 24, transition: 'width 0.3s ease' }} title={`${type}: ${value.toFixed(1)}h`}>
+            {value > total * 0.08 ? `${type} ${value.toFixed(0)}h` : ''}
+          </div>
+        ))}
+        {segments.length === 0 && <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: C.textMuted }}>No hours logged</div>}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        {Object.entries(CHARGE_COLORS).map(([type, color]) => (
+          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
+            <span style={{ fontSize: '0.55rem', color: C.textMuted }}>{type}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Auto-insight */}
+      {lifecycle.alert && (
+        <div style={{ padding: '0.5rem 0.75rem', background: `${C.amber}12`, border: `1px solid ${C.amber}30`, borderRadius: 8, fontSize: '0.65rem', color: C.amber, lineHeight: 1.5 }}>
+          {lifecycle.alert}
         </div>
       )}
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <ChartWrapper option={option} height="100%" onClick={onChartClick} />
-      </div>
     </div>
   );
 };
 
-// ===== PHASE 4: QUALITY VS. VELOCITY SCATTER =====
+// ===== PHASE 2: PRIORITY & RESOURCE DEMAND SCATTER =====
 
-const AnalystPerformanceScatter = ({ tasks, qcData }: { tasks: any[], qcData: any[] }) => {
+const PriorityDemandScatter = ({ tasks, hours, onSelect }: { tasks: any[]; hours: any[]; onSelect: (task: any) => void }) => {
   const option: EChartsOption = useMemo(() => {
-    // Build analyst map: name -> { hours, passRate }
-    const analystMap = new Map<string, { hours: number; taskCount: number; passRate: number; name: string }>();
-
-    // Aggregate hours per analyst from tasks
-    tasks.forEach((t: any) => {
-      const name = t.assignedResource || t.assignedTo;
-      if (!name) return;
-      const existing = analystMap.get(name) || { hours: 0, taskCount: 0, passRate: 0, name };
-      existing.hours += Number(t.actualHours || 0);
-      existing.taskCount += 1;
-      analystMap.set(name, existing);
+    // Build downstream dependency count
+    const successorCount = new Map<string, number>();
+    const countDownstream = (taskId: string, visited = new Set<string>()): number => {
+      if (visited.has(taskId)) return 0;
+      visited.add(taskId);
+      const successors = tasks.filter(t => t.predecessorId === taskId);
+      let count = successors.length;
+      successors.forEach(s => { count += countDownstream(s.taskId || s.id, visited); });
+      return count;
+    };
+    tasks.forEach(t => {
+      const id = t.taskId || t.id;
+      successorCount.set(id, countDownstream(id));
     });
 
-    // Merge QC data for pass rates
-    qcData.forEach((q: any) => {
-      const existing = analystMap.get(q.name);
-      if (existing) {
-        existing.passRate = q.passRate || (q.closedCount > 0 ? Math.round((q.passCount / q.closedCount) * 100) : 0);
-      }
+    // Build chargeType breakdown per task from hours
+    const taskChargeHours = new Map<string, { ex: number; qc: number }>();
+    hours.forEach((h: any) => {
+      if (!h.taskId) return;
+      const existing = taskChargeHours.get(h.taskId) || { ex: 0, qc: 0 };
+      const ct = (h.chargeType || '').toUpperCase();
+      if (ct === 'EX') existing.ex += h.hours;
+      else if (ct === 'QC') existing.qc += h.hours;
+      taskChargeHours.set(h.taskId, existing);
     });
 
-    const analysts = [...analystMap.values()].filter(a => a.hours > 0 && a.taskCount > 0);
-    if (analysts.length === 0) return {};
+    const scatterData = tasks.filter(t => (t.baselineHours || 0) > 0).map(t => {
+      const id = t.taskId || t.id;
+      const downstream = successorCount.get(id) || 0;
+      const variance = (Number(t.actualHours) || 0) - (Number(t.baselineHours) || 0);
+      const efficiency = (Number(t.baselineHours) || 1) > 0 ? (Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1) : 1;
+      const finishDate = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
+      const daysToDeadline = Math.round((finishDate.getTime() - Date.now()) / (1000 * 3600 * 24));
+      const charge = taskChargeHours.get(id) || { ex: 0, qc: 0 };
 
-    // X = velocity (hrs per task), Y = QC pass rate (%)
-    const scatterData = analysts.map(a => ({
-      value: [Math.round((a.hours / a.taskCount) * 10) / 10, a.passRate],
-      name: a.name,
-      symbolSize: Math.max(8, Math.min(30, a.taskCount * 2)),
-    }));
+      let needsTag = '';
+      if (charge.ex > 0 && charge.qc === 0 && (t.percentComplete || 0) > 50) needsTag = 'Needs QC';
+      else if (efficiency > 1.2 && daysToDeadline < 3) needsTag = 'Needs Support';
 
-    const maxVelocity = Math.max(...scatterData.map(d => d.value[0]), 20);
-    const midX = maxVelocity / 2;
+      return {
+        value: [downstream, Math.round(variance * 10) / 10],
+        name: t.taskName || t.name || id,
+        taskId: id,
+        symbolSize: Math.max(8, Math.min(40, (Number(t.baselineHours) || 0) / 3)),
+        needsTag,
+        itemStyle: {
+          color: needsTag === 'Needs Support' ? C.red : needsTag === 'Needs QC' ? C.purple : t.isCritical ? C.amber : C.teal,
+        },
+        label: {
+          show: needsTag !== '' || downstream > 3,
+          formatter: needsTag || (t.taskName || t.name || '').substring(0, 12),
+          fontSize: 8, color: C.textSecondary, position: 'right' as const,
+        },
+        task: t,
+      };
+    });
 
     return {
-      tooltip: { ...TT, formatter: (p: any) => `<strong>${p.data.name}</strong><br/>Velocity: ${p.data.value[0]} hrs/task<br/>QC Pass Rate: ${p.data.value[1]}%` },
-      grid: { top: '10%', bottom: '15%', left: '12%', right: '5%' },
-      xAxis: { name: 'Velocity (hrs/task)', nameLocation: 'middle', nameGap: 30, type: 'value', axisLabel: { fontSize: 9, color: C.textMuted }, splitLine: { lineStyle: { color: C.gridLine } } },
-      yAxis: { name: 'QC Pass Rate (%)', nameLocation: 'middle', nameGap: 35, type: 'value', min: 0, max: 100, axisLabel: { fontSize: 9, color: C.textMuted }, splitLine: { lineStyle: { color: C.gridLine } } },
-      series: [
-        {
-          type: 'scatter', data: scatterData,
-          itemStyle: {
-            color: (p: any) => {
-              const [vel, qc] = p.data.value;
-              // Quadrant coloring: High QC + Low Velocity = green, High QC + High Velocity = blue, Low QC = amber/red
-              if (qc >= 80 && vel <= midX) return C.green;
-              if (qc >= 80 && vel > midX) return C.blue;
-              if (qc >= 50) return C.amber;
-              return C.red;
-            }
-          },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.4)' } },
-        },
-        // Quadrant lines
-        { type: 'line', markLine: { silent: true, lineStyle: { color: C.border, type: 'dashed' }, data: [{ yAxis: 80 }, { xAxis: midX }], label: { show: false } }, data: [] },
-      ]
+      tooltip: {
+        ...TT, formatter: (p: any) => {
+          const d = p.data;
+          return `<strong>${d.name}</strong><br/>Downstream Impact: ${d.value[0]} tasks<br/>Hours Variance: ${d.value[1] > 0 ? '+' : ''}${d.value[1]}h${d.needsTag ? `<br/><span style="color:${d.needsTag === 'Needs Support' ? C.red : C.purple}">${d.needsTag}</span>` : ''}`;
+        }
+      },
+      grid: { top: '8%', bottom: '15%', left: '12%', right: '5%' },
+      xAxis: { name: 'Downstream Impact (tasks)', nameLocation: 'middle', nameGap: 30, type: 'value', axisLabel: { fontSize: 9, color: C.textMuted }, splitLine: { lineStyle: { color: C.gridLine } } },
+      yAxis: { name: 'Hours Variance', nameLocation: 'middle', nameGap: 40, type: 'value', axisLabel: { fontSize: 9, color: C.textMuted }, splitLine: { lineStyle: { color: C.gridLine } } },
+      series: [{ type: 'scatter', data: scatterData, emphasis: { itemStyle: { shadowBlur: 12, shadowColor: 'rgba(0,0,0,0.5)' } } }],
     };
-  }, [tasks, qcData]);
+  }, [tasks, hours]);
 
-  return <ChartWrapper option={option} height="350px" />;
+  const handleClick = useCallback((params: any) => {
+    if (params.data?.task) onSelect(params.data.task);
+  }, [onSelect]);
+
+  return <ChartWrapper option={option} height="100%" onClick={handleClick} />;
 };
 
-// ===== PHASE 5: OPERATIONAL SNAPSHOT TICKER =====
+// ===== PHASE 3: TPW VS EXECUTE DONUT =====
 
-const OperationalSnapshotTicker = ({ tasks, employees, qcData }: { tasks: any[], employees: any[], qcData: any[] }) => {
-  const metrics = useMemo(() => {
-    const totalTasks = tasks.length;
-    const completed = tasks.filter(t => (t.percentComplete || 0) >= 100).length;
-    const inProgress = tasks.filter(t => { const pc = t.percentComplete || 0; return pc > 0 && pc < 100; }).length;
-    const blocked = tasks.filter(t => (t.status || '').toLowerCase().includes('block')).length;
-    const totalPlanned = tasks.reduce((s, t) => s + (Number(t.baselineHours) || 0), 0);
-    const totalActual = tasks.reduce((s, t) => s + (Number(t.actualHours) || 0), 0);
-    const efficiency = totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : 0;
-    const completionRate = totalTasks > 0 ? Math.round((completed / totalTasks) * 100) : 0;
-    const avgPassRate = qcData.length > 0
-      ? Math.round(qcData.reduce((s, q) => s + (q.passRate || 0), 0) / qcData.length)
-      : 0;
-    const activeEmployees = new Set(tasks.map(t => t.assignedResource || t.assignedTo).filter(Boolean)).size;
+const TPWExecuteDonut = ({ hours, nonExecuteHours, selectedTaskId }: { hours: any[]; nonExecuteHours: any; selectedTaskId: string | null }) => {
+  const option: EChartsOption = useMemo(() => {
+    let exHours = 0, qcHours = 0, crHours = 0, tpwHours = 0, otherHours = 0;
 
-    return [
-      { label: 'Completion Rate', value: `${completionRate}%`, color: completionRate >= 80 ? C.green : completionRate >= 50 ? C.amber : C.red, sub: `${completed}/${totalTasks} tasks` },
-      { label: 'Efficiency Index', value: `${efficiency}%`, color: efficiency <= 105 ? C.green : efficiency <= 120 ? C.amber : C.red, sub: `${Math.round(totalActual)}h actual / ${Math.round(totalPlanned)}h planned` },
-      { label: 'QC Pass Rate', value: `${avgPassRate}%`, color: avgPassRate >= 90 ? C.green : avgPassRate >= 75 ? C.amber : C.red, sub: `${qcData.length} analysts reviewed` },
-      { label: 'Active Resources', value: `${activeEmployees}`, color: C.cyan, sub: `of ${employees.length} total` },
-      { label: 'In Progress', value: `${inProgress}`, color: C.blue, sub: `${blocked} blocked` },
-    ];
-  }, [tasks, employees, qcData]);
+    if (selectedTaskId) {
+      // Task-level drill-down from raw hours
+      const taskHours = hours.filter((h: any) => h.taskId === selectedTaskId);
+      taskHours.forEach((h: any) => {
+        const ct = (h.chargeType || '').toUpperCase();
+        if (ct === 'EX') exHours += h.hours;
+        else if (ct === 'QC') qcHours += h.hours;
+        else if (ct === 'CR') crHours += h.hours;
+        else if (ct.includes('TPW') || ct.includes('TRAIN')) tpwHours += h.hours;
+        else otherHours += h.hours;
+      });
+    } else {
+      // Global from nonExecuteHours
+      const total = hours.reduce((s: number, h: any) => s + (h.hours || 0), 0);
+      const nonExTotal = nonExecuteHours?.total || 0;
+      exHours = total - nonExTotal;
+
+      (nonExecuteHours?.tpwComparison || []).forEach((item: any) => { tpwHours += item.value || 0; });
+      (nonExecuteHours?.otherBreakdown || []).forEach((item: any) => {
+        const name = (item.name || '').toLowerCase();
+        if (name.includes('qc') || name.includes('quality')) qcHours += item.value || 0;
+        else if (name.includes('cr') || name.includes('customer')) crHours += item.value || 0;
+        else otherHours += item.value || 0;
+      });
+    }
+
+    const executeTotal = exHours;
+    const nonExecuteTotal = qcHours + crHours + tpwHours + otherHours;
+
+    return {
+      tooltip: { ...TT, trigger: 'item' },
+      series: [
+        {
+          name: 'Work Split', type: 'pie', radius: ['38%', '58%'], center: ['50%', '50%'],
+          label: { show: true, fontSize: 10, color: C.textSecondary, formatter: '{b}\n{d}%' },
+          emphasis: { scale: true, scaleSize: 6 },
+          data: [
+            { value: Math.round(executeTotal), name: 'Execute', itemStyle: { color: C.teal } },
+            { value: Math.round(nonExecuteTotal), name: 'Non-Execute', itemStyle: { color: C.pink } },
+          ].filter(d => d.value > 0),
+        },
+        {
+          name: 'Breakdown', type: 'pie', radius: ['65%', '80%'], center: ['50%', '50%'],
+          label: { show: false },
+          emphasis: { scale: true, scaleSize: 4 },
+          data: [
+            { value: Math.round(qcHours), name: 'QC', itemStyle: { color: C.purple } },
+            { value: Math.round(crHours), name: 'CR', itemStyle: { color: C.amber } },
+            { value: Math.round(tpwHours), name: 'TPW', itemStyle: { color: C.pink } },
+            { value: Math.round(otherHours), name: 'Admin', itemStyle: { color: C.blue } },
+          ].filter(d => d.value > 0),
+        },
+      ],
+    };
+  }, [hours, nonExecuteHours, selectedTaskId]);
+
+  const total = hours.reduce((s: number, h: any) => s + (h.hours || 0), 0);
+  const tpwPct = nonExecuteHours?.percent || 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {metrics.map((m, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', background: C.bgSecondary, borderRadius: 8, border: `1px solid ${C.border}` }}>
-          <div style={{ width: 4, height: 28, borderRadius: 2, background: m.color, flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.6rem', color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{m.label}</div>
-            <div style={{ fontSize: '0.7rem', color: C.textMuted }}>{m.sub}</div>
-          </div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 800, color: m.color }}>{m.value}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <ChartWrapper option={option} height="100%" />
+      </div>
+      {tpwPct > 20 && !selectedTaskId && (
+        <div style={{ padding: '0.4rem 0.6rem', background: `${C.pink}12`, border: `1px solid ${C.pink}30`, borderRadius: 6, fontSize: '0.6rem', color: C.pink, marginTop: '0.5rem' }}>
+          Efficiency Note: Non-execute overhead is {tpwPct.toFixed(0)}% of total hours. While this ensures quality, it is the primary driver of baseline variance.
         </div>
-      ))}
+      )}
+    </div>
+  );
+};
+
+// ===== PHASE 4: CONTRIBUTOR EFFICIENCY SWIMLANES =====
+
+const ContributorSwimlanes = ({ task, hours, laborByWorker, qcByNameAndRole }: {
+  task: any; hours: any[]; laborByWorker: any[]; qcByNameAndRole: any[];
+}) => {
+  const contributors = useMemo(() => {
+    const taskId = task.taskId || task.id;
+    const taskHours = hours.filter((h: any) => h.taskId === taskId);
+
+    // Aggregate by employee
+    const empMap = new Map<string, { name: string; actual: number; employeeId: string }>();
+    taskHours.forEach((h: any) => {
+      const key = h.employeeId;
+      const existing = empMap.get(key) || { name: '', actual: 0, employeeId: key };
+      existing.actual += h.hours;
+      existing.name = h.employeeName || laborByWorker.find((w: any) => w.name)?.name || key;
+      empMap.set(key, existing);
+    });
+
+    // Resolve names from laborByWorker if not in hours
+    laborByWorker.forEach((w: any) => {
+      empMap.forEach((v, k) => {
+        if (!v.name || v.name === k) {
+          // Try matching by employee ID pattern
+          v.name = w.name || k;
+        }
+      });
+    });
+
+    const baselinePerContributor = empMap.size > 0 ? (Number(task.baselineHours) || 0) / empMap.size : 0;
+
+    return [...empMap.values()].map(c => {
+      const efficiency = baselinePerContributor > 0 ? Math.round((c.actual / baselinePerContributor) * 100) : 0;
+      const qcInfo = qcByNameAndRole.find((q: any) => q.name === c.name);
+      const passRate = qcInfo?.passRate || 0;
+
+      return { ...c, efficiency, passRate, baselineEstimate: baselinePerContributor };
+    }).sort((a, b) => b.actual - a.actual);
+  }, [task, hours, laborByWorker, qcByNameAndRole]);
+
+  if (contributors.length === 0) {
+    return <div style={{ fontSize: '0.7rem', color: C.textMuted, padding: '1rem', textAlign: 'center' }}>No contributor data for this task.</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', overflow: 'auto', maxHeight: 320 }}>
+      {contributors.map((c, i) => {
+        const effColor = c.efficiency <= 100 ? C.green : c.efficiency <= 120 ? C.amber : C.red;
+        const qcColor = c.passRate >= 90 ? C.green : c.passRate >= 75 ? C.amber : C.red;
+
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.75rem', background: C.bgSecondary, borderRadius: 8, border: `1px solid ${C.border}` }}>
+            {/* Name */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: C.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name || c.employeeId}</div>
+              <div style={{ fontSize: '0.55rem', color: C.textMuted }}>{c.actual.toFixed(1)}h logged</div>
+            </div>
+
+            {/* Efficiency gauge */}
+            <div style={{ width: 56, textAlign: 'center' }}>
+              <div style={{ fontSize: '0.5rem', color: C.textMuted, textTransform: 'uppercase' }}>Efficiency</div>
+              <div style={{ width: '100%', height: 4, background: C.bgCard, borderRadius: 2, marginTop: 2 }}>
+                <div style={{ width: `${Math.min(150, c.efficiency)}%`, maxWidth: '100%', height: '100%', background: effColor, borderRadius: 2 }} />
+              </div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: effColor }}>{c.efficiency}%</div>
+            </div>
+
+            {/* QC pass rate */}
+            <div style={{ width: 52, textAlign: 'center' }}>
+              <div style={{ fontSize: '0.5rem', color: C.textMuted, textTransform: 'uppercase' }}>QC Rate</div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: qcColor, marginTop: 2 }}>{c.passRate > 0 ? `${c.passRate}%` : '--'}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ===== PHASE 5: SPRINT INTEGRATION PANEL =====
+
+const SprintIntegrationPanel = ({ tasks, hours, sprintFlags, onToggle }: {
+  tasks: any[]; hours: any[]; sprintFlags: Set<string>; onToggle: (taskId: string) => void;
+}) => {
+  const flaggedTasks = useMemo(() => {
+    const taskChargeHours = new Map<string, { ex: number; qc: number }>();
+    hours.forEach((h: any) => {
+      if (!h.taskId) return;
+      const existing = taskChargeHours.get(h.taskId) || { ex: 0, qc: 0 };
+      const ct = (h.chargeType || '').toUpperCase();
+      if (ct === 'EX') existing.ex += h.hours;
+      else if (ct === 'QC') existing.qc += h.hours;
+      taskChargeHours.set(h.taskId, existing);
+    });
+
+    return tasks.filter(t => {
+      const id = t.taskId || t.id;
+      const efficiency = (Number(t.baselineHours) || 1) > 0 ? (Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1) : 1;
+      const finishDate = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
+      const daysToDeadline = Math.round((finishDate.getTime() - Date.now()) / (1000 * 3600 * 24));
+      const charge = taskChargeHours.get(id) || { ex: 0, qc: 0 };
+
+      const needsQC = charge.ex > 0 && charge.qc === 0 && (t.percentComplete || 0) > 50;
+      const needsSupport = efficiency > 1.2 && daysToDeadline < 3;
+
+      return needsQC || needsSupport || sprintFlags.has(id);
+    }).map(t => {
+      const id = t.taskId || t.id;
+      const charge = taskChargeHours.get(id) || { ex: 0, qc: 0 };
+      const needsQC = charge.ex > 0 && charge.qc === 0 && (t.percentComplete || 0) > 50;
+      const efficiency = (Number(t.baselineHours) || 1) > 0 ? (Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1) : 1;
+      const tag = needsQC ? 'Needs QC' : efficiency > 1.2 ? 'Needs Support' : 'Flagged';
+      return { ...t, tag, isFlagged: sprintFlags.has(id) };
+    });
+  }, [tasks, hours, sprintFlags]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', overflow: 'auto', maxHeight: 320 }}>
+      {flaggedTasks.length === 0 && <div style={{ fontSize: '0.7rem', color: C.textMuted, padding: '1rem', textAlign: 'center' }}>No tasks flagged for sprint attention.</div>}
+      {flaggedTasks.map((t, i) => {
+        const id = t.taskId || t.id;
+        const tagColor = t.tag === 'Needs QC' ? C.purple : t.tag === 'Needs Support' ? C.red : C.cyan;
+        return (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: C.bgSecondary, borderRadius: 8, border: `1px solid ${t.isFlagged ? C.cyan + '60' : C.border}` }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.taskName || t.name}</div>
+              <Badge label={t.tag} color={tagColor} />
+            </div>
+            <button
+              onClick={() => onToggle(id)}
+              style={{
+                padding: '0.3rem 0.6rem', borderRadius: 6, fontSize: '0.6rem', fontWeight: 700,
+                border: `1px solid ${t.isFlagged ? C.cyan : C.border}`,
+                background: t.isFlagged ? `${C.cyan}20` : 'transparent',
+                color: t.isFlagged ? C.cyan : C.textMuted,
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {t.isFlagged ? 'IN SPRINT' : 'ADD TO SPRINT'}
+            </button>
+          </div>
+        );
+      })}
+      {sprintFlags.size > 0 && (
+        <div style={{ padding: '0.4rem 0.6rem', background: `${C.cyan}12`, border: `1px solid ${C.cyan}30`, borderRadius: 6, fontSize: '0.6rem', color: C.cyan, marginTop: '0.25rem' }}>
+          Decision Exported: {sprintFlags.size} task(s) flagged for the next Sprint due to efficiency deficit or milestone impact.
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===== TASK SELECTOR TABLE =====
+
+const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
+  tasks: any[]; selectedId: string | null; onSelect: (task: any) => void; view: 'site' | 'sprint';
+}) => {
+  const sorted = useMemo(() => {
+    const list = tasks.map(t => {
+      const efficiency = (Number(t.baselineHours) || 1) > 0 ? Math.round(((Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1)) * 100) : 0;
+      return { ...t, efficiency };
+    });
+
+    if (view === 'sprint') {
+      // Sort by deadline proximity
+      return list.sort((a, b) => {
+        const da = new Date(a.finishDate || a.baselineEndDate || a.dueDate || '2099-01-01').getTime();
+        const db = new Date(b.finishDate || b.baselineEndDate || b.dueDate || '2099-01-01').getTime();
+        return da - db;
+      });
+    }
+    // Site view: group by project
+    return list.sort((a, b) => ((a as any).projectName || '').localeCompare((b as any).projectName || ''));
+  }, [tasks, view]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', overflow: 'auto', maxHeight: 500 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 60px 60px 60px', gap: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 600, position: 'sticky', top: 0, background: C.bgCard, zIndex: 1 }}>
+        <span>Task</span><span>{view === 'site' ? 'Project' : 'Deadline'}</span><span>Progress</span><span>Efficiency</span><span>Status</span>
+      </div>
+      {sorted.slice(0, 50).map((t, i) => {
+        const id = t.taskId || t.id;
+        const isSelected = id === selectedId;
+        const pc = t.percentComplete || 0;
+        const effColor = t.efficiency <= 100 ? C.green : t.efficiency <= 120 ? C.amber : C.red;
+        const deadline = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
+        const daysLeft = Math.round((deadline.getTime() - Date.now()) / (1000 * 3600 * 24));
+        const statusColor = pc >= 100 ? C.green : t.isCritical ? C.red : daysLeft < 3 ? C.amber : C.teal;
+
+        return (
+          <div
+            key={i}
+            onClick={() => onSelect(t)}
+            style={{
+              display: 'grid', gridTemplateColumns: '2fr 1fr 60px 60px 60px', gap: '0.5rem', padding: '0.4rem 0.75rem',
+              background: isSelected ? `${C.teal}10` : 'transparent',
+              border: isSelected ? `1px solid ${C.teal}40` : '1px solid transparent',
+              borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
+            }}
+          >
+            <div style={{ fontSize: '0.7rem', color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.taskName || t.name || id}</div>
+            <div style={{ fontSize: '0.65rem', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {view === 'site' ? ((t as any).projectName || (t as any).project_name || '--') : (daysLeft >= 0 ? `${daysLeft}d left` : `${Math.abs(daysLeft)}d late`)}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: pc >= 100 ? C.green : C.blue }}>{pc}%</div>
+            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: effColor }}>{t.efficiency}%</div>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, alignSelf: 'center', justifySelf: 'center' }} />
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -431,6 +558,9 @@ export default function TasksPage() {
   const { data, isLoading } = useData();
   const crossFilter = useCrossFilter();
   const router = useRouter();
+  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<'site' | 'sprint'>('sprint');
+  const [sprintFlags, setSprintFlags] = useState<Set<string>>(new Set());
 
   const crossFilteredTasks = useMemo(() => {
     let list = data.tasks || [];
@@ -444,13 +574,36 @@ export default function TasksPage() {
   const stats = useMemo(() => {
     const list = crossFilteredTasks;
     const completed = list.filter(t => (t.percentComplete || 0) >= 100).length;
-    const totalActual = list.reduce((sum, t) => sum + (Number(t.actualHours) || 0), 0);
+    const totalActual = list.reduce((s, t) => s + (Number(t.actualHours) || 0), 0);
+    const totalBaseline = list.reduce((s, t) => s + (Number(t.baselineHours) || 0), 0);
+    const critical = list.filter(t => t.isCritical).length;
     return {
       total: list.length,
+      completed,
       progress: list.length > 0 ? Math.round((completed / list.length) * 100) : 0,
-      hours: Math.round(totalActual)
+      hours: Math.round(totalActual),
+      baseline: Math.round(totalBaseline),
+      efficiency: totalBaseline > 0 ? Math.round((totalActual / totalBaseline) * 100) : 0,
+      critical,
     };
   }, [crossFilteredTasks]);
+
+  const handleSelectTask = useCallback((task: any) => {
+    setSelectedTask((prev: any) => {
+      const prevId = prev?.taskId || prev?.id;
+      const newId = task?.taskId || task?.id;
+      return prevId === newId ? null : task;
+    });
+  }, []);
+
+  const handleSprintToggle = useCallback((taskId: string) => {
+    setSprintFlags(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }, []);
 
   const hasData = (data.tasks?.length ?? 0) > 0;
 
@@ -466,52 +619,83 @@ export default function TasksPage() {
     );
   }
 
+  const selectedId = selectedTask ? (selectedTask.taskId || selectedTask.id) : null;
+
   return (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1600px', margin: '0 auto' }}>
+    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '1600px', margin: '0 auto' }}>
       {/* Header */}
-      <div>
-        <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: C.textPrimary, letterSpacing: '-0.02em' }}>Production Control Center</h1>
-        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.teal, fontWeight: 700 }}>{stats.hours.toLocaleString()}h</span> <span style={{ color: C.textMuted, fontSize: '0.8rem' }}>Total Actual</span></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.blue, fontWeight: 700 }}>{stats.progress}%</span> <span style={{ color: C.textMuted, fontSize: '0.8rem' }}>Completion Rate</span></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.purple, fontWeight: 700 }}>{stats.total}</span> <span style={{ color: C.textMuted, fontSize: '0.8rem' }}>Active Tasks</span></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: C.textPrimary, letterSpacing: '-0.02em' }}>Production Floor</h1>
+          <div style={{ fontSize: '0.7rem', color: C.textMuted, marginTop: 4 }}>360-degree task biographies for micro-decision making</div>
+          <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.teal, fontWeight: 700 }}>{stats.hours.toLocaleString()}h</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Actual</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.blue, fontWeight: 700 }}>{stats.efficiency}%</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Efficiency</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.purple, fontWeight: 700 }}>{stats.critical}</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Critical</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.green, fontWeight: 700 }}>{stats.progress}%</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Complete</span></div>
+          </div>
+        </div>
+
+        {/* View mode toggle */}
+        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+          {(['site', 'sprint'] as const).map(mode => (
+            <button key={mode} onClick={() => setViewMode(mode)} style={{
+              padding: '0.4rem 1rem', fontSize: '0.7rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+              background: viewMode === mode ? C.teal : 'transparent',
+              color: viewMode === mode ? '#000' : C.textMuted,
+              textTransform: 'uppercase',
+            }}>
+              {mode === 'site' ? 'Site View' : 'Sprint View'}
+            </button>
+          ))}
         </div>
       </div>
 
       <CrossFilterBar filters={crossFilter.activeFilters} onRemove={crossFilter.removeFilter} onClear={crossFilter.clearFilters} />
 
-      {/* Main Grid — Row 1: 2-col */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
-        <SectionCard title="Bottleneck Radar" subtitle="SME Saturation Heatmap (12-Week Projection)" badge={<Badge label="Capacity" color={C.red} />}>
-          <SMESaturationHeatmap tasks={data.tasks || []} employees={data.employees || []} />
+      {/* Phase 1: Lifecycle Pulse (full-width, shown when task selected) */}
+      {selectedTask && (
+        <SectionCard title="Task Lifecycle Biography" subtitle="Time-in-State by Work Type (EX / QC / CR / TPW)" badge={<Badge label="Deep Dive" color={C.teal} />}
+          actions={<button onClick={() => setSelectedTask(null)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.3rem 0.6rem', color: C.textMuted, fontSize: '0.6rem', cursor: 'pointer' }}>DESELECT</button>}>
+          <TaskLifecyclePulse task={selectedTask} hours={data.hours || []} />
+        </SectionCard>
+      )}
+
+      {/* Row 1: Task Matrix + Priority Scatter */}
+      <div style={{ display: 'grid', gridTemplateColumns: selectedTask ? '1fr 1fr' : '2fr 3fr', gap: '1.5rem' }}>
+        <SectionCard title="Deliverable Matrix" subtitle={`${viewMode === 'site' ? 'Site' : 'Sprint'} View | ${crossFilteredTasks.length} Tasks`} badge={<Badge label={viewMode} color={C.blue} />}>
+          <TaskSelectorTable tasks={crossFilteredTasks} selectedId={selectedId} onSelect={handleSelectTask} view={viewMode} />
         </SectionCard>
 
-        <SectionCard title="Production Line" subtitle="Technical Pipeline (Subproject to Stage Flow)" badge={<Badge label="Live" color={C.green} />}>
-          <TechnicalPipelineSankey tasks={crossFilteredTasks} />
+        <SectionCard title="Priority Demand Engine" subtitle="Value vs Risk (Downstream Impact x Hours Variance)" badge={<Badge label="Risk" color={C.red} />}>
+          <PriorityDemandScatter tasks={crossFilteredTasks} hours={data.hours || []} onSelect={handleSelectTask} />
         </SectionCard>
       </div>
 
-      {/* Row 2: 3-col */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
-        <SectionCard title="Impact Analysis" subtitle="The Splash Zone (Dependency Blast Radius)" badge={<Badge label="Risk" color={C.pink} />}>
-          <SplashZoneGraph tasks={crossFilteredTasks} />
+      {/* Row 2: TPW Donut + Contributors + Sprint Panel */}
+      <div style={{ display: 'grid', gridTemplateColumns: selectedTask ? '1fr 1fr 1fr' : '1fr 1fr', gap: '1.5rem' }}>
+        <SectionCard title="Efficiency Anatomy" subtitle={selectedId ? `Filtered: ${selectedTask?.taskName || selectedTask?.name}` : 'Global Execute vs Non-Execute Split'} badge={<Badge label="TPW" color={C.pink} />}>
+          <TPWExecuteDonut hours={data.hours || []} nonExecuteHours={data.nonExecuteHours} selectedTaskId={selectedId} />
         </SectionCard>
 
-        <SectionCard title="Performance Quadrant" subtitle="Quality vs. Velocity (Analyst Scatter)" badge={<Badge label="QC" color={C.purple} />}>
-          <AnalystPerformanceScatter tasks={crossFilteredTasks} qcData={data.qcByNameAndRole || []} />
-        </SectionCard>
+        {selectedTask && (
+          <SectionCard title="Contributor Swimlanes" subtitle="Individual Efficiency and QC Pass Rates" badge={<Badge label="People" color={C.cyan} />}>
+            <ContributorSwimlanes task={selectedTask} hours={data.hours || []} laborByWorker={data.laborBreakdown?.byWorker || []} qcByNameAndRole={data.qcByNameAndRole || []} />
+          </SectionCard>
+        )}
 
-        <SectionCard title="Operational Snapshot" subtitle="Real-time KPIs and Delta Indicators" badge={<Badge label="Live" color={C.cyan} />}>
-          <OperationalSnapshotTicker tasks={crossFilteredTasks} employees={data.employees || []} qcData={data.qcByNameAndRole || []} />
+        <SectionCard title="Sprint Planner" subtitle="Push Decisions to Next Sprint" badge={<Badge label={`${sprintFlags.size} Queued`} color={C.cyan} />}>
+          <SprintIntegrationPanel tasks={crossFilteredTasks} hours={data.hours || []} sprintFlags={sprintFlags} onToggle={handleSprintToggle} />
         </SectionCard>
       </div>
 
       {/* Footer Ticker */}
       <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${C.border}`, display: 'flex', gap: '2rem', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-        <span style={{ fontSize: '0.7rem', color: C.teal, fontWeight: 700 }}>ALL PHASES ACTIVE</span>
+        <span style={{ fontSize: '0.7rem', color: C.teal, fontWeight: 700 }}>PRODUCTION FLOOR ONLINE</span>
+        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>TASKS: {stats.total}</span>
         <span style={{ fontSize: '0.7rem', color: C.textMuted }}>SMES: {data.employees?.length || 0}</span>
-        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>TASKS: {(data.tasks?.length || 0).toLocaleString()}</span>
-        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>QC ANALYSTS: {(data.qcByNameAndRole?.length || 0)}</span>
+        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>SPRINT QUEUE: {sprintFlags.size}</span>
+        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>MODE: {viewMode.toUpperCase()}</span>
       </div>
     </div>
   );
