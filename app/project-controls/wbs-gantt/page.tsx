@@ -201,16 +201,19 @@ const FTESparkline = memo(function FTESparkline({
 
 export default function WBSGanttPage() {
   const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter, isLoading } = useData();
-  const { getSnapshotValue, hasComparison } = useSnapshotVariance();
+  const { getSnapshotValue, hasComparison, comparisonSnapshot } = useSnapshotVariance();
   const { addEngineLog } = useLogs();
   const data = filteredData;
   const employees = fullData.employees;
+  const allSnapshots = (filteredData.snapshots || []) as any[];
 
   // ── State ──────────────────────────────────────────────────────
   const [showBaseline, setShowBaseline] = useState(true);
   const [showDependencies, setShowDependencies] = useState(true);
   const [showSparklines, setShowSparklines] = useState(true);
-  
+  const [varianceMode, setVarianceMode] = useState(false);
+  const [varianceSnapshotId, setVarianceSnapshotId] = useState<string | null>(null);
+
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cpmResult, setCpmResult] = useState<CPMResult | null>(null);
   const [cpmLogs, setCpmLogs] = useState<string[]>([]);
@@ -225,7 +228,62 @@ export default function WBSGanttPage() {
   const [viewportHeight, setViewportHeight] = useState(600);
   const [barTip, setBarTip] = useState<{ row: any; x: number; y: number } | null>(null);
   const [drillDownRow, setDrillDownRow] = useState<WBSTableRow | null>(null);
-  
+
+  // ── Variance helpers ──────────────────────────────────────────
+  // The selected variance snapshot (resolves to first available if none selected)
+  const activeVarianceSnapshot = useMemo(() => {
+    if (!varianceMode) return null;
+    if (varianceSnapshotId) {
+      return allSnapshots.find((s: any) => (s.id || s.snapshotId) === varianceSnapshotId) || allSnapshots[0] || null;
+    }
+    // Default to most recent snapshot or current comparison
+    return comparisonSnapshot || allSnapshots[0] || null;
+  }, [varianceMode, varianceSnapshotId, allSnapshots, comparisonSnapshot]);
+
+  const varianceSnapData = activeVarianceSnapshot?.snapshotData ?? activeVarianceSnapshot?.snapshot_data;
+
+  /** Get a snapshot value for a row by taskId */
+  const getVarianceValue = useCallback((row: any, metric: 'actualHours' | 'actualCost' | 'planHours' | 'planCost'): number | null => {
+    if (!varianceSnapData) return null;
+    const taskId = row.id || (row as any).taskId;
+    if (taskId && varianceSnapData.byTask) {
+      const snapRow = (varianceSnapData.byTask as any[]).find((r: any) => (r.taskId || r.task_id) === taskId);
+      if (snapRow) {
+        if (metric === 'actualHours') return snapRow.actualHours ?? snapRow.actual_hours ?? null;
+        if (metric === 'actualCost') return snapRow.actualCost ?? snapRow.actual_cost ?? null;
+        if (metric === 'planHours') return snapRow.planHours ?? snapRow.plan_hours ?? null;
+        if (metric === 'planCost') return snapRow.planCost ?? snapRow.plan_cost ?? null;
+      }
+    }
+    return null;
+  }, [varianceSnapData]);
+
+  /** Format variance value with ± sign and color */
+  const formatVariance = useCallback((current: number, snapshot: number | null, isCost?: boolean): { display: string; color: string; tooltip: string } => {
+    if (snapshot == null) return { display: '-', color: 'var(--text-muted)', tooltip: 'No snapshot data' };
+    const delta = current - snapshot;
+    const sign = delta > 0 ? '+' : '';
+    const display = isCost ? `${sign}${formatCurrency(delta)}` : `${sign}${delta.toFixed(0)}`;
+    // For hours/cost: positive = over budget (red), negative = under budget (green)
+    const color = delta > 0 ? '#EF4444' : delta < 0 ? '#22C55E' : 'var(--text-muted)';
+    const currentFmt = isCost ? formatCurrency(current) : current.toFixed(0);
+    const snapFmt = isCost ? formatCurrency(snapshot) : snapshot.toFixed(0);
+    const tooltip = `Current: ${currentFmt}\nSnapshot: ${snapFmt}\nVariance: ${display}`;
+    return { display, color, tooltip };
+  }, []);
+
+  /** Format efficiency variance (reverse coloring — positive is good) */
+  const formatEffVariance = useCallback((current: number, snapshot: number | null): { display: string; color: string; tooltip: string } => {
+    if (snapshot == null) return { display: '-', color: 'var(--text-muted)', tooltip: 'No snapshot data' };
+    const delta = current - snapshot;
+    const sign = delta > 0 ? '+' : '';
+    const display = `${sign}${delta.toFixed(0)}%`;
+    // For efficiency: positive = improvement (green), negative = decline (red)
+    const color = delta > 0 ? '#22C55E' : delta < 0 ? '#EF4444' : 'var(--text-muted)';
+    const tooltip = `Current: ${current.toFixed(0)}%\nSnapshot: ${snapshot.toFixed(0)}%\nVariance: ${display}`;
+    return { display, color, tooltip };
+  }, []);
+
   // ── Refs ───────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -803,7 +861,7 @@ export default function WBSGanttPage() {
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
           </div>
-          
+
           {/* Interval Selector (primary scale) */}
           <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
             {(['week', 'month', 'quarter', 'year'] as GanttInterval[]).map(iv => (
@@ -815,7 +873,7 @@ export default function WBSGanttPage() {
               }}>{iv}</button>
             ))}
           </div>
-          
+
           {/* Zoom Controls — Fit + fine-tune +/- + Density + Today */}
           <div style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'var(--bg-tertiary)', borderRadius: '8px', padding: '3px 8px', border: '1px solid var(--border-color)' }}>
             {/* Fit to View */}
@@ -844,16 +902,16 @@ export default function WBSGanttPage() {
             {/* Reset */}
             <button onClick={() => { setTimelineZoom(1); setRowDensity('normal'); }} style={{ padding: '2px 6px', fontSize: '0.6rem', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-secondary)', cursor: 'pointer' }} title="Reset zoom & density">Reset</button>
           </div>
-          
+
           <button className="btn btn-secondary btn-sm" onClick={scrollToToday}>Today</button>
-          
+
           {/* Level Controls */}
           <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-tertiary)', borderRadius: '6px', padding: '2px' }}>
             {([['L0', collapseAll], ['L2', () => collapseToLevel(2)], ['L3', () => collapseToLevel(3)], ['All', expandAll]] as [string, () => void][]).map(([label, fn]) => (
               <button key={label} onClick={fn} style={{ padding: '0.3rem 0.5rem', fontSize: '0.65rem', background: 'transparent', color: 'var(--text-secondary)', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{label}</button>
             ))}
           </div>
-          
+
           <div style={{ width: '180px' }}>
             <SearchableDropdown options={projectOptions} value={selectedProjectId} onChange={setSelectedProjectId} placeholder="Select Project..." disabled={false} />
           </div>
@@ -862,7 +920,7 @@ export default function WBSGanttPage() {
       </div>
 
       {/* ── Feature Toggles & Legend ──────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '1rem', padding: '0 0.5rem', fontSize: '0.7rem', color: '#888', flexShrink: 0, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '1rem', padding: '0 0.5rem', fontSize: '0.7rem', color: '#888', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
         {[
           { checked: showBaseline, set: setShowBaseline, color: '#6B7280', label: 'Baseline Ghost' },
           { checked: showDependencies, set: setShowDependencies, color: '#40E0D0', label: 'Dependencies' },
@@ -871,9 +929,41 @@ export default function WBSGanttPage() {
           <label key={t.label} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
             <input type="checkbox" checked={t.checked} onChange={e => t.set(e.target.checked)} style={{ accentColor: t.color }} />
             <span style={{ color: t.color }}>{t.label}</span>
-        </label>
+          </label>
         ))}
+
+        {/* ── Variance Toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '0.5rem', padding: '3px 10px', background: varianceMode ? 'rgba(139,92,246,0.15)' : 'var(--bg-tertiary)', border: `1px solid ${varianceMode ? 'rgba(139,92,246,0.5)' : 'var(--border-color)'}`, borderRadius: '6px', transition: 'all 0.2s' }}>
+          <button
+            onClick={() => setVarianceMode(v => !v)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 4px', color: varianceMode ? '#8B5CF6' : 'var(--text-secondary)', fontWeight: 600, fontSize: '0.7rem', transition: 'color 0.2s' }}
+          >
+            <span style={{ fontSize: '0.85rem' }}>Δ</span> Variance
+          </button>
+          {varianceMode && (
+            <select
+              value={varianceSnapshotId || ''}
+              onChange={e => setVarianceSnapshotId(e.target.value || null)}
+              style={{ fontSize: '0.6rem', padding: '2px 4px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', maxWidth: '140px' }}
+            >
+              <option value="">Latest Snapshot</option>
+              {allSnapshots.map((s: any) => (
+                <option key={s.id || s.snapshotId} value={s.id || s.snapshotId}>
+                  {s.name || new Date(s.createdAt || s.created_at).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem' }}>
+          {varianceMode && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }} /> Over Budget</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E' }} /> Under Budget</div>
+              <div style={{ width: '1px', height: '14px', background: 'var(--border-color)' }} />
+            </>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 4, background: '#EF4444', borderRadius: 2 }} /> Critical Path</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 4, background: '#6B7280', borderRadius: 2 }} /> Non-Critical</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 12, height: 4, background: '#6B7280', borderRadius: 2, borderBottom: '1px dashed #EF4444' }} /> Delay</div>
@@ -892,7 +982,7 @@ export default function WBSGanttPage() {
             <div key={m.label} className="metric-card" style={{ padding: '6px 14px', background: '#111', minWidth: '110px' }}>
               <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{m.label}</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 700, color: m.color }}>{m.value}</div>
-          </div>
+            </div>
           ))}
           <div style={{ flex: 1, fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {cpmLogs[cpmLogs.length - 1] || 'Analysis complete'}
@@ -948,13 +1038,13 @@ export default function WBSGanttPage() {
                 <th style={TH_BASE}>Start</th>
                 <th style={TH_BASE}>End</th>
                 <th style={TH_BASE} className="number">Days</th>
-                <th style={TH_BASE} className="number">BL Hrs</th>
-                <th style={{ ...TH_BASE, color: 'var(--pinnacle-teal)' }} className="number">Act Hrs</th>
-                <th style={TH_BASE} className="number">Rem</th>
-                <th style={TH_BASE} className="number">BL Cost</th>
-                <th style={{ ...TH_BASE, color: 'var(--pinnacle-teal)' }} className="number">Act Cost</th>
-                <th style={TH_BASE} className="number">Rem Cost</th>
-                <th style={TH_BASE} className="number">Eff%</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ BL Hrs' : 'BL Hrs'}</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : 'var(--pinnacle-teal)' }} className="number">{varianceMode ? 'Δ Act Hrs' : 'Act Hrs'}</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ Rem' : 'Rem'}</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ BL Cost' : 'BL Cost'}</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : 'var(--pinnacle-teal)' }} className="number">{varianceMode ? 'Δ Act Cost' : 'Act Cost'}</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ Rem Cost' : 'Rem Cost'}</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ Eff%' : 'Eff%'}</th>
                 <th style={TH_BASE} className="number">Prog</th>
                 <th style={TH_BASE}>Pred</th>
                 <th style={{ ...TH_BASE, color: '#ff6b6b' }} className="number">TF</th>
@@ -979,7 +1069,7 @@ export default function WBSGanttPage() {
                 const progress = row.percentComplete || 0;
                 const isExpanded = expandedIds.has(row.id);
                 const worstCase = (row as any).worstCaseStatus;
-                
+
                 // Simplified bar colour: progress-based for ALL bars (parent + leaf), critical path override
                 const barColor = isCritical ? '#EF4444' : getProgressColor(progress);
                 const typeColor = WBS_COLORS[row.itemType] || '#6B7280';
@@ -1034,33 +1124,87 @@ export default function WBSGanttPage() {
                     <td style={TD_FONT}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
                     <td style={TD_FONT}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
                     <td className="number" style={TD_FONT}>{row.daysRequired != null && isFinite(Number(row.daysRequired)) ? Number(row.daysRequired).toFixed(0) : '-'}</td>
-                    <td className="number" style={TD_FONT}>{row.baselineHours && isFinite(Number(row.baselineHours)) ? Number(row.baselineHours).toFixed(0) : '-'}</td>
-                    <td
-                      className="number"
-                      style={{
-                        ...TD_FONT,
-                        color: 'var(--pinnacle-teal)',
-                        cursor: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'pointer' : 'default',
-                        textDecoration: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'underline' : 'none',
-                      }}
-                      title={(row.itemType === 'task' || row.itemType === 'sub_task') ? 'Click to view hour entries' : undefined}
-                      onClick={() => (row.itemType === 'task' || row.itemType === 'sub_task') && setDrillDownRow(row)}
-                    >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        {row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}
-                        {hasComparison && (row.itemType === 'task' || row.itemType === 'sub_task') && (() => {
-                          const taskId = row.id || (row as any).taskId;
-                          const snapH = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
-                          if (snapH == null) return null;
-                          return <VarianceVisual current={Number(row.actualHours) || 0} snapshot={snapH} kind="hours" inline />;
-                        })()}
-                      </span>
-                    </td>
-                    <td className="number" style={TD_FONT}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={TD_FONT}>{formatCurrency(Number(row.baselineCost))}</td>
-                    <td className="number" style={{ ...TD_FONT, color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(row.actualCost))}</td>
-                    <td className="number" style={TD_FONT}>{formatCurrency(Number((row as any).remainingCost))}</td>
-                    <td className="number" style={{ ...TD_FONT, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
+                    {/* BL Hrs */}
+                    {varianceMode ? (() => {
+                      const v = formatVariance(Number(row.baselineHours) || 0, getVarianceValue(row, 'planHours'));
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td className="number" style={TD_FONT}>{row.baselineHours && isFinite(Number(row.baselineHours)) ? Number(row.baselineHours).toFixed(0) : '-'}</td>
+                    )}
+                    {/* Act Hrs */}
+                    {varianceMode ? (() => {
+                      const v = formatVariance(Number(row.actualHours) || 0, getVarianceValue(row, 'actualHours'));
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td
+                        className="number"
+                        style={{
+                          ...TD_FONT,
+                          color: 'var(--pinnacle-teal)',
+                          cursor: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'pointer' : 'default',
+                          textDecoration: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'underline' : 'none',
+                        }}
+                        title={(row.itemType === 'task' || row.itemType === 'sub_task') ? 'Click to view hour entries' : undefined}
+                        onClick={() => (row.itemType === 'task' || row.itemType === 'sub_task') && setDrillDownRow(row)}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                          {row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}
+                          {hasComparison && (row.itemType === 'task' || row.itemType === 'sub_task') && (() => {
+                            const taskId = row.id || (row as any).taskId;
+                            const snapH = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
+                            if (snapH == null) return null;
+                            return <VarianceVisual current={Number(row.actualHours) || 0} snapshot={snapH} kind="hours" inline />;
+                          })()}
+                        </span>
+                      </td>
+                    )}
+                    {/* Rem Hrs */}
+                    {varianceMode ? (() => {
+                      const current = Number((row as any).remainingHours) || 0;
+                      // Remaining = planHours - actualHours for snapshot
+                      const snapAct = getVarianceValue(row, 'actualHours');
+                      const snapPlan = getVarianceValue(row, 'planHours');
+                      const snapRem = snapAct != null && snapPlan != null ? snapPlan - snapAct : null;
+                      const v = formatVariance(current, snapRem);
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td className="number" style={TD_FONT}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
+                    )}
+                    {/* BL Cost */}
+                    {varianceMode ? (() => {
+                      const v = formatVariance(Number(row.baselineCost) || 0, getVarianceValue(row, 'planCost'), true);
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td className="number" style={TD_FONT}>{formatCurrency(Number(row.baselineCost))}</td>
+                    )}
+                    {/* Act Cost */}
+                    {varianceMode ? (() => {
+                      const v = formatVariance(Number(row.actualCost) || 0, getVarianceValue(row, 'actualCost'), true);
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td className="number" style={{ ...TD_FONT, color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(row.actualCost))}</td>
+                    )}
+                    {/* Rem Cost */}
+                    {varianceMode ? (() => {
+                      const current = Number((row as any).remainingCost) || 0;
+                      const snapActC = getVarianceValue(row, 'actualCost');
+                      const snapPlanC = getVarianceValue(row, 'planCost');
+                      const snapRemC = snapActC != null && snapPlanC != null ? snapPlanC - snapActC : null;
+                      const v = formatVariance(current, snapRemC, true);
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td className="number" style={TD_FONT}>{formatCurrency(Number((row as any).remainingCost))}</td>
+                    )}
+                    {/* Eff% */}
+                    {varianceMode ? (() => {
+                      const snapEff = getVarianceValue(row, 'actualHours');
+                      const snapPlan = getVarianceValue(row, 'planHours');
+                      const snapEffPct = snapEff != null && snapPlan != null && snapPlan > 0 ? Math.round((snapEff / snapPlan) * 100) : null;
+                      const v = formatEffVariance(efficiency, snapEffPct);
+                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                    })() : (
+                      <td className="number" style={{ ...TD_FONT, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
+                    )}
                     <td><div className="progress-bar" style={{ width: '30px', height: '6px' }}><div className="progress-bar-fill" style={{ width: `${progress}%`, background: barColor }} /></div></td>
                     <td style={{ fontSize: '0.5rem' }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.taskId)).join(', ')}>{row.predecessors?.length ? `${row.predecessors.length} dep` : '-'}</td>
                     <td className="number" style={{ ...TD_FONT, color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>{row.totalFloat != null ? row.totalFloat : '-'}</td>
@@ -1082,20 +1226,20 @@ export default function WBSGanttPage() {
 
                         const leftPct = (Math.max(0, iStart.getTime() - tlStart.getTime()) / tlDur) * 100;
                         const widthPct = ((Math.min(iEnd.getTime(), tlEnd.getTime()) - Math.max(iStart.getTime(), tlStart.getTime())) / tlDur) * 100;
-                            const isMilestone = row.is_milestone || row.isMilestone;
+                        const isMilestone = row.is_milestone || row.isMilestone;
                         const pct = progress;
                         const blStart = (row as any).baselineStart;
                         const blEnd = (row as any).baselineEnd;
                         const hasSlipped = blEnd && new Date(blEnd) < iEnd;
 
-                            // Baseline ghost bar
-                            let baselineBar = null;
+                        // Baseline ghost bar
+                        let baselineBar = null;
                         if (showBaseline && blStart && blEnd) {
                           const bs = new Date(blStart), be = new Date(blEnd);
                           if (!Number.isNaN(bs.getTime()) && !Number.isNaN(be.getTime())) {
                             const bL = (Math.max(0, bs.getTime() - tlStart.getTime()) / tlDur) * 100;
                             const bW = ((Math.min(be.getTime(), tlEnd.getTime()) - Math.max(bs.getTime(), tlStart.getTime())) / tlDur) * 100;
-                                baselineBar = (
+                            baselineBar = (
                               <div style={{
                                 position: 'absolute', left: `calc(${dateColumns.length * 100}% * ${bL / 100})`,
                                 width: `calc(${dateColumns.length * 100}% * ${bW / 100})`, height: '6px', top: '18px',
@@ -1116,15 +1260,15 @@ export default function WBSGanttPage() {
                             ? `1px solid ${barColor}88`
                             : hasSlipped ? '1px solid #F59E0B' : 'none';
 
-                            return (
-                              <>
-                                {baselineBar}
-                                <div
+                        return (
+                          <>
+                            {baselineBar}
+                            <div
                               onMouseEnter={(e) => handleBarMouseEnter(e, row)}
                               onMouseLeave={handleBarMouseLeave}
-                                  style={{
-                                    position: 'absolute',
-                                    left: `calc(${dateColumns.length * 100}% * ${leftPct / 100})`,
+                              style={{
+                                position: 'absolute',
+                                left: `calc(${dateColumns.length * 100}% * ${leftPct / 100})`,
                                 width: `calc(${dateColumns.length * 100}% * ${widthPct / 100})`,
                                 height: barHeight, top: barTop,
                                 background: barBg, borderRadius: '3px', zIndex: 5,
@@ -1136,9 +1280,9 @@ export default function WBSGanttPage() {
                             >
                               {!isMilestone && <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '3px' }} />}
                               {isMilestone && <div style={{ width: '4px', height: '100%', background: '#ef4444', marginLeft: '-2px' }} />}
-                                </div>
-                              </>
-                            );
+                            </div>
+                          </>
+                        );
                       })();
 
                       return (

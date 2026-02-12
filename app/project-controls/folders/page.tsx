@@ -171,13 +171,24 @@ export default function DocumentsPage() {
   const [assignPortfolioId, setAssignPortfolioId] = useState('');
 
   // Check if the selected project has a portfolio; build portfolio options
+  // Use full data (not filtered) so ALL active portfolios are available for reassignment
   const portfolioOptions: DropdownOption[] = useMemo(() => {
-    return (filteredData?.portfolios || []).map((p: any) => ({
+    return (data?.portfolios || []).filter((p: any) => {
+      const inactive = p.isActive === false || p.is_active === false || p.active === false;
+      const status = (p.status || '').toString().toLowerCase();
+      return !inactive && !status.includes('inactive') && !status.includes('closed');
+    }).map((p: any) => ({
       id: p.id || p.portfolioId,
       name: p.name,
       secondary: p.manager || '',
     }));
-  }, [filteredData?.portfolios]);
+  }, [data?.portfolios]);
+
+  // Re-fetch fresh data when a project is selected to sync portfolio status with Data Management
+  useEffect(() => {
+    if (!workdayProjectId) return;
+    if (typeof refreshData === 'function') refreshData();
+  }, [workdayProjectId, refreshData]);
 
   const selectedProjectMissingPortfolio = useMemo(() => {
     if (!workdayProjectId) return false;
@@ -1955,7 +1966,7 @@ export default function DocumentsPage() {
                     No Portfolio Assigned
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                    This project does not belong to an active portfolio (the assigned Senior Manager may have been terminated). Please assign it to a portfolio to continue.
+                    No active portfolio is currently assigned to this project. Please select a portfolio below to continue.
                   </div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                     Assign to Portfolio *

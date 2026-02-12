@@ -355,115 +355,93 @@ function ResourcingPageContent() {
     return Math.round(emps.reduce((s, e) => s + e.utilization, 0) / emps.length);
   }, [employeeMetrics]);
 
-  const buildPortfolioTree = useMemo((): any[] => {
-    if (!employeeMetrics.length && !projectsWithEmployees.length) return [];
+  const buildManagerTree = useMemo((): any[] => {
+    if (!employeeMetrics.length) return [];
 
-    // Build: Portfolio → Project → Employee (clean hierarchy, no deduplication issues)
-    const portfolioNodes: any[] = [];
-    const assignedEmpIds = new Set<string>();
-
-    data.portfolios.forEach((port: any) => {
-      const pid = port.id || port.portfolioId;
-      const pname = port.name || pid;
-      const pProjs = projectsWithEmployees.filter(p =>
-        p.portfolioId === pid || p.portfolioId === pname || p.portfolioName === pname
-      );
-
-      const projectChildren = pProjs.map(proj => {
-        const empNodes = proj.employees.map((e: any) => {
-          assignedEmpIds.add(e.id);
-          return makeEmpNode(e);
-        });
-        return {
-          name: proj.name, id: proj.id, isProject: true,
-          employeeCount: proj.employeeCount, totalHours: proj.totalHours,
-          children: empNodes.length > 0 ? empNodes : undefined,
-        };
-      });
-
-      if (projectChildren.length === 0) return;
-
-      const pEmpIds = new Set<string>();
-      pProjs.forEach(pr => pr.employees.forEach((e: any) => pEmpIds.add(e.id)));
-      const portUtil = getGroupUtilization(pEmpIds);
-      const portColor = getUtilColor(portUtil);
-
-      portfolioNodes.push({
-        name: pname, id: pid, isPortfolio: true, projectCount: pProjs.length,
-        utilization: portUtil,
-        itemStyle: { color: portColor, borderColor: portColor, borderWidth: 3 },
-        label: { backgroundColor: `${portColor}15` },
-        children: projectChildren,
-      });
+    // Build employee lookup by name (lowercase) for manager matching
+    const empByName = new Map<string, any>();
+    employeeMetrics.forEach(emp => {
+      empByName.set((emp.name || '').toLowerCase().trim(), emp);
     });
 
-    // Projects not associated with any portfolio
-    const orphanProjs = projectsWithEmployees.filter(p =>
-      !data.portfolios.some((port: any) => {
-        const pid = port.id || port.portfolioId;
-        const pname = port.name || pid;
-        return p.portfolioId === pid || p.portfolioId === pname || p.portfolioName === pname;
-      })
-    );
-    if (orphanProjs.length > 0) {
-      const orphanChildren = orphanProjs.map(proj => {
-        const empNodes = proj.employees.map((e: any) => {
-          assignedEmpIds.add(e.id);
-          return makeEmpNode(e);
-        });
-        return {
-          name: proj.name, id: proj.id, isProject: true,
-          employeeCount: proj.employeeCount, totalHours: proj.totalHours,
-          children: empNodes.length > 0 ? empNodes : undefined,
-        };
+    // Find children of a given manager
+    const getDirectReports = (managerName: string): any[] => {
+      const mnLower = managerName.toLowerCase().trim();
+      return employeeMetrics.filter(emp => {
+        const mgr = (emp.manager || '').toLowerCase().trim();
+        return mgr === mnLower && (emp.name || '').toLowerCase().trim() !== mnLower;
       });
-      const orphanEmpIds = new Set<string>();
-      orphanProjs.forEach(pr => pr.employees.forEach((e: any) => orphanEmpIds.add(e.id)));
-      const oUtil = getGroupUtilization(orphanEmpIds);
-      const oColor = getUtilColor(oUtil);
-      portfolioNodes.push({
-        name: 'Unassigned Portfolio', id: 'orphan-portfolio', isPortfolio: true,
-        projectCount: orphanProjs.length, utilization: oUtil,
-        itemStyle: { color: oColor, borderColor: oColor, borderWidth: 3 },
-        label: { backgroundColor: `${oColor}15` },
-        children: orphanChildren,
+    };
+
+    // Recursively build tree nodes
+    const visited = new Set<string>();
+    const buildNode = (emp: any): any => {
+      if (visited.has(emp.id)) return null;
+      visited.add(emp.id);
+
+      const reports = getDirectReports(emp.name);
+      const childNodes = reports.map(r => buildNode(r)).filter(Boolean);
+      const uc = getUtilColor(emp.utilization);
+
+      // Compute group utilization for managers
+      const groupUtil = childNodes.length > 0
+        ? Math.round([emp, ...reports].reduce((s, e) => s + e.utilization, 0) / (1 + reports.length))
+        : emp.utilization;
+
+      const node: any = {
+        name: emp.name,
+        id: emp.id,
+        emp,
+        utilization: emp.utilization,
+        isManager: childNodes.length > 0,
+        reportCount: childNodes.length,
+        groupUtilization: groupUtil,
+        itemStyle: { color: uc, borderColor: uc, borderWidth: childNodes.length > 0 ? 2.5 : 1.5 },
+        label: { backgroundColor: `${uc}15` },
+        children: childNodes.length > 0 ? childNodes : undefined,
+      };
+      return node;
+    };
+
+    // Root employees: those whose manager field is empty, or whose manager name doesn't match any other employee
+    const roots = employeeMetrics.filter(emp => {
+      const mgr = (emp.manager || '').toLowerCase().trim();
+      return !mgr || !empByName.has(mgr) || mgr === (emp.name || '').toLowerCase().trim();
+    });
+
+    const rootNodes = roots.map(r => buildNode(r)).filter(Boolean);
+
+    // Catch any employees missed (circular references, etc.)
+    const missedEmps = employeeMetrics.filter(e => !visited.has(e.id));
+    if (missedEmps.length > 0) {
+      missedEmps.forEach(emp => {
+        const node = buildNode(emp);
+        if (node) rootNodes.push(node);
       });
     }
 
-    // Employees not on any project
-    const unassignedEmps = employeeMetrics.filter(e => !assignedEmpIds.has(e.id));
-    if (unassignedEmps.length > 0) {
-      const ueIds = new Set(unassignedEmps.map(e => e.id));
-      const ueUtil = getGroupUtilization(ueIds);
-      const ueColor = getUtilColor(ueUtil);
-      portfolioNodes.push({
-        name: 'Unassigned Employees', id: 'unassigned-emps', isPortfolio: true,
-        projectCount: 0, utilization: ueUtil,
-        itemStyle: { color: ueColor, borderColor: ueColor, borderWidth: 3 },
-        label: { backgroundColor: `${ueColor}15` },
-        children: unassignedEmps.map(e => makeEmpNode(e)),
-      });
-    }
+    // Sort roots: managers first (by report count desc), then individuals
+    rootNodes.sort((a: any, b: any) => (b.reportCount || 0) - (a.reportCount || 0));
 
-    return portfolioNodes;
-  }, [employeeMetrics, data.portfolios, projectsWithEmployees, makeEmpNode, getGroupUtilization]);
+    return rootNodes;
+  }, [employeeMetrics]);
 
-  const treeData = buildPortfolioTree;
+  const treeData = buildManagerTree;
 
-  // Count leaves per portfolio for proportional height allocation
+  // Count leaves for proportional height allocation
   const countLeaves = (nodes: any[]): number =>
     nodes.reduce((sum: number, n: any) => {
       if (!n.children || n.children.length === 0) return sum + 1;
       return sum + countLeaves(n.children);
     }, 0);
 
-  const portfolioLeafCounts = useMemo(() =>
+  const treeLeafCounts = useMemo(() =>
     treeData.map(p => ({ name: p.name, leaves: countLeaves([p]) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [treeData],
   );
 
-  const totalLeaves = portfolioLeafCounts.reduce((s, p) => s + p.leaves, 0);
+  const totalLeaves = treeLeafCounts.reduce((s, p) => s + p.leaves, 0);
   const dynamicTreeHeight = Math.max(800, totalLeaves * 56 + treeData.length * 80);
 
   // ── Register global action bridge for tooltip clicks ──────────
@@ -475,46 +453,41 @@ function ResourcingPageContent() {
     return () => { delete (window as any).__resourcingOpenEmployee; };
   }, [employeeMetrics]);
 
-  // Portfolio color palette for tree series
-  const PORTFOLIO_COLORS = ['#40E0D0', '#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EC4899', '#06B6D4', '#FF9800', '#6366F1', '#EF4444'];
-
-  // ── ECharts tree option — multiple series (one per portfolio) with legend ──
+  // ── ECharts tree option — single series (manager hierarchy) with utilization legend ──
   const treeOption: EChartsOption = useMemo(() => {
     if (treeData.length === 0) return { series: [] };
 
-    // Shared tooltip formatter
+    // Tooltip formatter
     const tooltipFormatter = (params: any) => {
       const d = params.data;
-      if (d.isPortfolio) {
-        const uc = getUtilColor(d.utilization || 0);
-        return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div><div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><div style="width:32px;height:32px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:10px;color:#9ca3af;">Avg Utilization</span></div></div>`;
-      }
-      if (d.isProject) return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Project · ${d.employeeCount || 0} employees</div>${d.totalHours ? '<div style="font-size:11px;margin-top:4px;">' + fmt(d.totalHours) + ' total hours</div>' : ''}</div>`;
-      if (d.isPlaceholder) return `<div style="padding:8px 12px;font-size:11px;color:#6B7280;">${d.name}</div>`;
       if (d.emp) {
         const e = d.emp;
         const uc = getUtilColor(e.utilization);
+        const managerLine = d.isManager
+          ? `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Manager · ${d.reportCount} direct report${d.reportCount !== 1 ? 's' : ''}</div>`
+          : `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">${e.role}</div>`;
         return `<div style="padding:14px 16px;min-width:240px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-            <div><div style="font-weight:700;font-size:14px;">${e.name}</div><div style="font-size:11px;color:#9ca3af;">${e.role}</div></div>
+            <div><div style="font-weight:700;font-size:14px;">${e.name}</div>${managerLine}</div>
             <div style="width:40px;height:40px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${uc};background:${uc}15;">${e.utilization}%</div>
-              </div>
+          </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:11px;margin-bottom:10px;">
+            <div style="color:#9ca3af;">Role</div><div style="font-weight:600;">${e.role}</div>
             <div style="color:#9ca3af;">Tasks</div><div style="font-weight:600;">${e.taskCount}</div>
             <div style="color:#9ca3af;">Allocated</div><div style="font-weight:600;">${fmt(e.allocatedHours)} hrs</div>
             <div style="color:#9ca3af;">Available</div><div style="font-weight:600;color:#10B981;">${fmt(e.availableHours)} hrs</div>
             <div style="color:#9ca3af;">Projects</div><div style="font-weight:600;">${e.projects?.length || 0}</div>
             ${e.qcPassRate !== null ? `<div style="color:#9ca3af;">QC Rate</div><div style="font-weight:600;">${e.qcPassRate}%</div>` : ''}
-              </div>
+          </div>
           <button onclick="window.__resourcingOpenEmployee('${e.id}')" style="width:100%;padding:8px;border:none;border-radius:6px;background:rgba(64,224,208,0.15);color:#40E0D0;font-weight:600;font-size:12px;cursor:pointer;transition:background 0.15s;">
-            View Details & Assign Tasks →
+            View Details &amp; Assign Tasks →
           </button>
-            </div>`;
+        </div>`;
       }
       return `<div style="padding:8px 12px;"><strong>${d.name}</strong></div>`;
     };
 
-    // Shared label config — improved sizing for readability
+    // Label config
     const sharedLabel = {
       position: 'right' as const,
       verticalAlign: 'middle' as const,
@@ -526,48 +499,43 @@ function ResourcingPageContent() {
       distance: 10,
       formatter: (params: any) => {
         const d = params.data;
-        if (d.isPortfolio) return `{bold|${d.name}}\n{portSub|${d.projectCount || 0} projects · ${d.utilization || 0}% util}`;
-        if (d.isProject) return `{project|${d.name.substring(0, 28)}${d.name.length > 28 ? '...' : ''}}`;
-        if (d.isPlaceholder) return `{muted|${d.name}}`;
+        if (d.isManager) {
+          return `{mgrName|${d.name}}\n{mgrSub|${d.emp?.role || 'Manager'} · ${d.reportCount} reports}\n{util|${d.utilization || 0}%}`;
+        }
         if (d.emp) {
           return `{empName|${d.name}}\n{empRole|${d.emp?.role || ''}}\n{util|${d.utilization || 0}%}`;
         }
         return d.name;
       },
       rich: {
-        bold: { fontWeight: 'bold' as any, fontSize: 15, lineHeight: 22, color: '#40E0D0' },
-        portSub: { fontSize: 10, color: '#9ca3af', lineHeight: 15 },
+        mgrName: { fontWeight: 'bold' as any, fontSize: 13, lineHeight: 20, color: '#40E0D0' },
+        mgrSub: { fontSize: 9.5, color: '#9ca3af', lineHeight: 14 },
         empName: { fontSize: 11.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 17 },
         empRole: { fontSize: 9.5, color: '#a1a1aa', lineHeight: 14 },
-        role: { fontSize: 10, color: '#9ca3af', lineHeight: 15 },
-        project: { fontSize: 11.5, color: '#60A5FA', lineHeight: 17 },
-        muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
         util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
       },
     };
 
-    // Calculate vertical space allocation per portfolio based on leaf count
-    const totalLf = portfolioLeafCounts.reduce((s, p) => s + p.leaves, 0) || 1;
-    const GAP = 2; // percent gap between trees
-    const HEADER = 6; // percent reserved for legend
+    // Calculate vertical space allocation per root based on leaf count
+    const totalLf = treeLeafCounts.reduce((s, p) => s + p.leaves, 0) || 1;
+    const GAP = 2;
+    const HEADER = 6;
     const usable = 100 - HEADER - GAP * treeData.length;
-
     let topAccum = HEADER;
 
-    // Build one tree series per portfolio
-    const series: any[] = treeData.map((portfolioNode, idx) => {
-      const leafPct = (portfolioLeafCounts[idx]?.leaves || 1) / totalLf;
-      const heightPct = Math.max(8, leafPct * usable); // at least 8% height
-      const seriesColor = PORTFOLIO_COLORS[idx % PORTFOLIO_COLORS.length];
-
+    // Build one tree series per root node
+    const series: any[] = treeData.map((rootNode, idx) => {
+      const leafPct = (treeLeafCounts[idx]?.leaves || 1) / totalLf;
+      const heightPct = Math.max(8, leafPct * usable);
       const top = `${topAccum}%`;
       const bottom = `${Math.max(0, 100 - topAccum - heightPct)}%`;
       topAccum += heightPct + GAP;
+      const nodeColor = getUtilColor(rootNode.utilization || 0);
 
       return {
         type: 'tree',
-        name: portfolioNode.name,
-        data: [portfolioNode],
+        name: rootNode.name,
+        data: [rootNode],
         top,
         left: '3%',
         bottom,
@@ -581,23 +549,19 @@ function ResourcingPageContent() {
         animationDuration: 400,
         animationDurationUpdate: 500,
         roam: true,
-        symbolSize: (value: any, params: any) => {
+        symbolSize: (_value: any, params: any) => {
           const d = params?.data;
-          if (d?.isPortfolio) return 26;
-          if (d?.isProject) return 18;
+          if (d?.isManager && (d?.reportCount || 0) > 3) return 22;
+          if (d?.isManager) return 18;
           return 12;
         },
-        itemStyle: {
-          color: seriesColor,
-          borderColor: seriesColor,
-          borderWidth: 1.5,
-        },
+        itemStyle: { color: nodeColor, borderColor: nodeColor, borderWidth: 1.5 },
         label: sharedLabel,
         leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
-        lineStyle: { color: `${seriesColor}50`, width: 1.5, curveness: 0.5 },
+        lineStyle: { color: `${nodeColor}50`, width: 1.5, curveness: 0.5 },
         emphasis: {
           focus: 'descendant',
-          itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: `${seriesColor}80` },
+          itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: `${nodeColor}80` },
         },
       };
     });
@@ -616,23 +580,26 @@ function ResourcingPageContent() {
         extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
         formatter: tooltipFormatter,
       },
+      // Utilization-level legend instead of portfolio names
       legend: {
         top: '1%',
         left: 'center',
         orient: 'horizontal' as const,
-        data: treeData.map((p, idx) => ({
-          name: p.name,
-          icon: 'roundRect',
-          itemStyle: { color: PORTFOLIO_COLORS[idx % PORTFOLIO_COLORS.length] },
-        })),
+        selectedMode: false,
+        data: [
+          { name: 'Available (< 50%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.available } },
+          { name: 'Optimal (50-85%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.optimal } },
+          { name: 'Busy (85-100%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.busy } },
+          { name: 'Overloaded (> 100%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.overloaded } },
+        ],
         textStyle: { color: '#a1a1aa', fontSize: 11 },
-        itemGap: 20,
+        itemGap: 24,
         itemWidth: 14,
         itemHeight: 10,
       },
       series,
     };
-  }, [treeData, portfolioLeafCounts]);
+  }, [treeData, treeLeafCounts]);
 
   // ── Analytics charts ──────────────────────────────────────────
   const sortedEmployeesByUtil = useMemo(() =>
