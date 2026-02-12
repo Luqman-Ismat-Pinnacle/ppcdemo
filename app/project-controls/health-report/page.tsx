@@ -14,6 +14,7 @@ export default function ProjectHealthReportPage() {
   const { data } = useData();
   const [storagePath, setStoragePath] = useState<string | null>(null);
   const [fetchedDoc, setFetchedDoc] = useState<any>(null);
+  const [autoPrintDone, setAutoPrintDone] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -35,7 +36,7 @@ export default function ProjectHealthReportPage() {
         const found = docs.find((d: any) => d.storagePath === storagePath || d.storage_path === storagePath);
         if (found) setFetchedDoc(found);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [storagePath, data.projectDocuments]);
 
   const report = useMemo(() => {
@@ -80,6 +81,18 @@ export default function ProjectHealthReportPage() {
       issues: health.issues || [],
     };
   }, [storagePath, data.projectDocuments, fetchedDoc]);
+
+  // Auto-trigger print/save-as-PDF dialog when navigating from Project Plan page
+  useEffect(() => {
+    if (!report || autoPrintDone) return;
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('autoPrint') !== '1') return;
+    setAutoPrintDone(true);
+    // Small delay to ensure the report is fully rendered before printing
+    const timer = setTimeout(() => window.print(), 600);
+    return () => clearTimeout(timer);
+  }, [report, autoPrintDone]);
 
   if (!storagePath) {
     return <div style={{ padding: '2rem', color: 'var(--text-primary)' }}>No storagePath specified.</div>;
@@ -150,17 +163,16 @@ export default function ProjectHealthReportPage() {
             report.score >= 80
               ? 'rgba(16,185,129,0.1)'
               : report.score >= 50
-              ? 'rgba(245,158,11,0.1)'
-              : 'rgba(239,68,68,0.1)',
+                ? 'rgba(245,158,11,0.1)'
+                : 'rgba(239,68,68,0.1)',
           borderRadius: 6,
           marginBottom: '1.5rem',
-          border: `1px solid ${
-            report.score >= 80
-              ? 'rgba(16,185,129,0.3)'
-              : report.score >= 50
+          border: `1px solid ${report.score >= 80
+            ? 'rgba(16,185,129,0.3)'
+            : report.score >= 50
               ? 'rgba(245,158,11,0.3)'
               : 'rgba(239,68,68,0.3)'
-          }`,
+            }`,
         }}
       >
         <div

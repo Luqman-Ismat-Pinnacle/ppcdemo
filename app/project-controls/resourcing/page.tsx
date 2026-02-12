@@ -82,6 +82,7 @@ function ResourcingPageContent() {
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [orgSearch, setOrgSearch] = useState('');
+  const [analyticsSearch, setAnalyticsSearch] = useState('');
 
   // ── Data ──────────────────────────────────────────────────────
   const data = useMemo(() => {
@@ -463,7 +464,7 @@ function ResourcingPageContent() {
   );
 
   const totalLeaves = portfolioLeafCounts.reduce((s, p) => s + p.leaves, 0);
-  const dynamicTreeHeight = Math.max(600, totalLeaves * 44 + treeData.length * 60);
+  const dynamicTreeHeight = Math.max(800, totalLeaves * 56 + treeData.length * 80);
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -639,7 +640,8 @@ function ResourcingPageContent() {
     [employeeMetrics]);
 
   const capacityChartOption: EChartsOption = useMemo(() => {
-    const cd = sortedEmployeesByUtil.slice(0, 30).map(e => ({ id: e.id, name: e.name, utilization: e.utilization, role: e.role, taskCount: e.taskCount, allocatedHours: e.allocatedHours, availableHours: e.availableHours }));
+    const cd = sortedEmployeesByUtil.map(e => ({ id: e.id, name: e.name, utilization: e.utilization, role: e.role, taskCount: e.taskCount, allocatedHours: e.allocatedHours, availableHours: e.availableHours }));
+    const chartHeight = Math.max(420, cd.length * 28);
     return {
       backgroundColor: 'transparent',
       tooltip: {
@@ -655,10 +657,11 @@ function ResourcingPageContent() {
           return `<strong>${e.name}</strong><br/><span style="color:#9ca3af">${e.role}</span><br/>Utilization: <strong style="color:${uc}">${e.utilization}%</strong><br/>Tasks: ${e.taskCount} · Allocated: ${fmt(e.allocatedHours)} hrs<br/>Available: <span style="color:#10B981">${fmt(e.availableHours)} hrs</span><br/><span style="color:#40E0D0;font-size:10px">Click to view details & assign tasks</span>`;
         },
       },
-      grid: { left: 60, right: 20, top: 30, bottom: 80 },
-      xAxis: { type: 'category', data: cd.map(d => d.name), axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 45 }, axisLine: { lineStyle: { color: '#3f3f46' } } },
-      yAxis: { type: 'value', max: 150, axisLabel: { color: '#a1a1aa', fontSize: 9, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } } },
-      series: [{ type: 'bar', data: cd.map(d => ({ value: d.utilization, _empId: d.id, itemStyle: { color: getUtilColor(d.utilization), borderRadius: [4, 4, 0, 0] } })), barWidth: '55%', markLine: { silent: true, symbol: 'none', data: [{ yAxis: 100, lineStyle: { color: '#EF4444', type: 'dashed', width: 2 }, label: { formatter: 'Capacity', color: '#EF4444', fontSize: 9 } }] } }],
+      grid: { left: 120, right: 40, top: 30, bottom: 30 },
+      yAxis: { type: 'category', data: cd.map(d => d.name), axisLabel: { color: '#a1a1aa', fontSize: 10 }, axisLine: { lineStyle: { color: '#3f3f46' } }, inverse: true },
+      xAxis: { type: 'value', max: 150, axisLabel: { color: '#a1a1aa', fontSize: 9, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } } },
+      series: [{ type: 'bar', data: cd.map(d => ({ value: d.utilization, _empId: d.id, itemStyle: { color: getUtilColor(d.utilization), borderRadius: [0, 4, 4, 0] } })), barWidth: '65%', markLine: { silent: true, symbol: 'none', data: [{ xAxis: 100, lineStyle: { color: '#EF4444', type: 'dashed', width: 2 }, label: { formatter: 'Capacity', color: '#EF4444', fontSize: 9 } }] } }],
+      _chartHeight: chartHeight,
     };
   }, [sortedEmployeesByUtil]);
 
@@ -1187,34 +1190,15 @@ function ResourcingPageContent() {
       {/* ═══ TABS CONTENT ══════════════════════════════════════════ */}
       {activeTab === 'organization' ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', overflow: 'auto', minHeight: 0 }}>
-          {/* ── Summary stat cards ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.65rem', flexShrink: 0 }}>
-            {[
-              { label: 'Portfolios', value: summaryMetrics.totalPortfolios, icon: '📁' },
-              { label: 'Projects', value: summaryMetrics.totalProjects, icon: '📋' },
-              { label: 'Employees', value: summaryMetrics.totalEmployees, icon: '👥', accent: 'var(--pinnacle-teal)', bg: 'linear-gradient(135deg, rgba(64,224,208,0.12), rgba(64,224,208,0.04))', border: 'rgba(64,224,208,0.25)' },
-              { label: 'Avg Utilization', value: `${summaryMetrics.avgUtilization}%`, icon: '📊', accent: getUtilColor(summaryMetrics.avgUtilization) },
-              { label: 'Overloaded', value: summaryMetrics.overloaded, icon: '⚠️', accent: summaryMetrics.overloaded > 0 ? '#EF4444' : undefined, bg: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.08)' : undefined, border: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.25)' : undefined },
-            ].map(m => (
-              <div key={m.label} style={{ padding: '0.65rem 0.75rem', background: m.bg || 'var(--bg-card)', borderRadius: 10, border: `1px solid ${m.border || 'var(--border-color)'}`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '1.1rem' }}>{m.icon}</span>
-                <div>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>{m.label}</div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: m.accent || 'var(--text-primary)' }}>{m.value}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
           {/* ── Search bar ── */}
           <input
             type="text" value={orgSearch} onChange={e => setOrgSearch(e.target.value)}
-            placeholder="🔍 Search employees, projects, or portfolios…"
+            placeholder="Search employees, projects, or portfolios..."
             style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%', maxWidth: 360, transition: 'border-color 0.2s', flexShrink: 0 }}
           />
 
           {/* ── Tree chart ── */}
-          <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: 0 }}>
+          <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: '70vh' }}>
             {treeData.length > 0 ? (
               <div style={{ minHeight: `${dynamicTreeHeight}px` }}>
                 <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
@@ -1231,7 +1215,7 @@ function ResourcingPageContent() {
           </div>
         </div>
       ) : activeTab === 'analytics' ? (
-        /* ═══ ANALYTICS TAB ═══════════════════════════════════════ */
+        /* ═══ ANALYTICS TAB ═════════════════════════════════════════════════ */
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Scorecards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', flexShrink: 0 }}>
@@ -1250,34 +1234,57 @@ function ResourcingPageContent() {
             ))}
           </div>
 
-          {/* Employee Utilization — Full width, much bigger */}
+          {/* Employee Utilization — Horizontal bar, ALL employees */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700 }}>Employee Utilization</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Click a bar to view employee details & assign tasks</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sortedEmployeesByUtil.length} employees - Click a bar to view details</div>
             </div>
-            <ChartWrapper option={capacityChartOption} height="420px" onClick={(params: any) => {
-              const idx = params?.dataIndex;
-              if (idx != null && sortedEmployeesByUtil[idx]) {
-                setSelectedEmployee(sortedEmployeesByUtil[idx]);
-                setShowEmployeeModal(true);
-              }
-            }} />
+            <div style={{ overflowY: 'auto', maxHeight: '500px' }}>
+              <ChartWrapper option={capacityChartOption} height={`${Math.max(420, sortedEmployeesByUtil.length * 28)}px`} onClick={(params: any) => {
+                const idx = params?.dataIndex;
+                if (idx != null && sortedEmployeesByUtil[idx]) {
+                  setSelectedEmployee(sortedEmployeesByUtil[idx]);
+                  setShowEmployeeModal(true);
+                }
+              }} />
+            </div>
           </div>
 
-          {/* Utilization Distribution */}
+          {/* Utilization Distribution + Utilization by Role */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Utilization Distribution</div>
               <ChartWrapper option={utilizationPieOption} height="280px" />
             </div>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Quick Actions</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {summaryMetrics.overloaded > 0 && <div style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', fontSize: '0.8rem' }}><span style={{ fontWeight: 700, color: '#EF4444' }}>{summaryMetrics.overloaded}</span> <span style={{ color: 'var(--text-muted)' }}>overloaded employees need task redistribution</span></div>}
-                {summaryMetrics.available > 0 && <div style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', fontSize: '0.8rem' }}><span style={{ fontWeight: 700, color: '#3B82F6' }}>{summaryMetrics.available}</span> <span style={{ color: 'var(--text-muted)' }}>employees available for new assignments</span></div>}
-                {summaryMetrics.unassignedTasks > 0 && <div style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '0.8rem' }}><span style={{ fontWeight: 700, color: '#F59E0B' }}>{summaryMetrics.unassignedTasks}</span> <span style={{ color: 'var(--text-muted)' }}>tasks waiting for assignment</span>{summaryMetrics.criticalTasks > 0 && <span style={{ color: '#EF4444', fontWeight: 700 }}> ({summaryMetrics.criticalTasks} critical)</span>}</div>}
-              </div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Utilization by Role</div>
+              {(() => {
+                const roleMap = new Map<string, { total: number; count: number }>();
+                employeeMetrics.forEach(e => {
+                  const role = e.role || 'Unassigned';
+                  const existing = roleMap.get(role) || { total: 0, count: 0 };
+                  roleMap.set(role, { total: existing.total + e.utilization, count: existing.count + 1 });
+                });
+                const roleData = [...roleMap.entries()]
+                  .map(([role, { total, count }]) => ({ role, avgUtil: Math.round(total / count), count }))
+                  .sort((a, b) => b.avgUtil - a.avgUtil);
+                if (roleData.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No role data available</div>;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto' }}>
+                    {roleData.map(r => (
+                      <div key={r.role} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ width: '120px', fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }} title={r.role}>{r.role}</div>
+                        <div style={{ flex: 1, height: '20px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+                          <div style={{ height: '100%', width: `${Math.min(r.avgUtil, 150) / 1.5}%`, background: getUtilColor(r.avgUtil), borderRadius: '4px', transition: 'width 0.4s ease' }} />
+                        </div>
+                        <div style={{ width: '50px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: getUtilColor(r.avgUtil) }}>{r.avgUtil}%</div>
+                        <div style={{ width: '30px', textAlign: 'right', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{r.count}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -1289,17 +1296,24 @@ function ResourcingPageContent() {
             </div>
             {levelingResult ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800, color: getUtilColor(levelingResult.overallUtilization) }}>{levelingResult.overallUtilization}%</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Overall Utilization</div></div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{levelingResult.totalMoves}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Suggested Moves</div></div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{levelingResult.tasksMoved || 0}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks to Shift</div></div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}><div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recommendation</div><div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{levelingResult.summary}</div></div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800, color: getUtilColor((levelingResult as any).overallUtilization) }}>{(levelingResult as any).overallUtilization}%</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Overall Utilization</div></div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{(levelingResult as any).totalMoves}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Suggested Moves</div></div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{(levelingResult as any).tasksMoved || 0}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks to Shift</div></div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}><div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recommendation</div><div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(levelingResult as any).summary}</div></div>
               </div>
             ) : <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Click "Run Analysis" to get resource leveling recommendations</div>}
           </div>
 
-          {/* Employee Table */}
+          {/* Employee Table with Search */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', flex: 1, minHeight: '300px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Employee Details</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Employee Details</div>
+              <input
+                type="text" value={analyticsSearch} onChange={e => setAnalyticsSearch(e.target.value)}
+                placeholder="Search by name or role..."
+                style={{ padding: '0.4rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)', fontSize: '0.78rem', width: '240px' }}
+              />
+            </div>
             <div style={{ flex: 1, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead><tr style={{ background: 'var(--bg-secondary)' }}>
@@ -1308,20 +1322,26 @@ function ResourcingPageContent() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {employeeMetrics.map((emp, idx) => (
-                    <tr key={emp.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--bg-secondary)', cursor: 'pointer' }} onClick={() => { setSelectedEmployee(emp); setShowEmployeeModal(true); }}>
-                      <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)' }}>{emp.name}</td>
-                      <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>{emp.role}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>
-                        <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600, background: `${getUtilColor(emp.utilization)}20`, color: getUtilColor(emp.utilization) }}>{emp.utilization}%</span>
-                      </td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.taskCount}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{fmt(emp.allocatedHours)}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{fmt(emp.availableHours)}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.qcPassRate !== null ? `${emp.qcPassRate}%` : '-'}</td>
-                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.projects?.length || 0}</td>
-                    </tr>
-                  ))}
+                  {employeeMetrics
+                    .filter(emp => {
+                      if (!analyticsSearch) return true;
+                      const q = analyticsSearch.toLowerCase();
+                      return emp.name.toLowerCase().includes(q) || (emp.role || '').toLowerCase().includes(q);
+                    })
+                    .map((emp: any, idx: number) => (
+                      <tr key={emp.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--bg-secondary)', cursor: 'pointer' }} onClick={() => { setSelectedEmployee(emp); setShowEmployeeModal(true); }}>
+                        <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)' }}>{emp.name}</td>
+                        <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>{emp.role}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>
+                          <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600, background: `${getUtilColor(emp.utilization)}20`, color: getUtilColor(emp.utilization) }}>{emp.utilization}%</span>
+                        </td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.taskCount}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{fmt(emp.allocatedHours)}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{fmt(emp.availableHours)}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.qcPassRate !== null ? `${emp.qcPassRate}%` : '-'}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.projects?.length || 0}</td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

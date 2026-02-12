@@ -127,14 +127,15 @@ export default function DocumentsPage() {
   const { refreshData, data, filteredData, isLoading } = useData();
   const { addEngineLog } = useLogs();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Track which file row has its dropdown expanded
   const [expandedDropdownId, setExpandedDropdownId] = useState<string | null>(null);
 
   // Split projects by plan status: has_schedule flag OR has at least one document in project_documents
+  // Uses unfiltered `data` to show ALL projects from Data Management, not just the filtered subset
   const { projectsWithPlan, projectsWithoutPlan } = useMemo(() => {
-    const projects = filteredData?.projects || [];
-    const docs = filteredData?.projectDocuments || [];
+    const projects = data?.projects || [];
+    const docs = data?.projectDocuments || [];
     const projectIdsWithDoc = new Set(
       docs.map((d: any) => d.project_id ?? d.projectId).filter(Boolean)
     );
@@ -147,7 +148,7 @@ export default function DocumentsPage() {
       return !(p.has_schedule === true || p.hasSchedule === true || (id != null && projectIdsWithDoc.has(String(id))));
     });
     return { projectsWithPlan: withPlan, projectsWithoutPlan: withoutPlan };
-  }, [filteredData?.projects, filteredData?.projectDocuments]);
+  }, [data?.projects, data?.projectDocuments]);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -164,7 +165,7 @@ export default function DocumentsPage() {
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [expandedHealthFileId, setExpandedHealthFileId] = useState<string | null>(null);
   const [storageConfigured, setStorageConfigured] = useState(true);
-  
+
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
   const [assignPortfolioId, setAssignPortfolioId] = useState('');
@@ -213,7 +214,7 @@ export default function DocumentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'get-available-projects' })
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.workday_projects) {
@@ -743,9 +744,9 @@ export default function DocumentsPage() {
       setProcessingStage({ step: 3, label: 'Converting data hierarchy...', fileName: file.fileName });
       const timestamp = Date.now();
       const projectId = file.workdayProjectId || `PRJ_MPP_${timestamp}`;
-      
+
       pushLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
-      
+
       // Use our converter to properly categorize by outline_level
       console.log('[DEBUG] About to call convertMppParserOutput with', parseResult.tasks?.length, 'tasks');
       const convertedData = convertMppParserOutput(parseResult, projectId);
@@ -754,7 +755,7 @@ export default function DocumentsPage() {
         units: convertedData.units?.length,
         tasks: convertedData.tasks?.length
       });
-      
+
       // Apply hierarchy context from upload selection
       // Phases and units get hierarchy through project relationship, not direct columns
       if (convertedData.phases) {
@@ -762,19 +763,19 @@ export default function DocumentsPage() {
           // No hierarchy columns on phases - they get it through project
         });
       }
-      
+
       if (convertedData.units) {
         convertedData.units.forEach((unit: any) => {
           // No hierarchy columns on units - they get it through project/site relationship
         });
       }
-      
+
       if (convertedData.tasks) {
         convertedData.tasks.forEach((task: any) => {
           // Tasks don't have hierarchy columns - they get it through project/phase/unit relationships
         });
       }
-      
+
       pushLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
 
       // Auto project health check
@@ -833,7 +834,7 @@ export default function DocumentsPage() {
       if (!existingProjectId) {
         throw new Error('No Workday project selected - cannot create hierarchy without project');
       }
-      
+
       pushLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
 
       // Always apply the file: same structure = update numbers; new structure = replace schedule.
@@ -877,7 +878,7 @@ export default function DocumentsPage() {
           const delResult = await delRes.json();
           if (!delRes.ok || !delResult.success) {
             pushLog('warning', `[Supabase] Delete existing ${key}: ${delResult.error || 'Failed'}`);
-        } else {
+          } else {
             pushLog('success', `[Supabase] Cleared existing ${key} for project`);
           }
         } catch (e: any) {
@@ -1060,17 +1061,35 @@ export default function DocumentsPage() {
       // Persist process logs to project_log
       await saveLogsToProjectLog(logEntries, existingProjectId);
 
+      // Step 6: Auto-run Match Hours
+      setProcessingStage({ step: 6, label: 'Matching hours to tasks...', fileName: file.fileName });
+      pushLog('info', '[Matching] Auto-running hours-to-tasks matching...');
+      try {
+        const matchResponse = await fetch('/api/data/match', { method: 'POST' });
+        const matchResult = await matchResponse.json();
+        if (!matchResponse.ok || !matchResult.success) {
+          pushLog('warning', `[Matching] ${matchResult.error || 'Matching failed — can be re-run manually'}`);
+        } else {
+          pushLog('success', `[Matching] Matched: ${matchResult.tasksMatched} to tasks, ${matchResult.unitsMatched} to units, ${matchResult.stillUnmatched} unmatched`);
+          if (matchResult.aggregated) {
+            pushLog('success', `[Aggregation] Updated ${matchResult.aggregated} tasks with actual hours/cost`);
+          }
+        }
+      } catch (matchErr: any) {
+        pushLog('warning', `[Matching] Auto-match failed: ${matchErr.message}`);
+      }
+
       // Complete the process
-      setProcessingStage({ step: 6, label: 'Complete!', fileName: file.fileName });
-      pushLog('success', '[Complete] MPP file processed and hierarchy imported successfully');
+      setProcessingStage({ step: 7, label: 'Complete!', fileName: file.fileName });
+      pushLog('success', '[Complete] MPP file processed, hierarchy imported, and hours matched');
       setUploadedFiles(prev => prev.map(f =>
         f.id === fileId ? { ...f, status: 'complete' as const, healthCheck: healthResult } : f
       ));
-      
+
       // Save logs to System Health dropdown
       const logLines = logEntries.map(e => `[${e.timestamp.toLocaleTimeString()}] ${e.type.toUpperCase()}: ${e.message}`);
       addEngineLog('ProjectPlan', logLines, { executionTimeMs: Date.now() - Date.parse(logEntries[0]?.timestamp.toISOString() || new Date().toISOString()) });
-      
+
       await refreshData();
       await loadStoredFiles();
 
@@ -1198,23 +1217,23 @@ export default function DocumentsPage() {
   const handleMatchHours = useCallback(async () => {
     setIsMatching(true);
     addLog('info', '[Matching] Starting hours-to-tasks matching...');
-    
+
     try {
       const response = await fetch('/api/data/match', { method: 'POST' });
       const result = await response.json();
-      
+
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Matching failed');
       }
-      
+
       addLog('success', `[Matching] Matched: ${result.tasksMatched} to tasks, ${result.unitsMatched} to units, ${result.stillUnmatched} unmatched`);
       if (result.aggregated) {
         addLog('success', `[Aggregation] Updated ${result.aggregated} tasks with actual hours/cost`);
       }
-      
+
       await refreshData();
       addLog('success', '[Complete] Hours matching and aggregation complete');
-      
+
     } catch (err: any) {
       addLog('error', `[Matching] Error: ${err.message}`);
     } finally {
@@ -1336,7 +1355,7 @@ export default function DocumentsPage() {
           </div>
           <div className="chart-card-body" style={{ padding: '1.5rem' }}>
             <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-              
+
               {/* File Selection */}
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500, fontSize: '0.875rem' }}>
@@ -1400,10 +1419,10 @@ export default function DocumentsPage() {
 
         {/* Processing Progress Overlay */}
         {processingStage && (
-          <div className="chart-card grid-full" style={{ border: '1px solid var(--pinnacle-teal)', borderColor: processingStage.step === 6 ? '#10B981' : 'var(--pinnacle-teal)' }}>
+          <div className="chart-card grid-full" style={{ border: '1px solid var(--pinnacle-teal)', borderColor: processingStage.step === 7 ? '#10B981' : 'var(--pinnacle-teal)' }}>
             <div style={{ padding: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                {processingStage.step < 6 ? (
+                {processingStage.step < 7 ? (
                   <div style={{
                     width: '32px', height: '32px', borderRadius: '50%',
                     border: '3px solid var(--pinnacle-teal)', borderTopColor: 'transparent',
@@ -1437,7 +1456,8 @@ export default function DocumentsPage() {
                   { step: 3, label: 'Convert' },
                   { step: 4, label: 'Health Check' },
                   { step: 5, label: 'Sync' },
-                  { step: 6, label: 'Done' },
+                  { step: 6, label: 'Match Hours' },
+                  { step: 7, label: 'Done' },
                 ].map(({ step, label }) => (
                   <div key={step} style={{ flex: 1, textAlign: 'center' }}>
                     <div style={{
@@ -1445,7 +1465,7 @@ export default function DocumentsPage() {
                       borderRadius: '2px',
                       backgroundColor: step < processingStage.step ? '#10B981'
                         : step === processingStage.step ? 'var(--pinnacle-teal)'
-                        : 'var(--bg-tertiary)',
+                          : 'var(--bg-tertiary)',
                       transition: 'background-color 0.3s ease',
                     }} />
                     <div style={{
@@ -1466,9 +1486,9 @@ export default function DocumentsPage() {
               }}>
                 <div style={{
                   height: '100%',
-                  width: `${(processingStage.step / 6) * 100}%`,
+                  width: `${(processingStage.step / 7) * 100}%`,
                   borderRadius: '3px',
-                  backgroundColor: processingStage.step === 6 ? '#10B981' : 'var(--pinnacle-teal)',
+                  backgroundColor: processingStage.step === 7 ? '#10B981' : 'var(--pinnacle-teal)',
                   transition: 'width 0.5s ease',
                 }} />
               </div>
@@ -1516,239 +1536,225 @@ export default function DocumentsPage() {
                     );
                     const isDropdownOpen = expandedDropdownId === file.id;
                     const failedChecks = file.healthCheck?.results?.filter((r: HealthCheckResult) => !r.passed) || [];
-                    
+
                     return (
-                    <React.Fragment key={file.id}>
-                    <tr 
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => setExpandedDropdownId(isDropdownOpen ? null : file.id)}
-                    >
-                      <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        <button
+                      <React.Fragment key={file.id}>
+                        <tr
+                          style={{ cursor: 'pointer' }}
                           onClick={() => setExpandedDropdownId(isDropdownOpen ? null : file.id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
                         >
-                          <svg 
-                            viewBox="0 0 24 24" 
-                            width="16" 
-                            height="16" 
-                            fill="none" 
-                            stroke="var(--text-muted)" 
-                            strokeWidth="2"
-                            style={{ 
-                              transform: isDropdownOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                              transition: 'transform 0.2s',
-                            }}
-                          >
-                            <path d="M9 18l6-6-6-6" />
-                          </svg>
-                        </button>
-                      </td>
-                      <td>
-                        {file.fileName}
-                        {isCurrentVersion && (
-                          <span
-                            style={{
-                              marginLeft: '0.5rem',
-                              fontSize: '0.7rem',
-                              padding: '0.15rem 0.4rem',
-                              backgroundColor: 'var(--pinnacle-teal)',
-                              color: '#000',
-                              borderRadius: '4px',
-                              fontWeight: 500,
-                            }}
-                          >
-                            Current
-                          </span>
-                        )}
-                        {!isCurrentVersion && file.workdayProjectId && (
-                          <span
-                            style={{
-                              marginLeft: '0.5rem',
-                              fontSize: '0.7rem',
-                              padding: '0.15rem 0.4rem',
-                              backgroundColor: 'rgba(156,163,175,0.2)',
-                              color: 'var(--text-muted)',
-                              borderRadius: '4px',
-                              fontWeight: 500,
-                            }}
-                          >
-                            Old
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <span style={{
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: '4px',
-                          backgroundColor: isCurrentVersion ? 'rgba(64,224,208,0.12)' : 'rgba(156,163,175,0.1)',
-                          color: isCurrentVersion ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
-                        }}>
-                          v{file.version || 1}
-                        </span>
-                      </td>
-                      <td>{(file.fileSize / 1024 / 1024).toFixed(2)} MB</td>
-                      <td>{file.workdayProjectId || '-'}</td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        {file.healthCheck ? (
-                          <span
-                            onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)}
-                            style={{
-                              cursor: 'pointer',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              backgroundColor: file.healthCheck.score >= 80 ? 'rgba(16,185,129,0.2)' : file.healthCheck.score >= 50 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
-                              color: file.healthCheck.score >= 80 ? '#10B981' : file.healthCheck.score >= 50 ? '#F59E0B' : '#EF4444',
+                          <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setExpandedDropdownId(isDropdownOpen ? null : file.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                width="16"
+                                height="16"
+                                fill="none"
+                                stroke="var(--text-muted)"
+                                strokeWidth="2"
+                                style={{
+                                  transform: isDropdownOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                                  transition: 'transform 0.2s',
+                                }}
+                              >
+                                <path d="M9 18l6-6-6-6" />
+                              </svg>
+                            </button>
+                          </td>
+                          <td>
+                            {file.fileName}
+                            {isCurrentVersion && (
+                              <span
+                                style={{
+                                  marginLeft: '0.5rem',
+                                  fontSize: '0.7rem',
+                                  padding: '0.15rem 0.4rem',
+                                  backgroundColor: 'var(--pinnacle-teal)',
+                                  color: '#000',
+                                  borderRadius: '4px',
+                                  fontWeight: 500,
+                                }}
+                              >
+                                Current
+                              </span>
+                            )}
+                            {!isCurrentVersion && file.workdayProjectId && (
+                              <span
+                                style={{
+                                  marginLeft: '0.5rem',
+                                  fontSize: '0.7rem',
+                                  padding: '0.15rem 0.4rem',
+                                  backgroundColor: 'rgba(156,163,175,0.2)',
+                                  color: 'var(--text-muted)',
+                                  borderRadius: '4px',
+                                  fontWeight: 500,
+                                }}
+                              >
+                                Old
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span style={{
+                              fontSize: '0.75rem',
                               fontWeight: 600,
-                              fontSize: '0.8rem',
-                            }}
-                            title={file.healthCheck.issues.join('\n') || 'All checks passed'}
-                          >
-                            {file.healthCheck.score}%
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '4px',
+                              backgroundColor: isCurrentVersion ? 'rgba(64,224,208,0.12)' : 'rgba(156,163,175,0.1)',
+                              color: isCurrentVersion ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
+                            }}>
+                              v{file.version || 1}
+                            </span>
+                          </td>
+                          <td>{(file.fileSize / 1024 / 1024).toFixed(2)} MB</td>
+                          <td>{file.workdayProjectId || '-'}</td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            {file.healthCheck ? (
+                              <span
+                                onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)}
+                                style={{
+                                  cursor: 'pointer',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  backgroundColor: file.healthCheck.score >= 80 ? 'rgba(16,185,129,0.2)' : file.healthCheck.score >= 50 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+                                  color: file.healthCheck.score >= 80 ? '#10B981' : file.healthCheck.score >= 50 ? '#F59E0B' : '#EF4444',
+                                  fontWeight: 600,
+                                  fontSize: '0.8rem',
+                                }}
+                                title={file.healthCheck.issues.join('\n') || 'All checks passed'}
+                              >
+                                {file.healthCheck.score}%
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                            )}
+                          </td>
+                          <td>
+                            <span
+                              className={`badge badge-${file.status === 'complete' ? 'success' :
+                                file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing' ? 'warning' :
+                                  file.status === 'error' ? 'error' : 'secondary'
+                                }`}
+                            >
+                              {file.status}
+                            </span>
+                          </td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button
+                                onClick={() => handleProcess(file.id)}
+                                disabled={isProcessing || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
+                                style={{
+                                  padding: '0.25rem 0.75rem',
+                                  backgroundColor: (file.status === 'uploaded' || file.status === 'error' || file.status === 'complete') ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                                  color: (file.status === 'uploaded' || file.status === 'error' || file.status === 'complete') ? '#000' : 'var(--text-muted)',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  cursor: (file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing') ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                {file.status === 'processing' ? 'Processing...' :
+                                  file.status === 'syncing' ? 'Syncing...' :
+                                    file.status === 'complete' ? 'Re-run MPXJ' : 'Run MPXJ'}
+                              </button>
+
+                              <button
+                                onClick={() => handleDelete(file.id)}
+                                disabled={file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
+                                style={{
+                                  padding: '0.25rem 0.75rem',
+                                  backgroundColor: 'var(--bg-tertiary)',
+                                  color: 'var(--error-color)',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  cursor: file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing' ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expandable row: card-based Health + Actions */}
+                        {isDropdownOpen && (
+                          <tr>
+                            <td colSpan={8} style={{ padding: 0, background: 'var(--bg-tertiary)', verticalAlign: 'top' }}>
+                              <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '1fr auto', gap: '1.5rem', alignItems: 'start' }}>
+                                {/* Health card */}
+                                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden', minWidth: 0 }}>
+                                  <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
+                                      Health
+                                    </span>
+                                    {file.healthCheck && (
+                                      <span style={{ padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: 600, backgroundColor: file.healthCheck.score >= 80 ? 'rgba(16,185,129,0.2)' : file.healthCheck.score >= 50 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)', color: file.healthCheck.score >= 80 ? '#10B981' : file.healthCheck.score >= 50 ? '#F59E0B' : '#EF4444' }}>
+                                        {file.healthCheck.score}%{file.healthCheck.totalChecks ? ` (${file.healthCheck.passed}/${file.healthCheck.totalChecks})` : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ padding: '1rem' }}>
+                                    {!file.healthCheck ? (
+                                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Run MPXJ to analyze this plan.</p>
+                                    ) : (file.healthCheck.results?.length ?? 0) === 0 ? (
+                                      <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--text-primary)' }}>Score: {file.healthCheck.score}%.</strong> Re-run MPXJ for detailed checks.</p>
+                                    ) : failedChecks.length === 0 ? (
+                                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#10B981', fontWeight: 500 }}>All checks passed.</p>
+                                    ) : (
+                                      <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        {failedChecks.slice(0, 5).map((check: HealthCheckResult, idx: number) => (
+                                          <li key={idx} style={{ color: 'var(--text-primary)' }}>{check.checkName}{check.message ? ` — ${check.message}` : ''}</li>
+                                        ))}
+                                        {failedChecks.length > 5 && <li style={{ color: 'var(--text-muted)' }}>+{failedChecks.length - 5} more. Open full report for details.</li>}
+                                      </ul>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Actions card */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
+                                  <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Actions</div>
+                                  <button onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
+                                    Full health report
+                                  </button>
+                                  {file.storagePath && (
+                                    <button onClick={() => window.open(`/project-controls/health-report?storagePath=${encodeURIComponent(file.storagePath)}&autoPrint=1`, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h9l3 3v17H6z" /><path d="M9 7h6" /><path d="M9 11h6" /><path d="M9 15h3" /></svg>
+                                      Print / Save as PDF
+                                    </button>
+                                  )}
+                                  {file.workdayProjectId && (
+                                    <button onClick={() => router.push(`/project-controls/wbs-gantt?projectId=${file.workdayProjectId}`)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><rect x="6" y="6" width="8" height="6" rx="1" /></svg>
+                                      WBS Gantt
+                                    </button>
+                                  )}
+                                  <button onClick={() => { const pid = file.workdayProjectId; router.push(pid ? `/project-controls/resourcing?projectId=${pid}&section=requirements` : '/project-controls/resourcing?section=requirements'); }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--pinnacle-teal)', border: 'none', borderRadius: 'var(--radius-sm)', color: '#000', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                                    Resources
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td>
-                        <span
-                          className={`badge badge-${file.status === 'complete' ? 'success' :
-                            file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing' ? 'warning' :
-                              file.status === 'error' ? 'error' : 'secondary'
-                            }`}
-                        >
-                          {file.status}
-                        </span>
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            onClick={() => handleProcess(file.id)}
-                            disabled={isProcessing || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
-                            style={{
-                              padding: '0.25rem 0.75rem',
-                              backgroundColor: (file.status === 'uploaded' || file.status === 'error' || file.status === 'complete') ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                              color: (file.status === 'uploaded' || file.status === 'error' || file.status === 'complete') ? '#000' : 'var(--text-muted)',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              cursor: (file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing') ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            {file.status === 'processing' ? 'Processing...' :
-                              file.status === 'syncing' ? 'Syncing...' :
-                                file.status === 'complete' ? 'Re-run MPXJ' : 'Run MPXJ'}
-                          </button>
-                          <button
-                            onClick={handleMatchHours}
-                            disabled={isMatching || file.status !== 'complete'}
-                            title="Match hours entries to tasks and aggregate actual cost"
-                            style={{
-                              padding: '0.25rem 0.75rem',
-                              backgroundColor: file.status === 'complete' ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
-                              color: file.status === 'complete' ? '#fff' : 'var(--text-muted)',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              cursor: file.status === 'complete' ? 'pointer' : 'not-allowed',
-                            }}
-                          >
-                            {isMatching ? 'Matching...' : 'Match Hours'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(file.id)}
-                            disabled={file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
-                            style={{
-                              padding: '0.25rem 0.75rem',
-                              backgroundColor: 'var(--bg-tertiary)',
-                              color: 'var(--error-color)',
-                              border: 'none',
-                              borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              cursor: file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing' ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    
-                    {/* Expandable row: card-based Health + Actions */}
-                    {isDropdownOpen && (
-                      <tr>
-                        <td colSpan={7} style={{ padding: 0, background: 'var(--bg-tertiary)', verticalAlign: 'top' }}>
-                          <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '1fr auto', gap: '1.5rem', alignItems: 'start' }}>
-                            {/* Health card */}
-                            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden', minWidth: 0 }}>
-                              <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--pinnacle-teal)" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
-                                  Health
-                                </span>
-                                {file.healthCheck && (
-                                  <span style={{ padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: 600, backgroundColor: file.healthCheck.score >= 80 ? 'rgba(16,185,129,0.2)' : file.healthCheck.score >= 50 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)', color: file.healthCheck.score >= 80 ? '#10B981' : file.healthCheck.score >= 50 ? '#F59E0B' : '#EF4444' }}>
-                                    {file.healthCheck.score}%{file.healthCheck.totalChecks ? ` (${file.healthCheck.passed}/${file.healthCheck.totalChecks})` : ''}
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ padding: '1rem' }}>
-                                {!file.healthCheck ? (
-                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Run MPXJ to analyze this plan.</p>
-                                ) : (file.healthCheck.results?.length ?? 0) === 0 ? (
-                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}><strong style={{ color: 'var(--text-primary)' }}>Score: {file.healthCheck.score}%.</strong> Re-run MPXJ for detailed checks.</p>
-                                ) : failedChecks.length === 0 ? (
-                                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#10B981', fontWeight: 500 }}>All checks passed.</p>
-                                ) : (
-                                  <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                    {failedChecks.slice(0, 5).map((check: HealthCheckResult, idx: number) => (
-                                      <li key={idx} style={{ color: 'var(--text-primary)' }}>{check.checkName}{check.message ? ` — ${check.message}` : ''}</li>
-                                    ))}
-                                    {failedChecks.length > 5 && <li style={{ color: 'var(--text-muted)' }}>+{failedChecks.length - 5} more. Open full report for details.</li>}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
-                            {/* Actions card */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexShrink: 0 }}>
-                              <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Actions</div>
-                              <button onClick={() => setExpandedHealthFileId(expandedHealthFileId === file.id ? null : file.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>
-                                Full health report
-                              </button>
-                              {file.storagePath && (
-                                <button onClick={() => window.open(`/project-controls/health-report?storagePath=${encodeURIComponent(file.storagePath)}`, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h9l3 3v17H6z" /><path d="M9 7h6" /><path d="M9 11h6" /><path d="M9 15h3" /></svg>
-                                  Print / Save as PDF
-                                </button>
-                              )}
-                              {file.workdayProjectId && (
-                                <button onClick={() => router.push(`/project-controls/wbs-gantt?projectId=${file.workdayProjectId}`)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><rect x="6" y="6" width="8" height="6" rx="1" /></svg>
-                                  WBS Gantt
-                                </button>
-                              )}
-                              <button onClick={() => { const pid = file.workdayProjectId; router.push(pid ? `/project-controls/resourcing?projectId=${pid}&section=requirements` : '/project-controls/resourcing?section=requirements'); }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--pinnacle-teal)', border: 'none', borderRadius: 'var(--radius-sm)', color: '#000', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-                                Resources
-                              </button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </React.Fragment>
-                  );})}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -1763,22 +1769,22 @@ export default function DocumentsPage() {
                     <strong style={{ fontSize: '1rem' }}>Project Health Analysis: {file.fileName}</strong>
                     <button onClick={() => setExpandedHealthFileId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1.2rem' }}>×</button>
                   </div>
-                  
+
                   {/* Score Summary */}
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '1.5rem', 
-                    padding: '1rem', 
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1.5rem',
+                    padding: '1rem',
                     background: h.score >= 80 ? 'rgba(16,185,129,0.1)' : h.score >= 50 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
                     borderRadius: '6px',
                     marginBottom: '1.25rem',
                     border: `1px solid ${h.score >= 80 ? 'rgba(16,185,129,0.3)' : h.score >= 50 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`
                   }}>
-                    <div style={{ 
-                      fontSize: '2.5rem', 
-                      fontWeight: 700, 
-                      color: h.score >= 80 ? '#10B981' : h.score >= 50 ? '#F59E0B' : '#EF4444' 
+                    <div style={{
+                      fontSize: '2.5rem',
+                      fontWeight: 700,
+                      color: h.score >= 80 ? '#10B981' : h.score >= 50 ? '#F59E0B' : '#EF4444'
                     }}>
                       {h.score}%
                     </div>
@@ -1800,25 +1806,25 @@ export default function DocumentsPage() {
                     {(!h.results || h.results.length === 0) ? (
                       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Re-run MPXJ to get detailed check results.</p>
                     ) : (
-                    <div style={{ display: 'grid', gap: '6px' }}>
-                      {h.results.map((r, idx) => (
-                        <div key={idx} style={{ 
-                          display: 'flex', 
-                          alignItems: 'flex-start', 
-                          gap: '10px', 
-                          padding: '8px 12px',
-                          background: r.passed ? 'rgba(16,185,129,0.05)' : 'rgba(239,68,68,0.05)',
-                          borderRadius: '4px',
-                          borderLeft: `3px solid ${r.passed ? '#10B981' : '#EF4444'}`
-                        }}>
-                          <span style={{ fontSize: '1rem', flexShrink: 0 }}>{r.passed ? '✓' : '✗'}</span>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)' }}>{r.checkName}</div>
-                            {r.message && <div style={{ fontSize: '0.8rem', color: r.passed ? 'var(--text-muted)' : '#F59E0B', marginTop: '2px' }}>{r.message}</div>}
+                      <div style={{ display: 'grid', gap: '6px' }}>
+                        {h.results.map((r, idx) => (
+                          <div key={idx} style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '10px',
+                            padding: '8px 12px',
+                            background: r.passed ? 'rgba(16,185,129,0.05)' : 'rgba(239,68,68,0.05)',
+                            borderRadius: '4px',
+                            borderLeft: `3px solid ${r.passed ? '#10B981' : '#EF4444'}`
+                          }}>
+                            <span style={{ fontSize: '1rem', flexShrink: 0 }}>{r.passed ? '✓' : '✗'}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)' }}>{r.checkName}</div>
+                              {r.message && <div style={{ fontSize: '0.8rem', color: r.passed ? 'var(--text-muted)' : '#F59E0B', marginTop: '2px' }}>{r.message}</div>}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
                     )}
                   </div>
 
@@ -1837,9 +1843,9 @@ export default function DocumentsPage() {
                           const rec = healthRecommendations[check.checkName];
                           if (!rec) return null;
                           return (
-                            <div key={idx} style={{ 
-                              padding: '12px 14px', 
-                              background: 'var(--bg-secondary)', 
+                            <div key={idx} style={{
+                              padding: '12px 14px',
+                              background: 'var(--bg-secondary)',
                               borderRadius: '6px',
                               border: '1px solid var(--border-color)'
                             }}>
@@ -1849,11 +1855,11 @@ export default function DocumentsPage() {
                               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                                 {rec.description}
                               </div>
-                              <div style={{ 
-                                fontSize: '0.8rem', 
-                                color: 'var(--pinnacle-teal)', 
-                                padding: '8px 10px', 
-                                background: 'rgba(64,224,208,0.08)', 
+                              <div style={{
+                                fontSize: '0.8rem',
+                                color: 'var(--pinnacle-teal)',
+                                padding: '8px 10px',
+                                background: 'rgba(64,224,208,0.08)',
                                 borderRadius: '4px',
                                 borderLeft: '3px solid var(--pinnacle-teal)'
                               }}>
@@ -1865,13 +1871,13 @@ export default function DocumentsPage() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Success message when all checks pass */}
                   {failedChecks.length === 0 && (
-                    <div style={{ 
-                      padding: '1rem', 
-                      background: 'rgba(16,185,129,0.08)', 
-                      borderRadius: '6px', 
+                    <div style={{
+                      padding: '1rem',
+                      background: 'rgba(16,185,129,0.08)',
+                      borderRadius: '6px',
                       border: '1px solid rgba(16,185,129,0.2)',
                       textAlign: 'center'
                     }}>
@@ -1888,53 +1894,7 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Processing Logs */}
-        <div className="chart-card grid-full">
-          <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Log</h3>
-            <button
-              onClick={() => setLogs([])}
-              style={{ padding: '0.25rem 0.75rem', backgroundColor: 'var(--bg-tertiary)', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--text-secondary)' }}
-            >
-              Clear
-            </button>
-          </div>
-          <div className="chart-card-body" style={{ padding: '1rem', maxHeight: '300px', overflowY: 'auto', backgroundColor: 'var(--bg-secondary)' }}>
-            {logs.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem', fontFamily: 'monospace' }}>
-                Ready
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                {logs.map((log) => (
-                  <div
-                    key={log.id}
-                    style={{
-                      padding: '0.3rem 0.5rem',
-                      borderRadius: '4px',
-                      backgroundColor: log.type === 'error' ? 'rgba(255, 99, 71, 0.15)' :
-                        log.type === 'success' ? 'rgba(64, 224, 208, 0.15)' :
-                          log.type === 'warning' ? 'rgba(255, 193, 7, 0.15)' : 'transparent',
-                      display: 'flex',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    <span style={{ color: 'var(--text-muted)', minWidth: '70px', fontSize: '0.7rem' }}>
-                      {log.timestamp.toLocaleTimeString()}
-                    </span>
-                    <span style={{
-                      color: log.type === 'error' ? '#ff6347' :
-                        log.type === 'success' ? 'var(--pinnacle-teal)' :
-                          log.type === 'warning' ? '#ffc107' : 'var(--text-primary)',
-                    }}>
-                      {log.message}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+
 
       </div>
 
@@ -1963,7 +1923,7 @@ export default function DocumentsPage() {
             <h3 style={{ marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
               Select Workday Project for MPP Upload
             </h3>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
@@ -2013,46 +1973,46 @@ export default function DocumentsPage() {
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-                              <button
-                                onClick={() => {
-                                  setShowHierarchyModal(false);
-                                  setWorkdayProjectId('');
-                                  setAssignPortfolioId('');
-                                }}
-                                style={{
-                                  padding: '0.5rem 1rem',
-                                  backgroundColor: 'var(--bg-tertiary)',
-                                  border: '1px solid var(--border-color)',
-                                  borderRadius: '4px',
-                                  color: 'var(--text-secondary)',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={handleUploadWithHierarchy}
-                                disabled={!workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
-                                style={{
-                                  padding: '0.5rem 1rem',
-                                  backgroundColor:
-                                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
-                                      ? 'var(--pinnacle-teal)'
-                                      : 'var(--bg-tertiary)',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  color:
-                                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
-                                      ? '#000'
-                                      : 'var(--text-muted)',
-                                  cursor:
-                                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
-                                      ? 'pointer'
-                                      : 'not-allowed',
-                                }}
-                              >
-                                Upload
-                              </button>
+              <button
+                onClick={() => {
+                  setShowHierarchyModal(false);
+                  setWorkdayProjectId('');
+                  setAssignPortfolioId('');
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUploadWithHierarchy}
+                disabled={!workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor:
+                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                      ? 'var(--pinnacle-teal)'
+                      : 'var(--bg-tertiary)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color:
+                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                      ? '#000'
+                      : 'var(--text-muted)',
+                  cursor:
+                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                      ? 'pointer'
+                      : 'not-allowed',
+                }}
+              >
+                Upload
+              </button>
             </div>
           </div>
         </div>
