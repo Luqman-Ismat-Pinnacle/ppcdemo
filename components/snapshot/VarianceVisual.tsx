@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Intelligent variance visualization: picks the best visual for the data type.
- * Use for any number, row, or breakdown to show "vs snapshot" variance.
+ * Enhanced variance visualization with animated SVG gauges, trend arrows,
+ * tooltips, and smooth transitions. Picks the best visual for each context.
  */
 
 import React from 'react';
@@ -14,19 +14,12 @@ const fmtCost = (c: number) => (c >= 1000 ? `$${(c / 1000).toFixed(1)}K` : `$${M
 type VisualType = 'number' | 'percent' | 'inline-badge' | 'mini-bar' | 'gauge';
 
 export type VarianceVisualProps = {
-  /** Current value */
   current: number;
-  /** Snapshot (baseline) value */
   snapshot: number | null;
-  /** 'hours' | 'cost' - formats and chooses delta display */
   kind?: 'hours' | 'cost' | 'number';
-  /** Force visual type; otherwise auto-chosen */
   visual?: VisualType;
-  /** Compact inline (e.g. in table cell) */
   inline?: boolean;
-  /** Label for accessibility */
   label?: string;
-  /** Show as over/under (cost/hours over = bad) */
   overIsBad?: boolean;
   className?: string;
   style?: React.CSSProperties;
@@ -36,6 +29,15 @@ function formatValue(v: number, kind: 'hours' | 'cost' | 'number') {
   if (kind === 'hours') return fmtHrs(v);
   if (kind === 'cost') return fmtCost(v);
   return v.toLocaleString();
+}
+
+function TrendArrow({ up, bad }: { up: boolean; bad: boolean }) {
+  const color = bad ? 'var(--color-error)' : 'var(--color-success)';
+  return (
+    <span style={{ color, fontSize: '0.7rem', fontWeight: 800, marginLeft: 2 }}>
+      {up ? '▲' : '▼'}
+    </span>
+  );
 }
 
 export function VarianceVisual({
@@ -70,40 +72,34 @@ export function VarianceVisual({
   const color = isBad ? 'var(--color-error)' : 'var(--color-success)';
   const bgColor = isBad ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)';
 
+  const tooltipText = label
+    ? `${label}: ${formatValue(current, kind)} now · ${formatValue(snapshot, kind)} snapshot · ${formatDelta()} (${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%)`
+    : `Current: ${formatValue(current, kind)} · Snapshot: ${formatValue(snapshot, kind)} · Δ ${formatDelta()} (${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%)`;
+
   if (effectiveVisual === 'inline-badge') {
     return (
       <span
         className={className}
-        style={{
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          color,
-          marginLeft: 6,
-          ...style,
-        }}
-        title={label ? `${label}: ${formatDelta()} (${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%)` : undefined}
+        style={{ fontSize: '0.75rem', fontWeight: 600, color, marginLeft: 6, transition: 'color 0.3s', ...style }}
+        title={tooltipText}
       >
-        {delta >= 0 ? '+' : ''}
         {kind === 'hours' ? fmtHrs(delta) : kind === 'cost' ? fmtCost(delta) : `${percent.toFixed(0)}%`}
+        <TrendArrow up={isOver} bad={isBad} />
       </span>
     );
   }
 
   if (effectiveVisual === 'percent') {
     return (
-      <div className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...style }}>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatValue(current, kind)}</span>
-        <span
-          style={{
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            color,
-            padding: '2px 6px',
-            borderRadius: 'var(--radius-sm)',
-            background: bgColor,
-          }}
-        >
+      <div className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...style }} title={tooltipText}>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', transition: 'color 0.3s' }}>{formatValue(current, kind)}</span>
+        <span style={{
+          fontSize: '0.75rem', fontWeight: 600, color,
+          padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+          background: bgColor, transition: 'all 0.3s',
+        }}>
           {percent >= 0 ? '+' : ''}{percent.toFixed(1)}%
+          <TrendArrow up={isOver} bad={isBad} />
         </span>
       </div>
     );
@@ -114,42 +110,63 @@ export function VarianceVisual({
     const wCur = (current / maxVal) * 100;
     const wSnap = (snapshot / maxVal) * 100;
     return (
-      <div
-        className={className}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 80, ...style }}
-        title={`Current: ${formatValue(current, kind)} · Snapshot: ${formatValue(snapshot, kind)}`}
-      >
+      <div className={className} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 80, ...style }} title={tooltipText}>
         <div style={{ flex: 1, height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
-          <div style={{ width: `${wSnap}%`, background: 'var(--text-muted)', height: '100%' }} />
-          <div style={{ width: `${Math.max(0, wCur - wSnap)}%`, background: color, height: '100%' }} />
+          <div style={{ width: `${wSnap}%`, background: 'var(--text-muted)', height: '100%', transition: 'width 0.5s ease' }} />
+          <div style={{ width: `${Math.max(0, wCur - wSnap)}%`, background: color, height: '100%', transition: 'width 0.5s ease' }} />
         </div>
-        <span style={{ fontSize: '0.7rem', color, fontWeight: 600 }}>{percent >= 0 ? '+' : ''}{percent.toFixed(0)}%</span>
+        <span style={{ fontSize: '0.7rem', color, fontWeight: 600 }}>
+          {percent >= 0 ? '+' : ''}{percent.toFixed(0)}%
+        </span>
       </div>
     );
   }
 
   if (effectiveVisual === 'gauge') {
-    const pct = snapshot === 0 ? 0 : Math.min(100, (current / snapshot) * 100);
+    // SVG animated ring gauge
+    const pct = snapshot === 0 ? 0 : Math.min(150, (current / snapshot) * 100);
+    const radius = 22;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDash = (Math.min(pct, 100) / 100) * circumference;
     return (
-      <div className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            background: `conic-gradient(${color} 0% ${pct}%, var(--border-color) ${pct}% 100%)`,
-          }}
-        />
-        <span style={{ fontSize: '0.8rem', fontWeight: 600, color }}>{percent >= 0 ? '+' : ''}{percent.toFixed(0)}%</span>
+      <div className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, ...style }} title={tooltipText}>
+        <svg width={56} height={56} viewBox="0 0 56 56" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx={28} cy={28} r={radius} fill="none" stroke="var(--border-color)" strokeWidth={4} opacity={0.3} />
+          <circle
+            cx={28} cy={28} r={radius} fill="none"
+            stroke={isBad ? '#EF4444' : '#10B981'}
+            strokeWidth={4} strokeLinecap="round"
+            strokeDasharray={`${strokeDash} ${circumference}`}
+            style={{ transition: 'stroke-dasharray 0.8s ease, stroke 0.3s' }}
+          />
+          <text
+            x={28} y={28}
+            textAnchor="middle" dominantBaseline="central"
+            style={{ transform: 'rotate(90deg)', transformOrigin: '28px 28px', fontSize: '10px', fontWeight: 700, fill: isBad ? '#EF4444' : '#10B981' }}
+          >
+            {pct.toFixed(0)}%
+          </text>
+        </svg>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color }}>
+            {percent >= 0 ? '+' : ''}{percent.toFixed(0)}%
+            <TrendArrow up={isOver} bad={isBad} />
+          </span>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+            {formatDelta()} vs snapshot
+          </span>
+        </div>
       </div>
     );
   }
 
-  // number (default): show current and delta
+  // number (default)
   return (
-    <div className={className} style={{ display: 'flex', flexDirection: 'column', gap: 2, ...style }}>
+    <div className={className} style={{ display: 'flex', flexDirection: 'column', gap: 2, ...style }} title={tooltipText}>
       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{formatValue(current, kind)}</span>
-      <span style={{ fontSize: '0.7rem', color }}>{formatDelta()} vs snapshot</span>
+      <span style={{ fontSize: '0.7rem', color }}>
+        {formatDelta()} vs snapshot <TrendArrow up={isOver} bad={isBad} />
+      </span>
     </div>
   );
 }

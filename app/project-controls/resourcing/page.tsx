@@ -54,6 +54,7 @@ const fmt = (n: number, d = 0) =>
 // ═══════════════════════════════════════════════════════════════════
 
 function ResourcingPageLoading() {
+  // Uses EnhancedPageLoader via route-level loading.tsx now
   return (
     <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 60px)' }}>
       <div style={{ textAlign: 'center' }}>
@@ -80,7 +81,8 @@ function ResourcingPageContent() {
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
-  
+  const [orgSearch, setOrgSearch] = useState('');
+
   // ── Data ──────────────────────────────────────────────────────
   const data = useMemo(() => {
     const f: any = filteredData || {};
@@ -113,7 +115,7 @@ function ResourcingPageContent() {
       hours: (f.hours?.length ? f.hours : a.hours) ?? [],
     };
   }, [filteredData, fullData]);
-  
+
   const hasData = data.employees.length > 0 || data.projects.length > 0;
 
   const getProjectName = useCallback((pid: string | null | undefined) => {
@@ -127,7 +129,7 @@ function ResourcingPageContent() {
     data.employees.map((emp: any) => {
       const eid = emp.id || emp.employeeId;
       const ename = (emp.name || '').toLowerCase();
-      const empTasks = data.tasks.filter((t: any) => 
+      const empTasks = data.tasks.filter((t: any) =>
         (t.employeeId || t.employee_id) === eid ||
         (t.assignedTo || '').toLowerCase().includes(ename)
       );
@@ -136,7 +138,7 @@ function ResourcingPageContent() {
       const taskCount = empTasks.length;
       const completedTasks = empTasks.filter((t: any) => (Number(t.percentComplete) || 0) >= 100).length;
       const efficiency = allocatedHours > 0 ? Math.round((actualHours / allocatedHours) * 100) : 100;
-      
+
       // QC pass rate
       const empQc = data.qctasks.filter((qc: any) =>
         (qc.employeeId || qc.employee_id || qc.qcResourceId) === eid ||
@@ -147,18 +149,18 @@ function ResourcingPageContent() {
       const workHours = allocatedHours > 0 ? allocatedHours : actualHours;
       const utilization = Math.round((workHours / HOURS_PER_YEAR) * 100);
       const availableHours = Math.max(0, HOURS_PER_YEAR - workHours);
-      
+
       const projectIds = [...new Set(empTasks.map((t: any) => t.projectId || t.project_id).filter(Boolean))];
       const projects = projectIds.map(pid => {
         const p = data.projects.find((pp: any) => pp.id === pid || pp.projectId === pid);
         return p ? { id: pid, name: p.name || p.projectName } : { id: pid, name: pid };
       });
-      
+
       let status: 'available' | 'optimal' | 'busy' | 'overloaded' = 'available';
       if (utilization > 100) status = 'overloaded';
       else if (utilization > 85) status = 'busy';
       else if (utilization > 50) status = 'optimal';
-      
+
       return {
         id: eid, name: emp.name || 'Unknown',
         role: emp.jobTitle || emp.role || 'N/A',
@@ -385,7 +387,7 @@ function ResourcingPageContent() {
       const portUtil = getGroupUtilization(pEmpIds);
       const portColor = getUtilColor(portUtil);
 
-          portfolioNodes.push({
+      portfolioNodes.push({
         name: pname, id: pid, isPortfolio: true, projectCount: pProjs.length,
         utilization: portUtil,
         itemStyle: { color: portColor, borderColor: portColor, borderWidth: 3 },
@@ -418,7 +420,7 @@ function ResourcingPageContent() {
       orphanProjs.forEach(pr => pr.employees.forEach((e: any) => orphanEmpIds.add(e.id)));
       const oUtil = getGroupUtilization(orphanEmpIds);
       const oColor = getUtilColor(oUtil);
-          portfolioNodes.push({
+      portfolioNodes.push({
         name: 'Unassigned Portfolio', id: 'orphan-portfolio', isPortfolio: true,
         projectCount: orphanProjs.length, utilization: oUtil,
         itemStyle: { color: oColor, borderColor: oColor, borderWidth: 3 },
@@ -440,9 +442,9 @@ function ResourcingPageContent() {
         label: { backgroundColor: `${ueColor}15` },
         children: unassignedEmps.map(e => makeEmpNode(e)),
       });
-      }
-      
-      return portfolioNodes;
+    }
+
+    return portfolioNodes;
   }, [employeeMetrics, data.portfolios, projectsWithEmployees, makeEmpNode, getGroupUtilization]);
 
   const treeData = buildPortfolioTree;
@@ -482,13 +484,13 @@ function ResourcingPageContent() {
     // Shared tooltip formatter
     const tooltipFormatter = (params: any) => {
       const d = params.data;
-          if (d.isPortfolio) {
+      if (d.isPortfolio) {
         const uc = getUtilColor(d.utilization || 0);
         return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Portfolio${d.projectCount ? ' · ' + d.projectCount + ' projects' : ''}</div><div style="margin-top:6px;display:flex;align-items:center;gap:8px;"><div style="width:32px;height:32px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${uc};background:${uc}15;">${d.utilization}%</div><span style="font-size:10px;color:#9ca3af;">Avg Utilization</span></div></div>`;
       }
       if (d.isProject) return `<div style="padding:12px 16px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${d.name}</div><div style="font-size:11px;color:#9ca3af;">Project · ${d.employeeCount || 0} employees</div>${d.totalHours ? '<div style="font-size:11px;margin-top:4px;">' + fmt(d.totalHours) + ' total hours</div>' : ''}</div>`;
       if (d.isPlaceholder) return `<div style="padding:8px 12px;font-size:11px;color:#6B7280;">${d.name}</div>`;
-          if (d.emp) {
+      if (d.emp) {
         const e = d.emp;
         const uc = getUtilColor(e.utilization);
         return `<div style="padding:14px 16px;min-width:240px;">
@@ -507,38 +509,38 @@ function ResourcingPageContent() {
             View Details & Assign Tasks →
           </button>
             </div>`;
-          }
+      }
       return `<div style="padding:8px 12px;"><strong>${d.name}</strong></div>`;
     };
 
-    // Shared label config
+    // Shared label config — improved sizing for readability
     const sharedLabel = {
       position: 'right' as const,
       verticalAlign: 'middle' as const,
       align: 'left' as const,
-      fontSize: 10.5,
+      fontSize: 11.5,
       color: '#f4f4f5',
-            borderRadius: 4,
-      padding: [5, 10] as [number, number],
-      distance: 8,
-            formatter: (params: any) => {
-              const d = params.data;
+      borderRadius: 5,
+      padding: [6, 12] as [number, number],
+      distance: 10,
+      formatter: (params: any) => {
+        const d = params.data;
         if (d.isPortfolio) return `{bold|${d.name}}\n{portSub|${d.projectCount || 0} projects · ${d.utilization || 0}% util}`;
         if (d.isProject) return `{project|${d.name.substring(0, 28)}${d.name.length > 28 ? '...' : ''}}`;
-              if (d.isPlaceholder) return `{muted|${d.name}}`;
-              if (d.emp) {
+        if (d.isPlaceholder) return `{muted|${d.name}}`;
+        if (d.emp) {
           return `{empName|${d.name}}\n{empRole|${d.emp?.role || ''}}\n{util|${d.utilization || 0}%}`;
-              }
-              return d.name;
-            },
-            rich: {
-        bold: { fontWeight: 'bold' as any, fontSize: 14, lineHeight: 20, color: '#40E0D0' },
-        portSub: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
-        empName: { fontSize: 10.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16 },
-        empRole: { fontSize: 8.5, color: '#a1a1aa', lineHeight: 13 },
-        role: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
-        project: { fontSize: 10.5, color: '#60A5FA', lineHeight: 16 },
-              muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
+        }
+        return d.name;
+      },
+      rich: {
+        bold: { fontWeight: 'bold' as any, fontSize: 15, lineHeight: 22, color: '#40E0D0' },
+        portSub: { fontSize: 10, color: '#9ca3af', lineHeight: 15 },
+        empName: { fontSize: 11.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 17 },
+        empRole: { fontSize: 9.5, color: '#a1a1aa', lineHeight: 14 },
+        role: { fontSize: 10, color: '#9ca3af', lineHeight: 15 },
+        project: { fontSize: 11.5, color: '#60A5FA', lineHeight: 17 },
+        muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
         util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
       },
     };
@@ -592,8 +594,8 @@ function ResourcingPageContent() {
         label: sharedLabel,
         leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
         lineStyle: { color: `${seriesColor}50`, width: 1.5, curveness: 0.5 },
-          emphasis: {
-            focus: 'descendant',
+        emphasis: {
+          focus: 'descendant',
           itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: `${seriesColor}80` },
         },
       };
@@ -634,7 +636,7 @@ function ResourcingPageContent() {
   // ── Analytics charts ──────────────────────────────────────────
   const sortedEmployeesByUtil = useMemo(() =>
     [...employeeMetrics].sort((a, b) => b.utilization - a.utilization),
-  [employeeMetrics]);
+    [employeeMetrics]);
 
   const capacityChartOption: EChartsOption = useMemo(() => {
     const cd = sortedEmployeesByUtil.slice(0, 30).map(e => ({ id: e.id, name: e.name, utilization: e.utilization, role: e.role, taskCount: e.taskCount, allocatedHours: e.allocatedHours, availableHours: e.availableHours }));
@@ -666,12 +668,14 @@ function ResourcingPageContent() {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: '#3f3f46', textStyle: { color: '#fff' } },
       legend: { bottom: 0, textStyle: { color: '#a1a1aa', fontSize: 10 } },
-      series: [{ type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], avoidLabelOverlap: false, itemStyle: { borderRadius: 6, borderColor: '#161b22', borderWidth: 2 }, label: { show: false }, emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } }, labelLine: { show: false }, data: [
-        { value: dist.available, name: 'Available', itemStyle: { color: UTIL_COLORS.available } },
-        { value: dist.optimal, name: 'Optimal', itemStyle: { color: UTIL_COLORS.optimal } },
-        { value: dist.busy, name: 'Busy', itemStyle: { color: UTIL_COLORS.busy } },
-        { value: dist.overloaded, name: 'Overloaded', itemStyle: { color: UTIL_COLORS.overloaded } },
-      ] }],
+      series: [{
+        type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], avoidLabelOverlap: false, itemStyle: { borderRadius: 6, borderColor: '#161b22', borderWidth: 2 }, label: { show: false }, emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } }, labelLine: { show: false }, data: [
+          { value: dist.available, name: 'Available', itemStyle: { color: UTIL_COLORS.available } },
+          { value: dist.optimal, name: 'Optimal', itemStyle: { color: UTIL_COLORS.optimal } },
+          { value: dist.busy, name: 'Busy', itemStyle: { color: UTIL_COLORS.busy } },
+          { value: dist.overloaded, name: 'Overloaded', itemStyle: { color: UTIL_COLORS.overloaded } },
+        ]
+      }],
     };
   }, [employeeMetrics]);
 
@@ -868,10 +872,10 @@ function ResourcingPageContent() {
     });
 
     const dynamicHeight = Math.max(400, sortedRoles.length * 28 + 100);
-    
+
     return {
       backgroundColor: 'transparent',
-      tooltip: { 
+      tooltip: {
         position: 'top', confine: true,
         backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
         textStyle: { color: '#fff', fontSize: 11 },
@@ -886,14 +890,14 @@ function ResourcingPageContent() {
         },
       },
       grid: { top: 40, left: 200, right: 40, bottom: 60 },
-      xAxis: { 
-        type: 'category', 
+      xAxis: {
+        type: 'category',
         data: displayWeeks.map(w => w.label),
         axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
         axisLine: { lineStyle: { color: '#3f3f46' } },
         splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
       },
-      yAxis: { 
+      yAxis: {
         type: 'category',
         data: sortedRoles,
         axisLabel: {
@@ -939,7 +943,7 @@ function ResourcingPageContent() {
     });
 
     const dynamicHeight = Math.max(400, sortedEmps.length * 26 + 100);
-    
+
     return {
       backgroundColor: 'transparent',
       tooltip: {
@@ -1022,54 +1026,54 @@ function ResourcingPageContent() {
         return (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem' }} onClick={() => setShowEmployeeModal(false)}>
             <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.5rem', maxWidth: '700px', width: '100%', maxHeight: '85vh', overflow: 'auto', border: '1px solid var(--border-color)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }} onClick={e => e.stopPropagation()}>
-      {/* Header */}
+              {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>{selectedEmployee.name}</h2>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{selectedEmployee.role}</p>
-              </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>{selectedEmployee.name}</h2>
+                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{selectedEmployee.role}</p>
+                </div>
                 <button onClick={() => setShowEmployeeModal(false)} style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-              </button>
-            </div>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                </button>
+              </div>
 
               {/* Metrics Strip */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <div style={{ padding: '0.75rem', background: `linear-gradient(135deg, ${uc}20, transparent)`, borderRadius: '10px', border: `1px solid ${uc}40`, textAlign: 'center' }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 800, color: uc }}>{selectedEmployee.utilization}%</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Utilization</div>
-              </div>
+                </div>
                 <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{selectedEmployee.taskCount}</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tasks</div>
-              </div>
+                </div>
                 <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
                   <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{fmt(selectedEmployee.allocatedHours)}</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Allocated Hrs</div>
-              </div>
+                </div>
                 <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'center' }}>
                   <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>{fmt(selectedEmployee.availableHours)}</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Available Hrs</div>
+                </div>
               </div>
-            </div>
 
-            {/* Projects */}
-            {selectedEmployee.projects?.length > 0 && (
+              {/* Projects */}
+              {selectedEmployee.projects?.length > 0 && (
                 <div style={{ marginBottom: '1.25rem' }}>
                   <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Current Projects</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                     {selectedEmployee.projects.map((p: any, i: number) => (
                       <span key={i} style={{ padding: '0.3rem 0.65rem', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--border-color)' }}>{p.name}</span>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
               {/* ── Suggested Priority Tasks (role-matched) ─────────── */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Suggested Tasks to Assign
-                      </div>
+                </div>
                 <div style={{ background: 'var(--bg-secondary)', borderRadius: '10px', padding: '0.5rem', maxHeight: '220px', overflow: 'auto' }}>
                   {suggestedTasks.length > 0 ? suggestedTasks.map((t: any, i: number) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', borderRadius: '8px', marginBottom: '0.35rem', border: `1px solid ${t.criticality.color}25`, borderLeft: `3px solid ${t.criticality.color}` }}>
@@ -1079,23 +1083,23 @@ function ResourcingPageContent() {
                           <span>{fmt(Number(t.baselineHours) || 0)} hrs</span>
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{t.projectName}</span>
                           <span style={{ color: t.criticality.color, fontWeight: 600 }}>{t.criticality.label}</span>
+                        </div>
                       </div>
-                    </div>
                       <button onClick={() => handleAssignTask(t, selectedEmployee)} style={{ padding: '0.35rem 0.75rem', background: 'rgba(64,224,208,0.15)', border: '1px solid rgba(64,224,208,0.3)', borderRadius: '6px', color: 'var(--pinnacle-teal)', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         Assign
-            </button>
-          </div>
+                      </button>
+                    </div>
                   )) : (
                     <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No matching unassigned tasks for this role</div>
                   )}
+                </div>
               </div>
-            </div>
-            
+
               {/* ── Teams Needing This Employee ───────────────────── */}
               <div style={{ marginBottom: '1rem' }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Other Teams That Need This Employee
-            </div>
+                </div>
                 <div style={{ background: 'var(--bg-secondary)', borderRadius: '10px', padding: '0.5rem', maxHeight: '200px', overflow: 'auto' }}>
                   {teamsNeeding.length > 0 ? teamsNeeding.map((team: any, i: number) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', borderRadius: '8px', marginBottom: '0.35rem', border: '1px solid var(--border-color)' }}>
@@ -1106,8 +1110,8 @@ function ResourcingPageContent() {
                           {team.roleMatch > 0 && <span style={{ color: '#8B5CF6' }}>{team.roleMatch} match role</span>}
                           {team.criticalCount > 0 && <span style={{ color: '#EF4444' }}>{team.criticalCount} critical</span>}
                           <span>{fmt(team.unassignedHours)} hrs</span>
-          </div>
-              </div>
+                        </div>
+                      </div>
                       <button onClick={async () => {
                         setAssignmentMessage(`Suggesting move: ${selectedEmployee.name} → ${team.name}...`);
                         try {
@@ -1130,17 +1134,17 @@ function ResourcingPageContent() {
                         setTimeout(() => setAssignmentMessage(null), 3000);
                       }} style={{ padding: '0.35rem 0.75rem', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#8B5CF6', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         Suggest Move
-            </button>
-                          </div>
+                      </button>
+                    </div>
                   )) : (
                     <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No other teams currently need this role</div>
-                )}
+                  )}
+                </div>
               </div>
-          </div>
 
               <button onClick={() => setShowEmployeeModal(false)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }}>Close</button>
-                  </div>
-                </div>
+            </div>
+          </div>
         );
       })()}
 
@@ -1161,14 +1165,14 @@ function ResourcingPageContent() {
               }}>{tab.label}</button>
             ))}
           </div>
-          
-                        </div>
+
+        </div>
         {activeTab === 'organization' && (
           <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', alignItems: 'center' }}>
             {Object.entries(UTIL_COLORS).map(([label, color]) => (
               <span key={label}><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: color, marginRight: '4px' }} />{label.charAt(0).toUpperCase() + label.slice(1)}</span>
-                  ))}
-                </div>
+            ))}
+          </div>
         )}
         {activeTab === 'heatmap' && (
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
@@ -1176,27 +1180,56 @@ function ResourcingPageContent() {
               ? `${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`
               : `${heatmapSharedData ? [...heatmapSharedData.empWeekHours.keys()].length : 0} employees`
             } across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
-              </div>
-            )}
+          </div>
+        )}
       </div>
-            
+
       {/* ═══ TABS CONTENT ══════════════════════════════════════════ */}
       {activeTab === 'organization' ? (
-        <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', overflow: 'auto', minHeight: 0 }}>
+          {/* ── Summary stat cards ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.65rem', flexShrink: 0 }}>
+            {[
+              { label: 'Portfolios', value: summaryMetrics.totalPortfolios, icon: '📁' },
+              { label: 'Projects', value: summaryMetrics.totalProjects, icon: '📋' },
+              { label: 'Employees', value: summaryMetrics.totalEmployees, icon: '👥', accent: 'var(--pinnacle-teal)', bg: 'linear-gradient(135deg, rgba(64,224,208,0.12), rgba(64,224,208,0.04))', border: 'rgba(64,224,208,0.25)' },
+              { label: 'Avg Utilization', value: `${summaryMetrics.avgUtilization}%`, icon: '📊', accent: getUtilColor(summaryMetrics.avgUtilization) },
+              { label: 'Overloaded', value: summaryMetrics.overloaded, icon: '⚠️', accent: summaryMetrics.overloaded > 0 ? '#EF4444' : undefined, bg: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.08)' : undefined, border: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.25)' : undefined },
+            ].map(m => (
+              <div key={m.label} style={{ padding: '0.65rem 0.75rem', background: m.bg || 'var(--bg-card)', borderRadius: 10, border: `1px solid ${m.border || 'var(--border-color)'}`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>{m.icon}</span>
+                <div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 600 }}>{m.label}</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 800, color: m.accent || 'var(--text-primary)' }}>{m.value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Search bar ── */}
+          <input
+            type="text" value={orgSearch} onChange={e => setOrgSearch(e.target.value)}
+            placeholder="🔍 Search employees, projects, or portfolios…"
+            style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%', maxWidth: 360, transition: 'border-color 0.2s', flexShrink: 0 }}
+          />
+
+          {/* ── Tree chart ── */}
+          <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: 0 }}>
             {treeData.length > 0 ? (
-            <div style={{ minHeight: `${dynamicTreeHeight}px` }}>
-              <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
-            </div>
+              <div style={{ minHeight: `${dynamicTreeHeight}px` }}>
+                <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
+              </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                 <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
                   <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No organization data to display</p>
-                <p style={{ fontSize: '0.85rem' }}>No employees or portfolios found. Import data from Data Management.</p>
+                  <p style={{ fontSize: '0.85rem' }}>No employees or portfolios found. Import data from Data Management.</p>
                 </div>
               </div>
             )}
           </div>
+        </div>
       ) : activeTab === 'analytics' ? (
         /* ═══ ANALYTICS TAB ═══════════════════════════════════════ */
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1218,7 +1251,7 @@ function ResourcingPageContent() {
           </div>
 
           {/* Employee Utilization — Full width, much bigger */}
-            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700 }}>Employee Utilization</div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Click a bar to view employee details & assign tasks</div>
@@ -1247,7 +1280,7 @@ function ResourcingPageContent() {
               </div>
             </div>
           </div>
-          
+
           {/* Resource Leveling */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1260,10 +1293,10 @@ function ResourcingPageContent() {
                 <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{levelingResult.totalMoves}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Suggested Moves</div></div>
                 <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{levelingResult.tasksMoved || 0}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks to Shift</div></div>
                 <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}><div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recommendation</div><div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{levelingResult.summary}</div></div>
-                  </div>
+              </div>
             ) : <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Click "Run Analysis" to get resource leveling recommendations</div>}
           </div>
-          
+
           {/* Employee Table */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', flex: 1, minHeight: '300px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Employee Details</div>
