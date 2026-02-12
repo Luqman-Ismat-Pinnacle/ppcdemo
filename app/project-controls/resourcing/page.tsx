@@ -76,7 +76,7 @@ function ResourcingPageContent() {
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
-  const [heatmapView, setHeatmapView] = useState<'role' | 'employee'>('role');
+  const [heatmapView, setHeatmapView] = useState<'role' | 'employee'>('employee');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
@@ -442,7 +442,9 @@ function ResourcingPageContent() {
   );
 
   const totalLeaves = treeLeafCounts.reduce((s, p) => s + p.leaves, 0);
-  const dynamicTreeHeight = Math.max(800, totalLeaves * 56 + treeData.length * 80);
+  // For vertical TB layout, width is driven by leaf count, height is fixed
+  const dynamicTreeWidth = Math.max(1200, totalLeaves * 180);
+  const dynamicTreeHeight = Math.max(800, treeData.length * 200 + totalLeaves * 40);
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -487,20 +489,20 @@ function ResourcingPageContent() {
       return `<div style="padding:8px 12px;"><strong>${d.name}</strong></div>`;
     };
 
-    // Label config
+    // Label config for TB (top-to-bottom) layout
     const sharedLabel = {
-      position: 'right' as const,
-      verticalAlign: 'middle' as const,
-      align: 'left' as const,
-      fontSize: 11.5,
+      position: 'bottom' as const,
+      verticalAlign: 'top' as const,
+      align: 'center' as const,
+      fontSize: 10.5,
       color: '#f4f4f5',
       borderRadius: 5,
-      padding: [6, 12] as [number, number],
-      distance: 10,
+      padding: [5, 8] as [number, number],
+      distance: 8,
       formatter: (params: any) => {
         const d = params.data;
         if (d.isManager) {
-          return `{mgrName|${d.name}}\n{mgrSub|${d.emp?.role || 'Manager'} · ${d.reportCount} reports}\n{util|${d.utilization || 0}%}`;
+          return `{mgrName|${d.name}}\n{mgrSub|${d.reportCount} reports}\n{util|${d.utilization || 0}%}`;
         }
         if (d.emp) {
           return `{empName|${d.name}}\n{empRole|${d.emp?.role || ''}}\n{util|${d.utilization || 0}%}`;
@@ -508,63 +510,18 @@ function ResourcingPageContent() {
         return d.name;
       },
       rich: {
-        mgrName: { fontWeight: 'bold' as any, fontSize: 13, lineHeight: 20, color: '#40E0D0' },
-        mgrSub: { fontSize: 9.5, color: '#9ca3af', lineHeight: 14 },
-        empName: { fontSize: 11.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 17 },
-        empRole: { fontSize: 9.5, color: '#a1a1aa', lineHeight: 14 },
-        util: { fontSize: 9, color: '#9ca3af', lineHeight: 14 },
+        mgrName: { fontWeight: 'bold' as any, fontSize: 12, lineHeight: 18, color: '#40E0D0', align: 'center' as const },
+        mgrSub: { fontSize: 9, color: '#9ca3af', lineHeight: 13, align: 'center' as const },
+        empName: { fontSize: 10.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16, align: 'center' as const },
+        empRole: { fontSize: 9, color: '#a1a1aa', lineHeight: 13, align: 'center' as const },
+        util: { fontSize: 9, color: '#9ca3af', lineHeight: 13, align: 'center' as const },
       },
     };
 
-    // Calculate vertical space allocation per root based on leaf count
-    const totalLf = treeLeafCounts.reduce((s, p) => s + p.leaves, 0) || 1;
-    const GAP = 2;
-    const HEADER = 6;
-    const usable = 100 - HEADER - GAP * treeData.length;
-    let topAccum = HEADER;
-
-    // Build one tree series per root node
-    const series: any[] = treeData.map((rootNode, idx) => {
-      const leafPct = (treeLeafCounts[idx]?.leaves || 1) / totalLf;
-      const heightPct = Math.max(8, leafPct * usable);
-      const top = `${topAccum}%`;
-      const bottom = `${Math.max(0, 100 - topAccum - heightPct)}%`;
-      topAccum += heightPct + GAP;
-      const nodeColor = getUtilColor(rootNode.utilization || 0);
-
-      return {
-        type: 'tree',
-        name: rootNode.name,
-        data: [rootNode],
-        top,
-        left: '3%',
-        bottom,
-        right: '35%',
-        orient: 'LR',
-        layout: 'orthogonal',
-        edgeShape: 'polyline',
-        edgeForkPosition: '50%',
-        initialTreeDepth: -1,
-        expandAndCollapse: true,
-        animationDuration: 400,
-        animationDurationUpdate: 500,
-        roam: true,
-        symbolSize: (_value: any, params: any) => {
-          const d = params?.data;
-          if (d?.isManager && (d?.reportCount || 0) > 3) return 22;
-          if (d?.isManager) return 18;
-          return 12;
-        },
-        itemStyle: { color: nodeColor, borderColor: nodeColor, borderWidth: 1.5 },
-        label: sharedLabel,
-        leaves: { label: { position: 'right', verticalAlign: 'middle', align: 'left' } },
-        lineStyle: { color: `${nodeColor}50`, width: 1.5, curveness: 0.5 },
-        emphasis: {
-          focus: 'descendant',
-          itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: `${nodeColor}80` },
-        },
-      };
-    });
+    // Merge all root nodes under a virtual root for a single cohesive tree
+    const mergedRoot = treeData.length === 1
+      ? treeData[0]
+      : { name: 'Organization', children: treeData, isManager: false, utilization: 0, itemStyle: { color: '#40E0D0', borderColor: '#40E0D0' } };
 
     return {
       backgroundColor: 'transparent',
@@ -579,6 +536,18 @@ function ResourcingPageContent() {
         textStyle: { color: '#fff', fontSize: 11 },
         extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
         formatter: tooltipFormatter,
+      },
+      toolbox: {
+        show: true,
+        orient: 'vertical' as const,
+        right: 12,
+        bottom: 12,
+        feature: {
+          dataZoom: { show: true, title: { zoom: 'Zoom', back: 'Reset Zoom' } },
+          restore: { show: true, title: 'Restore' },
+        },
+        iconStyle: { borderColor: '#a1a1aa' },
+        emphasis: { iconStyle: { borderColor: '#40E0D0' } },
       },
       // Utilization-level legend instead of portfolio names
       legend: {
@@ -597,7 +566,39 @@ function ResourcingPageContent() {
         itemWidth: 14,
         itemHeight: 10,
       },
-      series,
+      series: [{
+        type: 'tree',
+        name: 'Organization',
+        data: [mergedRoot],
+        top: '8%',
+        left: '4%',
+        bottom: '14%',
+        right: '4%',
+        orient: 'TB',
+        layout: 'orthogonal',
+        edgeShape: 'polyline',
+        edgeForkPosition: '50%',
+        initialTreeDepth: -1,
+        expandAndCollapse: true,
+        animationDuration: 400,
+        animationDurationUpdate: 500,
+        roam: true,
+        center: ['50%', '50%'],
+        symbolSize: (_value: any, params: any) => {
+          const d = params?.data;
+          if (d?.isManager && (d?.reportCount || 0) > 3) return 22;
+          if (d?.isManager) return 18;
+          return 12;
+        },
+        itemStyle: { color: UTIL_COLORS.available, borderColor: UTIL_COLORS.available, borderWidth: 1.5 },
+        label: sharedLabel,
+        leaves: { label: { position: 'bottom' as const, verticalAlign: 'top' as const, align: 'center' as const } },
+        lineStyle: { color: '#3f3f4670', width: 1.5, curveness: 0.3 },
+        emphasis: {
+          focus: 'descendant',
+          itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: 'rgba(64,224,208,0.5)' },
+        },
+      }],
     };
   }, [treeData, treeLeafCounts]);
 
@@ -841,7 +842,7 @@ function ResourcingPageContent() {
       });
     });
 
-    const dynamicHeight = Math.max(400, sortedRoles.length * 28 + 100);
+    const dynamicHeight = Math.max(520, sortedRoles.length * 36 + 140);
 
     return {
       backgroundColor: 'transparent',
@@ -849,17 +850,26 @@ function ResourcingPageContent() {
         position: 'top', confine: true,
         backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
         textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px;white-space:normal;',
+        extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;white-space:normal;',
         formatter: (params: any) => {
           const [wi, ri, val] = params.data;
           const role = sortedRoles[ri];
           const week = displayWeeks[wi]?.label;
           const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
           const uc = getUtilColor(utilPct);
-          return `<div style="padding:2px 0"><strong>${role}</strong><br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr weekly capacity</div>`;
+          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : 'Available';
+          return `<div style="padding:8px 10px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${role}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
+              <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
+              <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
+              <span style="color:#9ca3af">Utilization</span><span style="font-weight:700;color:${uc}">${utilPct}% — ${statusLabel}</span>
+            </div>
+          </div>`;
         },
       },
-      grid: { top: 40, left: 200, right: 40, bottom: 60 },
+      grid: { top: 60, left: 200, right: 60, bottom: 80 },
       xAxis: {
         type: 'category',
         data: displayWeeks.map(w => w.label),
@@ -871,15 +881,15 @@ function ResourcingPageContent() {
         type: 'category',
         data: sortedRoles,
         axisLabel: {
-          color: '#d4d4d8', fontSize: 10, interval: 0,
+          color: '#d4d4d8', fontSize: 11, interval: 0,
           formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
         },
         axisLine: { lineStyle: { color: '#3f3f46' } },
       },
       visualMap: {
         min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
-        calculable: true, orient: 'horizontal', left: 'center', top: 0,
-        itemWidth: 14, itemHeight: 140,
+        calculable: true, orient: 'horizontal', left: 'center', bottom: 4,
+        itemWidth: 14, itemHeight: 120,
         textStyle: { color: '#a1a1aa', fontSize: 9 },
         inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
       },
@@ -893,26 +903,50 @@ function ResourcingPageContent() {
     if (!heatmapSharedData) return null;
     const { displayWeeks, empWeekHours, empNameMap, empRoleMap, empIdToRole } = heatmapSharedData;
 
-    // Each individual employee as a row
-    const sortedEmps = [...empWeekHours.entries()]
-      .map(([key, wm]) => ({ key, name: empNameMap.get(key) || key, total: [...wm.values()].reduce((s, v) => s + v, 0) }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 40); // top 40 employees
+    // Include ALL employees, even those without tasks
+    const allEmpEntries: { key: string; name: string; role: string; total: number }[] = [];
+    const addedKeys = new Set<string>();
 
-    const empLabels = sortedEmps.map(e => e.name);
+    // First add employees that appear in task data
+    empWeekHours.forEach((wm, key) => {
+      const name = empNameMap.get(key) || key;
+      const role = empRoleMap.get(key) || empIdToRole.get(key) || '';
+      const total = [...wm.values()].reduce((s, v) => s + v, 0);
+      allEmpEntries.push({ key, name, role, total });
+      addedKeys.add(key);
+      addedKeys.add(name.toLowerCase());
+    });
+
+    // Then add employees from the master list that weren't already included
+    data.employees.forEach((e: any) => {
+      const eid = e.id || e.employeeId;
+      const name = e.name || 'Unknown';
+      if (addedKeys.has(eid) || addedKeys.has(name.toLowerCase())) return;
+      const role = e.jobTitle || e.role || 'Unknown';
+      allEmpEntries.push({ key: eid, name, role, total: 0 });
+      addedKeys.add(eid);
+    });
+
+    // Sort: employees with hours first (desc), then alphabetical
+    allEmpEntries.sort((a, b) => {
+      if (a.total !== b.total) return b.total - a.total;
+      return a.name.localeCompare(b.name);
+    });
+
+    const empLabels = allEmpEntries.map(e => e.name);
 
     const heatData: [number, number, number][] = [];
     let maxVal = 0;
-    sortedEmps.forEach((emp, ei) => {
-      const weekMap = empWeekHours.get(emp.key)!;
+    allEmpEntries.forEach((emp, ei) => {
+      const weekMap = empWeekHours.get(emp.key);
       displayWeeks.forEach((_, wi) => {
-        const val = Math.round(weekMap.get(wi) || 0);
+        const val = Math.round(weekMap?.get(wi) || 0);
         heatData.push([wi, ei, val]);
         if (val > maxVal) maxVal = val;
       });
     });
 
-    const dynamicHeight = Math.max(400, sortedEmps.length * 26 + 100);
+    const dynamicHeight = Math.max(520, allEmpEntries.length * 32 + 140);
 
     return {
       backgroundColor: 'transparent',
@@ -920,18 +954,27 @@ function ResourcingPageContent() {
         position: 'top', confine: true,
         backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
         textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px;white-space:normal;',
+        extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;white-space:normal;',
         formatter: (params: any) => {
           const [wi, ei, val] = params.data;
-          const emp = sortedEmps[ei];
+          const emp = allEmpEntries[ei];
           const week = displayWeeks[wi]?.label;
           const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
           const uc = getUtilColor(utilPct);
-          const role = empRoleMap.get(emp.key) || empIdToRole.get(emp.key) || '';
-          return `<div style="padding:2px 0"><strong>${emp.name}</strong>${role ? `<br/><span style="color:#9ca3af">${role}</span>` : ''}<br/>Week of ${week}<br/>${fmt(val)} hrs planned<br/>~<strong style="color:${uc}">${utilPct}%</strong> of ${HOURS_PER_WEEK}hr weekly capacity</div>`;
+          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : val === 0 ? 'No tasks' : 'Available';
+          return `<div style="padding:8px 10px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:2px">${emp.name}</div>
+            ${emp.role ? `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">${emp.role}</div>` : ''}
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
+              <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
+              <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
+              <span style="color:#9ca3af">Status</span><span style="font-weight:700;color:${uc}">${utilPct}% — ${statusLabel}</span>
+            </div>
+          </div>`;
         },
       },
-      grid: { top: 40, left: 200, right: 40, bottom: 60 },
+      grid: { top: 60, left: 200, right: 60, bottom: 80 },
       xAxis: {
         type: 'category',
         data: displayWeeks.map(w => w.label),
@@ -943,22 +986,22 @@ function ResourcingPageContent() {
         type: 'category',
         data: empLabels,
         axisLabel: {
-          color: '#d4d4d8', fontSize: 10, interval: 0,
+          color: '#d4d4d8', fontSize: 11, interval: 0,
           formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
         },
         axisLine: { lineStyle: { color: '#3f3f46' } },
       },
       visualMap: {
         min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
-        calculable: true, orient: 'horizontal', left: 'center', top: 0,
-        itemWidth: 14, itemHeight: 140,
+        calculable: true, orient: 'horizontal', left: 'center', bottom: 4,
+        itemWidth: 14, itemHeight: 120,
         textStyle: { color: '#a1a1aa', fontSize: 9 },
         inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
       },
       series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
       _dynamicHeight: dynamicHeight,
     } as any;
-  }, [heatmapSharedData]);
+  }, [heatmapSharedData, data.employees]);
 
   // ── Loading state ───────────────────────────────────────────────
   if (isLoading) return <PageLoader />;
@@ -1167,7 +1210,7 @@ function ResourcingPageContent() {
           {/* ── Tree chart ── */}
           <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: '70vh' }}>
             {treeData.length > 0 ? (
-              <div style={{ minHeight: `${dynamicTreeHeight}px` }}>
+              <div style={{ minWidth: `${dynamicTreeWidth}px`, minHeight: `${dynamicTreeHeight}px` }}>
                 <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
               </div>
             ) : (
@@ -1323,20 +1366,13 @@ function ResourcingPageContent() {
               <div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>Resource Heatmap</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Weekly planned hours derived from project plan task schedules — {heatmapView === 'role' ? 'grouped by individual role' : 'grouped by individual employee'}
+                  Weekly planned hours derived from project plan task schedules — {heatmapView === 'employee' ? 'grouped by individual employee' : 'grouped by individual role'}
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                {/* Color legend */}
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#161b22', border: '1px solid #3f3f46' }} /> Low
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#10B981' }} /> Optimal
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#F59E0B' }} /> Busy
-                  <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#EF4444' }} /> Overloaded
-                </div>
-                {/* View toggle */}
+                {/* View toggle — Employee first, then Role */}
                 <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px' }}>
-                  {(['role', 'employee'] as const).map(v => (
+                  {(['employee', 'role'] as const).map(v => (
                     <button key={v} onClick={() => setHeatmapView(v)} style={{
                       padding: '0.35rem 0.85rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
                       background: heatmapView === v ? 'rgba(64,224,208,0.2)' : 'transparent',
@@ -1348,32 +1384,36 @@ function ResourcingPageContent() {
               </div>
             </div>
 
-            {/* Heatmap chart */}
-            {heatmapView === 'role' ? (
-              heatmapByRoleOption ? (
-                <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 500}px`} />
-              ) : (
-                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                  </svg>
-                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-                </div>
-              )
-            ) : (
-              heatmapByEmployeeOption ? (
-                <ChartWrapper option={heatmapByEmployeeOption} height={`${(heatmapByEmployeeOption as any)._dynamicHeight || 500}px`} />
-              ) : (
-                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                  </svg>
-                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-                </div>
-              )
-            )}
+            {/* Heatmap chart — bigger, centered */}
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div style={{ width: '100%', maxWidth: '1400px' }}>
+                {heatmapView === 'employee' ? (
+                  heatmapByEmployeeOption ? (
+                    <ChartWrapper option={heatmapByEmployeeOption} height={`${(heatmapByEmployeeOption as any)._dynamicHeight || 600}px`} />
+                  ) : (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                        <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                      </svg>
+                      <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                      <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+                    </div>
+                  )
+                ) : (
+                  heatmapByRoleOption ? (
+                    <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
+                  ) : (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                        <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                      </svg>
+                      <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                      <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
