@@ -1,24 +1,33 @@
 'use client';
 
 /**
- * Global Snapshot popup: capture current state, compare snapshots, variance (ingrained in app).
- * Opened from header; variance is inside this popup, not a separate page.
+ * Global Snapshot popup: create snapshot, compare, and deep variance (ingrained in app).
+ * Create snapshots in-app; variance available everywhere via comparison snapshot.
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
+import type { CreateSnapshotPayload } from '@/lib/data-context';
 import { useSnapshotPopup } from '@/lib/snapshot-context';
+import { useUser } from '@/lib/user-context';
+import { VarianceVisual } from './VarianceVisual';
 
 const fmtHrs = (h: number) => (h >= 1000 ? `${(h / 1000).toFixed(1)}K` : h.toLocaleString());
 const fmtCost = (c: number) => (c >= 1000 ? `$${(c / 1000).toFixed(1)}K` : `$${Math.round(c).toLocaleString()}`);
 
-type TabId = 'overview' | 'compare' | 'variance';
+type TabId = 'overview' | 'create' | 'compare' | 'variance';
 
 export default function SnapshotPopup() {
-  const { isOpen, closeSnapshotPopup } = useSnapshotPopup();
-  const { filteredData: data } = useData();
+  const { isOpen, closeSnapshotPopup, comparisonSnapshotId, setComparisonSnapshotId } = useSnapshotPopup();
+  const { filteredData: data, createSnapshot } = useData();
+  const { user } = useUser();
   const [tab, setTab] = useState<TabId>('overview');
-  const [compareSnapshotId, setCompareSnapshotId] = useState<string | null>(null);
+  const [createName, setCreateName] = useState('');
+  const [createType, setCreateType] = useState<'baseline' | 'forecast' | 'manual'>('manual');
+  const [createNotes, setCreateNotes] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
 
   const currentTotals = useMemo(() => {
     const tasks = data.tasks || [];
@@ -33,7 +42,7 @@ export default function SnapshotPopup() {
   }, [data.tasks]);
 
   const snapshots = (data.snapshots || []) as any[];
-  const compareSnapshot = compareSnapshotId ? snapshots.find((s: any) => (s.id || s.snapshotId) === compareSnapshotId) : null;
+  const compareSnapshot = comparisonSnapshotId ? snapshots.find((s: any) => (s.id || s.snapshotId) === comparisonSnapshotId) : null;
 
   const snapshotTotals = useMemo(() => {
     if (!compareSnapshot) return null;
@@ -61,10 +70,102 @@ export default function SnapshotPopup() {
   const maxHours = Math.max(currentTotals.planHours, currentTotals.actualHours, snapshotTotals?.hours ?? 0, 1);
   const maxCost = Math.max(currentTotals.planCost, currentTotals.actualCost, snapshotTotals?.cost ?? 0, 1);
 
+  const snapshotData = compareSnapshot?.snapshotData ?? compareSnapshot?.snapshot_data;
+  const byProject = (snapshotData?.byProject || snapshotData?.by_project || []) as any[];
+  const byPhase = (snapshotData?.byPhase || snapshotData?.by_phase || []) as any[];
+
+  const handleCreateSnapshot = useCallback(async () => {
+    const name = (createName || `Snapshot ${new Date().toLocaleDateString()}`).trim();
+    setCreating(true);
+    setCreateError(null);
+    setCreateSuccess(null);
+    try {
+      const tasks = data.tasks || [];
+      const projects = data.projects || [];
+      const phases = data.phases || [];
+      let planHours = 0, planCost = 0, actualHours = 0, actualCost = 0;
+      const byTask: CreateSnapshotPayload['byTask'] = [];
+      const byProjectPayload: CreateSnapshotPayload['byProject'] = [];
+      const byPhasePayload: CreateSnapshotPayload['byPhase'] = [];
+      const projectMap = new Map<string, { planH: number; planC: number; actH: number; actC: number }>();
+      const phaseMap = new Map<string, { planH: number; planC: number; actH: number; actC: number }>();
+
+      tasks.forEach((t: any) => {
+        const pH = Number(t.baselineHours ?? t.budgetHours ?? 0) || 0;
+        const pC = Number(t.baselineCost ?? 0) || 0;
+        const aH = Number(t.actualHours ?? t.actual_hours ?? 0) || 0;
+        const aC = Number(t.actualCost ?? t.actual_cost ?? 0) || 0;
+        planHours += pH;
+        planCost += pC;
+        actualHours += aH;
+        actualCost += aC;
+        const tid = t.id || t.taskId;
+        const pid = t.projectId ?? t.project_id;
+        const phid = t.phaseId ?? t.phase_id;
+        if (tid) byTask.push({ taskId: tid, wbsCode: t.wbsCode || t.wbs_code || '', name: t.name || '', planHours: pH, actualHours: aH, planCost: pC, actualCost: aC });
+        if (pid) {
+          const cur = projectMap.get(pid) || { planH: 0, planC: 0, actH: 0, actC: 0 };
+          cur.planH += pH; cur.planC += pC; cur.actH += aH; cur.actC += aC;
+          projectMap.set(pid, cur);
+        }
+        if (phid) {
+          const cur = phaseMap.get(phid) || { planH: 0, planC: 0, actH: 0, actC: 0 };
+          cur.planH += pH; cur.planC += pC; cur.actH += aH; cur.actC += aC;
+          phaseMap.set(phid, cur);
+        }
+      });
+      projects.forEach((p: any) => {
+        const pid = p.id || p.projectId;
+        const row = projectMap.get(pid);
+        if (row) byProjectPayload.push({ projectId: pid, name: p.name || pid, planHours: row.planH, actualHours: row.actH, planCost: row.planC, actualCost: row.actC });
+      });
+      phases.forEach((ph: any) => {
+        const phid = ph.id || ph.phaseId;
+        const row = phaseMap.get(phid);
+        if (row) byPhasePayload.push({ phaseId: phid, name: ph.name || phid, planHours: row.planH, actualHours: row.actH, planCost: row.planC, actualCost: row.actC });
+      });
+
+      const payload: CreateSnapshotPayload = {
+        versionName: name,
+        snapshotType: createType,
+        scope: 'all',
+        notes: createNotes || null,
+        createdBy: user?.name || 'User',
+        metrics: {
+          planHours,
+          planCost,
+          actualHours,
+          actualCost,
+          totalProjects: projects.length,
+          totalTasks: tasks.length,
+          totalEmployees: (data.employees || []).length,
+        },
+        byProject: byProjectPayload,
+        byPhase: byPhasePayload,
+        byTask: byTask.length <= 500 ? byTask : byTask.slice(0, 500),
+      };
+      const result = await createSnapshot(payload);
+      if (result.success) {
+        setCreateSuccess(`Snapshot "${name}" created.`);
+        setCreateName('');
+        setCreateNotes('');
+        setTab('compare');
+        if (result.id) setComparisonSnapshotId(result.id);
+      } else {
+        setCreateError(result.error || 'Failed to create snapshot');
+      }
+    } catch (e: any) {
+      setCreateError(e?.message || 'Failed to create snapshot');
+    } finally {
+      setCreating(false);
+    }
+  }, [data, createName, createType, createNotes, user?.name, createSnapshot, setComparisonSnapshotId]);
+
   if (!isOpen) return null;
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: 'Current state' },
+    { id: 'create', label: 'Create snapshot' },
     { id: 'compare', label: 'Snapshots' },
     { id: 'variance', label: 'Variance' },
   ];
@@ -90,7 +191,7 @@ export default function SnapshotPopup() {
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
           borderRadius: 'var(--radius-lg)',
-          maxWidth: 820,
+          maxWidth: 960,
           width: '100%',
           maxHeight: '88vh',
           overflow: 'hidden',
@@ -153,7 +254,7 @@ export default function SnapshotPopup() {
           {tab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Current view totals (filtered by date and hierarchy). Capture a snapshot in Data Management to compare later.
+                Current view totals (filtered by date and hierarchy). Create a snapshot to compare later from the Create tab.
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
                 {[
@@ -196,23 +297,108 @@ export default function SnapshotPopup() {
             </div>
           )}
 
+          {tab === 'create' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: 420 }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Capture the current view (filtered data) as a snapshot. You can compare any screen to this snapshot later.
+              </p>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Name</label>
+                <input
+                  type="text"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  placeholder={`Snapshot ${new Date().toLocaleDateString()}`}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.9rem',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Type</label>
+                <select
+                  value={createType}
+                  onChange={(e) => setCreateType(e.target.value as 'baseline' | 'forecast' | 'manual')}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <option value="manual">Manual</option>
+                  <option value="baseline">Baseline</option>
+                  <option value="forecast">Forecast</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Notes (optional)</label>
+                <textarea
+                  value={createNotes}
+                  onChange={(e) => setCreateNotes(e.target.value)}
+                  placeholder="e.g. Pre-go-live baseline"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.9rem',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+              {createError && <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-error)' }}>{createError}</p>}
+              {createSuccess && <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-success)' }}>{createSuccess}</p>}
+              <button
+                type="button"
+                onClick={handleCreateSnapshot}
+                disabled={creating}
+                style={{
+                  padding: '0.6rem 1rem',
+                  background: 'var(--pinnacle-teal)',
+                  color: 'var(--bg-primary)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  cursor: creating ? 'not-allowed' : 'pointer',
+                  opacity: creating ? 0.7 : 1,
+                }}
+              >
+                {creating ? 'Creating…' : 'Create snapshot'}
+              </button>
+            </div>
+          )}
+
           {tab === 'compare' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Select a snapshot to compare against current state. Snapshots are managed in Data Management → Snapshots.
+                Select a snapshot to compare against current state. This comparison applies across the whole app (every table and chart).
               </p>
               {snapshots.length === 0 ? (
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>No snapshots yet. Add rows in Data Management to capture baselines.</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>No snapshots yet. Create one in the Create snapshot tab.</p>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                   {snapshots.slice(0, 30).map((s: any) => {
                     const id = s.id || s.snapshotId;
-                    const selected = compareSnapshotId === id;
+                    const selected = comparisonSnapshotId === id;
                     return (
                       <button
                         key={id}
                         type="button"
-                        onClick={() => setCompareSnapshotId(selected ? null : id)}
+                        onClick={() => setComparisonSnapshotId(selected ? null : id)}
                         style={{
                           padding: '0.5rem 0.75rem',
                           borderRadius: 'var(--radius-sm)',
@@ -384,34 +570,114 @@ export default function SnapshotPopup() {
 
               {/* Variance summary cards */}
               {variance && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                  <div
-                    style={{
-                      padding: '1rem',
-                      background: variance.hoursOver ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                      border: `1px solid ${variance.hoursOver ? 'var(--color-error)' : 'var(--color-success)'}`,
-                      borderRadius: 'var(--radius-md)',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Hours variance</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: variance.hoursOver ? 'var(--color-error)' : 'var(--color-success)' }}>
-                      {variance.hoursDelta >= 0 ? '+' : ''}{fmtHrs(variance.hoursDelta)} ({variance.hoursPercent >= 0 ? '+' : ''}{variance.hoursPercent.toFixed(1)}%)
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                    <div
+                      style={{
+                        padding: '1rem',
+                        background: variance.hoursOver ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                        border: `1px solid ${variance.hoursOver ? 'var(--color-error)' : 'var(--color-success)'}`,
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Hours variance</div>
+                      {snapshotTotals != null ? (
+                        <VarianceVisual current={currentTotals.actualHours} snapshot={snapshotTotals.hours} kind="hours" visual="gauge" />
+                      ) : (
+                        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: variance.hoursOver ? 'var(--color-error)' : 'var(--color-success)' }}>
+                          {variance.hoursDelta >= 0 ? '+' : ''}{fmtHrs(variance.hoursDelta)} ({variance.hoursPercent >= 0 ? '+' : ''}{variance.hoursPercent.toFixed(1)}% vs plan)
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        padding: '1rem',
+                        background: variance.costOver ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                        border: `1px solid ${variance.costOver ? 'var(--color-error)' : 'var(--color-success)'}`,
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cost variance</div>
+                      {snapshotTotals != null ? (
+                        <VarianceVisual current={currentTotals.actualCost} snapshot={snapshotTotals.cost} kind="cost" visual="gauge" />
+                      ) : (
+                        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: variance.costOver ? 'var(--color-error)' : 'var(--color-success)' }}>
+                          {variance.costDelta >= 0 ? '+' : ''}{fmtCost(variance.costDelta)} ({variance.costPercent >= 0 ? '+' : ''}{variance.costPercent.toFixed(1)}% vs plan)
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      padding: '1rem',
-                      background: variance.costOver ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                      border: `1px solid ${variance.costOver ? 'var(--color-error)' : 'var(--color-success)'}`,
-                      borderRadius: 'var(--radius-md)',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cost variance</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: variance.costOver ? 'var(--color-error)' : 'var(--color-success)' }}>
-                      {variance.costDelta >= 0 ? '+' : ''}{fmtCost(variance.costDelta)} ({variance.costPercent >= 0 ? '+' : ''}{variance.costPercent.toFixed(1)}%)
+                  {byProject.length > 0 && (
+                    <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', overflow: 'auto', maxHeight: 220 }}>
+                      <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Variance by project</h4>
+                      <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
+                            <th style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)' }}>Project</th>
+                            <th style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)', textAlign: 'right' }}>Hours</th>
+                            <th style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)', textAlign: 'right' }}>Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {byProject.slice(0, 15).map((row: any) => {
+                            const proj = (data.projects || []).find((p: any) => (p.id || p.projectId) === (row.projectId || row.project_id));
+                            const name = row.name || proj?.name || row.projectId || '—';
+                            const snapH = Number(row.actualHours ?? row.actual_hours ?? 0);
+                            const snapC = Number(row.actualCost ?? row.actual_cost ?? 0);
+                            const curH = (data.tasks || []).filter((t: any) => (t.projectId ?? t.project_id) === (row.projectId || row.project_id)).reduce((s: number, t: any) => s + (Number(t.actualHours ?? t.actual_hours) || 0), 0);
+                            const curC = (data.tasks || []).filter((t: any) => (t.projectId ?? t.project_id) === (row.projectId || row.project_id)).reduce((s: number, t: any) => s + (Number(t.actualCost ?? t.actual_cost) || 0), 0);
+                            return (
+                              <tr key={row.projectId || row.project_id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</td>
+                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                                  <VarianceVisual current={curH} snapshot={snapH} kind="hours" inline />
+                                </td>
+                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                                  <VarianceVisual current={curC} snapshot={snapC} kind="cost" inline />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  </div>
-                </div>
+                  )}
+                  {byPhase.length > 0 && (
+                    <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', overflow: 'auto', maxHeight: 220 }}>
+                      <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Variance by phase</h4>
+                      <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>
+                            <th style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)' }}>Phase</th>
+                            <th style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)', textAlign: 'right' }}>Hours</th>
+                            <th style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)', textAlign: 'right' }}>Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {byPhase.slice(0, 15).map((row: any) => {
+                            const ph = (data.phases || []).find((p: any) => (p.id || p.phaseId) === (row.phaseId || row.phase_id));
+                            const name = row.name || ph?.name || row.phaseId || '—';
+                            const snapH = Number(row.actualHours ?? row.actual_hours ?? 0);
+                            const snapC = Number(row.actualCost ?? row.actual_cost ?? 0);
+                            const curH = (data.tasks || []).filter((t: any) => (t.phaseId ?? t.phase_id) === (row.phaseId || row.phase_id)).reduce((s: number, t: any) => s + (Number(t.actualHours ?? t.actual_hours) || 0), 0);
+                            const curC = (data.tasks || []).filter((t: any) => (t.phaseId ?? t.phase_id) === (row.phaseId || row.phase_id)).reduce((s: number, t: any) => s + (Number(t.actualCost ?? t.actual_cost) || 0), 0);
+                            return (
+                              <tr key={row.phaseId || row.phase_id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</td>
+                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                                  <VarianceVisual current={curH} snapshot={snapH} kind="hours" inline />
+                                </td>
+                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>
+                                  <VarianceVisual current={curC} snapshot={snapC} kind="cost" inline />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
               )}
 
               <button

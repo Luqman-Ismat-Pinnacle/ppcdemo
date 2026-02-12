@@ -405,27 +405,37 @@ export default function DocumentsPage() {
         const portfolio = (data?.portfolios || []).find((p: any) => (p.id || p.portfolioId) === assignPortfolioId);
         const proj = (data?.projects || []).find((p: any) => (p.id || p.projectId) === workdayProjectId);
         if (proj) {
-          // Update the project's portfolio_id
-          await fetch('/api/data/sync', {
+          const projectId = proj.id || proj.projectId;
+          const resProj = await fetch('/api/data/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               dataKey: 'projects',
-              records: [{ id: proj.id || proj.projectId, portfolio_id: assignPortfolioId }],
+              operation: 'update',
+              records: [{ id: projectId, portfolioId: assignPortfolioId }],
             }),
           });
-          // If the project has a customer, update the customer's portfolio_id too
+          const resultProj = await resProj.json();
+          if (!resultProj.success) {
+            throw new Error(resultProj.error || 'Project update failed');
+          }
           const customerId = proj.customerId ?? proj.customer_id;
           if (customerId) {
-            await fetch('/api/data/sync', {
+            const resCust = await fetch('/api/data/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 dataKey: 'customers',
-                records: [{ id: customerId, portfolio_id: assignPortfolioId }],
+                operation: 'update',
+                records: [{ id: customerId, portfolioId: assignPortfolioId }],
               }),
             });
+            const resultCust = await resCust.json();
+            if (!resultCust.success) {
+              addLog('warning', `Project reassigned; customer portfolio update failed: ${resultCust.error || ''}`);
+            }
           }
+          await refreshData();
           addLog('success', `Project reassigned to portfolio: ${portfolio?.name || assignPortfolioId}`);
         }
       } catch (err: any) {
@@ -582,7 +592,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects]);
+  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects, refreshData]);
 
   // Persist process/upload logs to project_log (parser logs)
   const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
@@ -636,25 +646,33 @@ export default function DocumentsPage() {
         if (proj) {
           pushLog('info', `Reassigning project to portfolio before processing...`);
           try {
-            await fetch('/api/data/sync', {
+            const projectId = proj.id || proj.projectId;
+            const resProj = await fetch('/api/data/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 dataKey: 'projects',
-                records: [{ id: proj.id || proj.projectId, portfolio_id: assignPortfolioId }],
+                operation: 'update',
+                records: [{ id: projectId, portfolioId: assignPortfolioId }],
               }),
             });
+            const resultProj = await resProj.json();
+            if (!resultProj.success) throw new Error(resultProj.error || 'Project update failed');
             const customerId = proj.customerId ?? proj.customer_id;
             if (customerId) {
-              await fetch('/api/data/sync', {
+              const resCust = await fetch('/api/data/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   dataKey: 'customers',
-                  records: [{ id: customerId, portfolio_id: assignPortfolioId }],
+                  operation: 'update',
+                  records: [{ id: customerId, portfolioId: assignPortfolioId }],
                 }),
               });
+              const resultCust = await resCust.json();
+              if (!resultCust.success) pushLog('warning', `Customer portfolio update failed: ${resultCust.error || ''}`);
             }
+            await refreshData();
             pushLog('success', 'Project reassigned to portfolio');
           } catch (err: any) {
             pushLog('warning', `Portfolio reassignment failed: ${err.message}`);

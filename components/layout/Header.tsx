@@ -47,7 +47,12 @@ export default function Header() {
 
   // Get user info from context
   const { user, logout: userLogout } = useUser();
-  const { openSnapshotPopup } = useSnapshotPopup();
+  const { openSnapshotPopup, comparisonSnapshotId } = useSnapshotPopup();
+  const { data } = useData();
+  const comparisonSnapshot = comparisonSnapshotId
+    ? (data.snapshots || []).find((s: any) => (s.id || s.snapshotId) === comparisonSnapshotId)
+    : null;
+  const comparisonName = comparisonSnapshot?.version_name || comparisonSnapshot?.versionName || comparisonSnapshot?.snapshot_id;
 
 
   useEffect(() => {
@@ -103,6 +108,32 @@ export default function Header() {
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <HierarchyFilter />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+        {comparisonName && (
+          <button
+            type="button"
+            onClick={openSnapshotPopup}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--pinnacle-teal)',
+              background: 'rgba(64, 224, 208, 0.12)',
+              color: 'var(--pinnacle-teal)',
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              maxWidth: 180,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title="Comparing to snapshot — click to change"
+          >
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>Vs {comparisonName}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={openSnapshotPopup}

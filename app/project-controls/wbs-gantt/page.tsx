@@ -32,6 +32,8 @@ import {
 } from '@/lib/sort-utils';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import SearchableDropdown from '@/components/ui/SearchableDropdown';
+import { useSnapshotVariance } from '@/lib/use-snapshot-variance';
+import { VarianceVisual } from '@/components/snapshot/VarianceVisual';
 
 // ═══════════════════════════════════════════════════════════════════
 // CONSTANTS & STYLES
@@ -199,6 +201,7 @@ const FTESparkline = memo(function FTESparkline({
 
 export default function WBSGanttPage() {
   const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter, isLoading } = useData();
+  const { getSnapshotValue, hasComparison } = useSnapshotVariance();
   const { addEngineLog } = useLogs();
   const data = filteredData;
   const employees = fullData.employees;
@@ -1033,7 +1036,15 @@ export default function WBSGanttPage() {
                       title={(row.itemType === 'task' || row.itemType === 'sub_task') ? 'Click to view hour entries' : undefined}
                       onClick={() => (row.itemType === 'task' || row.itemType === 'sub_task') && setDrillDownRow(row)}
                     >
-                      {row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        {row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}
+                        {hasComparison && (row.itemType === 'task' || row.itemType === 'sub_task') && (() => {
+                          const taskId = row.id || (row as any).taskId;
+                          const snapH = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
+                          if (snapH == null) return null;
+                          return <VarianceVisual current={Number(row.actualHours) || 0} snapshot={snapH} kind="hours" inline />;
+                        })()}
+                      </span>
                     </td>
                     <td className="number" style={TD_FONT}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
                     <td className="number" style={TD_FONT}>{formatCurrency(Number(row.baselineCost))}</td>

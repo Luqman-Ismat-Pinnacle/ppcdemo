@@ -140,7 +140,9 @@ interface DataContextType {
   resetData: () => void;
   refreshData: () => Promise<Partial<SampleData> | undefined>;
   saveVisualSnapshot: (snapshot: any) => Promise<boolean>;
-  
+  /** Create a snapshot from the app (popup). Persists to DB and appends to data.snapshots. */
+  createSnapshot: (payload: CreateSnapshotPayload) => Promise<{ success: boolean; id?: string; error?: string }>;
+
   // Variance trending state
   variancePeriod: VariancePeriod;
   setVariancePeriod: (period: VariancePeriod) => void;
@@ -153,6 +155,32 @@ interface DataContextType {
 // ============================================================================
 // CONTEXT CREATION
 // ============================================================================
+
+/** Payload for creating a snapshot from the app (e.g. Snapshot popup). */
+export interface CreateSnapshotPayload {
+  versionName: string;
+  snapshotType?: 'baseline' | 'forecast' | 'manual' | 'auto';
+  scope?: 'all' | 'portfolio' | 'project' | 'site' | 'customer';
+  scopeId?: string | null;
+  notes?: string | null;
+  /** Totals and breakdowns computed from current filtered view */
+  metrics: {
+    planHours: number;
+    planCost: number;
+    actualHours: number;
+    actualCost: number;
+    totalProjects: number;
+    totalTasks: number;
+    totalEmployees?: number;
+  };
+  createdBy?: string;
+  /** Optional breakdowns for variance-by-dimension */
+  byProject?: Array<{ projectId: string; name: string; planHours: number; actualHours: number; planCost: number; actualCost: number }>;
+  byPhase?: Array<{ phaseId: string; name: string; planHours: number; actualHours: number; planCost: number; actualCost: number }>;
+  byPortfolio?: Array<{ portfolioId: string; name: string; planHours: number; actualHours: number; planCost: number; actualCost: number }>;
+  /** Optional task-level for WBS variance */
+  byTask?: Array<{ taskId: string; wbsCode: string; name: string; planHours: number; actualHours: number; planCost: number; actualCost: number }>;
+}
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -456,6 +484,54 @@ export function DataProvider({ children }: DataProviderProps) {
       return false;
     }
   };
+
+  const createSnapshot = useCallback(async (payload: CreateSnapshotPayload): Promise<{ success: boolean; id?: string; error?: string }> => {
+    try {
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `snap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const snapshotDate = new Date().toISOString().split('T')[0];
+      const record = {
+        id,
+        snapshotId: id,
+        versionName: payload.versionName || `Snapshot ${snapshotDate}`,
+        scope: payload.scope ?? 'all',
+        scopeId: payload.scopeId ?? null,
+        snapshotType: payload.snapshotType ?? 'manual',
+        snapshotDate,
+        createdBy: payload.createdBy ?? 'User',
+        notes: payload.notes ?? null,
+        isLocked: false,
+        totalHours: payload.metrics.actualHours,
+        totalCost: payload.metrics.actualCost,
+        totalProjects: payload.metrics.totalProjects,
+        totalTasks: payload.metrics.totalTasks,
+        totalEmployees: payload.metrics.totalEmployees ?? 0,
+        snapshotData: {
+          metrics: payload.metrics,
+          byProject: payload.byProject ?? [],
+          byPhase: payload.byPhase ?? [],
+          byPortfolio: payload.byPortfolio ?? [],
+          byTask: payload.byTask ?? [],
+        },
+      };
+      const response = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataKey: 'snapshots', records: [record] }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setData(prev => ({
+          ...prev,
+          snapshots: [record, ...(prev.snapshots || [])],
+        }));
+        return { success: true, id };
+      }
+      return { success: false, error: (result as any).error || 'Save failed' };
+    } catch (err: any) {
+      logger.error('Error creating snapshot', err);
+      return { success: false, error: err?.message || 'Failed to create snapshot' };
+    }
+  }, []);
 
   /**
    * Memoized filtered data computation.
@@ -956,7 +1032,8 @@ export function DataProvider({ children }: DataProviderProps) {
     resetData,
     refreshData,
     saveVisualSnapshot,
-    
+    createSnapshot,
+
     // Variance trending
     variancePeriod,
     setVariancePeriod: handleSetVariancePeriod,
