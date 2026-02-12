@@ -235,24 +235,30 @@ export default function DocumentsPage() {
 
   /** Parse a DB document's health_check_json into our typed result */
   const parseHealthCheck = (dbDoc: any): ProjectHealthAutoResult | undefined => {
-    if (dbDoc?.health_check_json) {
+    const raw = dbDoc?.health_check_json ?? dbDoc?.healthCheckJson;
+    if (raw) {
       try {
-        const parsed = typeof dbDoc.health_check_json === 'string'
-          ? JSON.parse(dbDoc.health_check_json)
-          : dbDoc.health_check_json;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (parsed.score !== undefined) {
+          const issues = parsed.issues ?? [];
+          let results = Array.isArray(parsed.results) ? parsed.results : [];
+          if (results.length === 0 && issues.length > 0) {
+            results = issues.map((msg: string) => ({ checkName: msg, passed: false, message: msg }));
+          }
           return {
             score: parsed.score,
             passed: parsed.passed ?? 0,
-            failed: parsed.failed ?? (parsed.totalChecks - parsed.passed) ?? 0,
-            totalChecks: parsed.totalChecks ?? 0,
-            issues: parsed.issues ?? [],
-            results: parsed.results ?? [],
+            failed: parsed.failed ?? (parsed.totalChecks ?? 0) - (parsed.passed ?? 0),
+            totalChecks: parsed.totalChecks ?? Math.max(results.length, 1),
+            issues,
+            results,
           };
         }
       } catch { /* ignore */ }
-    } else if (dbDoc?.health_score != null) {
-      return { score: dbDoc.health_score, passed: 0, failed: 0, totalChecks: 0, issues: [], results: [] };
+    }
+    if (dbDoc?.health_score != null || dbDoc?.healthScore != null) {
+      const score = dbDoc.health_score ?? dbDoc.healthScore ?? 0;
+      return { score, passed: 0, failed: 0, totalChecks: 0, issues: [], results: [] };
     }
     return undefined;
   };

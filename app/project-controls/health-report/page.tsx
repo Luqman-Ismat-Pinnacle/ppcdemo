@@ -4,9 +4,6 @@
  * Print-friendly Project Health Report view.
  * Opened from the Project Plans page using a storagePath query param.
  * Users can then use the browser's "Save as PDF" from the print dialog.
- *
- * NOTE: This page is client-only and not pre-rendered; it uses
- * `typeof window !== 'undefined'` to safely read search params.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -15,8 +12,8 @@ import { useData } from '@/lib/data-context';
 
 export default function ProjectHealthReportPage() {
   const { data } = useData();
-
   const [storagePath, setStoragePath] = useState<string | null>(null);
+  const [fetchedDoc, setFetchedDoc] = useState<any>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -25,11 +22,27 @@ export default function ProjectHealthReportPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!storagePath) return;
+    const doc = (data.projectDocuments || []).find((d: any) =>
+      d.storagePath === storagePath || d.storage_path === storagePath
+    );
+    if (doc) return;
+    fetch('/api/data')
+      .then((r) => r.json())
+      .then((res) => {
+        const docs = res?.data?.projectDocuments ?? res?.projectDocuments ?? [];
+        const found = docs.find((d: any) => d.storagePath === storagePath || d.storage_path === storagePath);
+        if (found) setFetchedDoc(found);
+      })
+      .catch(() => {});
+  }, [storagePath, data.projectDocuments]);
+
   const report = useMemo(() => {
     if (!storagePath) return null;
     const doc = (data.projectDocuments || []).find((d: any) =>
       d.storagePath === storagePath || d.storage_path === storagePath
-    );
+    ) || fetchedDoc;
     if (!doc) return null;
 
     // Prefer full health_check_json saved on the document
@@ -59,14 +72,14 @@ export default function ProjectHealthReportPage() {
     if (!health) return null;
 
     return {
-      fileName: doc.fileName || doc.name || storagePath,
+      fileName: doc.fileName || doc.name || doc.file_name || storagePath,
       score: health.score ?? 0,
       passed: health.passed ?? 0,
       totalChecks: health.totalChecks ?? 0,
       results: health.results || [],
       issues: health.issues || [],
     };
-  }, [storagePath, data.projectDocuments]);
+  }, [storagePath, data.projectDocuments, fetchedDoc]);
 
   if (!storagePath) {
     return <div style={{ padding: '2rem', color: 'var(--text-primary)' }}>No storagePath specified.</div>;

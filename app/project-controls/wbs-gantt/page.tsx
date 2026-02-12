@@ -247,16 +247,20 @@ export default function WBSGanttPage() {
 
   // ── Actual hours drill-down: hour entries for the selected task ─
   const drillDownTaskId = useMemo(() => {
-    if (!drillDownRow?.id) return null;
-    const match = String(drillDownRow.id).match(/^wbs-task-(.+)$/);
-    return match ? match[1] : null;
-  }, [drillDownRow?.id]);
+    if (!drillDownRow) return null;
+    const id = String((drillDownRow as any).id ?? '');
+    const match = id.match(/^wbs-task-(.+)$/);
+    if (match) return match[1];
+    const directTaskId = (drillDownRow as any).taskId ?? (drillDownRow as any).task_id;
+    if (directTaskId) return String(directTaskId);
+    return null;
+  }, [drillDownRow]);
   const drillDownHours = useMemo(() => {
-    if (!drillDownTaskId || !data.hours?.length) return [];
-    return data.hours.filter(
-      (h: any) => (h.task_id || h.taskId) === drillDownTaskId
+    if (!drillDownTaskId || !(fullData.hours?.length)) return [];
+    return (fullData.hours as any[]).filter(
+      (h: any) => String(h.task_id || h.taskId || '').trim() === String(drillDownTaskId).trim()
     );
-  }, [drillDownTaskId, data.hours]);
+  }, [drillDownTaskId, fullData.hours]);
 
   // ── Derived data: WBS source (respects date filter) ────────────
   const wbsDataForTable = useMemo(() => {
@@ -638,7 +642,13 @@ export default function WBSGanttPage() {
     const updateItems = (items: any[]): any[] =>
       items.map(item => {
         const ct = result.tasks.find(t => t.id === item.id);
-        const ni: any = { ...item };
+        const ni: any = {
+          ...item,
+          actualHours: item.actualHours,
+          actualCost: item.actualCost,
+          remainingHours: item.remainingHours,
+          remainingCost: item.remainingCost,
+        };
         if (ct) { ni.isCritical = ct.isCritical; ni.earlyStart = ct.earlyStart; ni.earlyFinish = ct.earlyFinish; ni.lateStart = ct.lateStart; ni.lateFinish = ct.lateFinish; ni.totalFloat = ct.totalFloat; }
         if (ni.children) { ni.children = updateItems(ni.children); ni.isCritical = ni.children.some((c: any) => c.isCritical); ni.totalFloat = Math.min(...ni.children.map((c: any) => c.totalFloat ?? Infinity)); if (ni.totalFloat === Infinity) ni.totalFloat = 0; }
         return ni;

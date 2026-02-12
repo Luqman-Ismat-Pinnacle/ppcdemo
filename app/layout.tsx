@@ -15,7 +15,7 @@
  */
 
 import type { Metadata } from 'next';
-import { Outfit, JetBrains_Mono } from 'next/font/google';
+import { Montserrat, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/layout/ThemeProvider';
 import { DataProvider } from '@/lib/data-context';
@@ -30,9 +30,9 @@ import SnapshotPopup from '@/components/snapshot/SnapshotPopup';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
 
-const outfit = Outfit({
+const montserrat = Montserrat({
   subsets: ['latin'],
-  variable: '--font-outfit',
+  variable: '--font-montserrat',
   display: 'swap', // Optimize font loading
   preload: true,
 });
@@ -57,7 +57,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${outfit.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+      <body className={`${montserrat.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         {/* Background Image */}
         <div style={{
           position: 'fixed',

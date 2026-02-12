@@ -164,7 +164,7 @@ export default function SnapshotPopup() {
   if (!isOpen) return null;
 
   const tabs: { id: TabId; label: string }[] = [
-    { id: 'overview', label: 'Current state' },
+    { id: 'overview', label: 'Overview' },
     { id: 'create', label: 'Create snapshot' },
     { id: 'compare', label: 'Snapshots' },
     { id: 'variance', label: 'Variance' },
@@ -253,47 +253,63 @@ export default function SnapshotPopup() {
         <div style={{ padding: '1.25rem', overflow: 'auto', flex: 1, minHeight: 0 }}>
           {tab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Current view totals (filtered by date and hierarchy). Create a snapshot to compare later from the Create tab.
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
-                {[
-                  { label: 'Planned hours', value: fmtHrs(currentTotals.planHours), color: 'var(--text-primary)' },
-                  { label: 'Actual hours', value: fmtHrs(currentTotals.actualHours), color: 'var(--pinnacle-teal)' },
-                  { label: 'Planned cost', value: fmtCost(currentTotals.planCost), color: 'var(--text-primary)' },
-                  { label: 'Actual cost', value: fmtCost(currentTotals.actualCost), color: 'var(--pinnacle-teal)' },
-                ].map(({ label, value, color }) => (
-                  <div
-                    key={label}
-                    style={{
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      padding: '1rem',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color }}>{value}</div>
+              {compareSnapshot ? (
+                <>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Comparing <strong style={{ color: 'var(--text-primary)' }}>{compareSnapshot.version_name || compareSnapshot.versionName || 'Snapshot'}</strong> to current view.
                   </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setTab('variance')}
-                style={{
-                  padding: '0.6rem 1rem',
-                  background: 'var(--pinnacle-teal)',
-                  color: 'var(--bg-primary)',
-                  border: 'none',
-                  borderRadius: 'var(--radius-sm)',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  alignSelf: 'flex-start',
-                }}
-              >
-                View variance
-              </button>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '1rem', alignItems: 'start' }}>
+                    <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Snapshot (baseline)</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-secondary)' }}>{fmtHrs(snapshotTotals?.hours ?? 0)} hrs</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{fmtCost(snapshotTotals?.cost ?? 0)}</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, paddingTop: '0.5rem' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>vs</span>
+                      {variance && (
+                        <>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: variance.hoursOver ? 'var(--color-error)' : 'var(--color-success)' }}>
+                            {variance.hoursPercent >= 0 ? '+' : ''}{variance.hoursPercent.toFixed(0)}% hrs
+                          </span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: variance.costOver ? 'var(--color-error)' : 'var(--color-success)' }}>
+                            {variance.costPercent >= 0 ? '+' : ''}{variance.costPercent.toFixed(0)}% cost
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--pinnacle-teal)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Current</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{fmtHrs(currentTotals.actualHours)} hrs</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--pinnacle-teal)' }}>{fmtCost(currentTotals.actualCost)}</div>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setTab('variance')} style={{ padding: '0.6rem 1rem', background: 'var(--pinnacle-teal)', color: 'var(--bg-primary)', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', alignSelf: 'flex-start' }}>
+                    Full variance analysis
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Current view totals (filtered by date and hierarchy). Create a snapshot or select one in the Snapshots tab to compare.
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+                    {[
+                      { label: 'Planned hours', value: fmtHrs(currentTotals.planHours), color: 'var(--text-primary)' },
+                      { label: 'Actual hours', value: fmtHrs(currentTotals.actualHours), color: 'var(--pinnacle-teal)' },
+                      { label: 'Planned cost', value: fmtCost(currentTotals.planCost), color: 'var(--text-primary)' },
+                      { label: 'Actual cost', value: fmtCost(currentTotals.actualCost), color: 'var(--pinnacle-teal)' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{label}</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => setTab('create')} style={{ padding: '0.6rem 1rem', background: 'var(--pinnacle-teal)', color: 'var(--bg-primary)', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer', alignSelf: 'flex-start' }}>
+                    Create snapshot
+                  </button>
+                </>
+              )}
             </div>
           )}
 
