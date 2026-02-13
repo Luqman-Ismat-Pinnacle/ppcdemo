@@ -5,6 +5,17 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 type FeedbackType = 'issue' | 'feature';
+type FeedbackStatus = 'open' | 'triaged' | 'in_progress' | 'planned' | 'resolved' | 'released' | 'closed';
+
+const STATUS_PROGRESS: Record<FeedbackStatus, number> = {
+  open: 10,
+  triaged: 25,
+  planned: 40,
+  in_progress: 65,
+  resolved: 90,
+  released: 100,
+  closed: 100,
+};
 
 function normalizeType(value: string | null): FeedbackType | 'all' {
   if (value === 'issue' || value === 'feature') return value;
@@ -20,10 +31,10 @@ function asNullableText(v: unknown): string | null {
   return t.length ? t : null;
 }
 
-function asNumber(v: unknown, fallback: number): number {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+function normalizeStatus(value: string | null | undefined, fallback: FeedbackStatus): FeedbackStatus {
+  const v = (value || '').trim() as FeedbackStatus;
+  if (v in STATUS_PROGRESS) return v;
+  return fallback;
 }
 
 export async function GET(request: NextRequest) {
@@ -35,7 +46,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = normalizeType(searchParams.get('type'));
     const status = asText(searchParams.get('status'), '');
-    const limit = Math.max(1, Math.min(300, asNumber(searchParams.get('limit'), 120)));
+    const limitRaw = Number(searchParams.get('limit') || 120);
+    const limit = Math.max(1, Math.min(300, Number.isFinite(limitRaw) ? limitRaw : 120));
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -119,9 +131,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ item: null, error: 'Description is required' }, { status: 400 });
     }
 
-    const status = asText(body?.status, itemType === 'feature' ? 'planned' : 'open');
+    const status = normalizeStatus(asText(body?.status, itemType === 'feature' ? 'planned' : 'open'), itemType === 'feature' ? 'planned' : 'open');
     const severity = asText(body?.severity, itemType === 'issue' ? 'medium' : 'low');
-    const progress = Math.max(0, Math.min(100, asNumber(body?.progressPercent, 0)));
+    const progress = STATUS_PROGRESS[status];
 
     const insertSql = `
       INSERT INTO feedback_items (

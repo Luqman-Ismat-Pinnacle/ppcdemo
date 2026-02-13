@@ -56,6 +56,11 @@ const statusOptions = [
   'closed',
 ];
 
+const getErrorMessage = (e: unknown, fallback: string) => {
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+};
+
 const severityColor: Record<string, string> = {
   low: '#10B981',
   medium: '#F59E0B',
@@ -161,7 +166,6 @@ export default function FeedbackPage() {
           errorMessage: issueForm.errorMessage,
           severity: issueForm.severity,
           status: 'open',
-          progressPercent: 0,
           source: 'manual',
           createdByName: user?.name || null,
           createdByEmail: user?.email || null,
@@ -205,7 +209,6 @@ export default function FeedbackPage() {
           description: featureForm.description,
           notes: featureForm.notes,
           status: 'planned',
-          progressPercent: 0,
           severity: 'low',
           source: 'manual',
           createdByName: user?.name || null,
@@ -234,7 +237,6 @@ export default function FeedbackPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: patch.status ?? item.status,
-          progressPercent: patch.progressPercent ?? item.progressPercent,
           notes: patch.notes ?? item.notes,
         }),
       });
@@ -339,11 +341,10 @@ export default function FeedbackPage() {
                     <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: 'var(--text-secondary)' }}>Error:</strong> {item.errorMessage || '-'}</div>
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '160px 110px 1fr auto', gap: '0.5rem', alignItems: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: '0.5rem', alignItems: 'center' }}>
                   <select value={item.status} onChange={e => onUpdateItem(item, { status: e.target.value })} style={inputStyle} disabled={savingId === item.id}>
                     {statusOptions.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
                   </select>
-                  <input type="number" min={0} max={100} value={item.progressPercent ?? 0} onChange={e => onUpdateItem(item, { progressPercent: Number(e.target.value || 0) })} style={inputStyle} disabled={savingId === item.id} />
                   <input value={item.notes || ''} onChange={e => onUpdateItem(item, { notes: e.target.value })} placeholder="Progress notes / release notes" style={inputStyle} disabled={savingId === item.id} />
                   <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{savingId === item.id ? 'Saving...' : `${item.progressPercent || 0}%`}</span>
                 </div>
@@ -381,7 +382,3 @@ const tabStyle = (active: boolean): React.CSSProperties => ({
   fontWeight: 600,
   cursor: 'pointer',
 });
-  const getErrorMessage = (e: unknown, fallback: string) => {
-    if (e instanceof Error && e.message) return e.message;
-    return fallback;
-  };

@@ -4,6 +4,18 @@ import { isPostgresConfigured, query } from '@/lib/postgres';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+type FeedbackStatus = 'open' | 'triaged' | 'in_progress' | 'planned' | 'resolved' | 'released' | 'closed';
+
+const STATUS_PROGRESS: Record<FeedbackStatus, number> = {
+  open: 10,
+  triaged: 25,
+  planned: 40,
+  in_progress: 65,
+  resolved: 90,
+  released: 100,
+  closed: 100,
+};
+
 function asText(v: unknown, fallback = ''): string {
   return typeof v === 'string' ? v.trim() : fallback;
 }
@@ -13,10 +25,10 @@ function asNullableText(v: unknown): string | null {
   return value ? value : null;
 }
 
-function asNumber(v: unknown, fallback: number): number {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  const parsed = Number(v);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function normalizeStatus(value: string | null | undefined): FeedbackStatus | null {
+  const v = (value || '').trim() as FeedbackStatus;
+  if (v in STATUS_PROGRESS) return v;
+  return null;
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -28,11 +40,8 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const { id } = await context.params;
     const body = await request.json();
 
-    const status = asText(body?.status, '');
+    const status = normalizeStatus(asText(body?.status, ''));
     const notes = body?.notes !== undefined ? asNullableText(body?.notes) : undefined;
-    const progress = body?.progressPercent !== undefined
-      ? Math.max(0, Math.min(100, asNumber(body?.progressPercent, 0)))
-      : undefined;
 
     const updates: string[] = [];
     const params: unknown[] = [];
@@ -40,16 +49,13 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     if (status) {
       params.push(status);
       updates.push(`status = $${params.length}`);
+      params.push(STATUS_PROGRESS[status]);
+      updates.push(`progress_percent = $${params.length}`);
     }
     if (notes !== undefined) {
       params.push(notes);
       updates.push(`notes = $${params.length}`);
     }
-    if (progress !== undefined) {
-      params.push(progress);
-      updates.push(`progress_percent = $${params.length}`);
-    }
-
     params.push(id);
     updates.push(`updated_at = NOW()`);
 
