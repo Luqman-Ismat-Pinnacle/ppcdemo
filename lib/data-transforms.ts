@@ -1610,7 +1610,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         // (so shared sites like Fort McMurray show under the correct customer per project).
         // Fall back to site.customerId when no projects have siteId so sites still show.
         const customerIdStr = String(customerId);
-        const customerProjectsRaw = (maps.projectsByCustomer.get(customerId) || maps.projectsByCustomer.get(customerIdStr) || []) as any[];
+        const customerProjectsRaw = (
+          (maps.projectsByCustomer.get(customerId) || maps.projectsByCustomer.get(customerIdStr) || []) as any[]
+        ).filter((p: any) => {
+          const pPortfolioId = p.portfolioId ?? p.portfolio_id;
+          // Keep legacy rows with null portfolio under the customer, but enforce portfolio match when present.
+          return pPortfolioId == null || String(pPortfolioId) === portfolioIdStr;
+        });
         const projectsBySiteId = new Map<string, any[]>();
         const customerProjectsNoSite: any[] = [];
         customerProjectsRaw.forEach((p: any) => {
@@ -1688,7 +1694,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
             // Only include projects for this customer so same-named sites for different customers don't share rollup
             const siteProjectsRaw = (maps.projectsBySite.get(siteId) || maps.projectsBySite.get(String(siteId)) || []).filter(
-              (p: any) => (p.customerId ?? p.customer_id) === customerId
+              (p: any) => {
+                const pCustomerId = p.customerId ?? p.customer_id;
+                const pPortfolioId = p.portfolioId ?? p.portfolio_id;
+                const customerMatch = String(pCustomerId ?? '') === customerIdStr;
+                const portfolioMatch = pPortfolioId == null || String(pPortfolioId) === portfolioIdStr;
+                return customerMatch && portfolioMatch;
+              }
             );
             const siteProjects = Array.from(new Map(siteProjectsRaw.map((p: any) => [String(p.id ?? p.projectId), p])).values());
             siteProjects.forEach((project: any, prIdx: number) => {
@@ -1749,7 +1761,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
       // Projects directly under portfolio (dedupe by projectId)
       const portfolioProjectsFiltered = (projects || []).filter((p: any) => {
-        if ((p.portfolioId !== portfolioId && p.portfolio_id !== portfolioId)) return false;
+        const pPortfolioId = p.portfolioId ?? p.portfolio_id;
+        if (String(pPortfolioId ?? '') !== portfolioIdStr) return false;
         if (!p.customerId && !p.customer_id) return true;
         const pCustId = p.customerId || p.customer_id;
         return !allPortfolioCustomers.some((c: any) => (c.id || c.customerId) === pCustId);
