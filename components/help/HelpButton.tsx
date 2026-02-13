@@ -34,6 +34,8 @@ import { usePathname } from 'next/navigation';
 const ROUTE_TO_HELP_ID: Record<string, string> = {
   '/': 'home',
   '/login': 'login',
+  '/insights/overview-v2': 'overview',
+  '/insights/tasks': 'tasks',
   '/insights/overview': 'overview',
   '/insights/hours': 'hours',
   '/insights/milestones': 'milestones',
@@ -59,8 +61,8 @@ export default function HelpButton() {
   const pathname = usePathname();
   const [hovered, setHovered] = useState<'help' | 'feedback' | null>(null);
 
-  // Don't show on login page
-  if (pathname === '/login') {
+  // Hide on login/help pages so page-level links are never obstructed.
+  if (pathname === '/login' || pathname.startsWith('/help')) {
     return null;
   }
 
@@ -110,7 +112,9 @@ export default function HelpButton() {
           <span
             style={{
               position: 'absolute',
-              left: '44px',
+              bottom: '42px',
+              left: '50%',
+              transform: 'translateX(-50%)',
               background: 'var(--bg-card)',
               border: '1px solid var(--border-color)',
               borderRadius: '6px',
@@ -121,6 +125,7 @@ export default function HelpButton() {
               whiteSpace: 'nowrap',
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
               pointerEvents: 'none',
+              zIndex: 10020,
             }}
           >
             Help
@@ -158,7 +163,9 @@ export default function HelpButton() {
           <span
             style={{
               position: 'absolute',
-              left: '44px',
+              bottom: '42px',
+              left: '50%',
+              transform: 'translateX(-50%)',
               background: 'var(--bg-card)',
               border: '1px solid var(--border-color)',
               borderRadius: '6px',
@@ -169,6 +176,7 @@ export default function HelpButton() {
               whiteSpace: 'nowrap',
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
               pointerEvents: 'none',
+              zIndex: 10020,
             }}
           >
             Issues & Features
