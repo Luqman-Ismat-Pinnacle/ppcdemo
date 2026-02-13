@@ -25,6 +25,10 @@ import { VariancePeriod, MetricsHistory } from '@/lib/variance-engine';
 import { autoRecordMetricsIfNeeded } from '@/lib/metrics-recorder';
 import { filterActiveEmployees, filterActiveProjects } from '@/lib/active-filters';
 
+const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
+const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
+let memoryBootstrapCache: { savedAt: number; data: SampleData } | null = null;
+
 // ============================================================================
 // EMPTY DATA STRUCTURE
 // ============================================================================
@@ -241,6 +245,90 @@ export function DataProvider({ children }: DataProviderProps) {
   });
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory[]>([]);
 
+  const applyLoadedData = useCallback((dbData: Record<string, unknown>) => {
+    const mergedData: Partial<SampleData> = {};
+    for (const [key, value] of Object.entries(dbData)) {
+      if (Array.isArray(value)) {
+        (mergedData as Record<string, unknown>)[key] = value;
+      } else if (value !== null && value !== undefined) {
+        (mergedData as Record<string, unknown>)[key] = value;
+      }
+    }
+
+    if (mergedData.employees && Array.isArray(mergedData.employees)) {
+      mergedData.employees = filterActiveEmployees(mergedData.employees);
+    }
+    if (mergedData.projects && Array.isArray(mergedData.projects)) {
+      mergedData.projects = filterActiveProjects(mergedData.projects);
+    }
+
+    if (mergedData.employees && mergedData.portfolios) {
+      mergedData.portfolios = ensurePortfoliosForSeniorManagers(
+        mergedData.employees as any[],
+        mergedData.portfolios as any[]
+      );
+
+      const activeEmployeeNames = new Set(
+        (mergedData.employees as any[]).map((e: any) => (e.name || '').toLowerCase())
+      );
+      mergedData.portfolios = (mergedData.portfolios as any[]).filter((p: any) => {
+        const mgr = (p.manager || '').toLowerCase();
+        if (!mgr) return true;
+        if (String(p.id || '').startsWith('PRF-AUTO-')) return activeEmployeeNames.has(mgr);
+        return true;
+      });
+    }
+
+    const transformedData = transformData(mergedData);
+    const finalData = { ...createEmptyData(), ...mergedData, ...transformedData };
+    setData(finalData);
+    memoryBootstrapCache = { savedAt: Date.now(), data: finalData };
+
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(
+          DATA_BOOTSTRAP_CACHE_KEY,
+          JSON.stringify({ savedAt: Date.now(), data: finalData })
+        );
+      } catch (error) {
+        logger.warn('Could not persist bootstrap cache', error);
+      }
+    }
+
+    logger.debug('Loaded and transformed data from database:', Object.keys(mergedData).map(k => {
+      const value = (mergedData as Record<string, unknown>)[k];
+      const length = Array.isArray(value) ? value.length : (value ? 1 : 0);
+      return `${length} ${k}`;
+    }).join(', '));
+
+    autoRecordMetricsIfNeeded(finalData).catch(err => {
+      logger.warn('Failed to auto-record metrics:', err);
+    });
+  }, []);
+
+  const hydrateFromBootstrapCache = useCallback((): boolean => {
+    const now = Date.now();
+    if (memoryBootstrapCache && (now - memoryBootstrapCache.savedAt) < DATA_BOOTSTRAP_CACHE_TTL_MS) {
+      setData(memoryBootstrapCache.data);
+      return true;
+    }
+
+    if (typeof window === 'undefined') return false;
+
+    try {
+      const raw = sessionStorage.getItem(DATA_BOOTSTRAP_CACHE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as { savedAt?: number; data?: SampleData };
+      if (!parsed.savedAt || !parsed.data) return false;
+      if ((now - parsed.savedAt) >= DATA_BOOTSTRAP_CACHE_TTL_MS) return false;
+      setData(parsed.data);
+      memoryBootstrapCache = { savedAt: parsed.savedAt, data: parsed.data };
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // Persist variance settings
   const setVarianceEnabled = useCallback((enabled: boolean) => {
     setVarianceEnabledState(enabled);
@@ -278,80 +366,28 @@ export function DataProvider({ children }: DataProviderProps) {
    */
   useEffect(() => {
     const loadData = async () => {
+      const hydratedFromCache = hydrateFromBootstrapCache();
+      if (hydratedFromCache) {
+        setIsLoading(false);
+      }
+
       try {
         logger.debug('Fetching data from database...');
-        const response = await fetch('/api/data', { cache: 'no-store' });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const response = await fetch('/api/data', { cache: 'no-store', signal: controller.signal })
+          .finally(() => clearTimeout(timeoutId));
         const result = await response.json();
 
         if (result.error) {
           logger.warn('Database not configured or error:', result.error);
-          setIsLoading(false);
           return;
         }
 
         const dbData = result.data;
 
         if (dbData && Object.keys(dbData).length > 0) {
-          // Merge fetched data with empty structure
-          const mergedData: Partial<SampleData> = {};
-          for (const [key, value] of Object.entries(dbData)) {
-            if (Array.isArray(value)) {
-              // Include arrays even if empty (to clear previous data)
-              (mergedData as Record<string, unknown>)[key] = value;
-            } else if (value !== null && value !== undefined) {
-              // Include non-array values
-              (mergedData as Record<string, unknown>)[key] = value;
-            }
-          }
-
-          // Filter out inactive/terminated employees globally
-          if (mergedData.employees && Array.isArray(mergedData.employees)) {
-            mergedData.employees = filterActiveEmployees(mergedData.employees);
-          }
-
-          // Filter out inactive/terminated/closed projects globally
-          if (mergedData.projects && Array.isArray(mergedData.projects)) {
-            mergedData.projects = filterActiveProjects(mergedData.projects);
-          }
-
-          // Ensure Senior Managers have portfolios (only active employees)
-          if (mergedData.employees && mergedData.portfolios) {
-            mergedData.portfolios = ensurePortfoliosForSeniorManagers(
-              mergedData.employees as any[],
-              mergedData.portfolios as any[]
-            );
-
-            // Remove auto-generated portfolios whose manager is no longer active
-            const activeEmployeeNames = new Set(
-              (mergedData.employees as any[]).map((e: any) => (e.name || '').toLowerCase())
-            );
-            mergedData.portfolios = (mergedData.portfolios as any[]).filter((p: any) => {
-              // Keep portfolios that don't reference a specific manager, or whose manager is still active
-              const mgr = (p.manager || '').toLowerCase();
-              if (!mgr) return true;
-              // If it's an auto-generated portfolio, only keep if the manager is active
-              if (String(p.id || '').startsWith('PRF-AUTO-')) return activeEmployeeNames.has(mgr);
-              return true; // Keep manually-created portfolios regardless
-            });
-          }
-
-          if (Object.keys(mergedData).length > 0) {
-            // Apply transformations to build computed views (wbsData, laborBreakdown, etc.)
-            const transformedData = transformData(mergedData);
-            // Replace all data, not merge, to ensure fresh state
-            const finalData = { ...createEmptyData(), ...mergedData, ...transformedData };
-            setData(finalData);
-            logger.debug('Loaded and transformed data from database:', Object.keys(mergedData).map(k => {
-              const value = (mergedData as Record<string, unknown>)[k];
-              const length = Array.isArray(value) ? value.length : (value ? 1 : 0);
-              return `${length} ${k}`;
-            }).join(', '));
-            
-            // Auto-record daily metrics for variance trending (non-blocking)
-            autoRecordMetricsIfNeeded(finalData).catch(err => {
-              logger.warn('Failed to auto-record metrics:', err);
-            });
-          }
+          applyLoadedData(dbData as Record<string, unknown>);
         }
       } catch (err) {
         logger.error('Error fetching data from database', err);
@@ -361,7 +397,7 @@ export function DataProvider({ children }: DataProviderProps) {
     };
 
     loadData();
-  }, []);
+  }, [applyLoadedData, hydrateFromBootstrapCache]);
 
   /**
    * Update data - called by Data Management, Sprint Board, etc.

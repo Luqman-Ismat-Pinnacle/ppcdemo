@@ -20,6 +20,12 @@ import {
   isAzureStorageConfigured,
 } from '@/lib/azure-storage';
 
+function isSafeStoragePath(path: string): boolean {
+  if (!path || path.length > 500) return false;
+  if (path.includes('..') || path.startsWith('/')) return false;
+  return true;
+}
+
 export async function GET(req: NextRequest) {
   if (!isAzureStorageConfigured()) {
     return NextResponse.json(
@@ -45,6 +51,9 @@ export async function GET(req: NextRequest) {
     const path = searchParams.get('path');
     if (!path) {
       return NextResponse.json({ error: 'Missing path parameter' }, { status: 400 });
+    }
+    if (!isSafeStoragePath(path)) {
+      return NextResponse.json({ error: 'Invalid path parameter' }, { status: 400 });
     }
     const result = await downloadFile(path);
     if (result.error || !result.data) {
@@ -80,6 +89,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (!isSafeStoragePath(storagePath)) {
+      return NextResponse.json({ error: 'Invalid storage path' }, { status: 400 });
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const result = await uploadFile(storagePath, buffer, file.type);
@@ -89,8 +101,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ data: { path: result.path } });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -112,6 +125,9 @@ export async function DELETE(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (paths.some((path) => !isSafeStoragePath(path))) {
+      return NextResponse.json({ error: 'One or more paths are invalid' }, { status: 400 });
+    }
 
     const result =
       paths.length === 1
@@ -123,7 +139,8 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -8,18 +8,55 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { isPostgresConfigured, query as pgQuery, withClient } from '@/lib/postgres';
+import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 import { DATA_KEY_TO_TABLE } from '@/lib/supabase';
+
+type SyncOperation =
+  | 'wipeAll'
+  | 'deleteByProjectId'
+  | 'setCurrentMpp'
+  | 'updateDocumentHealth'
+  | 'deleteByTaskIds'
+  | 'delete'
+  | 'replace'
+  | 'update'
+  | undefined;
+
+interface SyncRequestBody {
+  dataKey?: string;
+  records?: unknown;
+  operation?: SyncOperation;
+  projectId?: unknown;
+  storagePath?: unknown;
+  healthScore?: unknown;
+  healthCheckJson?: unknown;
+  taskIds?: unknown;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function parseRequestBody(payload: unknown): SyncRequestBody {
+  if (!isObject(payload)) {
+    throw new Error('Invalid request body');
+  }
+  return payload as SyncRequestBody;
+}
 
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
 
-function toDbFormat(obj: any): any {
+function toDbFormat(obj: unknown): unknown {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(toDbFormat);
 
-  const result: any = {};
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     const snakeKey = toSnakeCase(key);
     result[snakeKey] = value;
@@ -30,8 +67,8 @@ function toDbFormat(obj: any): any {
 // Null-like values to convert to actual NULL
 const nullLike = new Set(['', '-', 'null', 'undefined', 'n/a']);
 
-function cleanRecord(record: any, tableName: string) {
-  const cleaned: any = {};
+function cleanRecord(record: Record<string, unknown>, tableName: string): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
   cleaned.id = record.id || '';
 
   for (const [key, value] of Object.entries(record)) {
@@ -54,7 +91,7 @@ function cleanRecord(record: any, tableName: string) {
     }
   }
 
-  const formatted = toDbFormat(cleaned);
+  const formatted = toDbFormat(cleaned) as Record<string, unknown>;
 
   // tasks table: strip columns that don't exist in the DB schema
   if (tableName === 'tasks') {
@@ -86,7 +123,7 @@ function cleanRecord(record: any, tableName: string) {
  * For hour_entries, validate that FK references (task_id, phase_id) actually exist.
  * Null out any that don't to prevent FK constraint violations.
  */
-async function validateHourEntryFKs(records: any[]): Promise<any[]> {
+async function validateHourEntryFKs(records: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
   if (records.length === 0) return records;
 
   // Collect unique task_ids and phase_ids from the batch
@@ -106,7 +143,7 @@ async function validateHourEntryFKs(records: any[]): Promise<any[]> {
       const arr = Array.from(taskIds);
       const placeholders = arr.map((_, i) => `$${i + 1}`).join(', ');
       const result = await pgQuery(`SELECT id FROM tasks WHERE id IN (${placeholders})`, arr);
-      result.rows.forEach((row: any) => validTaskIds.add(String(row.id)));
+      result.rows.forEach((row: { id: string | number }) => validTaskIds.add(String(row.id)));
     } catch { /* if query fails, null out all task_ids to be safe */ }
   }
 
@@ -116,7 +153,7 @@ async function validateHourEntryFKs(records: any[]): Promise<any[]> {
       const arr = Array.from(phaseIds);
       const placeholders = arr.map((_, i) => `$${i + 1}`).join(', ');
       const result = await pgQuery(`SELECT id FROM phases WHERE id IN (${placeholders})`, arr);
-      result.rows.forEach((row: any) => validPhaseIds.add(String(row.id)));
+      result.rows.forEach((row: { id: string | number }) => validPhaseIds.add(String(row.id)));
     } catch { /* if query fails, null out all phase_ids to be safe */ }
   }
 
@@ -147,7 +184,7 @@ async function validateHourEntryFKs(records: any[]): Promise<any[]> {
 // POSTGRESQL OPERATIONS
 // ============================================================================
 
-async function pgUpsert(tableName: string, records: any[]): Promise<{ success: boolean; count: number; error?: string }> {
+async function pgUpsert(tableName: string, records: Record<string, unknown>[]): Promise<{ success: boolean; count: number; error?: string }> {
   if (records.length === 0) return { success: true, count: 0 };
 
   try {
@@ -157,7 +194,7 @@ async function pgUpsert(tableName: string, records: any[]): Promise<{ success: b
     for (let i = 0; i < records.length; i += BATCH) {
       const batch = records.slice(i, i + BATCH);
       const columns = Object.keys(batch[0]);
-      const values: any[] = [];
+      const values: unknown[] = [];
       const rowPlaceholders: string[] = [];
 
       batch.forEach((row, rowIdx) => {
@@ -180,9 +217,10 @@ async function pgUpsert(tableName: string, records: any[]): Promise<{ success: b
     }
 
     return { success: true, count: totalCount };
-  } catch (err: any) {
-    console.error(`[Sync] PostgreSQL upsert error for ${tableName}:`, err.message);
-    return { success: false, count: 0, error: err.message };
+  } catch (err: unknown) {
+    const message = getErrorMessage(err);
+    console.error(`[Sync] PostgreSQL upsert error for ${tableName}:`, message);
+    return { success: false, count: 0, error: message };
   }
 }
 
@@ -192,8 +230,8 @@ async function pgDelete(tableName: string, ids: string[]): Promise<{ success: bo
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
     await pgQuery(`DELETE FROM ${tableName} WHERE id IN (${placeholders})`, ids);
     return { success: true, count: ids.length };
-  } catch (err: any) {
-    return { success: false, count: 0, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, count: 0, error: getErrorMessage(err) };
   }
 }
 
@@ -201,12 +239,12 @@ async function pgDeleteByProjectId(tableName: string, projectId: string): Promis
   try {
     await pgQuery(`DELETE FROM ${tableName} WHERE project_id = $1`, [projectId]);
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) };
   }
 }
 
-async function pgUpdate(tableName: string, id: string, updates: Record<string, any>): Promise<{ success: boolean; error?: string }> {
+async function pgUpdate(tableName: string, id: string, updates: Record<string, unknown>): Promise<{ success: boolean; error?: string }> {
   try {
     const keys = Object.keys(updates).filter(k => k !== 'id');
     if (keys.length === 0) return { success: true };
@@ -214,8 +252,8 @@ async function pgUpdate(tableName: string, id: string, updates: Record<string, a
     const values = [id, ...keys.map(k => updates[k])];
     await pgQuery(`UPDATE ${tableName} SET ${setClauses} WHERE id = $1`, values);
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: getErrorMessage(err) };
   }
 }
 
@@ -238,7 +276,7 @@ async function getSupabaseClient() {
 export async function POST(req: NextRequest) {
   try {
     const usePostgres = isPostgresConfigured();
-    const body = await req.json();
+    const body = parseRequestBody(await req.json());
     const { dataKey, records, operation, projectId, storagePath, healthScore, healthCheckJson } = body;
 
     // ------------------------------------------------------------------
@@ -253,9 +291,10 @@ export async function POST(req: NextRequest) {
           const tableList = tables.join(', ');
           await pgQuery(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`, []);
           return NextResponse.json({ success: true, wipedTables: tables });
-        } catch (err: any) {
-          console.error('[Sync] wipeAll (Postgres) failed:', err.message);
-          return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+        } catch (err: unknown) {
+          const message = getErrorMessage(err);
+          console.error('[Sync] wipeAll (Postgres) failed:', message);
+          return NextResponse.json({ success: false, error: message }, { status: 500 });
         }
       }
 
@@ -279,9 +318,10 @@ export async function POST(req: NextRequest) {
           }
         }
         return NextResponse.json({ success: true, wipedTables: tables });
-      } catch (err: any) {
-        console.error('[Sync] wipeAll (Supabase) failed:', err.message);
-        return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+      } catch (err: unknown) {
+        const message = getErrorMessage(err);
+        console.error('[Sync] wipeAll (Supabase) failed:', message);
+        return NextResponse.json({ success: false, error: message }, { status: 500 });
       }
     }
 
@@ -368,7 +408,10 @@ export async function POST(req: NextRequest) {
 
     // ---- Operation: delete ----
     if (operation === 'delete') {
-      const idsToDelete = records.map((r: any) => typeof r === 'string' ? r : r.id).filter(Boolean);
+      const idsToDelete = records
+        .map((r: unknown) => (typeof r === 'string' ? r : isObject(r) ? r.id : null))
+        .filter((id): id is string | number => typeof id === 'string' || typeof id === 'number')
+        .map(String);
       if (idsToDelete.length === 0) return NextResponse.json({ success: true, count: 0 });
 
       if (usePostgres) {
@@ -397,7 +440,9 @@ export async function POST(req: NextRequest) {
     if (records.length === 0) return NextResponse.json({ success: true, count: 0 });
 
     // Clean records
-    let cleanedRecords = records.map((r: any) => cleanRecord(r, tableName));
+    let cleanedRecords = records
+      .filter((record): record is Record<string, unknown> => isObject(record))
+      .map((record) => cleanRecord(record, tableName));
 
     // For hour_entries, validate FK references before upserting
     if (tableName === 'hour_entries' && usePostgres) {
@@ -434,8 +479,9 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ success: false, count: 0, error: error.message, details: error.details || error.hint }, { status: 500 });
     return NextResponse.json({ success: true, count: data?.length || 0 });
 
-  } catch (error: any) {
-    console.error('Sync error:', error);
-    return NextResponse.json({ success: false, count: 0, error: error.message || 'Unknown error occurred' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    console.error('Sync error:', message);
+    return NextResponse.json({ success: false, count: 0, error: message || 'Unknown error occurred' }, { status: 500 });
   }
 }

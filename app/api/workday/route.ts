@@ -26,9 +26,75 @@ const EDGE_FUNCTIONS = {
 
 type SyncType = keyof typeof EDGE_FUNCTIONS;
 
+interface WorkdayRequestBody {
+  syncType?: SyncType | 'unified';
+  action?: string;
+  hoursDaysBack?: number | string;
+}
+
+interface ProjectRecord {
+  id: string;
+  name?: string;
+  project_id?: string;
+  status?: string;
+  is_active?: boolean | null;
+  active?: boolean | null;
+}
+
+interface EdgeFunctionResult {
+  success: boolean;
+  error?: string;
+  summary?: {
+    synced?: number;
+    [key: string]: unknown;
+  };
+  stats?: {
+    hours?: number;
+    [key: string]: unknown;
+  };
+  logs?: string[];
+}
+
+interface AzureFunctionStepResult {
+  success?: boolean;
+  summary?: unknown;
+  [key: string]: unknown;
+}
+
+interface AzureFunctionResponse {
+  success?: boolean;
+  summary?: Record<string, unknown>;
+  results?: Record<string, AzureFunctionStepResult>;
+}
+
+interface HourEntryRow {
+  id: string;
+  project_id?: string;
+  description?: string;
+}
+
+interface TaskLikeRow {
+  id: string;
+  project_id?: string;
+  name?: string;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function parseBody(value: unknown): WorkdayRequestBody {
+  if (!isObject(value)) return {};
+  return value as WorkdayRequestBody;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = parseBody(await req.json().catch(() => ({})));
     const syncType = body.syncType as SyncType | 'unified';
     const action = body.action;
     const hoursDaysBack = Math.min(MAX_HOURS_DAYS_BACK, Math.max(30, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
@@ -77,9 +143,10 @@ export async function POST(req: NextRequest) {
     const result = await callEdgeFunction(supabaseUrl, supabaseServiceKey, edgeFunctionName, body);
     return NextResponse.json({ success: result.success, syncType, summary: result.summary, logs: result.logs || [], error: result.error });
 
-  } catch (error: any) {
-    console.error('Workday sync error:', error);
-    return NextResponse.json({ success: false, error: error.message || 'Unknown error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    console.error('Workday sync error:', message);
+    return NextResponse.json({ success: false, error: message || 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -90,7 +157,7 @@ export async function POST(req: NextRequest) {
 // Keywords that indicate an inactive record (case-insensitive, server-side mirror of lib/active-filters)
 const INACTIVE_KW = ['inactive', 'terminated', 'disabled', 'closed', 'cancelled', 'canceled', 'archived', 'suspended', 'deactivated', 'removed', 'offboarded'];
 
-function isProjectActive(p: any): boolean {
+function isProjectActive(p: ProjectRecord): boolean {
   const active = p.is_active ?? p.active;
   if (active === false) return false;
   const status = (p.status || '').toLowerCase();
@@ -104,7 +171,8 @@ async function handleGetProjects() {
   try {
     if (isPostgresConfigured()) {
       const result = await pgQuery('SELECT id, name, project_id, customer_id, site_id, has_schedule, status, is_active FROM projects ORDER BY name');
-      const projectOptions = (result.rows || []).filter(isProjectActive).map((p: any) => ({
+      const projectRows = (result.rows || []) as ProjectRecord[];
+      const projectOptions = projectRows.filter(isProjectActive).map((p) => ({
         id: p.id,
         name: p.name || p.id,
         secondary: p.project_id || 'Workday Project',
@@ -123,15 +191,16 @@ async function handleGetProjects() {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: projects, error } = await supabase.from('projects').select('id, name, project_id, customer_id, site_id, has_schedule, status, is_active').order('name');
     if (error) return NextResponse.json({ success: false, error: error.message, workday_projects: [] });
-    const projectOptions = (projects || []).filter(isProjectActive).map((p: any) => ({
+    const projectRows = (projects || []) as ProjectRecord[];
+    const projectOptions = projectRows.filter(isProjectActive).map((p) => ({
       id: p.id,
       name: p.name || p.id,
       secondary: p.project_id || 'Workday Project',
       type: 'project',
     }));
     return NextResponse.json({ success: true, workday_projects: projectOptions, summary: { projects: projectOptions.length } });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message, workday_projects: [] }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error), workday_projects: [] }, { status: 500 });
   }
 }
 
@@ -180,12 +249,12 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
           return;
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as AzureFunctionResponse;
         logAndPush(`Azure Function sync completed: ${JSON.stringify(data.summary || {})}`);
 
         // Emit step events for each component
         if (data.results) {
-          for (const [step, result] of Object.entries(data.results) as [string, any][]) {
+          for (const [step, result] of Object.entries(data.results)) {
             pushLine(controller, {
               type: 'step',
               step,
@@ -196,8 +265,10 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
         }
 
         pushLine(controller, { type: 'done', success: data.success !== false, logs, summary: data.summary || data });
-      } catch (err: any) {
-        const msg = err.name === 'AbortError' ? 'Azure Function timed out after 20 minutes' : (err.message || String(err));
+      } catch (err: unknown) {
+        const msg = err instanceof Error
+          ? (err.name === 'AbortError' ? 'Azure Function timed out after 20 minutes' : (err.message || String(err)))
+          : String(err);
         logAndPush(`Azure Function error: ${msg}`);
         pushLine(controller, { type: 'error', error: msg });
         pushLine(controller, { type: 'done', success: false, logs });
@@ -216,6 +287,7 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
 // MATCHING (PostgreSQL – after Azure Function sync completes)
 // ============================================================================
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function runPostgresMatching(): Promise<{ tasksMatched: number; unitsMatched: number; stillUnmatched: number }> {
   if (!isPostgresConfigured()) return { tasksMatched: 0, unitsMatched: 0, stillUnmatched: 0 };
 
@@ -225,16 +297,16 @@ async function runPostgresMatching(): Promise<{ tasksMatched: number; unitsMatch
   const tasks = await pgQuery("SELECT id, project_id, name FROM tasks");
   const units = await pgQuery("SELECT id, project_id, name FROM units");
 
-  const tasksByProject = new Map<string, any[]>();
-  tasks.rows.forEach((t: any) => {
+  const tasksByProject = new Map<string, TaskLikeRow[]>();
+  (tasks.rows as TaskLikeRow[]).forEach((t) => {
     if (!t.project_id || !t.name) return;
     const arr = tasksByProject.get(t.project_id) || [];
     arr.push(t);
     tasksByProject.set(t.project_id, arr);
   });
 
-  const unitsByProject = new Map<string, any[]>();
-  units.rows.forEach((u: any) => {
+  const unitsByProject = new Map<string, TaskLikeRow[]>();
+  (units.rows as TaskLikeRow[]).forEach((u) => {
     if (!u.project_id || !u.name) return;
     const arr = unitsByProject.get(u.project_id) || [];
     arr.push(u);
@@ -246,7 +318,7 @@ async function runPostgresMatching(): Promise<{ tasksMatched: number; unitsMatch
   let unitsMatched = 0;
   const updates: { id: string; task_id: string }[] = [];
 
-  for (const h of unassigned.rows) {
+  for (const h of unassigned.rows as HourEntryRow[]) {
     if (!h.project_id) continue;
     const desc = normalize(h.description || '');
     if (!desc) continue;
@@ -289,9 +361,9 @@ function pushLine(controller: ReadableStreamDefaultController<Uint8Array>, obj: 
 }
 
 async function callEdgeFunction(
-  url: string, key: string, functionName: string, body: any,
+  url: string, key: string, functionName: string, body: Record<string, unknown>,
   options?: { retries?: number; timeoutMs?: number }
-): Promise<{ success: boolean; error?: string; summary?: any; stats?: any; logs?: string[] }> {
+): Promise<EdgeFunctionResult> {
   const { retries = 2, timeoutMs = 120000 } = options || {};
   const edgeFunctionUrl = `${url}/functions/v1/${functionName}`;
   let lastError = '';
@@ -319,8 +391,12 @@ async function callEdgeFunction(
       const responseText = await edgeResponse.text();
       if (!responseText?.trim()) return { success: true, summary: { synced: 0 }, stats: { hours: 0 }, logs: ['Empty response'] };
       try { return JSON.parse(responseText); } catch { return { success: false, error: `Invalid JSON: ${responseText.substring(0, 100)}` }; }
-    } catch (fetchError: any) {
-      lastError = fetchError.name === 'AbortError' ? `Timed out after ${timeoutMs / 1000}s` : (fetchError.message || 'Network error');
+    } catch (fetchError: unknown) {
+      if (fetchError instanceof Error) {
+        lastError = fetchError.name === 'AbortError' ? `Timed out after ${timeoutMs / 1000}s` : (fetchError.message || 'Network error');
+      } else {
+        lastError = 'Network error';
+      }
       if (attempt < retries) { await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); continue; }
     }
   }
@@ -347,8 +423,8 @@ function supabaseUnifiedSyncStream(hoursDaysBack: number): Response {
         const empRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-employees', {}, { retries: 2, timeoutMs: 60000 });
         pushLine(controller, { type: 'step', step: 'employees', status: 'done', result: empRes });
         empOk = empRes.success;
-      } catch (e: any) {
-        pushLine(controller, { type: 'error', error: `Employees: ${e.message}` });
+      } catch (e: unknown) {
+        pushLine(controller, { type: 'error', error: `Employees: ${getErrorMessage(e)}` });
       }
 
       // 2. Projects
@@ -357,8 +433,8 @@ function supabaseUnifiedSyncStream(hoursDaysBack: number): Response {
         const projRes = await callEdgeFunction(supabaseUrl, supabaseServiceKey, 'workday-projects', {}, { retries: 2, timeoutMs: 90000 });
         pushLine(controller, { type: 'step', step: 'projects', status: 'done', result: projRes });
         projOk = projRes.success;
-      } catch (e: any) {
-        pushLine(controller, { type: 'error', error: `Projects: ${e.message}` });
+      } catch (e: unknown) {
+        pushLine(controller, { type: 'error', error: `Projects: ${getErrorMessage(e)}` });
       }
 
       // 3. Hours
@@ -382,8 +458,8 @@ function supabaseUnifiedSyncStream(hoursDaysBack: number): Response {
           totalHours += hoursRes.stats?.hours ?? hoursRes.summary?.synced ?? 0;
           if (hoursRes.success) hoursChunksOk++;
           pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats, success: hoursRes.success });
-        } catch (e: any) {
-          pushLine(controller, { type: 'error', error: `Hours ${startStr}-${endStr}: ${e.message}` });
+        } catch (e: unknown) {
+          pushLine(controller, { type: 'error', error: `Hours ${startStr}-${endStr}: ${getErrorMessage(e)}` });
         }
         if (i < totalChunks - 1) await new Promise(r => setTimeout(r, 200));
       }
@@ -428,9 +504,9 @@ function supabaseHoursOnlyStream(hoursDaysBack: number): Response {
           totalHours += hoursRes.stats?.hours ?? 0;
           pushLine(controller, { type: 'step', step: 'hours', status: 'chunk_done', chunk: i + 1, totalChunks, stats: hoursRes.stats });
           if (!hoursRes.success) success = false;
-        } catch (err: any) {
+        } catch (err: unknown) {
           success = false;
-          pushLine(controller, { type: 'error', error: err.message || String(err) });
+          pushLine(controller, { type: 'error', error: getErrorMessage(err) });
         }
       }
       pushLine(controller, { type: 'step', step: 'hours', status: 'done', totalHours });

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "clean": "rm -rf .next node_modules package-lock.json && npm install --legacy-peer-deps",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:api": "eslint app/api"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^3.8.0",

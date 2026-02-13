@@ -5,12 +5,12 @@
  * Uses PostgreSQL (primary) or Supabase (fallback).
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
     if (isPostgresConfigured()) {
       return await matchWithPostgres();
@@ -25,8 +25,6 @@ export async function POST(req: NextRequest) {
 }
 
 async function matchWithPostgres() {
-  const PAGE = 5000;
-
   // Fetch unassigned hours
   let unassignedHours: any[] = [];
   try {
@@ -47,9 +45,7 @@ async function matchWithPostgres() {
 
   // Fetch tasks and units
   const tasksRes = await pgQuery('SELECT id, project_id, name FROM tasks');
-  const unitsRes = await pgQuery('SELECT id, project_id, name FROM units');
   const tasks = tasksRes.rows;
-  const units = unitsRes.rows;
 
   // Group by project
   const tasksByProject = new Map<string, any[]>();
@@ -60,20 +56,11 @@ async function matchWithPostgres() {
     tasksByProject.set(t.project_id, arr);
   });
 
-  const unitsByProject = new Map<string, any[]>();
-  units.forEach((u: any) => {
-    if (!u.project_id || !u.name) return;
-    const arr = unitsByProject.get(u.project_id) || [];
-    arr.push(u);
-    unitsByProject.set(u.project_id, arr);
-  });
-
   // Build a set of valid task IDs for FK validation
   const validTaskIds = new Set<string>(tasks.map((t: any) => t.id));
 
   const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
   let tasksMatched = 0;
-  let unitsMatched = 0;
   let skippedInvalidFK = 0;
   const updates: { id: string; task_id: string }[] = [];
 
@@ -186,8 +173,6 @@ async function matchWithSupabase() {
   }
 
   const { data: tasks } = await supabase.from('tasks').select('id, project_id, name');
-  const { data: units } = await supabase.from('units').select('id, project_id, name');
-
   const tasksByProject = new Map<string, any[]>();
   (tasks || []).forEach((t: any) => {
     if (!t.project_id || !t.name) return;

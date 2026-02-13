@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getADOConfig, syncWorkItemToADO, mapStateToADO } from '@/lib/azure-devops';
+import { getADOConfig, syncWorkItemToADO } from '@/lib/azure-devops';
 import type { ADOWorkItemType } from '@/lib/azure-devops';
 
 export const dynamic = 'force-dynamic';

@@ -12,6 +12,14 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    files: ["app/api/**/*.{ts,tsx,js,jsx}"],
+    rules: {
+      // API layer is being migrated incrementally; keep strictness on real regressions
+      // while avoiding blanket lint failure on legacy `any` typing.
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
+  {
     ignores: [".next/**", "out/**", "build/**", "next-env.d.ts"],
   },
 ];

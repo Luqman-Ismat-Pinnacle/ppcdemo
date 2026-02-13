@@ -71,7 +71,7 @@ function DashboardSkeleton() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', maxWidth: 1100 }}>
       {/* Scorecards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
         {[1, 2, 3, 4].map(i => <SkeletonCard key={i} />)}
       </div>
       {/* Chart area */}
@@ -133,7 +133,7 @@ function TreeSkeleton() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', maxWidth: 1100 }}>
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.65rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.65rem' }}>
         {[1, 2, 3, 4, 5].map(i => <SkeletonCard key={i} />)}
       </div>
       {/* Tree placeholder */}
@@ -161,7 +161,7 @@ function TreeSkeleton() {
 
 function DefaultSkeleton() {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', width: '100%', maxWidth: 1100 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', width: '100%', maxWidth: 1100 }}>
       {[1, 2, 3, 4, 5, 6].map(i => <SkeletonCard key={i} style={{ minHeight: 100 }} />)}
     </div>
   );
