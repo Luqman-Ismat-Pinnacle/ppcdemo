@@ -785,285 +785,202 @@ function PredictiveBurn({ portfolio }: { portfolio: any }) {
 
 function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
   const [nodeLimit, setNodeLimit] = useState(60);
-  const [layoutMode, setLayoutMode] = useState<'circular' | 'force'>('circular');
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
-  // Scenario testing state
   const [scenarioTaskId, setScenarioTaskId] = useState('');
   const [scenarioDelayDays, setScenarioDelayDays] = useState(5);
   const [scenarioActive, setScenarioActive] = useState(false);
 
-  const { graphNodes, graphLinks, criticalPath, blockedSplash, successorsOfMap, taskMapRef } = useMemo(() => {
-    if (!tasks.length) return { graphNodes: [], graphLinks: [], criticalPath: new Set<string>(), blockedSplash: new Set<string>(), successorsOfMap: new Map<string, string[]>(), taskMapRef: new Map<string, any>() };
+  const CAT_COLORS = { critical: C.teal, blocked: '#F43F5E', splash: '#FB923C', task: '#94A3B8', scenario: '#E879F9' };
 
-    // Build task map with multiple key formats for robust lookup
+  const dependencyData = useMemo(() => {
+    if (!tasks.length) return { items: [] as any[], successorsOfMap: new Map<string, string[]>(), edgeCount: 0 };
+
     const taskMap = new Map<string, any>();
     tasks.forEach((t: any) => {
-      const id = String(t.id || t.taskId || '');
-      if (id) {
-        taskMap.set(id, t);
-        if (id.includes('-')) {
-          const rawId = id.split('-').pop() || '';
-          if (rawId && !taskMap.has(rawId)) taskMap.set(rawId, t);
-        }
-      }
+      const id = String(t.id || t.taskId || '').trim();
+      if (id) taskMap.set(id, t);
     });
 
-    const childrenOf = new Map<string, string[]>();
-    const linkData: { source: string; target: string }[] = [];
     const successorsOf = new Map<string, string[]>();
-    const linkSet = new Set<string>();
-
-    const addLink = (from: string, to: string) => {
-      const key = `${from}->${to}`;
-      if (linkSet.has(key)) return;
-      linkSet.add(key);
-      linkData.push({ source: from, target: to });
+    const addSuccessor = (from: string, to: string) => {
+      if (!successorsOf.has(from)) successorsOf.set(from, []);
+      const arr = successorsOf.get(from)!;
+      if (!arr.includes(to)) arr.push(to);
     };
 
     tasks.forEach((t: any) => {
-      const tid = String(t.id || t.taskId || '');
+      const tid = String(t.id || t.taskId || '').trim();
       if (!tid) return;
-      const pid = String(t.parentId || t.phaseId || '');
-      if (pid && pid !== tid && pid !== 'undefined' && pid !== 'null' && taskMap.has(pid)) {
-        if (!childrenOf.has(pid)) childrenOf.set(pid, []);
-        childrenOf.get(pid)!.push(tid);
-        addLink(pid, tid);
-      }
-      const pred = String(t.predecessorId || t.predecessor_id || '');
-      if (pred && pred !== tid && pred !== 'undefined' && pred !== 'null' && taskMap.has(pred)) {
-        addLink(pred, tid);
-        if (!successorsOf.has(pred)) successorsOf.set(pred, []);
-        successorsOf.get(pred)!.push(tid);
-      }
+      const pred = String(t.predecessorId || t.predecessor_id || '').trim();
+      if (pred && pred !== tid && taskMap.has(pred)) addSuccessor(pred, tid);
       if (Array.isArray(t.predecessors)) {
         t.predecessors.forEach((p: any) => {
-          const predId = String(p.predecessorTaskId || p.taskId || '');
-          if (predId && predId !== tid && predId !== 'undefined' && predId !== 'null') {
-            const resolvedId = taskMap.has(predId) ? predId : null;
-            if (resolvedId) {
-              addLink(resolvedId, tid);
-              if (!successorsOf.has(resolvedId)) successorsOf.set(resolvedId, []);
-              successorsOf.get(resolvedId)!.push(tid);
-            }
-          }
+          const pid = String(p.predecessorTaskId || p.taskId || '').trim();
+          if (pid && pid !== tid && taskMap.has(pid)) addSuccessor(pid, tid);
         });
       }
     });
 
-    const connectionCount = new Map<string, number>();
-    taskMap.forEach((_, id) => {
-      const count = (childrenOf.get(id)?.length || 0) + (successorsOf.get(id)?.length || 0);
-      connectionCount.set(id, count);
-    });
-    const sortedIds = [...connectionCount.entries()].filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]).map(([id]) => id);
-    if (sortedIds.length === 0) { tasks.slice(0, nodeLimit).forEach((t: any) => { const id = String(t.id || t.taskId || ''); if (id) sortedIds.push(id); }); }
+    const items = [...taskMap.entries()].map(([id, t]) => {
+      const startMs = new Date(t.startDate || t.plannedStartDate || t.baselineStartDate || t.createdAt || Date.now()).getTime();
+      const endMs = new Date(t.endDate || t.finishDate || t.plannedEndDate || t.baselineEndDate || Date.now()).getTime();
+      const baselineHours = Number(t.baselineHours || 0);
+      const actualHours = Number(t.actualHours || 0);
+      const variance = actualHours - baselineHours;
+      const totalFloat = t.totalFloat ?? t.total_float ?? null;
+      const isCritical = !!t.isCritical || (totalFloat != null && Number(totalFloat) <= 0);
+      const status = String(t.status || '').toLowerCase();
+      const isBlocked = status.includes('block') || status.includes('late');
+      const downstream = successorsOf.get(id)?.length || 0;
+      const name = String(t.name || t.taskName || id);
+      return {
+        id,
+        name,
+        startMs: Number.isNaN(startMs) ? Date.now() : startMs,
+        endMs: Number.isNaN(endMs) ? Date.now() : endMs,
+        baselineHours,
+        actualHours,
+        variance,
+        isCritical,
+        isBlocked,
+        downstream,
+        percentComplete: Number(t.percentComplete || 0),
+        totalFloat: totalFloat == null ? null : Number(totalFloat),
+      };
+    }).filter((n: any) => n.downstream > 0 || tasks.some((t: any) => String(t.predecessorId || t.predecessor_id || '') === n.id));
 
-    const nodeIdSet = new Set<string>();
-    const nodeList: any[] = [];
+    const sorted = items
+      .filter((n: any) => !showCriticalOnly || n.isCritical || n.isBlocked)
+      .sort((a: any, b: any) => ((b.isCritical ? 24 : 0) + (b.isBlocked ? 22 : 0) + (b.downstream * 4) + Math.max(0, b.variance))
+        - ((a.isCritical ? 24 : 0) + (a.isBlocked ? 22 : 0) + (a.downstream * 4) + Math.max(0, a.variance)))
+      .slice(0, nodeLimit);
 
-    const addNode = (id: string) => {
-      if (nodeIdSet.size >= nodeLimit || nodeIdSet.has(id)) return;
-      const t = taskMap.get(id);
-      if (!t) return;
-      const isCrit = !!t.isCritical || (t.totalFloat != null && Number(t.totalFloat) <= 0);
-      const isBlk = String(t.status || '').toLowerCase().includes('block') || String(t.status || '').toLowerCase().includes('late');
-      if (showCriticalOnly && !isCrit && !isBlk) return;
-      nodeIdSet.add(id);
-      const totalFloat = t.totalFloat ?? t.total_float ?? t.totalSlack ?? t.total_slack ?? null;
-      nodeList.push({
-        id, name: t.name || t.taskName || id,
-        childCount: (childrenOf.get(id)?.length || 0) + (successorsOf.get(id)?.length || 0),
-        hours: Number(t.baselineHours || t.actualHours || 0),
-        actualHours: Number(t.actualHours || 0),
-        baselineHours: Number(t.baselineHours || 0),
-        duration: Number(t.duration || t.daysRequired || 0),
-        pc: Number(t.percentComplete || 0),
-        totalFloat: totalFloat != null ? Number(totalFloat) : null,
-        isCritical: isCrit, isParent: childrenOf.has(id) || (successorsOf.get(id)?.length || 0) > 0,
-        variance: Number(t.actualHours || 0) - Number(t.baselineHours || 0),
-        isBlocked: isBlk,
-        successorCount: (successorsOf.get(id)?.length || 0),
-      });
-    };
-
-    sortedIds.forEach(id => {
-      addNode(id);
-      [...(childrenOf.get(id) || []), ...(successorsOf.get(id) || [])].forEach(cid => addNode(cid));
-    });
-
-    const critSet = new Set<string>();
-    nodeList.forEach(n => { if (n.isCritical) critSet.add(n.id); });
-
-    const splashSet = new Set<string>();
-    const propagate = (id: string) => {
-      (successorsOf.get(id) || []).concat(childrenOf.get(id) || []).forEach(sid => {
-        if (nodeIdSet.has(sid) && !splashSet.has(sid)) { splashSet.add(sid); propagate(sid); }
-      });
-    };
-    nodeList.filter(n => n.isBlocked).forEach(n => { splashSet.add(n.id); propagate(n.id); });
-
-    return {
-      graphNodes: nodeList,
-      graphLinks: linkData.filter(l => nodeIdSet.has(l.source) && nodeIdSet.has(l.target)),
-      criticalPath: critSet,
-      blockedSplash: splashSet,
-      successorsOfMap: successorsOf,
-      taskMapRef: taskMap,
-    };
+    const edgeCount = [...successorsOf.values()].reduce((sum, arr) => sum + arr.length, 0);
+    return { items: sorted, successorsOfMap: successorsOf, edgeCount };
   }, [tasks, nodeLimit, showCriticalOnly]);
 
-  // Scenario impact analysis: propagate delay from scenarioTaskId downstream
   const scenarioImpacted = useMemo(() => {
     if (!scenarioActive || !scenarioTaskId) return new Set<string>();
     const impacted = new Set<string>();
     const propagate = (id: string) => {
-      (successorsOfMap.get(id) || []).forEach(sid => {
+      (dependencyData.successorsOfMap.get(id) || []).forEach(sid => {
         if (!impacted.has(sid)) { impacted.add(sid); propagate(sid); }
       });
     };
     impacted.add(scenarioTaskId);
     propagate(scenarioTaskId);
     return impacted;
-  }, [scenarioActive, scenarioTaskId, scenarioDelayDays, successorsOfMap]);
-
-  // Pinnacle-inspired color palette for categories
-  const CAT_COLORS = { critical: C.teal, blocked: '#F43F5E', splash: '#FB923C', phase: '#818CF8', task: '#94A3B8', scenario: '#E879F9' };
+  }, [scenarioActive, scenarioTaskId, scenarioDelayDays, dependencyData.successorsOfMap]);
 
   const option: EChartsOption = useMemo(() => {
-    if (!graphNodes.length) return { series: [] };
-    const maxH = Math.max(...graphNodes.map(n => n.hours), 1);
-    const maxC = Math.max(...graphNodes.map(n => n.childCount), 1);
+    const rows = dependencyData.items;
+    if (!rows.length) return { series: [] };
 
-    const nodeData = graphNodes.map(n => {
-      const inSplash = blockedSplash.has(n.id);
-      const inScenario = scenarioImpacted.has(n.id);
-      const isSource = scenarioActive && n.id === scenarioTaskId;
-      const cat = isSource ? 5 : n.isBlocked ? 1 : n.isCritical ? 0 : inScenario ? 5 : inSplash ? 2 : n.isParent ? 3 : 4;
-      return {
-        name: n.name, id: n.id,
-        symbolSize: n.isParent
-          ? Math.max(22, Math.min(50, 22 + (n.childCount / maxC) * 28))
-          : Math.max(12, Math.min(30, 12 + (n.hours / maxH) * 18)),
-        category: cat,
-        hours: n.hours, actualHours: n.actualHours, baselineHours: n.baselineHours,
-        duration: n.duration, pc: n.pc, totalFloat: n.totalFloat,
-        isCritical: n.isCritical, isBlocked: n.isBlocked, inSplash, inScenario,
-        successorCount: n.successorCount, variance: n.variance,
-        label: {
-          show: n.isParent || n.isCritical || n.isBlocked || isSource,
-          color: isSource ? CAT_COLORS.scenario : C.textPrimary, fontSize: 9,
-          fontWeight: isSource ? 700 : undefined,
-        },
-        itemStyle: {
-          shadowBlur: isSource ? 25 : n.isBlocked ? 20 : n.isCritical ? 15 : inScenario ? 12 : 3,
-          shadowColor: isSource ? 'rgba(232,121,249,0.6)' : n.isBlocked ? 'rgba(244,63,94,0.5)' : n.isCritical ? 'rgba(64,224,208,0.5)' : inScenario ? 'rgba(232,121,249,0.4)' : 'rgba(0,0,0,0.15)',
-          borderWidth: isSource ? 3 : (n.isBlocked || n.isCritical) ? 2.5 : inScenario ? 2 : 1,
-          borderColor: isSource ? CAT_COLORS.scenario : n.isBlocked ? CAT_COLORS.blocked : n.isCritical ? CAT_COLORS.critical : inScenario ? CAT_COLORS.scenario : inSplash ? CAT_COLORS.splash : 'rgba(148,163,184,0.25)',
-        },
-      };
+    const dateMin = Math.min(...rows.map((r: any) => Math.min(r.startMs, r.endMs)));
+    const dateMax = Math.max(...rows.map((r: any) => Math.max(r.startMs, r.endMs)));
+    const bucketCount = 7;
+    const step = Math.max(1, Math.floor((dateMax - dateMin) / (bucketCount - 1)));
+    const buckets = Array.from({ length: bucketCount }, (_, i) => dateMin + i * step);
+    const bucketLabels = buckets.map(ms => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }));
+
+    const scoresByBucket = buckets.map((bucketMs) => {
+      return rows.map((n: any) => {
+        const active = bucketMs >= Math.min(n.startMs, n.endMs) && bucketMs <= Math.max(n.startMs, n.endMs);
+        const scenarioBump = scenarioActive && scenarioImpacted.has(n.id) ? Math.max(2, Math.round(scenarioDelayDays / 2)) : 0;
+        const scoreBase = (n.isCritical ? 50 : 0) + (n.isBlocked ? 40 : 0) + (n.downstream * 6) + Math.max(0, n.variance) + scenarioBump;
+        return { id: n.id, score: active ? scoreBase + Math.max(0, 100 - n.percentComplete) / 5 : -1000 };
+      }).sort((a: any, b: any) => b.score - a.score);
     });
 
-    const linkItems = graphLinks.map(l => {
-      const isCrit = criticalPath.has(l.source) && criticalPath.has(l.target);
-      const isScen = scenarioImpacted.has(l.source) && scenarioImpacted.has(l.target);
-      return {
-        source: l.source, target: l.target,
-        lineStyle: {
-          color: isScen ? CAT_COLORS.scenario : isCrit ? CAT_COLORS.critical : 'rgba(148,163,184,0.12)',
-          width: isScen ? 2.5 : isCrit ? 2.5 : 0.8,
-          curveness: 0.3,
-          opacity: isScen ? 0.85 : isCrit ? 0.85 : 0.35,
-        },
-      };
+    const ranksById = new Map<string, (number | null)[]>();
+    rows.forEach((n: any) => ranksById.set(n.id, Array(bucketCount).fill(null)));
+    scoresByBucket.forEach((bucketScores, bucketIndex) => {
+      bucketScores.forEach((s: any, rankIndex: number) => {
+        if (s.score <= -1000) return;
+        ranksById.get(s.id)![bucketIndex] = rankIndex + 1;
+      });
     });
 
-    const seriesBase: any = {
-      type: 'graph', roam: true, draggable: true, zoom: 0.85,
-      categories: [
-        { name: 'Critical', itemStyle: { color: CAT_COLORS.critical } },
-        { name: 'Blocked', itemStyle: { color: CAT_COLORS.blocked } },
-        { name: 'At Risk', itemStyle: { color: CAT_COLORS.splash } },
-        { name: 'Phase/Parent', itemStyle: { color: CAT_COLORS.phase } },
-        { name: 'Task', itemStyle: { color: CAT_COLORS.task } },
-        { name: 'Scenario Impact', itemStyle: { color: CAT_COLORS.scenario } },
-      ],
-      data: nodeData, links: linkItems,
-      emphasis: {
-        focus: 'adjacency',
-        lineStyle: { width: 3, opacity: 0.9 },
-        itemStyle: { shadowBlur: 20, shadowColor: 'rgba(64,224,208,0.5)' },
-      },
-    };
-
-    if (layoutMode === 'circular') {
-      seriesBase.layout = 'circular';
-      seriesBase.circular = { rotateLabel: true };
-    } else {
-      seriesBase.layout = 'force';
-      seriesBase.force = { repulsion: 300, edgeLength: [80, 240], gravity: 0.06, friction: 0.6 };
-    }
+    const rowMap = new Map<string, any>(rows.map((r: any) => [r.id, r]));
+    const series: any[] = rows.map((n: any) => {
+      const isScenario = scenarioActive && scenarioImpacted.has(n.id);
+      const color = isScenario ? CAT_COLORS.scenario : n.isBlocked ? CAT_COLORS.blocked : n.isCritical ? CAT_COLORS.critical : n.variance > 0 ? CAT_COLORS.splash : CAT_COLORS.task;
+      const ranks = ranksById.get(n.id) || [];
+      return {
+        name: n.id,
+        type: 'line' as const,
+        smooth: 0.25,
+        symbol: 'circle',
+        symbolSize: 7,
+        connectNulls: false,
+        lineStyle: { width: n.isCritical || n.isBlocked || isScenario ? 3 : 2, color, opacity: 0.9 },
+        itemStyle: { color, borderColor: 'rgba(255,255,255,0.8)', borderWidth: 1 },
+        emphasis: { focus: 'series' as const, lineStyle: { width: 4 } },
+        endLabel: {
+          show: true,
+          formatter: `${n.name.length > 16 ? `${n.name.slice(0, 16)}…` : n.name}`,
+          color,
+          fontSize: 9,
+        },
+        labelLayout: { moveOverlap: 'shiftY' as const },
+        data: ranks,
+      };
+    });
 
     return {
       tooltip: {
-        ...TT, trigger: 'item',
-        extraCssText: 'z-index:99999!important;backdrop-filter:blur(20px);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:420px;white-space:normal;',
+        ...TT,
+        trigger: 'item',
         formatter: (p: any) => {
-          const d = p.data;
-          if (p.dataType === 'edge') {
-            return `<span style="font-size:11px;color:${C.textMuted}">${d.source} → ${d.target}</span>`;
-          }
-          if (!d) return '';
-          const floatStr = d.totalFloat != null ? `<br/>Total Float: <strong style="color:${d.totalFloat <= 0 ? CAT_COLORS.blocked : d.totalFloat <= 5 ? CAT_COLORS.splash : C.green}">${d.totalFloat}d</strong>` : '';
-          const varStr = d.variance !== 0 ? `<br/>Variance: <strong style="color:${d.variance > 0 ? CAT_COLORS.blocked : C.green}">${d.variance > 0 ? '+' : ''}${Math.round(d.variance)}h</strong>` : '';
-          const durStr = d.duration ? `<br/>Duration: ${d.duration}d` : '';
-          const sucStr = d.successorCount ? `<br/>Downstream tasks: ${d.successorCount}` : '';
-          const scenStr = d.inScenario && scenarioActive ? `<br/><span style="color:${CAT_COLORS.scenario}">SCENARIO: +${scenarioDelayDays}d delay impact</span>` : '';
-          return `<strong style="word-break:break-word;font-size:13px;">${d.name || ''}</strong>`
-            + `<br/>Baseline: ${Math.round(d.baselineHours || 0)}h | Actual: ${Math.round(d.actualHours || 0)}h`
-            + `<br/>Progress: ${Math.round(d.pc || 0)}%`
-            + floatStr + varStr + durStr + sucStr
-            + (d.isCritical ? `<br/><span style="color:${CAT_COLORS.critical}">CRITICAL PATH</span>` : '')
-            + (d.isBlocked ? `<br/><span style="color:${CAT_COLORS.blocked}">BLOCKED</span>` : '')
-            + (d.inSplash && !d.isBlocked ? `<br/><span style="color:${CAT_COLORS.splash}">AT RISK</span>` : '')
-            + scenStr;
+          const m = rowMap.get(String(p.seriesName || ''));
+          if (!m) return '';
+          const rank = p.data == null ? 'N/A' : `#${p.data}`;
+          return `<strong>${m.name}</strong><br/>Rank: <strong>${rank}</strong> @ ${bucketLabels[p.dataIndex] || ''}`
+            + `<br/>Downstream: ${m.downstream} tasks`
+            + `<br/>Baseline: ${Math.round(m.baselineHours)}h | Actual: ${Math.round(m.actualHours)}h`
+            + `<br/>Variance: <strong style="color:${m.variance > 0 ? CAT_COLORS.blocked : C.green}">${m.variance > 0 ? '+' : ''}${Math.round(m.variance)}h</strong>`
+            + `<br/>Progress: ${Math.round(m.percentComplete)}%`
+            + (m.totalFloat != null ? `<br/>Total Float: ${m.totalFloat}d` : '')
+            + (m.isCritical ? `<br/><span style="color:${CAT_COLORS.critical}">CRITICAL PATH</span>` : '')
+            + (m.isBlocked ? `<br/><span style="color:${CAT_COLORS.blocked}">BLOCKED</span>` : '')
+            + (scenarioActive && scenarioImpacted.has(m.id) ? `<br/><span style="color:${CAT_COLORS.scenario}">SCENARIO IMPACTED (+${scenarioDelayDays}d)</span>` : '');
         },
       },
-      toolbox: {
-        show: true, right: 10, top: 5, iconStyle: { borderColor: C.textMuted },
-        feature: {
-          restore: { title: 'Reset View' },
-          saveAsImage: { title: 'Save' },
-        },
+      grid: { top: 34, left: 50, right: 140, bottom: 30 },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: bucketLabels,
+        axisLabel: { color: C.textMuted, fontSize: 10 },
+        axisLine: { lineStyle: { color: C.border } },
       },
-      series: [seriesBase],
-      legend: {
-        data: ['Critical', 'Blocked', 'At Risk', 'Phase/Parent', 'Task', ...(scenarioActive ? ['Scenario Impact'] : [])],
-        bottom: 0, textStyle: { color: C.textMuted, fontSize: 9 },
-        itemWidth: 12, itemHeight: 8,
+      yAxis: {
+        type: 'value',
+        min: 1,
+        max: rows.length,
+        inverse: true,
+        axisLabel: { color: C.textMuted, fontSize: 10, formatter: (v: number) => `#${v}` },
+        splitLine: { lineStyle: { color: C.gridLine, type: 'dashed' } },
+        axisLine: { lineStyle: { color: C.border } },
       },
+      series,
     };
-  }, [graphNodes, graphLinks, criticalPath, blockedSplash, layoutMode, scenarioImpacted, scenarioActive, scenarioTaskId, scenarioDelayDays]);
+  }, [dependencyData.items, scenarioImpacted, scenarioActive, scenarioTaskId, scenarioDelayDays]);
 
-  // Build scenario task options
   const scenarioOptions = useMemo(() => {
-    return graphNodes.filter(n => n.successorCount > 0).sort((a, b) => b.successorCount - a.successorCount).slice(0, 50);
-  }, [graphNodes]);
+    return dependencyData.items
+      .filter((n: any) => n.downstream > 0)
+      .sort((a: any, b: any) => b.downstream - a.downstream)
+      .slice(0, 60);
+  }, [dependencyData.items]);
 
   const inputStyle = { padding: '3px 6px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'rgba(255,255,255,0.04)', color: C.textPrimary, fontSize: '0.7rem' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-      {/* Parameters bar */}
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Layout</label>
-          <select value={layoutMode} onChange={e => setLayoutMode(e.target.value as any)} style={inputStyle}>
-            <option value="circular">Circular</option>
-            <option value="force">Force-directed</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Nodes</label>
+          <label style={{ fontSize: '0.65rem', color: C.textMuted, whiteSpace: 'nowrap' }}>Tracks</label>
           <select value={nodeLimit} onChange={e => setNodeLimit(Number(e.target.value))} style={inputStyle}>
             {[30, 60, 100, 150, 200].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -1073,18 +990,17 @@ function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
           Critical Only
         </label>
         <div style={{ marginLeft: 'auto', fontSize: '0.6rem', color: C.textMuted }}>
-          {graphNodes.length} nodes · {graphLinks.length} links
+          {dependencyData.items.length} task tracks · {dependencyData.edgeCount} links
         </div>
       </div>
 
-      {/* Scenario Testing bar */}
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0.75rem', background: scenarioActive ? 'rgba(232,121,249,0.06)' : 'rgba(255,255,255,0.02)', borderRadius: 8, border: `1px solid ${scenarioActive ? CAT_COLORS.scenario + '40' : C.border}`, flexWrap: 'wrap' }}>
         <span style={{ fontSize: '0.65rem', fontWeight: 700, color: scenarioActive ? CAT_COLORS.scenario : C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Scenario</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <label style={{ fontSize: '0.65rem', color: C.textMuted }}>If task</label>
           <select value={scenarioTaskId} onChange={e => setScenarioTaskId(e.target.value)} style={{ ...inputStyle, maxWidth: 200 }}>
             <option value="">Select a task...</option>
-            {scenarioOptions.map(n => <option key={n.id} value={n.id}>{n.name} ({n.successorCount} downstream)</option>)}
+            {scenarioOptions.map((n: any) => <option key={n.id} value={n.id}>{n.name} ({n.downstream} downstream)</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1102,13 +1018,12 @@ function DependencyImpactGraph({ tasks }: { tasks: any[] }) {
         )}
       </div>
 
-      {graphNodes.length > 0 ? <ChartWrapper option={option} height="560px" /> : <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No dependency data</div>}
+      {dependencyData.items.length > 0 ? <ChartWrapper option={option} height="560px" /> : <div style={{ padding: '2rem', textAlign: 'center', color: C.textMuted }}>No dependency data</div>}
 
-      {/* Minimap legend / zoom hint */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.55rem', color: C.textMuted, padding: '0 0.25rem' }}>
-        <span>Scroll to zoom · Drag to pan · Click node for adjacency focus</span>
+        <span>Bump ranks show dependency pressure over schedule time windows</span>
         <div style={{ display: 'flex', gap: 12 }}>
-          {Object.entries({ 'Critical Path': CAT_COLORS.critical, 'Blocked': CAT_COLORS.blocked, 'At Risk': CAT_COLORS.splash, 'Phase': CAT_COLORS.phase, 'Task': CAT_COLORS.task, ...(scenarioActive ? { 'Scenario': CAT_COLORS.scenario } : {}) }).map(([label, color]) => (
+          {Object.entries({ 'Critical Path': CAT_COLORS.critical, 'Blocked': CAT_COLORS.blocked, 'At Risk': CAT_COLORS.splash, 'Task': CAT_COLORS.task, ...(scenarioActive ? { 'Scenario': CAT_COLORS.scenario } : {}) }).map(([label, color]) => (
             <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
               {label}
@@ -1441,7 +1356,7 @@ export default function OverviewV2Page() {
           </SectionCard>
 
           {/* ═══ 7. DEPENDENCY MAP ═══ */}
-          <SectionCard title="Dependency Impact Map" subtitle="Graph visualization of task dependencies, critical path, and blocked splash zones" badge={<Badge label="Dependencies" color={C.purple} />}>
+          <SectionCard title="Dependency Impact Bump Chart" subtitle="Ranked dependency pressure over time (critical path, blocked tasks, and scenario effects)" badge={<Badge label="Dependencies" color={C.purple} />}>
             <DependencyImpactGraph tasks={data.tasks || []} />
           </SectionCard>
         </div>

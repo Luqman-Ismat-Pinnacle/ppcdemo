@@ -506,14 +506,14 @@ export default function BacklogView() {
             {item.type}
           </span>
 
-          {/* ID */}
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-            {getItemId()}
-          </span>
-
           {/* Name */}
-          <div style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-            {getItemName()}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {getItemName()}
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+              {getItemId()}
+            </div>
           </div>
 
           {/* Status */}
@@ -596,7 +596,10 @@ export default function BacklogView() {
             }}
             title="Edit"
           >
-            ✏️
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
           </button>
           <button
             onClick={(e) => {
@@ -612,7 +615,12 @@ export default function BacklogView() {
             }}
             title="Delete"
           >
-            🗑️
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
           </button>
         </div>
 
@@ -856,7 +864,10 @@ export default function BacklogView() {
               gap: '0.35rem'
             }}
           >
-            {expandedItems.size > 0 ? '🔼 Collapse All' : '🔽 Expand All'}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {expandedItems.size > 0 ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
+            </svg>
+            {expandedItems.size > 0 ? 'Collapse All' : 'Expand All'}
           </button>
         </div>
       </div>

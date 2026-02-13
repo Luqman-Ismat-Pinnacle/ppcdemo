@@ -1209,8 +1209,8 @@ function WorkItemCard({ item, onDragStart, onDragEnd, onEdit, onDelete, employee
           >
             {item.workItemType}
           </span>
-          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-            {getWorkItemId(item)}
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {getWorkItemName(item)}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1233,7 +1233,10 @@ function WorkItemCard({ item, onDragStart, onDragEnd, onEdit, onDelete, employee
             }}
             title="Edit"
           >
-            ✏️
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+            </svg>
           </button>
           <button
             onClick={(e) => {
@@ -1250,14 +1253,19 @@ function WorkItemCard({ item, onDragStart, onDragEnd, onEdit, onDelete, employee
             }}
             title="Delete"
           >
-            🗑️
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>
           </button>
         </div>
       </div>
 
       {/* Title */}
-      <div style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
-        {getWorkItemName(item)}
+      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+        {getWorkItemId(item)}
       </div>
 
       {/* Progress Bar (for tasks) */}

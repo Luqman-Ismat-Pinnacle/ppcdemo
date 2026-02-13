@@ -84,6 +84,7 @@ function ResourcingPageContent() {
   const [orgSearch, setOrgSearch] = useState('');
   const [analyticsSearch, setAnalyticsSearch] = useState('');
   const [heatmapRoleFilter, setHeatmapRoleFilter] = useState<string>('all');
+  const [treeZoom, setTreeZoom] = useState(1);
 
   // ── Data ──────────────────────────────────────────────────────
   const data = useMemo(() => {
@@ -443,9 +444,10 @@ function ResourcingPageContent() {
   );
 
   const totalLeaves = treeLeafCounts.reduce((s, p) => s + p.leaves, 0);
-  // For vertical TB layout — cap dimensions to reasonable viewport sizes
-  const dynamicTreeWidth = Math.max(1200, Math.min(totalLeaves * 120, 4000));
-  const dynamicTreeHeight = Math.max(800, Math.min(treeData.length * 200 + totalLeaves * 32, 3000));
+  // For vertical TB layout — increase sibling spacing and adapt to zoom so labels don't overlap.
+  const spacingScale = Math.max(1, 1 / Math.max(treeZoom, 0.75));
+  const dynamicTreeWidth = Math.max(1500, Math.min(totalLeaves * 170 * spacingScale, 7600));
+  const dynamicTreeHeight = Math.max(920, Math.min(treeData.length * 260 + totalLeaves * 44 * spacingScale, 5200));
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -491,29 +493,39 @@ function ResourcingPageContent() {
     };
 
     // Label config for TB (top-to-bottom) layout
+    const labelWidth = Math.round(Math.max(100, 150 / Math.max(treeZoom, 0.75)));
     const sharedLabel = {
       position: 'bottom' as const,
       verticalAlign: 'top' as const,
       align: 'center' as const,
       fontSize: 10.5,
       color: '#f4f4f5',
+      width: labelWidth,
+      overflow: 'truncate' as const,
+      backgroundColor: 'rgba(17,24,39,0.78)',
+      borderColor: 'rgba(64,224,208,0.24)',
+      borderWidth: 1,
       borderRadius: 5,
-      padding: [5, 8] as [number, number],
-      distance: 8,
+      padding: [6, 9] as [number, number],
+      distance: 12,
       formatter: (params: any) => {
         const d = params.data;
+        const name = String(d.name || '').trim();
+        const trimmedName = name.length > 22 ? `${name.slice(0, 22)}…` : name;
         if (d.isManager) {
-          return `{mgrName|${d.name}}\n{mgrSub|${d.reportCount} reports}\n{util|${d.utilization || 0}%}`;
+          return `{mgrName|${trimmedName}}\n{mgrSub|${d.reportCount} reports}\n{util|${d.utilization || 0}%}`;
         }
         if (d.emp) {
-          return `{empName|${d.name}}\n{empRole|${d.emp?.role || ''}}\n{util|${d.utilization || 0}%}`;
+          const role = String(d.emp?.role || '').trim();
+          const trimmedRole = role.length > 18 ? `${role.slice(0, 18)}…` : role;
+          return `{empName|${trimmedName}}\n{empRole|${trimmedRole}}\n{util|${d.utilization || 0}%}`;
         }
-        return d.name;
+        return trimmedName;
       },
       rich: {
-        mgrName: { fontWeight: 'bold' as any, fontSize: 12, lineHeight: 18, color: '#40E0D0', align: 'center' as const },
+        mgrName: { fontWeight: 'bold' as any, fontSize: 11.5, lineHeight: 18, color: '#40E0D0', align: 'center' as const },
         mgrSub: { fontSize: 9, color: '#9ca3af', lineHeight: 13, align: 'center' as const },
-        empName: { fontSize: 10.5, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16, align: 'center' as const },
+        empName: { fontSize: 10.2, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16, align: 'center' as const },
         empRole: { fontSize: 9, color: '#a1a1aa', lineHeight: 13, align: 'center' as const },
         util: { fontSize: 9, color: '#9ca3af', lineHeight: 13, align: 'center' as const },
       },
@@ -579,10 +591,12 @@ function ResourcingPageContent() {
         layout: 'orthogonal',
         edgeShape: 'polyline',
         edgeForkPosition: '50%',
+        nodePadding: Math.round(38 / Math.max(treeZoom, 0.8)),
+        layerPadding: Math.round(120 / Math.max(treeZoom, 0.8)),
         initialTreeDepth: -1,
         expandAndCollapse: true,
         animationDuration: 400,
-        animationDurationUpdate: 500,
+        animationDurationUpdate: 650,
         roam: true,
         symbolSize: (_value: any, params: any) => {
           const d = params?.data;
@@ -600,7 +614,19 @@ function ResourcingPageContent() {
         },
       }],
     };
-  }, [treeData, treeLeafCounts]);
+  }, [treeData, treeLeafCounts, treeZoom]);
+
+  const handleTreeChartReady = useCallback((chart: any) => {
+    const syncZoom = () => {
+      const option = chart.getOption?.();
+      const zoom = Number((option?.series?.[0] as any)?.zoom ?? 1);
+      if (!Number.isFinite(zoom)) return;
+      setTreeZoom(prev => Math.abs(prev - zoom) > 0.02 ? zoom : prev);
+    };
+    chart.off('graphRoam');
+    chart.on('graphRoam', syncZoom);
+    syncZoom();
+  }, []);
 
   // ── Analytics charts ──────────────────────────────────────────
   const sortedEmployeesByUtil = useMemo(() =>
@@ -1252,7 +1278,7 @@ function ResourcingPageContent() {
           <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: '70vh' }}>
             {treeData.length > 0 ? (
               <div style={{ minWidth: `${dynamicTreeWidth}px`, minHeight: `${dynamicTreeHeight}px` }}>
-                <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} />
+                <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} onChartReady={handleTreeChartReady} />
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>

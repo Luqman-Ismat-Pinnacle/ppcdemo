@@ -1128,14 +1128,26 @@ export default function WBSGanttPage() {
                     {/* BL Hrs */}
                     {varianceMode ? (() => {
                       const v = formatVariance(Number(row.baselineHours) || 0, getVarianceValue(row, 'planHours'));
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Baseline Hours Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td className="number" style={TD_FONT}>{row.baselineHours && isFinite(Number(row.baselineHours)) ? Number(row.baselineHours).toFixed(0) : '-'}</td>
                     )}
                     {/* Act Hrs */}
                     {varianceMode ? (() => {
                       const v = formatVariance(Number(row.actualHours) || 0, getVarianceValue(row, 'actualHours'));
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Actual Hours Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td
                         className="number"
@@ -1167,21 +1179,39 @@ export default function WBSGanttPage() {
                       const snapPlan = getVarianceValue(row, 'planHours');
                       const snapRem = snapAct != null && snapPlan != null ? snapPlan - snapAct : null;
                       const v = formatVariance(current, snapRem);
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Remaining Hours Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td className="number" style={TD_FONT}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
                     )}
                     {/* BL Cost */}
                     {varianceMode ? (() => {
                       const v = formatVariance(Number(row.baselineCost) || 0, getVarianceValue(row, 'planCost'), true);
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Baseline Cost Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td className="number" style={TD_FONT}>{formatCurrency(Number(row.baselineCost))}</td>
                     )}
                     {/* Act Cost */}
                     {varianceMode ? (() => {
                       const v = formatVariance(Number(row.actualCost) || 0, getVarianceValue(row, 'actualCost'), true);
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Actual Cost Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td className="number" style={{ ...TD_FONT, color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(row.actualCost))}</td>
                     )}
@@ -1192,7 +1222,13 @@ export default function WBSGanttPage() {
                       const snapPlanC = getVarianceValue(row, 'planCost');
                       const snapRemC = snapActC != null && snapPlanC != null ? snapPlanC - snapActC : null;
                       const v = formatVariance(current, snapRemC, true);
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Remaining Cost Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td className="number" style={TD_FONT}>{formatCurrency(Number((row as any).remainingCost))}</td>
                     )}
@@ -1202,7 +1238,13 @@ export default function WBSGanttPage() {
                       const snapPlan = getVarianceValue(row, 'planHours');
                       const snapEffPct = snapEff != null && snapPlan != null && snapPlan > 0 ? Math.round((snapEff / snapPlan) * 100) : null;
                       const v = formatEffVariance(efficiency, snapEffPct);
-                      return <td className="number" style={{ ...TD_FONT, color: v.color }} title={v.tooltip}>{v.display}</td>;
+                      return (
+                        <td className="number" style={{ ...TD_FONT, color: v.color }}>
+                          <EnhancedTooltip content={{ title: 'Efficiency Variance', details: v.tooltip.split('\n') }}>
+                            <span>{v.display}</span>
+                          </EnhancedTooltip>
+                        </td>
+                      );
                     })() : (
                       <td className="number" style={{ ...TD_FONT, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     )}
@@ -1335,7 +1377,9 @@ export default function WBSGanttPage() {
             <span>{barTip.row.endDate ? new Date(barTip.row.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
           </div>
           <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: '6px' }}>
-            {barTip.row.daysRequired ? `${Number(barTip.row.daysRequired).toFixed(0)} working days` : ''}
+            {(barTip.row.daysRequired != null && isFinite(Number(barTip.row.daysRequired)))
+              ? `${Number(barTip.row.daysRequired).toFixed(0)} working days`
+              : '0 working days'}
           </div>
 
           <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
@@ -1354,8 +1398,8 @@ export default function WBSGanttPage() {
 
           {/* Metrics grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 16px', marginBottom: '6px', fontSize: '0.65rem' }}>
-            <div><span style={{ color: '#777' }}>BL Hours: </span><span style={{ color: '#e0e0e0' }}>{barTip.row.baselineHours && isFinite(Number(barTip.row.baselineHours)) ? Number(barTip.row.baselineHours).toLocaleString() : '-'}</span></div>
-            <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: 'var(--pinnacle-teal)' }}>{barTip.row.actualHours && isFinite(Number(barTip.row.actualHours)) ? Number(barTip.row.actualHours).toLocaleString() : '-'}</span></div>
+            <div><span style={{ color: '#777' }}>BL Hours: </span><span style={{ color: '#e0e0e0' }}>{(barTip.row.baselineHours != null && isFinite(Number(barTip.row.baselineHours))) ? Number(barTip.row.baselineHours).toLocaleString() : '0'}</span></div>
+            <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: 'var(--pinnacle-teal)' }}>{(barTip.row.actualHours != null && isFinite(Number(barTip.row.actualHours))) ? Number(barTip.row.actualHours).toLocaleString() : '0'}</span></div>
             <div><span style={{ color: '#777' }}>BL Cost: </span><span style={{ color: '#e0e0e0' }}>{formatCurrency(Number(barTip.row.baselineCost))}</span></div>
             <div><span style={{ color: '#777' }}>Act Cost: </span><span style={{ color: 'var(--pinnacle-teal)' }}>{formatCurrency(Number(barTip.row.actualCost))}</span></div>
           </div>
@@ -1370,7 +1414,7 @@ export default function WBSGanttPage() {
             {(barTip.row.assignedResource) && !barTip.row.assignedResourceId && (
               <span><span style={{ color: '#777' }}>Resource: </span>{barTip.row.assignedResource}</span>
             )}
-            {barTip.row.taskEfficiency != null && barTip.row.taskEfficiency > 0 && (
+            {barTip.row.taskEfficiency != null && (
               <span><span style={{ color: '#777' }}>Efficiency: </span><span style={{ color: barTip.row.taskEfficiency >= 100 ? '#22c55e' : barTip.row.taskEfficiency >= 80 ? '#eab308' : '#ef4444' }}>{Math.round(barTip.row.taskEfficiency)}%</span></span>
             )}
             {barTip.row.totalFloat != null && (

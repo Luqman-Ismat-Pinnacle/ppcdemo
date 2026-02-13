@@ -48,15 +48,15 @@ function SectionCard({ title, subtitle, badge, children, noPadding = false, acti
   children: React.ReactNode; noPadding?: boolean; actions?: React.ReactNode;
 }) {
   return (
-    <div style={{ background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '0.75rem 1rem', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ background: C.bgCard, borderRadius: 18, border: `1px solid ${C.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '0.95rem 1.15rem', borderBottom: `1px solid ${C.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: C.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>{title}{badge}</h3>
-          {subtitle && <div style={{ fontSize: '0.6rem', color: C.textMuted }}>{subtitle}</div>}
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: C.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>{title}{badge}</h3>
+          {subtitle && <div style={{ fontSize: '0.72rem', color: C.textMuted }}>{subtitle}</div>}
         </div>
         {actions}
       </div>
-      <div style={{ padding: noPadding ? 0 : '0.75rem', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{children}</div>
+      <div style={{ padding: noPadding ? 0 : '1rem', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{children}</div>
     </div>
   );
 }
@@ -493,7 +493,7 @@ const SprintIntegrationPanel = ({ tasks, hours, sprintFlags, onToggle }: {
 // ===== TASK SELECTOR TABLE =====
 
 const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
-  tasks: any[]; selectedId: string | null; onSelect: (task: any) => void; view: 'site' | 'sprint';
+  tasks: any[]; selectedId: string | null; onSelect: (task: any) => void; view: 'sprint';
 }) => {
   const sorted = useMemo(() => {
     const list = tasks.map(t => {
@@ -501,22 +501,17 @@ const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
       return { ...t, efficiency };
     });
 
-    if (view === 'sprint') {
-      // Sort by deadline proximity
-      return list.sort((a, b) => {
-        const da = new Date(a.finishDate || a.baselineEndDate || a.dueDate || '2099-01-01').getTime();
-        const db = new Date(b.finishDate || b.baselineEndDate || b.dueDate || '2099-01-01').getTime();
-        return da - db;
-      });
-    }
-    // Site view: group by project
-    return list.sort((a, b) => ((a as any).projectName || '').localeCompare((b as any).projectName || ''));
+    return list.sort((a, b) => {
+      const da = new Date(a.finishDate || a.baselineEndDate || a.dueDate || '2099-01-01').getTime();
+      const db = new Date(b.finishDate || b.baselineEndDate || b.dueDate || '2099-01-01').getTime();
+      return da - db;
+    });
   }, [tasks, view]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', overflow: 'auto', maxHeight: 500 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 60px 60px 60px', gap: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 600, position: 'sticky', top: 0, background: C.bgCard, zIndex: 1 }}>
-        <span>Task</span><span>{view === 'site' ? 'Project' : 'Deadline'}</span><span>Progress</span><span>Efficiency</span><span>Status</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', overflow: 'auto', maxHeight: 600 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 90px 90px 70px', gap: '0.6rem', padding: '0.55rem 0.85rem', fontSize: '0.62rem', color: C.textMuted, textTransform: 'uppercase', fontWeight: 700, position: 'sticky', top: 0, background: C.bgCard, zIndex: 1 }}>
+        <span>Task</span><span>Deadline</span><span>Progress</span><span>Efficiency</span><span>Status</span>
       </div>
       {sorted.slice(0, 50).map((t, i) => {
         const id = t.taskId || t.id;
@@ -524,6 +519,9 @@ const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
         const pc = t.percentComplete || 0;
         const effColor = t.efficiency <= 100 ? C.green : t.efficiency <= 120 ? C.amber : C.red;
         const deadline = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
+        const dateLabel = Number.isNaN(deadline.getTime())
+          ? '--'
+          : deadline.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
         const daysLeft = Math.round((deadline.getTime() - Date.now()) / (1000 * 3600 * 24));
         const statusColor = pc >= 100 ? C.green : t.isCritical ? C.red : daysLeft < 3 ? C.amber : C.teal;
 
@@ -532,19 +530,17 @@ const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
             key={i}
             onClick={() => onSelect(t)}
             style={{
-              display: 'grid', gridTemplateColumns: '2fr 1fr 60px 60px 60px', gap: '0.5rem', padding: '0.4rem 0.75rem',
+              display: 'grid', gridTemplateColumns: '2fr 1.2fr 90px 90px 70px', gap: '0.6rem', padding: '0.6rem 0.85rem',
               background: isSelected ? `${C.teal}10` : 'transparent',
               border: isSelected ? `1px solid ${C.teal}40` : '1px solid transparent',
               borderRadius: 6, cursor: 'pointer', transition: 'all 0.15s',
             }}
           >
-            <div style={{ fontSize: '0.7rem', color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.taskName || t.name || id}</div>
-            <div style={{ fontSize: '0.65rem', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {view === 'site' ? ((t as any).projectName || (t as any).project_name || '--') : (daysLeft >= 0 ? `${daysLeft}d left` : `${Math.abs(daysLeft)}d late`)}
-            </div>
-            <div style={{ fontSize: '0.65rem', color: pc >= 100 ? C.green : C.blue }}>{pc}%</div>
-            <div style={{ fontSize: '0.65rem', fontWeight: 700, color: effColor }}>{t.efficiency}%</div>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, alignSelf: 'center', justifySelf: 'center' }} />
+            <div style={{ fontSize: '0.82rem', color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.taskName || t.name || id}</div>
+            <div style={{ fontSize: '0.76rem', color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dateLabel}</div>
+            <div style={{ fontSize: '0.74rem', color: pc >= 100 ? C.green : C.blue }}>{pc}%</div>
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: effColor }}>{t.efficiency}%</div>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: statusColor, alignSelf: 'center', justifySelf: 'center' }} />
           </div>
         );
       })}
@@ -559,7 +555,7 @@ export default function TasksPage() {
   const crossFilter = useCrossFilter();
   const router = useRouter();
   const [selectedTask, setSelectedTask] = useState<any>(null);
-  const [viewMode, setViewMode] = useState<'site' | 'sprint'>('sprint');
+  const viewMode: 'sprint' = 'sprint';
   const [sprintFlags, setSprintFlags] = useState<Set<string>>(new Set());
 
   const crossFilteredTasks = useMemo(() => {
@@ -622,12 +618,12 @@ export default function TasksPage() {
   const selectedId = selectedTask ? (selectedTask.taskId || selectedTask.id) : null;
 
   return (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '1600px', margin: '0 auto' }}>
+    <div style={{ padding: '1.25rem 1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: 'none', minHeight: 'calc(100vh - 96px)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: C.textPrimary, letterSpacing: '-0.02em' }}>Production Floor</h1>
-          <div style={{ fontSize: '0.7rem', color: C.textMuted, marginTop: 4 }}>360-degree task biographies for micro-decision making</div>
+          <h1 style={{ margin: 0, fontSize: '2.2rem', fontWeight: 900, color: C.textPrimary, letterSpacing: '-0.02em' }}>Production Floor</h1>
+          <div style={{ fontSize: '0.82rem', color: C.textMuted, marginTop: 4 }}>360-degree task biographies for micro-decision making</div>
           <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.teal, fontWeight: 700 }}>{stats.hours.toLocaleString()}h</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Actual</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.blue, fontWeight: 700 }}>{stats.efficiency}%</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Efficiency</span></div>
@@ -636,18 +632,8 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* View mode toggle */}
-        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }}>
-          {(['site', 'sprint'] as const).map(mode => (
-            <button key={mode} onClick={() => setViewMode(mode)} style={{
-              padding: '0.4rem 1rem', fontSize: '0.7rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-              background: viewMode === mode ? C.teal : 'transparent',
-              color: viewMode === mode ? '#000' : C.textMuted,
-              textTransform: 'uppercase',
-            }}>
-              {mode === 'site' ? 'Site View' : 'Sprint View'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}`, padding: '0.45rem 0.9rem', fontSize: '0.72rem', color: C.teal, fontWeight: 700, textTransform: 'uppercase' }}>
+          Sprint View
         </div>
       </div>
 
@@ -662,8 +648,8 @@ export default function TasksPage() {
       )}
 
       {/* Row 1: Task Matrix + Priority Scatter */}
-      <div style={{ display: 'grid', gridTemplateColumns: selectedTask ? '1fr 1fr' : '2fr 3fr', gap: '1.5rem' }}>
-        <SectionCard title="Deliverable Matrix" subtitle={`${viewMode === 'site' ? 'Site' : 'Sprint'} View | ${crossFilteredTasks.length} Tasks`} badge={<Badge label={viewMode} color={C.blue} />}>
+      <div style={{ display: 'grid', gridTemplateColumns: selectedTask ? '1.15fr 1.35fr' : '1.3fr 1.7fr', gap: '1.5rem', alignItems: 'stretch' }}>
+        <SectionCard title="Deliverable Matrix" subtitle={`Sprint View | ${crossFilteredTasks.length} Tasks`} badge={<Badge label={viewMode} color={C.blue} />}>
           <TaskSelectorTable tasks={crossFilteredTasks} selectedId={selectedId} onSelect={handleSelectTask} view={viewMode} />
         </SectionCard>
 
@@ -673,7 +659,7 @@ export default function TasksPage() {
       </div>
 
       {/* Row 2: TPW Donut + Contributors + Sprint Panel */}
-      <div style={{ display: 'grid', gridTemplateColumns: selectedTask ? '1fr 1fr 1fr' : '1fr 1fr', gap: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selectedTask ? '1fr 1fr 1fr' : '1.1fr 1fr', gap: '1.5rem' }}>
         <SectionCard title="Efficiency Anatomy" subtitle={selectedId ? `Filtered: ${selectedTask?.taskName || selectedTask?.name}` : 'Global Execute vs Non-Execute Split'} badge={<Badge label="TPW" color={C.pink} />}>
           <TPWExecuteDonut hours={data.hours || []} nonExecuteHours={data.nonExecuteHours} selectedTaskId={selectedId} />
         </SectionCard>
