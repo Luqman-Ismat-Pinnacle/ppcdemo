@@ -46,6 +46,7 @@ const ROUTE_TO_HELP_ID: Record<string, string> = {
   '/project-management/forecast': 'forecast',
   '/project-management/sprint': 'sprint',
   '/project-management/qc-log': 'qc-log',
+  '/feedback': 'feedback',
 };
 
 /**
@@ -56,111 +57,124 @@ const ROUTE_TO_HELP_ID: Record<string, string> = {
  */
 export default function HelpButton() {
   const pathname = usePathname();
-  const [isHovered, setIsHovered] = useState(false);
-  const [isPressed, setIsPressed] = useState(false);
+  const [hovered, setHovered] = useState<'help' | 'feedback' | null>(null);
 
   // Don't show on login page
   if (pathname === '/login') {
     return null;
   }
 
-  // Get help page ID for current route
   const helpId = ROUTE_TO_HELP_ID[pathname] || 'home';
-  const helpUrl = `/help/${helpId}`;
+  const helpUrl = `/help?context=${encodeURIComponent(helpId)}`;
 
   return (
-    <Link
-      href={helpUrl}
-      className="help-button"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => { setIsHovered(false); setIsPressed(false); }}
-      onMouseDown={() => setIsPressed(true)}
-      onMouseUp={() => setIsPressed(false)}
-      aria-label="Get help for this page"
+    <div
       style={{
         position: 'fixed',
-        bottom: '1.5rem',
-        left: '1.5rem',
-        width: '48px',
-        height: '48px',
-        borderRadius: '50%',
-        background: isPressed 
-          ? 'var(--pinnacle-teal)' 
-          : isHovered 
-            ? 'linear-gradient(135deg, var(--pinnacle-teal), var(--pinnacle-lime))' 
-            : 'var(--bg-card)',
-        border: `2px solid ${isHovered ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+        bottom: '0.9rem',
+        left: '0.9rem',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
+        flexDirection: 'row',
+        gap: '0.45rem',
         zIndex: 9999,
-        boxShadow: isHovered 
-          ? '0 8px 24px rgba(64, 224, 208, 0.3)' 
-          : '0 4px 12px rgba(0, 0, 0, 0.3)',
-        transition: 'all 0.2s ease',
-        transform: isPressed ? 'scale(0.95)' : isHovered ? 'scale(1.05)' : 'scale(1)',
-        textDecoration: 'none',
       }}
     >
-      {/* Question mark icon */}
-      <svg 
-        width="24" 
-        height="24" 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        xmlns="http://www.w3.org/2000/svg"
+      <Link
+        href={helpUrl}
+        aria-label="Open Help Center"
+        onMouseEnter={() => setHovered('help')}
+        onMouseLeave={() => setHovered(null)}
         style={{
-          transition: 'transform 0.2s ease',
-          transform: isHovered ? 'rotate(-10deg)' : 'rotate(0deg)',
+          width: '36px',
+          height: '36px',
+          borderRadius: '10px',
+          background: hovered === 'help' ? 'linear-gradient(135deg, var(--pinnacle-teal), var(--pinnacle-lime))' : 'var(--bg-card)',
+          border: `1px solid ${hovered === 'help' ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          boxShadow: hovered === 'help' ? '0 8px 20px rgba(64, 224, 208, 0.24)' : '0 2px 8px rgba(0, 0, 0, 0.2)',
+          transition: 'all 0.18s ease',
+          textDecoration: 'none',
+          color: hovered === 'help' ? '#000' : 'var(--pinnacle-teal)',
+          position: 'relative',
         }}
       >
-        <circle 
-          cx="12" 
-          cy="12" 
-          r="10" 
-          stroke={isPressed ? '#000' : isHovered ? '#000' : 'var(--pinnacle-teal)'} 
-          strokeWidth="2"
-          fill="none"
-        />
-        <path 
-          d="M12 17v-.01M12 13.5a2 2 0 1 0-2-2" 
-          stroke={isPressed ? '#000' : isHovered ? '#000' : 'var(--pinnacle-teal)'} 
-          strokeWidth="2" 
-          strokeLinecap="round" 
-          strokeLinejoin="round"
-          fill="none"
-        />
-        <circle 
-          cx="12" 
-          cy="9.5" 
-          r="0.5" 
-          fill={isPressed ? '#000' : isHovered ? '#000' : 'var(--pinnacle-teal)'}
-        />
-      </svg>
-      
-      {/* Tooltip */}
-      {isHovered && (
-        <span
-          style={{
-            position: 'absolute',
-            left: '60px',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            padding: '0.5rem 0.75rem',
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            color: 'var(--text-primary)',
-            whiteSpace: 'nowrap',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-            pointerEvents: 'none',
-          }}
-        >
-          Help & Documentation
-        </span>
-      )}
-    </Link>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.1 9a3 3 0 1 1 5.8 1c0 2-3 2-3 4" />
+          <line x1="12" y1="17" x2="12" y2="17.01" />
+        </svg>
+        {hovered === 'help' && (
+          <span
+            style={{
+              position: 'absolute',
+              left: '44px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              padding: '0.4rem 0.65rem',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+              pointerEvents: 'none',
+            }}
+          >
+            Help
+          </span>
+        )}
+      </Link>
+
+      <Link
+        href="/feedback"
+        aria-label="Open Features and Issues"
+        onMouseEnter={() => setHovered('feedback')}
+        onMouseLeave={() => setHovered(null)}
+        style={{
+          width: '36px',
+          height: '36px',
+          borderRadius: '10px',
+          background: hovered === 'feedback' ? 'linear-gradient(135deg, #3B82F6, #40E0D0)' : 'var(--bg-card)',
+          border: `1px solid ${hovered === 'feedback' ? '#3B82F6' : 'var(--border-color)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          boxShadow: hovered === 'feedback' ? '0 8px 20px rgba(59, 130, 246, 0.24)' : '0 2px 8px rgba(0, 0, 0, 0.2)',
+          transition: 'all 0.18s ease',
+          textDecoration: 'none',
+          color: hovered === 'feedback' ? '#000' : '#3B82F6',
+          position: 'relative',
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          <path d="M8 9h8M8 13h5" />
+        </svg>
+        {hovered === 'feedback' && (
+          <span
+            style={{
+              position: 'absolute',
+              left: '44px',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              padding: '0.4rem 0.65rem',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+              pointerEvents: 'none',
+            }}
+          >
+            Issues & Features
+          </span>
+        )}
+      </Link>
+    </div>
   );
 }
-
