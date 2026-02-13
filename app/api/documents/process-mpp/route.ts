@@ -5,6 +5,7 @@ import { downloadFile } from '@/lib/azure-storage';
 import { withClient } from '@/lib/postgres';
 
 type ProcessLogType = 'info' | 'success' | 'warning';
+const DEFAULT_MPP_PARSER_URL = 'https://ppcdemo-production.up.railway.app';
 
 interface ProcessLog {
   type: ProcessLogType;
@@ -91,13 +92,10 @@ function normalizeName(input: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const parserUrl = process.env.MPP_PARSER_URL || process.env.NEXT_PUBLIC_MPP_PARSER_URL;
-    if (!parserUrl) {
-      return NextResponse.json(
-        { success: false, error: 'MPP parser URL is not configured. Set MPP_PARSER_URL.' },
-        { status: 503 }
-      );
-    }
+    const parserUrl =
+      process.env.MPP_PARSER_URL ||
+      process.env.NEXT_PUBLIC_MPP_PARSER_URL ||
+      DEFAULT_MPP_PARSER_URL;
 
     const formData = await req.formData();
     let input: ParsedInput;
