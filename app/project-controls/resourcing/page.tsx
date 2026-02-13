@@ -83,6 +83,7 @@ function ResourcingPageContent() {
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [orgSearch, setOrgSearch] = useState('');
   const [analyticsSearch, setAnalyticsSearch] = useState('');
+  const [heatmapRoleFilter, setHeatmapRoleFilter] = useState<string>('all');
 
   // ── Data ──────────────────────────────────────────────────────
   const data = useMemo(() => {
@@ -583,7 +584,6 @@ function ResourcingPageContent() {
         animationDuration: 400,
         animationDurationUpdate: 500,
         roam: true,
-        center: ['50%', '50%'],
         symbolSize: (_value: any, params: any) => {
           const d = params?.data;
           if (d?.isManager && (d?.reportCount || 0) > 3) return 22;
@@ -898,6 +898,19 @@ function ResourcingPageContent() {
     } as any;
   }, [heatmapSharedData]);
 
+  // Collect all unique roles for the filter dropdown
+  const allHeatmapRoles = useMemo(() => {
+    if (!heatmapSharedData) return [];
+    const roles = new Set<string>();
+    heatmapSharedData.empRoleMap.forEach(r => { if (r) roles.add(r); });
+    heatmapSharedData.empIdToRole.forEach(r => { if (r) roles.add(r); });
+    data.employees.forEach((e: any) => {
+      const role = e.jobTitle || e.role;
+      if (role) roles.add(role);
+    });
+    return [...roles].sort();
+  }, [heatmapSharedData, data.employees]);
+
   // ── Heatmap by EMPLOYEE ──
   const heatmapByEmployeeOption: EChartsOption | null = useMemo(() => {
     if (!heatmapSharedData) return null;
@@ -927,17 +940,22 @@ function ResourcingPageContent() {
       addedKeys.add(eid);
     });
 
+    // Apply role filter
+    const filteredEntries = heatmapRoleFilter === 'all'
+      ? allEmpEntries
+      : allEmpEntries.filter(e => e.role === heatmapRoleFilter);
+
     // Sort: employees with hours first (desc), then alphabetical
-    allEmpEntries.sort((a, b) => {
+    filteredEntries.sort((a, b) => {
       if (a.total !== b.total) return b.total - a.total;
       return a.name.localeCompare(b.name);
     });
 
-    const empLabels = allEmpEntries.map(e => e.name);
+    const empLabels = filteredEntries.map(e => e.name);
 
     const heatData: [number, number, number][] = [];
     let maxVal = 0;
-    allEmpEntries.forEach((emp, ei) => {
+    filteredEntries.forEach((emp, ei) => {
       const weekMap = empWeekHours.get(emp.key);
       displayWeeks.forEach((_, wi) => {
         const val = Math.round(weekMap?.get(wi) || 0);
@@ -946,7 +964,7 @@ function ResourcingPageContent() {
       });
     });
 
-    const dynamicHeight = Math.max(520, allEmpEntries.length * 32 + 140);
+    const dynamicHeight = Math.max(520, filteredEntries.length * 32 + 140);
 
     return {
       backgroundColor: 'transparent',
@@ -957,7 +975,7 @@ function ResourcingPageContent() {
         extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;white-space:normal;',
         formatter: (params: any) => {
           const [wi, ei, val] = params.data;
-          const emp = allEmpEntries[ei];
+          const emp = filteredEntries[ei];
           const week = displayWeeks[wi]?.label;
           const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
           const uc = getUtilColor(utilPct);
@@ -1001,7 +1019,7 @@ function ResourcingPageContent() {
       series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
       _dynamicHeight: dynamicHeight,
     } as any;
-  }, [heatmapSharedData, data.employees]);
+  }, [heatmapSharedData, data.employees, heatmapRoleFilter]);
 
   // ── Loading state ───────────────────────────────────────────────
   if (isLoading) return <PageLoader />;
@@ -1369,7 +1387,22 @@ function ResourcingPageContent() {
                   Weekly planned hours derived from project plan task schedules — {heatmapView === 'employee' ? 'grouped by individual employee' : 'grouped by individual role'}
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {/* Role filter (employee view only) */}
+                {heatmapView === 'employee' && allHeatmapRoles.length > 0 && (
+                  <select
+                    value={heatmapRoleFilter}
+                    onChange={e => setHeatmapRoleFilter(e.target.value)}
+                    style={{
+                      padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.72rem',
+                      cursor: 'pointer', maxWidth: 200,
+                    }}
+                  >
+                    <option value="all">All Roles</option>
+                    {allHeatmapRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                )}
                 {/* View toggle — Employee first, then Role */}
                 <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px' }}>
                   {(['employee', 'role'] as const).map(v => (
@@ -1384,36 +1417,32 @@ function ResourcingPageContent() {
               </div>
             </div>
 
-            {/* Heatmap chart — bigger, centered */}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <div style={{ width: '100%', maxWidth: '1400px' }}>
-                {heatmapView === 'employee' ? (
-                  heatmapByEmployeeOption ? (
-                    <ChartWrapper option={heatmapByEmployeeOption} height={`${(heatmapByEmployeeOption as any)._dynamicHeight || 600}px`} />
-                  ) : (
-                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                        <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                      </svg>
-                      <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                      <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-                    </div>
-                  )
-                ) : (
-                  heatmapByRoleOption ? (
-                    <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
-                  ) : (
-                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                        <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                      </svg>
-                      <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                      <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
+            {/* Heatmap chart — full width */}
+            {heatmapView === 'employee' ? (
+              heatmapByEmployeeOption ? (
+                <ChartWrapper option={heatmapByEmployeeOption} height={`${(heatmapByEmployeeOption as any)._dynamicHeight || 600}px`} />
+              ) : (
+                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                  </svg>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+                </div>
+              )
+            ) : (
+              heatmapByRoleOption ? (
+                <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
+              ) : (
+                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                  </svg>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+                </div>
+              )
+            )}
           </div>
         </div>
       ) : null}

@@ -264,8 +264,8 @@ export default function WBSGanttPage() {
     const delta = current - snapshot;
     const sign = delta > 0 ? '+' : '';
     const display = isCost ? `${sign}${formatCurrency(delta)}` : `${sign}${delta.toFixed(0)}`;
-    // For hours/cost: positive = over budget (red), negative = under budget (green)
-    const color = delta > 0 ? '#EF4444' : delta < 0 ? '#22C55E' : 'var(--text-muted)';
+    // For hours/cost: positive = over budget (red), negative = under budget (green), zero = neutral visible color
+    const color = delta > 0 ? '#EF4444' : delta < 0 ? '#22C55E' : '#9ca3af';
     const currentFmt = isCost ? formatCurrency(current) : current.toFixed(0);
     const snapFmt = isCost ? formatCurrency(snapshot) : snapshot.toFixed(0);
     const tooltip = `Current: ${currentFmt}\nSnapshot: ${snapFmt}\nVariance: ${display}`;
@@ -278,8 +278,8 @@ export default function WBSGanttPage() {
     const delta = current - snapshot;
     const sign = delta > 0 ? '+' : '';
     const display = `${sign}${delta.toFixed(0)}%`;
-    // For efficiency: positive = improvement (green), negative = decline (red)
-    const color = delta > 0 ? '#22C55E' : delta < 0 ? '#EF4444' : 'var(--text-muted)';
+    // For efficiency: positive = improvement (green), negative = decline (red), zero = neutral visible color
+    const color = delta > 0 ? '#22C55E' : delta < 0 ? '#EF4444' : '#9ca3af';
     const tooltip = `Current: ${current.toFixed(0)}%\nSnapshot: ${snapshot.toFixed(0)}%\nVariance: ${display}`;
     return { display, color, tooltip };
   }, []);
