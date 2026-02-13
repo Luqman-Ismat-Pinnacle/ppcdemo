@@ -165,6 +165,7 @@ export default function DocumentsPage() {
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [expandedHealthFileId, setExpandedHealthFileId] = useState<string | null>(null);
   const [storageConfigured, setStorageConfigured] = useState(true);
+  const [hasLoadedFiles, setHasLoadedFiles] = useState(false);
 
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
@@ -183,12 +184,6 @@ export default function DocumentsPage() {
       secondary: p.manager || '',
     }));
   }, [data?.portfolios]);
-
-  // Re-fetch fresh data when a project is selected to sync portfolio status with Data Management
-  useEffect(() => {
-    if (!workdayProjectId) return;
-    if (typeof refreshData === 'function') refreshData();
-  }, [workdayProjectId, refreshData]);
 
   const selectedProjectMissingPortfolio = useMemo(() => {
     if (!workdayProjectId) return false;
@@ -377,6 +372,8 @@ export default function DocumentsPage() {
       setUploadedFiles(files);
     } catch (err) {
       console.error('Error loading stored files:', err);
+    } finally {
+      setHasLoadedFiles(true);
     }
   };
 
@@ -1256,7 +1253,7 @@ export default function DocumentsPage() {
   // have any uploaded files yet and we're not actively processing.
   // This prevents the MPXJ status log panel from being wiped when we call
   // refreshData() after a run completes.
-  if (isLoading && uploadedFiles.length === 0 && !isProcessing) {
+  if (isLoading && !hasLoadedFiles && !isProcessing && !isUploading) {
     return <PageLoader message="Loading project files..." />;
   }
 

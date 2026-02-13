@@ -22,7 +22,8 @@ import {
 
 function isSafeStoragePath(path: string): boolean {
   if (!path || path.length > 500) return false;
-  if (path.includes('..') || path.startsWith('/')) return false;
+  if (path.startsWith('/') || path.startsWith('\\')) return false;
+  if (/[\0\r\n]/.test(path)) return false;
   return true;
 }
 
