@@ -249,13 +249,14 @@ export default function WBSGanttPage() {
     if (taskId && varianceSnapData.byTask) {
       const snapRow = (varianceSnapData.byTask as any[]).find((r: any) => (r.taskId || r.task_id) === taskId);
       if (snapRow) {
-        if (metric === 'actualHours') return snapRow.actualHours ?? snapRow.actual_hours ?? null;
-        if (metric === 'actualCost') return snapRow.actualCost ?? snapRow.actual_cost ?? null;
-        if (metric === 'planHours') return snapRow.planHours ?? snapRow.plan_hours ?? null;
-        if (metric === 'planCost') return snapRow.planCost ?? snapRow.plan_cost ?? null;
+        if (metric === 'actualHours') return snapRow.actualHours ?? snapRow.actual_hours ?? 0;
+        if (metric === 'actualCost') return snapRow.actualCost ?? snapRow.actual_cost ?? 0;
+        if (metric === 'planHours') return snapRow.planHours ?? snapRow.plan_hours ?? 0;
+        if (metric === 'planCost') return snapRow.planCost ?? snapRow.plan_cost ?? 0;
       }
     }
-    return null;
+    // Snapshot exists but row not found — treat snapshot value as 0 so we show variance
+    return 0;
   }, [varianceSnapData]);
 
   /** Format variance value with ± sign and color */

@@ -443,9 +443,9 @@ function ResourcingPageContent() {
   );
 
   const totalLeaves = treeLeafCounts.reduce((s, p) => s + p.leaves, 0);
-  // For vertical TB layout, width is driven by leaf count, height is fixed
-  const dynamicTreeWidth = Math.max(1200, totalLeaves * 180);
-  const dynamicTreeHeight = Math.max(800, treeData.length * 200 + totalLeaves * 40);
+  // For vertical TB layout — cap dimensions to reasonable viewport sizes
+  const dynamicTreeWidth = Math.max(1200, Math.min(totalLeaves * 120, 4000));
+  const dynamicTreeHeight = Math.max(800, Math.min(treeData.length * 200 + totalLeaves * 32, 3000));
 
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
@@ -678,7 +678,30 @@ function ResourcingPageContent() {
       return s && e && hrs > 0;
     });
 
-    if (planTasks.length === 0) return null;
+    // When no tasks with dates/hours exist, create a stub grid using current quarter
+    if (planTasks.length === 0) {
+      // Generate 12 weeks from today as the display range
+      const now = Date.now();
+      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+      const displayWeeks: { start: number; label: string }[] = [];
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now + i * msPerWeek);
+        const mon = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const yr = d.getFullYear();
+        displayWeeks.push({ start: d.getTime(), label: `${mon}/${day}/${yr}` });
+      }
+      // Create empty maps — employees will be added later in the by-employee chart
+      return {
+        displayWeeks,
+        roleWeekHours: new Map<string, Map<number, number>>(),
+        empWeekHours: new Map<string, Map<number, number>>(),
+        empNameMap: new Map<string, string>(),
+        empRoleMap: new Map<string, string>(),
+        msPerWeek,
+        empIdToRole,
+      };
+    }
 
     // Determine date range
     const allDates: number[] = [];
@@ -1209,7 +1232,7 @@ function ResourcingPageContent() {
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
             {heatmapView === 'role'
               ? `${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`
-              : `${heatmapSharedData ? [...heatmapSharedData.empWeekHours.keys()].length : 0} employees`
+              : `${Math.max(heatmapSharedData ? [...heatmapSharedData.empWeekHours.keys()].length : 0, data.employees.length)} employees`
             } across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
           </div>
         )}
