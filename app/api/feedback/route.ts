@@ -31,12 +31,6 @@ function asNullableText(v: unknown): string | null {
   return t.length ? t : null;
 }
 
-function normalizeStatus(value: string | null | undefined, fallback: FeedbackStatus): FeedbackStatus {
-  const v = (value || '').trim() as FeedbackStatus;
-  if (v in STATUS_PROGRESS) return v;
-  return fallback;
-}
-
 export async function GET(request: NextRequest) {
   try {
     if (!isPostgresConfigured()) {
@@ -131,7 +125,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ item: null, error: 'Description is required' }, { status: 400 });
     }
 
-    const status = normalizeStatus(asText(body?.status, itemType === 'feature' ? 'planned' : 'open'), itemType === 'feature' ? 'planned' : 'open');
+    // Status is system-managed by item type on creation.
+    const status: FeedbackStatus = itemType === 'feature' ? 'planned' : 'open';
     const severity = asText(body?.severity, itemType === 'issue' ? 'medium' : 'low');
     const progress = STATUS_PROGRESS[status];
 

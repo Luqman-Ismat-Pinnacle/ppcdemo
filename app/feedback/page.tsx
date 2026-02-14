@@ -46,16 +46,6 @@ type FeatureForm = {
   notes: string;
 };
 
-const statusOptions = [
-  'open',
-  'triaged',
-  'in_progress',
-  'planned',
-  'resolved',
-  'released',
-  'closed',
-];
-
 const getErrorMessage = (e: unknown, fallback: string) => {
   if (e instanceof Error && e.message) return e.message;
   return fallback;
@@ -95,7 +85,8 @@ export default function FeedbackPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'issue' | 'feature'>('issue');
   const [saving, setSaving] = useState(false);
-  const [savingId, setSavingId] = useState<number | null>(null);
+  const [issueStatusFilter, setIssueStatusFilter] = useState<string>('all');
+  const [featureStatusFilter, setFeatureStatusFilter] = useState<string>('all');
 
   const [issueForm, setIssueForm] = useState<IssueForm>({
     title: '',
@@ -165,7 +156,6 @@ export default function FeedbackPage() {
           actualResult: issueForm.actualResult,
           errorMessage: issueForm.errorMessage,
           severity: issueForm.severity,
-          status: 'open',
           source: 'manual',
           createdByName: user?.name || null,
           createdByEmail: user?.email || null,
@@ -208,7 +198,6 @@ export default function FeedbackPage() {
           title: featureForm.title,
           description: featureForm.description,
           notes: featureForm.notes,
-          status: 'planned',
           severity: 'low',
           source: 'manual',
           createdByName: user?.name || null,
@@ -228,30 +217,12 @@ export default function FeedbackPage() {
     }
   };
 
-  const onUpdateItem = async (item: FeedbackItem, patch: Partial<FeedbackItem>) => {
-    setSavingId(item.id);
-    setError(null);
-    try {
-      const res = await fetch(`/api/feedback/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: patch.status ?? item.status,
-          notes: patch.notes ?? item.notes,
-        }),
-      });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || 'Failed to update');
-      setItems(prev => prev.map(x => (x.id === item.id ? payload.item : x)));
-    } catch (e: unknown) {
-      setError(getErrorMessage(e, 'Failed to update'));
-    } finally {
-      setSavingId(null);
-    }
-  };
-
   const issueItems = items.filter(i => i.itemType === 'issue');
   const featureItems = items.filter(i => i.itemType === 'feature');
+  const visibleIssueItems = issueItems.filter(i => issueStatusFilter === 'all' || i.status === issueStatusFilter);
+  const visibleFeatureItems = featureItems.filter(i => featureStatusFilter === 'all' || i.status === featureStatusFilter);
+  const issueStatuses = useMemo(() => ['all', ...Array.from(new Set(issueItems.map(i => i.status)))], [issueItems]);
+  const featureStatuses = useMemo(() => ['all', ...Array.from(new Set(featureItems.map(i => i.status)))], [featureItems]);
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -312,16 +283,32 @@ export default function FeedbackPage() {
       </div>
 
       <section className="chart-card" style={{ padding: '0.9rem' }}>
-        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <button type="button" onClick={() => setActiveTab('issue')} style={tabStyle(activeTab === 'issue')}>Current Issues ({issueItems.length})</button>
           <button type="button" onClick={() => setActiveTab('feature')} style={tabStyle(activeTab === 'feature')}>Features ({featureItems.length})</button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Status</span>
+            {activeTab === 'issue' ? (
+              <select value={issueStatusFilter} onChange={e => setIssueStatusFilter(e.target.value)} style={{ ...inputStyle, width: 160, padding: '0.35rem 0.5rem' }}>
+                {issueStatuses.map(s => (
+                  <option key={s} value={s}>{s === 'all' ? 'All statuses' : s.replace('_', ' ')}</option>
+                ))}
+              </select>
+            ) : (
+              <select value={featureStatusFilter} onChange={e => setFeatureStatusFilter(e.target.value)} style={{ ...inputStyle, width: 160, padding: '0.35rem 0.5rem' }}>
+                {featureStatuses.map(s => (
+                  <option key={s} value={s}>{s === 'all' ? 'All statuses' : s.replace('_', ' ')}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
         {loading ? (
           <div style={{ padding: '1.2rem', color: 'var(--text-muted)' }}>Loading items...</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', maxHeight: '52vh', overflow: 'auto' }}>
-            {(activeTab === 'issue' ? issueItems : featureItems).map(item => (
+            {(activeTab === 'issue' ? visibleIssueItems : visibleFeatureItems).map(item => (
               <div key={item.id} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.7rem 0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.45rem' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>{item.title}</span>
@@ -341,16 +328,25 @@ export default function FeedbackPage() {
                     <div style={{ gridColumn: '1 / -1' }}><strong style={{ color: 'var(--text-secondary)' }}>Error:</strong> {item.errorMessage || '-'}</div>
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: '0.5rem', alignItems: 'center' }}>
-                  <select value={item.status} onChange={e => onUpdateItem(item, { status: e.target.value })} style={inputStyle} disabled={savingId === item.id}>
-                    {statusOptions.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                  </select>
-                  <input value={item.notes || ''} onChange={e => onUpdateItem(item, { notes: e.target.value })} placeholder="Progress notes / release notes" style={inputStyle} disabled={savingId === item.id} />
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{savingId === item.id ? 'Saving...' : `${item.progressPercent || 0}%`}</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', alignItems: 'center' }}>
+                  <div style={{ width: '100%', height: 8, borderRadius: 999, background: 'var(--bg-card)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.max(0, Math.min(100, item.progressPercent || 0))}%`, height: '100%', background: statusColor[item.status] || '#6B7280', transition: 'width 220ms ease' }} />
+                  </div>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', minWidth: 36, textAlign: 'right' }}>{item.progressPercent || 0}%</span>
                 </div>
+                {item.notes && (
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '0.45rem', lineHeight: 1.3 }}>
+                    {item.notes}
+                  </div>
+                )}
+                {item.source && (
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '0.35rem', opacity: 0.8 }}>
+                    Source: {item.source}
+                  </div>
+                )}
               </div>
             ))}
-            {(activeTab === 'issue' ? issueItems : featureItems).length === 0 && (
+            {(activeTab === 'issue' ? visibleIssueItems : visibleFeatureItems).length === 0 && (
               <div style={{ padding: '1rem', color: 'var(--text-muted)' }}>
                 No {activeTab === 'issue' ? 'issues' : 'features'} logged yet.
               </div>
