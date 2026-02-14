@@ -303,6 +303,7 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
 export default function QCLogPage() {
   const { filteredData, data, updateData, isLoading } = useData();
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
+  const azureQcUrl = process.env.NEXT_PUBLIC_AZURE_QC_URL || 'https://dev.azure.com/';
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null);
@@ -445,6 +446,24 @@ export default function QCLogPage() {
             </button>
           ))}
         </div>
+        <a
+          href={azureQcUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            padding: '0.45rem 0.85rem',
+            borderRadius: '8px',
+            border: '1px solid rgba(59,130,246,0.45)',
+            background: 'rgba(59,130,246,0.12)',
+            color: '#60A5FA',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          Open Azure QC
+        </a>
       </div>
 
       {/* Command Center */}

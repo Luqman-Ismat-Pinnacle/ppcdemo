@@ -676,6 +676,83 @@ function ResourcingPageContent() {
     };
   }, [employeeMetrics]);
 
+  const roleCapacityDemand = useMemo(() => {
+    const roleMap = new Map<string, { role: string; capacityHours: number; demandHours: number; actualHours: number; remainingHours: number; people: number }>();
+
+    data.employees.forEach((emp: any) => {
+      const role = emp.jobTitle || emp.role || 'Unassigned';
+      const current = roleMap.get(role) || { role, capacityHours: 0, demandHours: 0, actualHours: 0, remainingHours: 0, people: 0 };
+      current.capacityHours += HOURS_PER_YEAR;
+      current.people += 1;
+      roleMap.set(role, current);
+    });
+
+    data.tasks.forEach((t: any) => {
+      const roleRaw = (t.resource || t.assignedResource || '').trim();
+      const role = roleRaw || 'Unassigned';
+      const current = roleMap.get(role) || { role, capacityHours: 0, demandHours: 0, actualHours: 0, remainingHours: 0, people: 0 };
+      const baseline = Number(t.baselineHours || t.baseline_hours) || 0;
+      const actual = Number(t.actualHours || t.actual_hours) || 0;
+      const remaining = Number(t.remainingHours || t.remaining_hours);
+      current.demandHours += baseline;
+      current.actualHours += actual;
+      current.remainingHours += Number.isFinite(remaining) ? Math.max(0, remaining) : Math.max(0, baseline - actual);
+      roleMap.set(role, current);
+    });
+
+    return [...roleMap.values()]
+      .map((r) => ({
+        ...r,
+        gapHours: r.capacityHours - r.demandHours,
+        demandPct: r.capacityHours > 0 ? Math.round((r.demandHours / r.capacityHours) * 100) : 0,
+        fteRequired: Math.round((r.demandHours / HOURS_PER_YEAR) * 100) / 100,
+      }))
+      .sort((a, b) => b.demandHours - a.demandHours);
+  }, [data.employees, data.tasks]);
+
+  const capacityVsDemandOption: EChartsOption = useMemo(() => {
+    const topRoles = roleCapacityDemand.slice(0, 12);
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: 'rgba(22,27,34,0.97)',
+        borderColor: '#3f3f46',
+        textStyle: { color: '#fff', fontSize: 11 },
+      },
+      legend: { top: 0, textStyle: { color: '#a1a1aa', fontSize: 10 } },
+      grid: { left: 50, right: 24, top: 34, bottom: 70 },
+      xAxis: {
+        type: 'category',
+        data: topRoles.map((r) => r.role),
+        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 28, interval: 0 },
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: '#a1a1aa', fontSize: 9, formatter: (v: number) => fmt(v) },
+        splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } },
+      },
+      series: [
+        {
+          name: 'Capacity (hrs)',
+          type: 'bar',
+          data: topRoles.map((r) => Math.round(r.capacityHours)),
+          itemStyle: { color: '#3B82F6' },
+          barMaxWidth: 26,
+        },
+        {
+          name: 'Demand (hrs)',
+          type: 'bar',
+          data: topRoles.map((r) => Math.round(r.demandHours)),
+          itemStyle: { color: '#F59E0B' },
+          barMaxWidth: 26,
+        },
+      ],
+    };
+  }, [roleCapacityDemand]);
+
   const runLeveling = useCallback(() => {
     const inputs = deriveLevelingInputs({ tasks: data.tasks, employees: data.employees, hours: data.hours });
     setLevelingResult(runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS));
@@ -1328,12 +1405,20 @@ function ResourcingPageContent() {
             </div>
           </div>
 
-          {/* Utilization Distribution + Utilization by Role */}
+          {/* Capacity vs Demand + Utilization Distribution */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Capacity vs Demand (By Role)</div>
+              <ChartWrapper option={capacityVsDemandOption} height="280px" />
+            </div>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Utilization Distribution</div>
               <ChartWrapper option={utilizationPieOption} height="280px" />
             </div>
+          </div>
+
+          {/* Utilization by Role + FTE Requirements */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Utilization by Role</div>
               {(() => {
@@ -1362,6 +1447,39 @@ function ResourcingPageContent() {
                   </div>
                 );
               })()}
+            </div>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.6rem' }}>FTE Requirements by Role</div>
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-secondary)' }}>
+                      {['Role', 'People', 'Capacity', 'Demand', 'Actual', 'Remaining', 'FTE Req', 'Demand %'].map((h) => (
+                        <th key={h} style={{ padding: '0.5rem 0.45rem', textAlign: h === 'Role' ? 'left' : 'right', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roleCapacityDemand.map((r, idx) => (
+                      <tr key={`${r.role}-${idx}`} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--bg-secondary)' }}>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)' }}>{r.role}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: 'var(--text-muted)' }}>{r.people}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>{fmt(Math.round(r.capacityHours))}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: '#F59E0B' }}>{fmt(Math.round(r.demandHours))}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: '#3B82F6' }}>{fmt(Math.round(r.actualHours))}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: '#10B981' }}>{fmt(Math.round(r.remainingHours))}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', fontWeight: 700 }}>{r.fteRequired.toFixed(2)}</td>
+                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: r.demandPct > 100 ? '#EF4444' : r.demandPct > 85 ? '#F59E0B' : '#10B981' }}>{r.demandPct}%</td>
+                      </tr>
+                    ))}
+                    {roleCapacityDemand.length === 0 && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: '0.8rem', textAlign: 'center', color: 'var(--text-muted)' }}>No role-level data available</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -1394,7 +1512,7 @@ function ResourcingPageContent() {
             <div style={{ flex: 1, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                 <thead><tr style={{ background: 'var(--bg-secondary)' }}>
-                  {['Name', 'Role', 'Utilization', 'Tasks', 'Allocated', 'Available', 'QC Rate', 'Projects'].map(h => (
+                  {['Name', 'Role', 'Utilization', 'Tasks', 'Allocated', 'Actual', 'Remaining', 'Available', 'QC Rate', 'Projects'].map(h => (
                     <th key={h} style={{ padding: '0.6rem', textAlign: h === 'Name' || h === 'Role' ? 'left' : 'center', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
                   ))}
                 </tr></thead>
@@ -1414,6 +1532,8 @@ function ResourcingPageContent() {
                         </td>
                         <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.taskCount}</td>
                         <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{fmt(emp.allocatedHours)}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#3B82F6' }}>{fmt(emp.actualHours)}</td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{fmt(Math.max(0, (emp.allocatedHours || 0) - (emp.actualHours || 0)))}</td>
                         <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{fmt(emp.availableHours)}</td>
                         <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.qcPassRate !== null ? `${emp.qcPassRate}%` : '-'}</td>
                         <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.projects?.length || 0}</td>

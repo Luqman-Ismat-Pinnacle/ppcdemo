@@ -97,31 +97,54 @@ function useDecisionTasks(tasks: any[], projects: any[]) {
     const projNameMap = new Map<string, string>();
     projects.forEach((p: any) => projNameMap.set(p.id || p.projectId, p.name || p.projectName || p.id));
 
-    const blocked: any[] = []; const atRisk: any[] = []; const critical: any[] = [];
+    const blocked: any[] = [];
+    const atRisk: any[] = [];
+    const overBudget: any[] = [];
+    const critical: any[] = [];
     tasks.forEach((t: any) => {
       const s = String(t.status || '').toLowerCase();
       const bl = Number(t.baselineHours || 0);
       const ac = Number(t.actualHours || 0);
       const pc = Number(t.percentComplete || 0);
       const pid = t.projectId || t.project_id || '';
-      const enriched = { ...t, _projName: projNameMap.get(pid) || pid, _bl: bl, _ac: ac, _pc: pc, _var: bl > 0 ? Math.round(((ac - bl) / bl) * 100) : 0 };
+      const enriched = {
+        ...t,
+        _projName: projNameMap.get(pid) || pid,
+        _bl: bl,
+        _ac: ac,
+        _pc: pc,
+        _remaining: Math.max(0, bl - ac),
+        _var: bl > 0 ? Math.round(((ac - bl) / bl) * 100) : 0,
+      };
 
       if (s.includes('block') || s.includes('hold')) { blocked.push(enriched); return; }
-      if (s.includes('risk') || s.includes('late') || s.includes('delay') || (bl > 0 && ac > bl * 1.2)) { atRisk.push(enriched); return; }
+      if (bl > 0 && ac > bl * 1.2) { overBudget.push(enriched); return; }
+      if (s.includes('risk') || s.includes('late') || s.includes('delay')) { atRisk.push(enriched); return; }
       if (t.isCritical === true || t.isCritical === 'true' || (t.totalFloat != null && Number(t.totalFloat) <= 0)) { critical.push(enriched); }
     });
-    return { blocked, atRisk, critical, total: blocked.length + atRisk.length };
+    return { blocked, atRisk, overBudget, critical, total: blocked.length + atRisk.length + overBudget.length };
   }, [tasks, projects]);
 }
 
 function DecisionsRequired({ tasks, projects }: { tasks: any[]; projects: any[] }) {
-  const { blocked, atRisk, critical, total } = useDecisionTasks(tasks, projects);
+  const { blocked, atRisk, overBudget, critical, total } = useDecisionTasks(tasks, projects);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [projectFilter, setProjectFilter] = useState('');
+  const [minRemainingHours, setMinRemainingHours] = useState<number>(0);
+
+  const applyFilters = useCallback((list: any[]) => {
+    return list.filter((t: any) => {
+      if (projectFilter && !(String(t._projName || '').toLowerCase().includes(projectFilter.toLowerCase()))) return false;
+      if (minRemainingHours > 0 && Number(t._remaining || 0) < minRemainingHours) return false;
+      return true;
+    });
+  }, [projectFilter, minRemainingHours]);
 
   const categories = [
-    { key: 'blocked', label: 'Blocked / On Hold', tasks: blocked, color: C.red, desc: 'Tasks currently blocked or on hold requiring executive intervention' },
-    { key: 'atRisk', label: 'At Risk / Over Budget', tasks: atRisk, color: C.amber, desc: 'Tasks flagged as at risk, late, delayed, or >20% over budget hours' },
-    { key: 'critical', label: 'Critical Path', tasks: critical, color: C.teal, desc: 'Tasks on the critical path — zero float, any delay impacts the whole project' },
+    { key: 'blocked', label: 'Blocked / On Hold', tasks: applyFilters(blocked), color: C.red, desc: 'Tasks currently blocked or on hold requiring executive intervention' },
+    { key: 'atRisk', label: 'At Risk', tasks: applyFilters(atRisk), color: C.amber, desc: 'Schedule-risk tasks flagged late, delayed, or explicitly marked at risk' },
+    { key: 'overBudget', label: 'Over Budget', tasks: applyFilters(overBudget), color: C.orange, desc: 'Tasks with actual hours > 120% of baseline hours' },
+    { key: 'critical', label: 'Critical Path', tasks: applyFilters(critical), color: C.teal, desc: 'Tasks on the critical path — zero float, any delay impacts the whole project' },
   ];
 
   if (total === 0 && critical.length === 0) {
@@ -130,6 +153,24 @@ function DecisionsRequired({ tasks, projects }: { tasks: any[]; projects: any[] 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+        <input
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          placeholder="Filter by project..."
+          style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.textPrimary, borderRadius: 6, padding: '4px 8px', fontSize: '0.65rem', minWidth: 160 }}
+        />
+        <label style={{ fontSize: '0.65rem', color: C.textMuted, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Min Remaining Hours
+          <input
+            type="number"
+            min={0}
+            value={minRemainingHours}
+            onChange={(e) => setMinRemainingHours(Math.max(0, Number(e.target.value) || 0))}
+            style={{ width: 70, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, color: C.textPrimary, borderRadius: 6, padding: '3px 6px', fontSize: '0.65rem' }}
+          />
+        </label>
+      </div>
       {/* Summary strip */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
         {categories.map(cat => (
@@ -184,20 +225,39 @@ function DecisionsRequired({ tasks, projects }: { tasks: any[]; projects: any[] 
 
 type LBTab = 'variance' | 'hours' | 'progress';
 const LB_TABS: { key: LBTab; label: string; color: string }[] = [
-  { key: 'variance', label: 'Variance', color: C.red },
+  { key: 'variance', label: 'Hour Var', color: C.red },
   { key: 'hours', label: 'Hours', color: C.blue },
   { key: 'progress', label: 'Progress', color: C.green },
 ];
 
 function Leaderboard({ projectBreakdown, onSelect, selected }: { projectBreakdown: any[]; onSelect: (p: any) => void; selected: any }) {
-  const [tab, setTab] = useState<LBTab>('variance');
+  const [tab, setTab] = useState<LBTab>('hours');
   const { best, worst } = useMemo(() => {
     const pb = [...projectBreakdown];
-    const sorted = pb.sort((a, b) => tab === 'variance' ? a.variance - b.variance : tab === 'hours' ? b.actualHours - a.actualHours : b.percentComplete - a.percentComplete);
+    const sorted = pb.sort((a, b) => {
+      if (tab === 'variance') {
+        const av = (a.actualHours || 0) - (a.baselineHours || 0);
+        const bv = (b.actualHours || 0) - (b.baselineHours || 0);
+        return av - bv;
+      }
+      return tab === 'hours' ? b.actualHours - a.actualHours : b.percentComplete - a.percentComplete;
+    });
     return { best: sorted.slice(0, 4), worst: [...sorted].reverse().slice(0, 4) };
   }, [projectBreakdown, tab]);
-  const fmtVal = (p: any) => tab === 'variance' ? `${p.variance > 0 ? '+' : ''}${p.variance}%` : tab === 'hours' ? fmtHrs(p.actualHours) : `${p.percentComplete}%`;
-  const valColor = (p: any) => tab === 'variance' ? varColor(p.variance) : tab === 'hours' ? C.blue : (p.percentComplete >= 75 ? C.green : p.percentComplete >= 50 ? C.amber : C.red);
+  const fmtVal = (p: any) => {
+    if (tab === 'variance') {
+      const delta = (p.actualHours || 0) - (p.baselineHours || 0);
+      return `${delta > 0 ? '+' : ''}${fmtHrs(Math.round(delta))}h`;
+    }
+    return tab === 'hours' ? fmtHrs(p.actualHours) : `${p.percentComplete}%`;
+  };
+  const valColor = (p: any) => {
+    if (tab === 'variance') {
+      const delta = (p.actualHours || 0) - (p.baselineHours || 0);
+      return delta > 0 ? C.red : delta < 0 ? C.green : C.textMuted;
+    }
+    return tab === 'hours' ? C.blue : (p.percentComplete >= 75 ? C.green : p.percentComplete >= 50 ? C.amber : C.red);
+  };
 
   const renderList = (items: any[], label: string, isWorst: boolean) => (
     <div>
@@ -219,8 +279,8 @@ function Leaderboard({ projectBreakdown, onSelect, selected }: { projectBreakdow
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-        {renderList(best, tab === 'variance' ? 'Under Budget' : 'Top', false)}
-        {renderList(worst, tab === 'variance' ? 'Over Budget' : 'Bottom', true)}
+        {renderList(best, tab === 'variance' ? 'Under Budget (hrs)' : tab === 'hours' ? 'Most Hours' : 'Top', false)}
+        {renderList(worst, tab === 'variance' ? 'Over Budget (hrs)' : tab === 'hours' ? 'Least Hours' : 'Bottom', true)}
       </div>
     </div>
   );
@@ -291,10 +351,13 @@ function MilestoneMetrics({ milestones }: { milestones: any[] }) {
           {topUpcoming.map((m: any, i: number) => {
             const pd = new Date(m.plannedDate || m.plannedCompletion || '');
             const daysLeft = Math.round((pd.getTime() - Date.now()) / 86400000);
+            const plannedDateLabel = Number.isNaN(pd.getTime())
+              ? '-'
+              : pd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             return (
               <div key={i} style={{ fontSize: '0.65rem', color: C.textMuted, padding: '3px 0', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{m.milestoneName || m.name}</span>
-                <span style={{ color: daysLeft <= 7 ? C.amber : C.green, fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{daysLeft}d left</span>
+                <span style={{ color: daysLeft <= 7 ? C.amber : C.green, fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>{plannedDateLabel}</span>
               </div>
             );
           })}

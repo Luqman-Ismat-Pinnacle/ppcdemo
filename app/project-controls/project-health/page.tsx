@@ -127,6 +127,13 @@ export default function ProjectHealthPage() {
     return Math.round((passed / evaluated.length) * 100);
   }, [currentHealth]);
 
+  const effectiveScore = useMemo(() => {
+    if (!currentHealth) return overallScore;
+    const manual = Number((currentHealth as any).manualHealthOverride);
+    if (Number.isFinite(manual)) return Math.max(0, Math.min(100, Math.round(manual)));
+    return overallScore;
+  }, [currentHealth, overallScore]);
+
   // Group checks by category
   const checksByCategory = useMemo(() => {
     if (!currentHealth) return {};
@@ -173,6 +180,20 @@ export default function ProjectHealthPage() {
       ? data.projectHealth.map((h, i) => i === existingIndex ? updatedHealth : h)
       : [...data.projectHealth, updatedHealth];
 
+    updateData({ projectHealth: newHealthData });
+  }, [currentHealth, data.projectHealth, updateData]);
+
+  const updateHealthFields = useCallback((updates: Partial<ProjectHealth> & Record<string, any>) => {
+    if (!currentHealth) return;
+    const updatedHealth: ProjectHealth = {
+      ...currentHealth,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    const existingIndex = data.projectHealth.findIndex(h => h.projectId === currentHealth.projectId);
+    const newHealthData = existingIndex >= 0
+      ? data.projectHealth.map((h, i) => i === existingIndex ? updatedHealth : h)
+      : [...data.projectHealth, updatedHealth];
     updateData({ projectHealth: newHealthData });
   }, [currentHealth, data.projectHealth, updateData]);
 
@@ -247,12 +268,12 @@ export default function ProjectHealthPage() {
               alignItems: 'center',
               gap: '0.5rem',
               padding: '0.5rem 1rem',
-              background: overallScore >= 80 ? 'rgba(16, 185, 129, 0.1)' :
-                overallScore >= 60 ? 'rgba(245, 158, 11, 0.1)' :
+              background: effectiveScore >= 80 ? 'rgba(16, 185, 129, 0.1)' :
+                effectiveScore >= 60 ? 'rgba(245, 158, 11, 0.1)' :
                   'rgba(239, 68, 68, 0.1)',
               borderRadius: '8px',
-              border: `1px solid ${overallScore >= 80 ? 'rgba(16, 185, 129, 0.3)' :
-                overallScore >= 60 ? 'rgba(245, 158, 11, 0.3)' :
+              border: `1px solid ${effectiveScore >= 80 ? 'rgba(16, 185, 129, 0.3)' :
+                effectiveScore >= 60 ? 'rgba(245, 158, 11, 0.3)' :
                   'rgba(239, 68, 68, 0.3)'}`,
             }}>
               <EnhancedTooltip content={{
@@ -268,13 +289,13 @@ export default function ProjectHealthPage() {
               }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', cursor: 'help', borderBottom: '1px dotted' }}>Health Score:</span>
               </EnhancedTooltip>
-              <span style={{
+                <span style={{
                 fontSize: '1.25rem',
                 fontWeight: 700,
-                color: overallScore >= 80 ? '#10B981' :
-                  overallScore >= 60 ? '#F59E0B' : '#EF4444',
+                color: effectiveScore >= 80 ? '#10B981' :
+                  effectiveScore >= 60 ? '#F59E0B' : '#EF4444',
               }}>
-                {overallScore}%
+                {effectiveScore}%
               </span>
             </div>
 
@@ -316,6 +337,37 @@ export default function ProjectHealthPage() {
         </div>
       ) : currentHealth && (
         <div style={{ display: 'block', gap: '1rem', paddingBottom: '1rem' }}>
+          <div style={{ marginBottom: '0.9rem', padding: '0.75rem 0.9rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(currentHealth.scheduleRequired)}
+                onChange={(e) => updateHealthFields({ scheduleRequired: e.target.checked })}
+              />
+              Schedule Required (Manual)
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Manual Health Score Override
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={Number.isFinite(Number((currentHealth as any).manualHealthOverride)) ? Number((currentHealth as any).manualHealthOverride) : ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    updateHealthFields({ manualHealthOverride: null } as any);
+                    return;
+                  }
+                  updateHealthFields({ manualHealthOverride: Math.max(0, Math.min(100, Number(raw) || 0)) } as any);
+                }}
+                placeholder={`${overallScore}`}
+                style={{ width: 86, padding: '0.25rem 0.4rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+            </label>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Effective Score: {effectiveScore}%</span>
+          </div>
+
           {/* Health Check Categories */}
           {Object.entries(checksByCategory).map(([category, checks]) => {
             const isExpanded = expandedCategories.has(category);
@@ -762,4 +814,3 @@ export default function ProjectHealthPage() {
     </div>
   );
 }
-

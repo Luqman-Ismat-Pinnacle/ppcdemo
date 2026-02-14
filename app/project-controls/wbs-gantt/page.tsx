@@ -441,8 +441,29 @@ export default function WBSGanttPage() {
 
   // ── Sorting / search / flat rows ───────────────────────────────
   const sortedWbsItems = useMemo(() => {
-    if (!wbsDataForTable?.items?.length) return [];
-    if (!wbsSort) return wbsDataForTable.items;
+    const sourceItems = (() => {
+      if (!wbsDataForTable?.items?.length) return [];
+      if (!selectedProjectId) return wbsDataForTable.items;
+      const findProjectNode = (items: any[]): any | null => {
+        for (const item of items) {
+          const itemId = String(item.id || '');
+          const itemProjectId = String(item.projectId || item.project_id || '');
+          const isProjectNode = (item.itemType || item.type) === 'project';
+          if (itemId === selectedProjectId || itemProjectId === selectedProjectId || (isProjectNode && (itemId === selectedProjectId || itemProjectId === selectedProjectId))) {
+            return item;
+          }
+          if (item.children?.length) {
+            const found = findProjectNode(item.children);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      const projectNode = findProjectNode(wbsDataForTable.items);
+      return projectNode ? [projectNode] : wbsDataForTable.items;
+    })();
+    if (!sourceItems.length) return [];
+    if (!wbsSort) return sourceItems;
     const getVal = (item: any, key: string) => {
       switch (key) {
         case 'wbsCode': return item.wbsCode;
@@ -459,8 +480,8 @@ export default function WBSGanttPage() {
       const sorted = sortByState(items, wbsSort, getVal);
       return sorted.map(i => i.children ? { ...i, children: sortItems(i.children) } : i);
     };
-    return sortItems(wbsDataForTable.items);
-  }, [wbsDataForTable?.items, wbsSort, employees]);
+    return sortItems(sourceItems);
+  }, [wbsDataForTable?.items, selectedProjectId, wbsSort, employees]);
 
   const searchFilteredItems = useMemo(() => {
     const q = (wbsSearchQuery || '').trim().toLowerCase();
@@ -543,6 +564,30 @@ export default function WBSGanttPage() {
     (tid?: string) => tid ? (taskNameMap.get(tid)?.split(' ').slice(0, 3).join(' ') || tid.replace('wbs-', '')) : '-',
     [taskNameMap],
   );
+
+  const remainingHoursVarianceSummary = useMemo(() => {
+    if (!varianceMode) return null;
+    let currentRemaining = 0;
+    let snapshotRemaining = 0;
+    let taskCount = 0;
+    flatRows.forEach((row: any) => {
+      const isTaskLevel = (row.itemType || row.type) === 'task' || row.id?.startsWith('wbs-task-');
+      if (!isTaskLevel) return;
+      const current = Number(row.remainingHours ?? Math.max(0, (Number(row.baselineHours) || 0) - (Number(row.actualHours) || 0))) || 0;
+      const snapActual = getVarianceValue(row, 'actualHours');
+      const snapPlan = getVarianceValue(row, 'planHours');
+      const snapRemaining = snapPlan != null && snapActual != null ? Math.max(0, Number(snapPlan) - Number(snapActual)) : 0;
+      currentRemaining += current;
+      snapshotRemaining += snapRemaining;
+      taskCount += 1;
+    });
+    return {
+      currentRemaining: Math.round(currentRemaining),
+      snapshotRemaining: Math.round(snapshotRemaining),
+      delta: Math.round(currentRemaining - snapshotRemaining),
+      taskCount,
+    };
+  }, [varianceMode, flatRows, getVarianceValue]);
 
   // ── Layout measurements ────────────────────────────────────────
   const wbsCodeColWidth = useMemo(() => {
@@ -958,6 +1003,17 @@ export default function WBSGanttPage() {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem' }}>
+          {varianceMode && remainingHoursVarianceSummary && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Remaining Hrs</span>
+              <span style={{ color: '#3B82F6', fontWeight: 700 }}>Now {remainingHoursVarianceSummary.currentRemaining}</span>
+              <span style={{ color: 'var(--text-muted)' }}>vs</span>
+              <span style={{ color: '#8B5CF6', fontWeight: 700 }}>Snap {remainingHoursVarianceSummary.snapshotRemaining}</span>
+              <span style={{ color: remainingHoursVarianceSummary.delta > 0 ? '#EF4444' : remainingHoursVarianceSummary.delta < 0 ? '#22C55E' : '#9ca3af', fontWeight: 700 }}>
+                ({remainingHoursVarianceSummary.delta > 0 ? '+' : ''}{remainingHoursVarianceSummary.delta})
+              </span>
+            </div>
+          )}
           {varianceMode && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF4444' }} /> Over Budget</div>
