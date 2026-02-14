@@ -68,7 +68,7 @@ function getPortfolioDisplayName(portfolio: any, employees: any[]): string {
 // ============================================================================
 
 export default function HierarchyFilter() {
-  const { data, hierarchyFilter, setHierarchyFilter } = useData();
+  const { filteredData: data, hierarchyFilter, setHierarchyFilter } = useData();
   const [isOpen, setIsOpen] = useState(false);
 
   // Selection state - stores the ID of each selected item

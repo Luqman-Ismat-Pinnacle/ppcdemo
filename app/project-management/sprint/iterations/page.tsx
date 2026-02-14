@@ -64,7 +64,8 @@ function getIterationStatus(iter: Iteration): { label: string; color: string } {
 }
 
 export default function IterationsPage() {
-  const { data, isLoading } = useData();
+  const { filteredData, isLoading } = useData();
+  const data = filteredData;
   const [iterations, setIterations] = useState<Iteration[]>(() => {
     // Build from sprints data if available
     if (data.sprints?.length) {

@@ -70,7 +70,8 @@ const ACTIVITY_COLORS = {
 };
 
 export default function CapacityPage() {
-  const { data, isLoading } = useData();
+  const { filteredData, isLoading } = useData();
+  const data = filteredData;
   const [sprint, setSprint] = useState<Sprint>(() => {
     // Try to get current sprint from data
     const currentSprint = data.sprints?.find((s: any) => s.isCurrent);

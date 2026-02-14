@@ -33,9 +33,13 @@ type IssueForm = {
   title: string;
   pagePath: string;
   userAction: string;
+  reproSteps: string;
   expectedResult: string;
   actualResult: string;
   errorMessage: string;
+  environment: string;
+  frequency: string;
+  impact: string;
   description: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
 };
@@ -43,7 +47,10 @@ type IssueForm = {
 type FeatureForm = {
   title: string;
   description: string;
-  notes: string;
+  targetPage: string;
+  workflow: string;
+  businessValue: string;
+  acceptanceCriteria: string;
 };
 
 const getErrorMessage = (e: unknown, fallback: string) => {
@@ -92,9 +99,13 @@ export default function FeedbackPage() {
     title: '',
     pagePath: pathname || '/',
     userAction: '',
+    reproSteps: '',
     expectedResult: '',
     actualResult: '',
     errorMessage: '',
+    environment: 'production',
+    frequency: '',
+    impact: '',
     description: '',
     severity: 'medium',
   });
@@ -102,7 +113,10 @@ export default function FeedbackPage() {
   const [featureForm, setFeatureForm] = useState<FeatureForm>({
     title: '',
     description: '',
-    notes: '',
+    targetPage: '',
+    workflow: '',
+    businessValue: '',
+    acceptanceCriteria: '',
   });
 
   const loadItems = useCallback(async () => {
@@ -139,17 +153,26 @@ export default function FeedbackPage() {
 
   const onCreateIssue = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!issueForm.title.trim() || !issueForm.description.trim()) return;
+    if (!issueForm.title.trim() || !issueForm.description.trim() || !issueForm.userAction.trim() || !issueForm.reproSteps.trim() || !issueForm.expectedResult.trim() || !issueForm.actualResult.trim()) return;
     setSaving(true);
     setError(null);
     try {
+      const structuredDescription = [
+        issueForm.description.trim(),
+        issueForm.reproSteps.trim() ? `Reproduction Steps:\n${issueForm.reproSteps.trim()}` : '',
+        issueForm.frequency.trim() ? `Frequency: ${issueForm.frequency.trim()}` : '',
+        issueForm.impact.trim() ? `Business Impact: ${issueForm.impact.trim()}` : '',
+        issueForm.environment.trim() ? `Environment: ${issueForm.environment.trim()}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemType: 'issue',
           title: issueForm.title,
-          description: issueForm.description,
+          description: structuredDescription,
           pagePath: issueForm.pagePath,
           userAction: issueForm.userAction,
           expectedResult: issueForm.expectedResult,
@@ -169,9 +192,13 @@ export default function FeedbackPage() {
         title: '',
         pagePath: pathname || '/',
         userAction: '',
+        reproSteps: '',
         expectedResult: '',
         actualResult: '',
         errorMessage: '',
+        environment: 'production',
+        frequency: '',
+        impact: '',
         description: '',
         severity: 'medium',
       });
@@ -186,18 +213,31 @@ export default function FeedbackPage() {
 
   const onCreateFeature = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!featureForm.title.trim() || !featureForm.description.trim()) return;
+    if (!featureForm.title.trim() || !featureForm.description.trim() || !featureForm.targetPage.trim() || !featureForm.acceptanceCriteria.trim()) return;
     setSaving(true);
     setError(null);
     try {
+      const structuredDescription = [
+        featureForm.description.trim(),
+        featureForm.workflow.trim() ? `Workflow to Improve: ${featureForm.workflow.trim()}` : '',
+        featureForm.businessValue.trim() ? `Business Value: ${featureForm.businessValue.trim()}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      const structuredNotes = [
+        featureForm.targetPage.trim() ? `Target Page: ${featureForm.targetPage.trim()}` : '',
+        featureForm.acceptanceCriteria.trim() ? `Acceptance Criteria:\n${featureForm.acceptanceCriteria.trim()}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemType: 'feature',
           title: featureForm.title,
-          description: featureForm.description,
-          notes: featureForm.notes,
+          description: structuredDescription,
+          notes: structuredNotes,
           severity: 'low',
           source: 'manual',
           createdByName: user?.name || null,
@@ -207,7 +247,7 @@ export default function FeedbackPage() {
       });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error || 'Failed to create feature');
-      setFeatureForm({ title: '', description: '', notes: '' });
+      setFeatureForm({ title: '', description: '', targetPage: '', workflow: '', businessValue: '', acceptanceCriteria: '' });
       await loadItems();
       setActiveTab('feature');
     } catch (e: unknown) {
@@ -253,6 +293,13 @@ export default function FeedbackPage() {
             <input value={issueForm.title} onChange={e => setIssueForm(s => ({ ...s, title: e.target.value }))} placeholder="Issue title (required)" style={inputStyle} />
             <input value={issueForm.pagePath} onChange={e => setIssueForm(s => ({ ...s, pagePath: e.target.value }))} placeholder="Page route (e.g. /project-controls/wbs-gantt)" style={inputStyle} />
             <input value={issueForm.userAction} onChange={e => setIssueForm(s => ({ ...s, userAction: e.target.value }))} placeholder="What action caused it?" style={inputStyle} />
+            <select value={issueForm.environment} onChange={e => setIssueForm(s => ({ ...s, environment: e.target.value }))} style={inputStyle}>
+              <option value="production">Environment: Production</option>
+              <option value="staging">Environment: Staging</option>
+              <option value="development">Environment: Development</option>
+            </select>
+            <input value={issueForm.frequency} onChange={e => setIssueForm(s => ({ ...s, frequency: e.target.value }))} placeholder="Frequency (always/intermittent/% of attempts)" style={inputStyle} />
+            <input value={issueForm.impact} onChange={e => setIssueForm(s => ({ ...s, impact: e.target.value }))} placeholder="Impact (blocked workflow/users affected)" style={inputStyle} />
             <select value={issueForm.severity} onChange={e => setIssueForm(s => ({ ...s, severity: e.target.value as IssueForm['severity'] }))} style={inputStyle}>
               <option value="low">Severity: Low</option>
               <option value="medium">Severity: Medium</option>
@@ -262,7 +309,8 @@ export default function FeedbackPage() {
             <input value={issueForm.expectedResult} onChange={e => setIssueForm(s => ({ ...s, expectedResult: e.target.value }))} placeholder="Expected result" style={inputStyle} />
             <input value={issueForm.actualResult} onChange={e => setIssueForm(s => ({ ...s, actualResult: e.target.value }))} placeholder="Actual result" style={inputStyle} />
             <input value={issueForm.errorMessage} onChange={e => setIssueForm(s => ({ ...s, errorMessage: e.target.value }))} placeholder="Exact error message (if shown)" style={{ ...inputStyle, gridColumn: '1 / -1' }} />
-            <textarea value={issueForm.description} onChange={e => setIssueForm(s => ({ ...s, description: e.target.value }))} placeholder="Detailed description and reproduction steps (required)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 90, resize: 'vertical' }} />
+            <textarea value={issueForm.reproSteps} onChange={e => setIssueForm(s => ({ ...s, reproSteps: e.target.value }))} placeholder="Step-by-step reproduction (required for fast diagnosis)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 88, resize: 'vertical' }} />
+            <textarea value={issueForm.description} onChange={e => setIssueForm(s => ({ ...s, description: e.target.value }))} placeholder="Additional context and technical details (required)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 82, resize: 'vertical' }} />
             <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
               <button type="submit" disabled={saving} className="btn btn-primary btn-sm">{saving ? 'Saving...' : 'Submit Issue'}</button>
             </div>
@@ -273,8 +321,11 @@ export default function FeedbackPage() {
           <h3 style={{ margin: 0, marginBottom: '0.7rem', fontSize: '0.95rem' }}>Request a Feature</h3>
           <form onSubmit={onCreateFeature} style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
             <input value={featureForm.title} onChange={e => setFeatureForm(s => ({ ...s, title: e.target.value }))} placeholder="Feature title (required)" style={inputStyle} />
-            <textarea value={featureForm.description} onChange={e => setFeatureForm(s => ({ ...s, description: e.target.value }))} placeholder="What problem does this solve? What should the feature do?" style={{ ...inputStyle, minHeight: 110, resize: 'vertical' }} />
-            <textarea value={featureForm.notes} onChange={e => setFeatureForm(s => ({ ...s, notes: e.target.value }))} placeholder="Business context, urgency, or acceptance notes (optional)" style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} />
+            <input value={featureForm.targetPage} onChange={e => setFeatureForm(s => ({ ...s, targetPage: e.target.value }))} placeholder="Target page / module (e.g. /insights/tasks)" style={inputStyle} />
+            <textarea value={featureForm.description} onChange={e => setFeatureForm(s => ({ ...s, description: e.target.value }))} placeholder="Problem statement and desired capability (required)" style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} />
+            <textarea value={featureForm.workflow} onChange={e => setFeatureForm(s => ({ ...s, workflow: e.target.value }))} placeholder="Current workflow pain points (who does what today?)" style={{ ...inputStyle, minHeight: 78, resize: 'vertical' }} />
+            <textarea value={featureForm.businessValue} onChange={e => setFeatureForm(s => ({ ...s, businessValue: e.target.value }))} placeholder="Business value and urgency (time/cost/risk impact)" style={{ ...inputStyle, minHeight: 72, resize: 'vertical' }} />
+            <textarea value={featureForm.acceptanceCriteria} onChange={e => setFeatureForm(s => ({ ...s, acceptanceCriteria: e.target.value }))} placeholder="Acceptance criteria (specific expected outcomes)" style={{ ...inputStyle, minHeight: 85, resize: 'vertical' }} />
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button type="submit" disabled={saving} className="btn btn-primary btn-sm">{saving ? 'Saving...' : 'Submit Feature'}</button>
             </div>

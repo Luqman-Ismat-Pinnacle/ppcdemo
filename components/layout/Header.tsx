@@ -21,13 +21,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from '@/lib/theme-context';
 import { useUser } from '@/lib/user-context';
-import { useData } from '@/lib/data-context';
 import Navigation from './Navigation';
 import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
 import StatusAndLogsDropdown from './StatusAndLogsDropdown';
 import NotificationBell from './NotificationBell';
-import { useSnapshotPopup } from '@/lib/snapshot-context';
 
 /**
  * Header component displaying the main application header.
@@ -36,7 +34,6 @@ import { useSnapshotPopup } from '@/lib/snapshot-context';
  * @returns {JSX.Element | null} The header element, or null on login page
  */
 export default function Header() {
-  const [mounted, setMounted] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -47,17 +44,6 @@ export default function Header() {
 
   // Get user info from context
   const { user, logout: userLogout } = useUser();
-  const { openSnapshotPopup, comparisonSnapshotId } = useSnapshotPopup();
-  const { data } = useData();
-  const comparisonSnapshot = comparisonSnapshotId
-    ? (data.snapshots || []).find((s: any) => (s.id || s.snapshotId) === comparisonSnapshotId)
-    : null;
-  const comparisonName = comparisonSnapshot?.version_name || comparisonSnapshot?.versionName || comparisonSnapshot?.snapshot_id;
-
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Close profile dropdown when clicking outside
   useEffect(() => {
@@ -107,67 +93,6 @@ export default function Header() {
         <DateFilterControl />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <HierarchyFilter />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        {comparisonName && (
-          <button
-            type="button"
-            onClick={openSnapshotPopup}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 10px',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--pinnacle-teal)',
-              background: 'rgba(64, 224, 208, 0.12)',
-              color: 'var(--pinnacle-teal)',
-              fontSize: '0.75rem',
-              fontWeight: 500,
-              cursor: 'pointer',
-              maxWidth: 180,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title="Comparing to snapshot — click to change"
-          >
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>Vs {comparisonName}</span>
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={openSnapshotPopup}
-          aria-label="Open Snapshots & Variance"
-          title="Snapshots & Variance"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 36,
-            height: 36,
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-tertiary)',
-            color: 'var(--pinnacle-teal)',
-            cursor: 'pointer',
-            transition: 'var(--transition-fast)',
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.background = 'rgba(64, 224, 208, 0.12)';
-            e.currentTarget.style.borderColor = 'var(--pinnacle-teal)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.background = 'var(--bg-tertiary)';
-            e.currentTarget.style.borderColor = 'var(--border-color)';
-          }}
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" strokeWidth="2" fill="none">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-        </button>
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
         <NotificationBell />
         <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>

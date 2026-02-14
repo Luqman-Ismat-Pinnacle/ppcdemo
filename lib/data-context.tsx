@@ -580,6 +580,7 @@ export function DataProvider({ children }: DataProviderProps) {
    */
   const filteredData = useMemo(() => {
     const filtered = { ...data };
+    const hasPlan = (project: any) => project?.has_schedule === true || project?.hasSchedule === true;
 
     // =========================================================================
     // ACTIVE PORTFOLIOS ONLY (WBS, Gantt, and app-wide views exclude inactive)
@@ -612,6 +613,30 @@ export function DataProvider({ children }: DataProviderProps) {
       filtered.sites = (filtered.sites as any[]).filter((s: any) => {
         const cid = s.customerId ?? s.customer_id;
         return cid && activeCustomerIds.has(cid);
+      });
+    }
+
+    // Only surface projects with uploaded plans and cascade that to dependent entities.
+    if (filtered.projects) {
+      filtered.projects = (filtered.projects as any[]).filter((p: any) => hasPlan(p));
+    }
+    const plannedProjectIds = new Set((filtered.projects || []).map((p: any) => p.id || p.projectId));
+    if (filtered.units) {
+      filtered.units = (filtered.units as any[]).filter((u: any) => plannedProjectIds.has(u.projectId ?? u.project_id));
+    }
+    if (filtered.phases) {
+      filtered.phases = (filtered.phases as any[]).filter((ph: any) => plannedProjectIds.has(ph.projectId ?? ph.project_id));
+    }
+    if (filtered.tasks) {
+      filtered.tasks = (filtered.tasks as any[]).filter((t: any) => {
+        const pid = t.projectId ?? t.project_id;
+        return !pid || plannedProjectIds.has(pid);
+      });
+    }
+    if (filtered.hours) {
+      filtered.hours = (filtered.hours as any[]).filter((h: any) => {
+        const pid = h.projectId ?? h.project_id;
+        return !pid || plannedProjectIds.has(pid);
       });
     }
 

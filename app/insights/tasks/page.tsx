@@ -556,7 +556,8 @@ const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
 // ===== MAIN PAGE =====
 
 export default function TasksPage() {
-  const { data, isLoading } = useData();
+  const { filteredData, isLoading } = useData();
+  const data = filteredData;
   const crossFilter = useCrossFilter();
   const router = useRouter();
   const [selectedTask, setSelectedTask] = useState<any>(null);
