@@ -460,7 +460,7 @@ export default function WBSGanttPage() {
         return null;
       };
       const projectNode = findProjectNode(wbsDataForTable.items);
-      return projectNode ? [projectNode] : wbsDataForTable.items;
+      return projectNode ? [projectNode] : [];
     })();
     if (!sourceItems.length) return [];
     if (!wbsSort) return sourceItems;

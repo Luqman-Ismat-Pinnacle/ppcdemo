@@ -40,6 +40,10 @@ const TT = {
 };
 
 const CHARGE_COLORS: Record<string, string> = { EX: C.teal, QC: C.purple, CR: C.amber, TPW: C.pink, Other: C.blue };
+const asNumber = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 // ===== SHARED UI =====
 
@@ -98,11 +102,12 @@ const TaskLifecyclePulse = ({ task, hours }: { task: any; hours: any[] }) => {
     const byType: Record<string, number> = { EX: 0, QC: 0, CR: 0, TPW: 0, Other: 0 };
     taskHours.forEach((h: any) => {
       const ct = (h.chargeType || '').toUpperCase();
-      if (ct === 'EX') byType.EX += h.hours;
-      else if (ct === 'QC') byType.QC += h.hours;
-      else if (ct === 'CR') byType.CR += h.hours;
-      else if (ct.includes('TPW') || ct.includes('TRAIN')) byType.TPW += h.hours;
-      else byType.Other += h.hours;
+      const hrs = asNumber(h.hours);
+      if (ct === 'EX') byType.EX += hrs;
+      else if (ct === 'QC') byType.QC += hrs;
+      else if (ct === 'CR') byType.CR += hrs;
+      else if (ct.includes('TPW') || ct.includes('TRAIN')) byType.TPW += hrs;
+      else byType.Other += hrs;
     });
 
     const totalHours = Object.values(byType).reduce((s, v) => s + v, 0);
@@ -138,7 +143,7 @@ const TaskLifecyclePulse = ({ task, hours }: { task: any; hours: any[] }) => {
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Active Time</div>
-            <div style={{ fontSize: '1rem', fontWeight: 800, color: C.blue }}>{lifecycle.totalHours.toFixed(1)}h</div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: C.blue }}>{asNumber(lifecycle.totalHours).toFixed(1)}h</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Complete</div>
@@ -150,8 +155,8 @@ const TaskLifecyclePulse = ({ task, hours }: { task: any; hours: any[] }) => {
       {/* Segmented bar */}
       <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', background: C.bgSecondary }}>
         {segments.map(([type, value]) => (
-          <div key={type} style={{ width: `${(value / total) * 100}%`, background: CHARGE_COLORS[type] || C.blue, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 700, color: '#000', minWidth: 24, transition: 'width 0.3s ease' }} title={`${type}: ${value.toFixed(1)}h`}>
-            {value > total * 0.08 ? `${type} ${value.toFixed(0)}h` : ''}
+          <div key={type} style={{ width: `${(asNumber(value) / total) * 100}%`, background: CHARGE_COLORS[type] || C.blue, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 700, color: '#000', minWidth: 24, transition: 'width 0.3s ease' }} title={`${type}: ${asNumber(value).toFixed(1)}h`}>
+            {asNumber(value) > total * 0.08 ? `${type} ${asNumber(value).toFixed(0)}h` : ''}
           </div>
         ))}
         {segments.length === 0 && <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: C.textMuted }}>No hours logged</div>}

@@ -95,6 +95,16 @@ export default function DocumentsPage() {
 
   return (
     <div className="page-panel insights-page">
+      <div style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: 10, border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--pinnacle-teal)', marginBottom: '0.3rem' }}>
+          Document Source Mapping
+        </div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          DRD, QMP, SOP, and Workflow statuses are pulled from <code>deliverables</code>/<code>deliverablesTracker</code> records linked to each project.
+          Project context comes from the deliverable&apos;s project/customer fields (e.g., <code>projectId</code>, <code>projectNum</code>, <code>customer</code>), then shown in this matrix.
+        </div>
+      </div>
+
       {/* Project Health Summary */}
       <div style={{ 
         display: 'grid', 
