@@ -15,13 +15,14 @@ import { VarianceVisual } from './VarianceVisual';
 const fmtHrs = (h: number) => (h >= 1000 ? `${(h / 1000).toFixed(1)}K` : h.toLocaleString());
 const fmtCost = (c: number) => (c >= 1000 ? `$${(c / 1000).toFixed(1)}K` : `$${Math.round(c).toLocaleString()}`);
 
-type TabId = 'overview' | 'create' | 'compare' | 'variance';
+type TabId = 'overview' | 'create' | 'compare' | 'variance' | 'remaining';
 
 /* ── Icon helpers ─────────────────────────────────────────────────── */
 const IconCamera = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>;
 const IconTimeline = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>;
 const IconChart = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>;
 const IconPlus = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
+const IconTable = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="9" y1="4" x2="9" y2="20" /><line x1="15" y1="4" x2="15" y2="20" /></svg>;
 
 /* ── Time-ago helper ──────────────────────────────────────────────── */
 function timeAgo(d: string | Date) {
@@ -97,6 +98,81 @@ export default function SnapshotPopup() {
   const snapshotData = compareSnapshot?.snapshotData ?? compareSnapshot?.snapshot_data;
   const byProject = (snapshotData?.byProject || snapshotData?.by_project || []) as any[];
   const byPhase = (snapshotData?.byPhase || snapshotData?.by_phase || []) as any[];
+  const byTask = (snapshotData?.byTask || snapshotData?.by_task || []) as any[];
+
+  const remainingReviewRows = useMemo(() => {
+    const tasks = (data.tasks || []) as any[];
+    const projectNameById = new Map<string, string>();
+    (data.projects || []).forEach((p: any) => {
+      projectNameById.set(String(p.id || p.projectId), String(p.name || p.projectName || p.id || p.projectId || 'Unknown'));
+    });
+    const snapshotByTaskId = new Map<string, any>();
+    byTask.forEach((row: any) => {
+      const tid = String(row.taskId || row.task_id || '');
+      if (tid) snapshotByTaskId.set(tid, row);
+    });
+
+    return tasks.map((t: any) => {
+      const taskId = String(t.id || t.taskId || '');
+      const projectId = String(t.projectId || t.project_id || '');
+      const taskName = String(t.name || t.taskName || taskId || 'Unknown Task');
+      const baselineHours = Number(t.baselineHours ?? t.budgetHours ?? 0) || 0;
+      const actualHours = Number(t.actualHours ?? t.actual_hours ?? 0) || 0;
+      const remainingHours = Math.max(0, baselineHours - actualHours);
+      const snap = snapshotByTaskId.get(taskId);
+      const snapPlan = Number(snap?.planHours ?? snap?.plan_hours ?? baselineHours) || 0;
+      const snapActual = Number(snap?.actualHours ?? snap?.actual_hours ?? 0) || 0;
+      const snapshotRemaining = Math.max(0, snapPlan - snapActual);
+      const delta = remainingHours - snapshotRemaining;
+      return {
+        projectName: projectNameById.get(projectId) || projectId || 'Unassigned',
+        taskId,
+        taskName,
+        baselineHours,
+        actualHours,
+        remainingHours,
+        snapshotRemaining,
+        delta,
+      };
+    }).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  }, [data.tasks, data.projects, byTask]);
+
+  const remainingReviewSummary = useMemo(() => {
+    const totals = remainingReviewRows.reduce((acc, row) => {
+      acc.current += row.remainingHours;
+      acc.snapshot += row.snapshotRemaining;
+      acc.delta += row.delta;
+      if (Math.abs(row.delta) >= 8) acc.flagged += 1;
+      return acc;
+    }, { current: 0, snapshot: 0, delta: 0, flagged: 0 });
+    return totals;
+  }, [remainingReviewRows]);
+
+  const handleExportRemainingCSV = useCallback(() => {
+    const header = ['Project', 'Task ID', 'Task', 'Baseline Hrs', 'Actual Hrs', 'Remaining Hrs', 'Snapshot Remaining Hrs', 'Delta Hrs'];
+    const rows = remainingReviewRows.map((row) => [
+      row.projectName,
+      row.taskId,
+      row.taskName,
+      row.baselineHours.toFixed(2),
+      row.actualHours.toFixed(2),
+      row.remainingHours.toFixed(2),
+      row.snapshotRemaining.toFixed(2),
+      row.delta.toFixed(2),
+    ]);
+    const csv = [header, ...rows]
+      .map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `remaining-hours-review-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [remainingReviewRows]);
 
   // ── Sorted snapshots for timeline ──
   const sortedSnapshots = useMemo(() =>
@@ -158,6 +234,7 @@ export default function SnapshotPopup() {
     { id: 'create', label: 'Create', icon: <IconPlus /> },
     { id: 'compare', label: 'Timeline', icon: <IconTimeline /> },
     { id: 'variance', label: 'Variance', icon: <IconCamera /> },
+    { id: 'remaining', label: 'Remaining Review', icon: <IconTable /> },
   ];
 
   /* ── Shared styles ────────────────────────────────────────────── */
@@ -503,6 +580,79 @@ export default function SnapshotPopup() {
                   </table>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ═══ REMAINING HOURS REVIEW TAB ═══ */}
+          {tab === 'remaining' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 700 }}>Remaining Hours Review</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    RH review spreadsheet for platform operations
+                    {compareSnapshot ? ` · compared to ${compareSnapshot.version_name || compareSnapshot.versionName || 'selected snapshot'}` : ' · snapshot comparison optional'}
+                  </div>
+                </div>
+                <button type="button" onClick={handleExportRemainingCSV} style={btnPrimary}>Export CSV</button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(140px, 1fr))', gap: '0.6rem' }}>
+                <div style={cardStyle}>
+                  <div style={labelStyle}>Current Remaining</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>{fmtHrs(Math.round(remainingReviewSummary.current))}h</div>
+                </div>
+                <div style={cardStyle}>
+                  <div style={labelStyle}>Snapshot Remaining</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-secondary)' }}>{fmtHrs(Math.round(remainingReviewSummary.snapshot))}h</div>
+                </div>
+                <div style={cardStyle}>
+                  <div style={labelStyle}>Net Delta</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: remainingReviewSummary.delta > 0 ? 'var(--color-error)' : remainingReviewSummary.delta < 0 ? 'var(--color-success)' : 'var(--text-primary)' }}>
+                    {remainingReviewSummary.delta > 0 ? '+' : ''}{fmtHrs(Math.round(remainingReviewSummary.delta))}h
+                  </div>
+                </div>
+                <div style={cardStyle}>
+                  <div style={labelStyle}>Flagged Rows (|Δ| ≥ 8h)</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{remainingReviewSummary.flagged}</div>
+                </div>
+              </div>
+
+              <div style={{ ...cardStyle, overflow: 'auto', maxHeight: 420 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <th style={{ textAlign: 'left', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>Project</th>
+                      <th style={{ textAlign: 'left', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>Task</th>
+                      <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>BL Hrs</th>
+                      <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>Act Hrs</th>
+                      <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>Remaining</th>
+                      <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>Snap Remaining</th>
+                      <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', color: 'var(--text-muted)' }}>Delta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {remainingReviewRows.slice(0, 250).map((row) => (
+                      <tr key={row.taskId} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-secondary)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.projectName}</td>
+                        <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-primary)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.taskName}>{row.taskName}</td>
+                        <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>{row.baselineHours.toFixed(1)}</td>
+                        <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>{row.actualHours.toFixed(1)}</td>
+                        <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>{row.remainingHours.toFixed(1)}</td>
+                        <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>{row.snapshotRemaining.toFixed(1)}</td>
+                        <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right', fontWeight: 700, color: row.delta > 0 ? 'var(--color-error)' : row.delta < 0 ? 'var(--color-success)' : 'var(--text-secondary)' }}>
+                          {row.delta > 0 ? '+' : ''}{row.delta.toFixed(1)}
+                        </td>
+                      </tr>
+                    ))}
+                    {remainingReviewRows.length === 0 && (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>No task rows available for remaining-hours review.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
