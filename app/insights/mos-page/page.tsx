@@ -1,7 +1,9 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { EChartsOption } from 'echarts';
+import ChartWrapper from '@/components/charts/ChartWrapper';
 import PageLoader from '@/components/ui/PageLoader';
 import { useData } from '@/lib/data-context';
 
@@ -15,6 +17,19 @@ const C = {
   red: '#EF4444',
   blue: '#3B82F6',
   teal: '#40E0D0',
+  purple: '#8B5CF6',
+  cyan: '#06B6D4',
+  grid: '#27272a',
+};
+
+const TT = {
+  backgroundColor: 'rgba(15,15,18,0.96)',
+  borderColor: C.border,
+  borderWidth: 1,
+  textStyle: { color: '#fff', fontSize: 12 },
+  extraCssText: 'z-index:99999!important;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.45);',
+  appendToBody: true,
+  confine: false,
 };
 
 const num = (v: any) => {
@@ -25,15 +40,17 @@ const num = (v: any) => {
 const fmtH = (v: number) => `${Math.round(v).toLocaleString()}h`;
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
 const fmtMoney = (v: number) => `$${Math.round(v).toLocaleString()}`;
-
 const riskColor = (score: number) => (score >= 25 ? C.red : score >= 12 ? C.amber : C.green);
 
-function SectionCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function SectionCard({ title, subtitle, children, right }: { title: string; subtitle: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <section style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ padding: '0.9rem 1rem', borderBottom: `1px solid ${C.border}` }}>
-        <h2 style={{ margin: 0, color: C.text, fontSize: '1rem', fontWeight: 800 }}>{title}</h2>
-        <p style={{ margin: '0.4rem 0 0', color: C.muted, fontSize: '0.75rem', lineHeight: 1.55 }}>{subtitle}</p>
+      <div style={{ padding: '0.9rem 1rem', borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 8, alignItems: 'start' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0, color: C.text, fontSize: '1rem', fontWeight: 800 }}>{title}</h2>
+          <p style={{ margin: '0.4rem 0 0', color: C.muted, fontSize: '0.75rem', lineHeight: 1.55 }}>{subtitle}</p>
+        </div>
+        {right}
       </div>
       <div style={{ padding: '0.9rem 1rem' }}>{children}</div>
     </section>
@@ -50,7 +67,17 @@ function StatTile({ label, value, hint }: { label: string; value: string; hint?:
   );
 }
 
-function DataTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
+function DataTable({
+  headers,
+  rows,
+  onRowClick,
+  activeRow,
+}: {
+  headers: string[];
+  rows: Array<{ key: string; cells: React.ReactNode[] }>;
+  onRowClick?: (key: string) => void;
+  activeRow?: string | null;
+}) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
@@ -62,9 +89,17 @@ function DataTable({ headers, rows }: { headers: string[]; rows: React.ReactNode
           </tr>
         </thead>
         <tbody>
-          {rows.length > 0 ? rows.map((r, i) => (
-            <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
-              {r.map((c, j) => <td key={`${i}-${j}`} style={{ padding: '0.5rem 0.35rem', color: C.text }}>{c}</td>)}
+          {rows.length > 0 ? rows.map((r) => (
+            <tr
+              key={r.key}
+              onClick={() => onRowClick?.(r.key)}
+              style={{
+                borderBottom: `1px solid ${C.border}`,
+                background: activeRow && activeRow === r.key ? 'rgba(64,224,208,0.08)' : 'transparent',
+                cursor: onRowClick ? 'pointer' : 'default',
+              }}
+            >
+              {r.cells.map((c, j) => <td key={`${r.key}-${j}`} style={{ padding: '0.5rem 0.35rem', color: C.text }}>{c}</td>)}
             </tr>
           )) : (
             <tr>
@@ -79,6 +114,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: React.ReactNode
 
 export default function MosPage() {
   const { filteredData, isLoading } = useData();
+  const [projectFocus, setProjectFocus] = useState<string>('all');
 
   const m = useMemo(() => {
     const tasks = filteredData.tasks || [];
@@ -188,25 +224,34 @@ export default function MosPage() {
       v.avgDrift = v.total > 0 ? v.driftSum / v.total : 0;
     });
 
-    const reworkHours = hours.reduce((sum: number, h: any) => {
-      const ct = String(h.chargeType || '').toUpperCase();
-      return sum + ((ct === 'CR' || ct === 'SC') ? num(h.hours) : 0);
-    }, 0);
-    const executeHours = hours.reduce((sum: number, h: any) => {
-      const ct = String(h.chargeType || '').toUpperCase();
-      return sum + (ct === 'EX' ? num(h.hours) : 0);
-    }, 0);
-    const qcHours = hours.reduce((sum: number, h: any) => {
-      const ct = String(h.chargeType || '').toUpperCase();
-      return sum + (ct === 'QC' ? num(h.hours) : 0);
-    }, 0);
+    const monthKey = (dateRaw: any) => {
+      const d = new Date(dateRaw || '');
+      if (Number.isNaN(d.getTime())) return 'Unknown';
+      return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+    };
 
-    const demandByAssignee = new Map<string, { name: string; demand: number; capacity: number }>();
+    const monthlyWork = new Map<string, { ex: number; qc: number; rework: number }>();
+    hours.forEach((h: any) => {
+      const mKey = monthKey(h.date || h.entryDate || h.createdAt);
+      if (mKey === 'Unknown') return;
+      const ct = String(h.chargeType || '').toUpperCase();
+      const row = monthlyWork.get(mKey) || { ex: 0, qc: 0, rework: 0 };
+      if (ct === 'EX') row.ex += num(h.hours);
+      if (ct === 'QC') row.qc += num(h.hours);
+      if (ct === 'CR' || ct === 'SC') row.rework += num(h.hours);
+      monthlyWork.set(mKey, row);
+    });
+
+    const reworkHours = Array.from(monthlyWork.values()).reduce((s, x) => s + x.rework, 0);
+    const executeHours = Array.from(monthlyWork.values()).reduce((s, x) => s + x.ex, 0);
+    const qcHours = Array.from(monthlyWork.values()).reduce((s, x) => s + x.qc, 0);
+
+    const demandByAssignee = new Map<string, { id: string; name: string; demand: number; capacity: number }>();
     tasks.forEach((t: any) => {
       const assigneeId = String(t.assignedResourceId || t.employeeId || t.assignedResource || 'Unassigned');
       const assigneeName = employeeName.get(assigneeId) || assigneeId;
       const rem = t.remainingHours != null ? num(t.remainingHours) : Math.max(0, num(t.baselineHours) - num(t.actualHours));
-      const cur = demandByAssignee.get(assigneeId) || { name: assigneeName, demand: 0, capacity: 160 };
+      const cur = demandByAssignee.get(assigneeId) || { id: assigneeId, name: assigneeName, demand: 0, capacity: 160 };
       cur.demand += rem;
       demandByAssignee.set(assigneeId, cur);
     });
@@ -233,14 +278,12 @@ export default function MosPage() {
       executeHours,
       qcHours,
       reworkHours,
+      monthlyWork,
     };
 
     return {
       tasks,
       projects,
-      deliverables,
-      qctasks,
-      milestones,
       projectRows,
       qcByProject,
       milestoneByProject,
@@ -250,31 +293,172 @@ export default function MosPage() {
     };
   }, [filteredData]);
 
+  useEffect(() => {
+    if (projectFocus !== 'all' && !m.projectRows.some((r: any) => r.id === projectFocus)) {
+      setProjectFocus('all');
+    }
+  }, [projectFocus, m.projectRows]);
+
   if (isLoading) return <PageLoader />;
 
-  const topProgressRows = [...m.projectRows].sort((a, b) => b.workVariance - a.workVariance).slice(0, 12);
-  const forecastRows = [...m.projectRows].map((p) => {
+  const focusedRows = projectFocus === 'all' ? m.projectRows : m.projectRows.filter((r: any) => r.id === projectFocus);
+
+  const topProgressRows = [...focusedRows].sort((a: any, b: any) => b.workVariance - a.workVariance).slice(0, 12);
+  const forecastRows = [...focusedRows].map((p: any) => {
     const mm = m.milestoneByProject.get(p.id) || { total: 0, delayed: 0, avgDrift: 0 };
     return { ...p, ...mm };
-  }).sort((a, b) => b.delayed - a.delayed || b.avgDrift - a.avgDrift).slice(0, 12);
-  const productivityRows = [...m.projectRows].sort((a, b) => b.performanceMetric - a.performanceMetric).slice(0, 12);
-  const overrunRows = [...m.projectRows].sort((a, b) => b.overrunPct - a.overrunPct).slice(0, 12);
-  const qualityRows = [...m.projectRows].map((p) => ({ ...p, ...(m.qcByProject.get(p.id) || { records: 0, critical: 0, nonCritical: 0, qcHours: 0 }) }))
-    .sort((a, b) => (b.critical + b.nonCritical) - (a.critical + a.nonCritical)).slice(0, 12);
-  const capacityRows = Array.from(m.demandByAssignee.values()).map((r) => ({ ...r, gap: r.demand - r.capacity }))
-    .sort((a, b) => b.gap - a.gap).slice(0, 12);
-  const riskRows = [...m.projectRows].sort((a, b) => b.riskScore - a.riskScore).slice(0, 15);
+  }).sort((a: any, b: any) => b.delayed - a.delayed || b.avgDrift - a.avgDrift).slice(0, 12);
+  const productivityRows = [...focusedRows].sort((a: any, b: any) => b.performanceMetric - a.performanceMetric).slice(0, 12);
+  const overrunRows = [...focusedRows].sort((a: any, b: any) => b.overrunPct - a.overrunPct).slice(0, 12);
+  const qualityRows = [...focusedRows].map((p: any) => ({ ...p, ...(m.qcByProject.get(p.id) || { records: 0, critical: 0, nonCritical: 0, qcHours: 0 }) }))
+    .sort((a: any, b: any) => (b.critical + b.nonCritical) - (a.critical + a.nonCritical)).slice(0, 12);
+  const riskRows = [...focusedRows].sort((a: any, b: any) => b.riskScore - a.riskScore).slice(0, 15);
+
+  const overviewMixOption: EChartsOption = {
+    tooltip: { ...TT, trigger: 'item' },
+    legend: { bottom: 0, textStyle: { color: C.muted, fontSize: 10 } },
+    series: [{
+      type: 'pie',
+      radius: ['45%', '72%'],
+      center: ['50%', '45%'],
+      label: { color: C.muted, fontSize: 10 },
+      data: [
+        { name: 'Execution Hours', value: m.totals.executeHours, itemStyle: { color: C.blue } },
+        { name: 'QC Hours', value: m.totals.qcHours, itemStyle: { color: C.purple } },
+        { name: 'Rework Hours', value: m.totals.reworkHours, itemStyle: { color: C.amber } },
+      ],
+    }],
+  };
+
+  const riskBarRows = [...m.projectRows].sort((a: any, b: any) => b.riskScore - a.riskScore).slice(0, 10);
+  const riskRankOption: EChartsOption = {
+    tooltip: { ...TT, trigger: 'axis' },
+    grid: { top: 16, left: 90, right: 14, bottom: 24, containLabel: true },
+    xAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: C.grid } } },
+    yAxis: { type: 'category', data: riskBarRows.map((r: any) => r.name), axisLabel: { color: C.muted, fontSize: 10 } },
+    series: [{
+      type: 'bar',
+      data: riskBarRows.map((r: any) => ({ value: Number(r.riskScore.toFixed(1)), projectId: r.id, itemStyle: { color: riskColor(r.riskScore) } })),
+    }],
+  };
+
+  const monthlyRows = Array.from(m.totals.monthlyWork.entries())
+    .sort((a, b) => new Date(`${a[0]} 1`).getTime() - new Date(`${b[0]} 1`).getTime())
+    .slice(-12);
+  const monthlyTrendOption: EChartsOption = {
+    tooltip: { ...TT, trigger: 'axis' },
+    legend: { top: 0, textStyle: { color: C.muted, fontSize: 10 } },
+    grid: { top: 30, left: 42, right: 16, bottom: 24, containLabel: true },
+    xAxis: { type: 'category', data: monthlyRows.map(([k]) => k), axisLabel: { color: C.muted, fontSize: 10 } },
+    yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: C.grid } } },
+    series: [
+      { name: 'Execution', type: 'line', data: monthlyRows.map(([, v]) => Number(v.ex.toFixed(1))), itemStyle: { color: C.blue }, smooth: true },
+      { name: 'QC', type: 'line', data: monthlyRows.map(([, v]) => Number(v.qc.toFixed(1))), itemStyle: { color: C.purple }, smooth: true },
+      { name: 'Rework', type: 'line', data: monthlyRows.map(([, v]) => Number(v.rework.toFixed(1))), itemStyle: { color: C.amber }, smooth: true },
+    ],
+  };
+
+  const capacityRows = Array.from(m.demandByAssignee.values())
+    .map((r: any) => ({ ...r, gap: r.demand - r.capacity }))
+    .sort((a: any, b: any) => b.gap - a.gap)
+    .slice(0, 12);
+
+  const capacityOption: EChartsOption = {
+    tooltip: { ...TT, trigger: 'axis' },
+    legend: { top: 0, textStyle: { color: C.muted, fontSize: 10 } },
+    grid: { top: 30, left: 78, right: 12, bottom: 22, containLabel: true },
+    xAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: C.grid } } },
+    yAxis: { type: 'category', data: capacityRows.map((r: any) => r.name), axisLabel: { color: C.muted, fontSize: 10 } },
+    series: [
+      { name: 'Demand', type: 'bar', data: capacityRows.map((r: any) => Number(r.demand.toFixed(1))), itemStyle: { color: C.red } },
+      { name: 'Capacity', type: 'bar', data: capacityRows.map((r: any) => r.capacity), itemStyle: { color: C.green } },
+    ],
+  };
+
+  const focusedProject = projectFocus === 'all'
+    ? [...m.projectRows].sort((a: any, b: any) => b.riskScore - a.riskScore)[0]
+    : m.projectRows.find((r: any) => r.id === projectFocus);
+
+  const focusedQC = focusedProject ? (m.qcByProject.get(focusedProject.id) || { records: 0, critical: 0, nonCritical: 0, qcHours: 0 }) : null;
+  const focusedMilestone = focusedProject ? (m.milestoneByProject.get(focusedProject.id) || { total: 0, delayed: 0, avgDrift: 0 }) : null;
 
   return (
     <div style={{ padding: '1.2rem 1.4rem 2rem', display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 'calc(100vh - 96px)' }}>
-      <header style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <h1 style={{ margin: 0, color: C.text, fontSize: '2rem', fontWeight: 900 }}>Mo&apos;s Page</h1>
-        <p style={{ margin: 0, color: C.muted, fontSize: '0.82rem', lineHeight: 1.6, maxWidth: 980 }}>
-          This dashboard is organized as a single executive narrative from overall readiness into schedule, forecast, productivity,
-          overrun exposure, quality effects, capacity pressure, and consolidated risk. Each section includes definitions, current-state
-          indicators, and a table designed for direct weekly operating review.
-        </p>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 980 }}>
+          <h1 style={{ margin: 0, color: C.text, fontSize: '2rem', fontWeight: 900 }}>Mo&apos;s Page</h1>
+          <p style={{ margin: 0, color: C.muted, fontSize: '0.82rem', lineHeight: 1.6 }}>
+            This dashboard combines structured executive explanations with interactive visuals and deep tables. You can focus a single project
+            from charts or tables to inspect the same sections through a project-specific lens.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ color: C.muted, fontSize: '0.7rem' }}>Project Focus</label>
+          <select
+            value={projectFocus}
+            onChange={(e) => setProjectFocus(e.target.value)}
+            style={{ background: '#101014', border: `1px solid ${C.border}`, color: C.text, borderRadius: 8, padding: '0.35rem 0.6rem', fontSize: '0.72rem' }}
+          >
+            <option value="all">All Projects</option>
+            {[...m.projectRows].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((p: any) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              const highest = [...m.projectRows].sort((a: any, b: any) => b.riskScore - a.riskScore)[0];
+              if (highest) setProjectFocus(highest.id);
+            }}
+            style={{ background: 'rgba(239,68,68,0.15)', color: C.red, border: `1px solid ${C.red}66`, borderRadius: 8, padding: '0.35rem 0.55rem', fontSize: '0.72rem', cursor: 'pointer' }}
+          >
+            Focus Highest Risk
+          </button>
+          <button
+            onClick={() => setProjectFocus('all')}
+            style={{ background: 'rgba(64,224,208,0.15)', color: C.teal, border: `1px solid ${C.teal}66`, borderRadius: 8, padding: '0.35rem 0.55rem', fontSize: '0.72rem', cursor: 'pointer' }}
+          >
+            Reset
+          </button>
+        </div>
       </header>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+        <SectionCard title="Effort Composition" subtitle="Distribution of execution, quality, and rework effort.">
+          <ChartWrapper option={overviewMixOption} height={240} />
+        </SectionCard>
+        <SectionCard title="Risk Ranking" subtitle="Current comparative risk score by project. Click a bar to focus that project.">
+          <ChartWrapper option={riskRankOption} height={240} onClick={(p) => {
+            const pid = (p.data as any)?.projectId;
+            if (pid) setProjectFocus(String(pid));
+          }} />
+        </SectionCard>
+        <SectionCard title="Monthly Work Trend" subtitle="Execution, QC, and rework history over the latest months.">
+          <ChartWrapper option={monthlyTrendOption} height={240} />
+        </SectionCard>
+      </div>
+
+      <SectionCard
+        title="Focused Detail"
+        subtitle="A concise project-level profile that updates with current focus and allows quick interpretation before diving into section tables."
+        right={focusedProject ? <span style={{ color: riskColor(focusedProject.riskScore), fontWeight: 800, fontSize: '0.78rem' }}>{focusedProject.name}</span> : null}
+      >
+        {focusedProject ? (
+          <div style={{ display: 'grid', gap: '0.6rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <StatTile label="Owner" value={focusedProject.owner} />
+            <StatTile label="Work Variance" value={fmtH(focusedProject.workVariance)} />
+            <StatTile label="Cost Variance" value={fmtMoney(focusedProject.costVariance)} />
+            <StatTile label="Overrun" value={fmtPct(focusedProject.overrunPct)} />
+            <StatTile label="Risk Score" value={focusedProject.riskScore.toFixed(1)} />
+            <StatTile label="Performance Metric" value={focusedProject.performanceMetric.toFixed(2)} hint="Actual hours per completed task" />
+            <StatTile label="QC Records" value={String(focusedQC?.records || 0)} />
+            <StatTile label="QC Critical" value={String(focusedQC?.critical || 0)} />
+            <StatTile label="Milestones" value={String(focusedMilestone?.total || 0)} />
+            <StatTile label="Delayed Milestones" value={String(focusedMilestone?.delayed || 0)} />
+            <StatTile label="Avg Milestone Drift" value={`${(focusedMilestone?.avgDrift || 0).toFixed(1)}d`} />
+            <StatTile label="Task Completion" value={`${focusedProject.completeCount}/${focusedProject.taskCount}`} />
+          </div>
+        ) : <div style={{ color: C.muted, fontSize: '0.75rem' }}>No project-level data under current filters.</div>}
+      </SectionCard>
 
       <SectionCard
         title="Executive-Level Questions: Overall Health & Predictability"
@@ -301,18 +485,23 @@ export default function MosPage() {
           <StatTile label="Baseline Work" value={fmtH(m.totals.baselineHours)} />
           <StatTile label="Current Work (Actual + Remaining)" value={fmtH(m.totals.actualHours + m.totals.remainingHours)} />
           <StatTile label="Added / Reduced Work" value={fmtH((m.totals.actualHours + m.totals.remainingHours) - m.totals.baselineHours)} />
-          <StatTile label="Completion (Tasks)" value={fmtPct(m.tasks.length > 0 ? (m.projectRows.reduce((s, r) => s + r.completeCount, 0) / m.tasks.length) * 100 : 0)} />
+          <StatTile label="Completion (Tasks)" value={fmtPct(m.tasks.length > 0 ? (focusedRows.reduce((s: number, r: any) => s + r.completeCount, 0) / Math.max(1, focusedRows.reduce((s: number, r: any) => s + r.taskCount, 0))) * 100 : 0)} />
         </div>
         <DataTable
           headers={["Project", "Owner", "Baseline", "Current Work", "Work Variance", "Overrun %"]}
-          rows={topProgressRows.map((r) => [
-            r.name,
-            r.owner,
-            fmtH(r.baselineHours),
-            fmtH(r.work),
-            <span key="wv" style={{ color: r.workVariance > 0 ? C.red : r.workVariance < 0 ? C.green : C.muted }}>{fmtH(r.workVariance)}</span>,
-            <span key="ov" style={{ color: r.overrunPct > 10 ? C.red : r.overrunPct > 0 ? C.amber : C.green }}>{fmtPct(r.overrunPct)}</span>,
-          ])}
+          activeRow={projectFocus === 'all' ? null : projectFocus}
+          onRowClick={(id) => setProjectFocus((prev) => prev === id ? 'all' : id)}
+          rows={topProgressRows.map((r: any) => ({
+            key: r.id,
+            cells: [
+              r.name,
+              r.owner,
+              fmtH(r.baselineHours),
+              fmtH(r.work),
+              <span key="wv" style={{ color: r.workVariance > 0 ? C.red : r.workVariance < 0 ? C.green : C.muted }}>{fmtH(r.workVariance)}</span>,
+              <span key="ov" style={{ color: r.overrunPct > 10 ? C.red : r.overrunPct > 0 ? C.amber : C.green }}>{fmtPct(r.overrunPct)}</span>,
+            ],
+          }))}
         />
       </SectionCard>
 
@@ -322,7 +511,9 @@ export default function MosPage() {
       >
         <DataTable
           headers={["Project", "Owner", "Milestones", "Delayed", "Avg Drift (days)", "Interpretation"]}
-          rows={forecastRows.map((r) => {
+          activeRow={projectFocus === 'all' ? null : projectFocus}
+          onRowClick={(id) => setProjectFocus((prev) => prev === id ? 'all' : id)}
+          rows={forecastRows.map((r: any) => {
             const note = r.total === 0
               ? 'No milestone set; forecast confidence cannot be assessed.'
               : r.delayed === 0
@@ -330,14 +521,17 @@ export default function MosPage() {
                 : r.avgDrift > 7
                   ? 'Frequent and material schedule movement; forecasting discipline needs tightening.'
                   : 'Delays exist but are currently moderate.';
-            return [
-              r.name,
-              r.owner,
-              String(r.total),
-              <span key="d" style={{ color: r.delayed > 0 ? C.amber : C.green }}>{String(r.delayed)}</span>,
-              <span key="a" style={{ color: r.avgDrift > 7 ? C.red : r.avgDrift > 0 ? C.amber : C.green }}>{r.avgDrift.toFixed(1)}</span>,
-              note,
-            ];
+            return {
+              key: r.id,
+              cells: [
+                r.name,
+                r.owner,
+                String(r.total),
+                <span key="d" style={{ color: r.delayed > 0 ? C.amber : C.green }}>{String(r.delayed)}</span>,
+                <span key="a" style={{ color: r.avgDrift > 7 ? C.red : r.avgDrift > 0 ? C.amber : C.green }}>{r.avgDrift.toFixed(1)}</span>,
+                note,
+              ],
+            };
           })}
         />
       </SectionCard>
@@ -354,24 +548,29 @@ export default function MosPage() {
         </div>
         <DataTable
           headers={["Project", "Owner", "Actual Hours", "Completed Tasks", "Performance Metric", "Efficiency Reading"]}
-          rows={productivityRows.map((r) => [
-            r.name,
-            r.owner,
-            fmtH(r.actualHours),
-            String(r.completeCount),
-            <span key="pm" style={{ color: r.performanceMetric > 80 ? C.red : r.performanceMetric > 40 ? C.amber : C.green }}>{r.performanceMetric.toFixed(2)}</span>,
-            r.performanceMetric > 80
-              ? 'High effort per completed unit.'
-              : r.performanceMetric > 40
-                ? 'Moderate conversion efficiency.'
-                : 'Stronger conversion efficiency.',
-          ])}
+          activeRow={projectFocus === 'all' ? null : projectFocus}
+          onRowClick={(id) => setProjectFocus((prev) => prev === id ? 'all' : id)}
+          rows={productivityRows.map((r: any) => ({
+            key: r.id,
+            cells: [
+              r.name,
+              r.owner,
+              fmtH(r.actualHours),
+              String(r.completeCount),
+              <span key="pm" style={{ color: r.performanceMetric > 80 ? C.red : r.performanceMetric > 40 ? C.amber : C.green }}>{r.performanceMetric.toFixed(2)}</span>,
+              r.performanceMetric > 80
+                ? 'High effort per completed unit.'
+                : r.performanceMetric > 40
+                  ? 'Moderate conversion efficiency.'
+                  : 'Stronger conversion efficiency.',
+            ],
+          }))}
         />
       </SectionCard>
 
       <SectionCard
         title="4. Cost and Hours Overrun Risk"
-        subtitle="This section compares projected final consumption to original baseline for both hours and cost. It highlights where expansion in scope/effort is likely to pressure financial outcomes."
+        subtitle="This section compares projected final consumption to original baseline for both hours and cost. It highlights where expansion in scope or effort is likely to pressure financial outcomes."
       >
         <div style={{ display: 'grid', gap: '0.6rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginBottom: '0.8rem' }}>
           <StatTile label="Baseline Cost" value={fmtMoney(m.totals.baselineCost)} />
@@ -381,14 +580,19 @@ export default function MosPage() {
         </div>
         <DataTable
           headers={["Project", "Owner", "Overrun %", "Cost Variance", "Risk Score", "Trend"]}
-          rows={overrunRows.map((r) => [
-            r.name,
-            r.owner,
-            <span key="op" style={{ color: r.overrunPct > 15 ? C.red : r.overrunPct > 5 ? C.amber : C.green }}>{fmtPct(r.overrunPct)}</span>,
-            <span key="cv" style={{ color: r.costVariance > 0 ? C.red : C.green }}>{fmtMoney(r.costVariance)}</span>,
-            <span key="rs" style={{ color: riskColor(r.riskScore), fontWeight: 700 }}>{r.riskScore.toFixed(1)}</span>,
-            r.overrunPct > 15 ? 'Exposure is elevated and compounding risk is likely.' : r.overrunPct > 5 ? 'Watchlist; corrective pressure should continue.' : 'Currently stable vs baseline.',
-          ])}
+          activeRow={projectFocus === 'all' ? null : projectFocus}
+          onRowClick={(id) => setProjectFocus((prev) => prev === id ? 'all' : id)}
+          rows={overrunRows.map((r: any) => ({
+            key: r.id,
+            cells: [
+              r.name,
+              r.owner,
+              <span key="op" style={{ color: r.overrunPct > 15 ? C.red : r.overrunPct > 5 ? C.amber : C.green }}>{fmtPct(r.overrunPct)}</span>,
+              <span key="cv" style={{ color: r.costVariance > 0 ? C.red : C.green }}>{fmtMoney(r.costVariance)}</span>,
+              <span key="rs" style={{ color: riskColor(r.riskScore), fontWeight: 700 }}>{r.riskScore.toFixed(1)}</span>,
+              r.overrunPct > 15 ? 'Exposure is elevated and compounding risk is likely.' : r.overrunPct > 5 ? 'Watchlist; corrective pressure should continue.' : 'Currently stable vs baseline.',
+            ],
+          }))}
         />
       </SectionCard>
 
@@ -398,21 +602,26 @@ export default function MosPage() {
       >
         <DataTable
           headers={["Project", "QC Records", "Critical", "Non-Critical", "QC Hours", "Quality Interpretation"]}
-          rows={qualityRows.map((r) => {
+          activeRow={projectFocus === 'all' ? null : projectFocus}
+          onRowClick={(id) => setProjectFocus((prev) => prev === id ? 'all' : id)}
+          rows={qualityRows.map((r: any) => {
             const issueCount = r.critical + r.nonCritical;
             const note = issueCount === 0
               ? 'No recorded QC issue load in current filter scope.'
               : r.critical > 0
                 ? 'Critical defects present; quality risk materially affects delivery confidence.'
                 : 'Issues are present but currently non-critical.';
-            return [
-              r.name,
-              String(r.records || 0),
-              <span key="c" style={{ color: r.critical > 0 ? C.red : C.green }}>{String(r.critical || 0)}</span>,
-              String(r.nonCritical || 0),
-              fmtH(r.qcHours || 0),
-              note,
-            ];
+            return {
+              key: r.id,
+              cells: [
+                r.name,
+                String(r.records || 0),
+                <span key="c" style={{ color: r.critical > 0 ? C.red : C.green }}>{String(r.critical || 0)}</span>,
+                String(r.nonCritical || 0),
+                fmtH(r.qcHours || 0),
+                note,
+              ],
+            };
           })}
         />
       </SectionCard>
@@ -421,16 +630,26 @@ export default function MosPage() {
         title="6. Resource Capacity vs Demand"
         subtitle="Capacity vs demand compares remaining assigned effort against an assumed monthly capacity baseline. Positive gap indicates overload pressure; negative gap indicates available room."
       >
-        <DataTable
-          headers={["Resource", "Demand", "Capacity", "Gap", "Capacity State"]}
-          rows={capacityRows.map((r) => [
-            r.name,
-            fmtH(r.demand),
-            fmtH(r.capacity),
-            <span key="gap" style={{ color: r.gap > 0 ? C.red : C.green }}>{fmtH(r.gap)}</span>,
-            r.gap > 40 ? 'Significant overload.' : r.gap > 0 ? 'Moderate overload.' : 'Within available capacity.',
-          ])}
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: '0.9rem' }}>
+          <div>
+            <DataTable
+              headers={["Resource", "Demand", "Capacity", "Gap", "Capacity State"]}
+              rows={capacityRows.map((r: any) => ({
+                key: r.id,
+                cells: [
+                  r.name,
+                  fmtH(r.demand),
+                  fmtH(r.capacity),
+                  <span key="gap" style={{ color: r.gap > 0 ? C.red : C.green }}>{fmtH(r.gap)}</span>,
+                  r.gap > 40 ? 'Significant overload.' : r.gap > 0 ? 'Moderate overload.' : 'Within available capacity.',
+                ],
+              }))}
+            />
+          </div>
+          <div style={{ minHeight: 320 }}>
+            <ChartWrapper option={capacityOption} height={320} />
+          </div>
+        </div>
       </SectionCard>
 
       <SectionCard
@@ -439,18 +658,23 @@ export default function MosPage() {
       >
         <DataTable
           headers={["Project", "Owner", "Risk Score", "Critical Tasks", "At-Risk Tasks", "Executive Summary"]}
-          rows={riskRows.map((r) => [
-            r.name,
-            r.owner,
-            <span key="r" style={{ color: riskColor(r.riskScore), fontWeight: 700 }}>{r.riskScore.toFixed(1)}</span>,
-            String(r.criticalCount),
-            String(r.riskTagged),
-            r.riskScore >= 25
-              ? 'High volatility profile; requires immediate schedule-cost containment plan.'
-              : r.riskScore >= 12
-                ? 'Material but manageable exposure; maintain active mitigation cadence.'
-                : 'Lower relative risk in current view.',
-          ])}
+          activeRow={projectFocus === 'all' ? null : projectFocus}
+          onRowClick={(id) => setProjectFocus((prev) => prev === id ? 'all' : id)}
+          rows={riskRows.map((r: any) => ({
+            key: r.id,
+            cells: [
+              r.name,
+              r.owner,
+              <span key="r" style={{ color: riskColor(r.riskScore), fontWeight: 700 }}>{r.riskScore.toFixed(1)}</span>,
+              String(r.criticalCount),
+              String(r.riskTagged),
+              r.riskScore >= 25
+                ? 'High volatility profile; requires immediate schedule-cost containment plan.'
+                : r.riskScore >= 12
+                  ? 'Material but manageable exposure; maintain active mitigation cadence.'
+                  : 'Lower relative risk in current view.',
+            ],
+          }))}
         />
       </SectionCard>
     </div>

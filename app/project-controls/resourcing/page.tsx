@@ -847,12 +847,31 @@ function ResourcingPageContent() {
 
       // Determine employee(s) — split comma-separated resource lists
       const eid = t.employeeId || t.employee_id || '';
+      const assignedType = String(t.assignedResourceType || t.assigned_resource_type || '').toLowerCase();
       const rawAssigned = (t.assignedTo || t.resource || t.assignedResource || '').trim();
 
       // Split into individual resource names (handle comma, semicolon, " and " separators)
       const resourceNames: string[] = rawAssigned
         ? rawAssigned.split(/[,;]|\band\b/i).map((s: string) => s.trim()).filter((s: string) => s.length > 0)
         : [];
+
+      // Generic role assignments from project plans should populate By Role directly.
+      if (assignedType === 'generic' && resourceNames.length > 0) {
+        const hrsPerRole = hrsPerWeek / resourceNames.length;
+        resourceNames.forEach((roleName) => {
+          const role = roleName || 'Unassigned';
+          if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
+          const roleMap = roleWeekHours.get(role)!;
+
+          displayWeeks.forEach((w, wi) => {
+            const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
+            if (sMs < wEnd && eMs >= w.start) {
+              roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerRole);
+            }
+          });
+        });
+        return;
+      }
 
       // If we have an employeeId, use that as primary
       if (eid && empIdToRole.get(eid)) {
@@ -863,7 +882,7 @@ function ResourcingPageContent() {
           resourceNames.forEach(rn => {
             const rnLower = rn.toLowerCase();
             if (rnLower === (empIdToName.get(eid) || '').toLowerCase()) return; // skip the primary
-            const rnRole = empNameToRole.get(rnLower) || 'Unassigned';
+            const rnRole = empNameToRole.get(rnLower) || rn || 'Unassigned';
             individuals.push({ eid: rn, name: rn, role: rnRole });
           });
         }
@@ -899,7 +918,7 @@ function ResourcingPageContent() {
 
         resourceNames.forEach(rn => {
           const rnLower = rn.toLowerCase();
-          let role = empNameToRole.get(rnLower) || 'Unassigned';
+          let role = empNameToRole.get(rnLower) || rn || 'Unassigned';
           if (!role || role === 'N/A') role = 'Unassigned';
 
           // By role — individual role per person
@@ -1028,6 +1047,7 @@ function ResourcingPageContent() {
   const allHeatmapRoles = useMemo(() => {
     if (!heatmapSharedData) return [];
     const roles = new Set<string>();
+    heatmapSharedData.roleWeekHours.forEach((_wm, role) => { if (role) roles.add(role); });
     heatmapSharedData.empRoleMap.forEach(r => { if (r) roles.add(r); });
     heatmapSharedData.empIdToRole.forEach(r => { if (r) roles.add(r); });
     data.employees.forEach((e: any) => {
