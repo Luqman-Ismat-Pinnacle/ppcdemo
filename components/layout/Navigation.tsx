@@ -48,6 +48,7 @@ const navigation: NavDropdown[] = [
     items: [
       { label: 'Overview', href: '/insights/overview' },
       { label: 'Tasks', href: '/insights/tasks' },
+      { label: "Mo's Page", href: '/insights/mos-page' },
       { divider: true },
       { label: 'Documents', href: '/insights/documents' },
     ],

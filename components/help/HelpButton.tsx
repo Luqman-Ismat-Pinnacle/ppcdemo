@@ -36,6 +36,7 @@ const ROUTE_TO_HELP_ID: Record<string, string> = {
   '/login': 'login',
   '/insights/overview-v2': 'overview',
   '/insights/tasks': 'tasks',
+  '/insights/mos-page': 'overview',
   '/insights/overview': 'overview',
   '/insights/hours': 'hours',
   '/insights/milestones': 'milestones',
