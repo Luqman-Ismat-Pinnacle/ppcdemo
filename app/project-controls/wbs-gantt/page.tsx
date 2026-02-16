@@ -499,9 +499,9 @@ export default function WBSGanttPage() {
   }, [sortedWbsItems, wbsSearchQuery]);
 
   const inferItemType = useCallback((item: any): string => {
-    const explicit = String(item?.itemType || item?.type || '').toLowerCase();
-    if (explicit) return explicit;
     const id = String(item?.id || '').toLowerCase();
+    // For WBS rows, ID is the source of truth. This prevents stale/mis-labeled
+    // itemType values from rendering units/phases as tasks.
     if (id.startsWith('wbs-unit-')) return 'unit';
     if (id.startsWith('wbs-phase-')) return 'phase';
     if (id.startsWith('wbs-project-')) return 'project';
@@ -510,6 +510,8 @@ export default function WBSGanttPage() {
     if (id.startsWith('wbs-portfolio-')) return 'portfolio';
     if (id.startsWith('wbs-task-')) return 'task';
     if (id.startsWith('wbs-sub_task-')) return 'sub_task';
+    const explicit = String(item?.itemType || item?.type || '').toLowerCase();
+    if (explicit) return explicit;
     return 'task';
   }, []);
 
@@ -541,7 +543,7 @@ export default function WBSGanttPage() {
       list.push({
         parentId, level,
         row: {
-          ...item, percentComplete, itemType, level,
+          ...item, percentComplete, itemType, type: itemType, level,
           indentLevel: level - 1, hasChildren,
           isExpanded: expandedIds.has(id), rowIndex: 0, isVisible: true,
           worstCaseStatus: worstCase,
