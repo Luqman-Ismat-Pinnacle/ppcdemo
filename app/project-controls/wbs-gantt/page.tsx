@@ -779,127 +779,145 @@ export default function WBSGanttPage() {
 
   // ── Draw Dependency Arrows (SVG) ───────────────────────────────
   useEffect(() => {
-    if (!showDependencies) return;
-    const draw = () => {
-      const svg = svgRef.current;
-      if (!svg || !flatRows.length || !dateColumns.length) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    if (!showDependencies || !flatRows.length || !dateColumns.length) {
+      Array.from(svg.children).forEach(ch => { if (ch.nodeName !== 'defs') svg.removeChild(ch); });
+      return;
+    }
+
+    const raf = requestAnimationFrame(() => {
       const tlStart = dateColumns[0].start.getTime();
       const tlEnd = dateColumns[dateColumns.length - 1].end.getTime();
-      const tlDur = tlEnd - tlStart;
+      const tlDur = Math.max(1, tlEnd - tlStart);
       const tlPx = dateColumns.length * columnWidth;
 
       const isTaskRow = (row: any) => {
-        const itemType = (row?.itemType || row?.type || '').toString().toLowerCase();
+        const itemType = String(row?.itemType || row?.type || '').toLowerCase();
         return itemType === 'task' || itemType === 'sub_task' || /^wbs-(task|sub_task)-/.test(String(row?.id || ''));
       };
-      const toDate = (value: any): Date | null => {
-        if (!value) return null;
-        const d = new Date(value);
+      const parseDate = (v: any): Date | null => {
+        if (!v) return null;
+        const d = new Date(v);
         return Number.isFinite(d.getTime()) ? d : null;
       };
-      const dateToX = (date: Date) => {
-        const clamped = Math.min(Math.max(date.getTime(), tlStart), tlEnd);
-        return fixedColsWidth + ((clamped - tlStart) / tlDur) * tlPx;
+      const dateToX = (d: Date) => {
+        const t = Math.min(Math.max(d.getTime(), tlStart), tlEnd);
+        return fixedColsWidth + ((t - tlStart) / tlDur) * tlPx;
+      };
+      const normalizeId = (id: any) => String(id || '').trim().replace(/^wbs-(task|sub_task)-/, '');
+      const barCenterY = (row: any, idx: number) => {
+        const isMilestone = Boolean(row?.is_milestone || row?.isMilestone);
+        const centerOffset = isMilestone ? 14 : 12; // Matches bar top/height in row renderer
+        return headerHeight + idx * rowHeight + centerOffset;
+      };
+      const barWindow = (row: any, baseline: boolean) => {
+        const rawStart = baseline ? ((row as any).baselineStart || (row as any).baselineStartDate) : (row.startDate || (row as any).baselineStartDate);
+        const rawEnd = baseline ? ((row as any).baselineEnd || (row as any).baselineEndDate) : (row.endDate || (row as any).baselineEndDate || row.startDate);
+        const s = parseDate(rawStart);
+        const e = parseDate(rawEnd) || s;
+        if (!s || !e) return null;
+        const startDate = s.getTime() <= e.getTime() ? s : e;
+        const endDate = e.getTime() >= s.getTime() ? e : s;
+        return { startDate, endDate, xStart: dateToX(startDate), xEnd: dateToX(endDate) };
+      };
+      const relationType = (v: any): 'FS' | 'SS' | 'FF' | 'SF' => {
+        const rel = String(v || 'FS').toUpperCase();
+        return rel === 'SS' || rel === 'FF' || rel === 'SF' ? rel : 'FS';
+      };
+      const relationDelayed = (rel: 'FS' | 'SS' | 'FF' | 'SF', src: { startDate: Date; endDate: Date }, tgt: { startDate: Date; endDate: Date }) => {
+        if (rel === 'SS') return src.startDate > tgt.startDate;
+        if (rel === 'FF') return src.endDate > tgt.endDate;
+        if (rel === 'SF') return src.startDate > tgt.endDate;
+        return src.endDate > tgt.startDate; // FS
+      };
+      const anchorX = (rel: 'FS' | 'SS' | 'FF' | 'SF', isSource: boolean, win: { xStart: number; xEnd: number }) => {
+        if (rel === 'SS') return win.xStart;
+        if (rel === 'FF') return win.xEnd;
+        if (rel === 'SF') return isSource ? win.xStart : win.xEnd;
+        return isSource ? win.xEnd : win.xStart; // FS
+      };
+      const routePath = (sx: number, sy: number, tx: number, ty: number) => {
+        const dir = tx >= sx ? 1 : -1;
+        const elbow = Math.max(16, Math.min(72, Math.abs(tx - sx) * 0.35));
+        const mx = sx + dir * elbow;
+        return `M${sx},${sy} L${mx},${sy} L${mx},${ty} L${tx},${ty}`;
       };
 
-      // Build task-only lookup maps so dependency lines never bind to phase/unit rows.
-      const rowMapById = new Map<string, number>();
-      flatRows.forEach((r, i) => {
-        if (!isTaskRow(r)) return;
-        rowMapById.set(r.id, i);
-        // Also index by the raw ID without WBS task prefix.
-        const rawId = r.id.replace(/^wbs-(task|sub_task)-/, '');
-        if (rawId !== r.id) rowMapById.set(rawId, i);
-        // Also by taskId if present
-        if ((r as any).taskId) rowMapById.set((r as any).taskId, i);
+      const rowIndexByTaskId = new Map<string, number>();
+      flatRows.forEach((row, idx) => {
+        if (!isTaskRow(row)) return;
+        const rid = normalizeId(row.id);
+        const tid = normalizeId((row as any).taskId);
+        if (rid && !rowIndexByTaskId.has(rid)) rowIndexByTaskId.set(rid, idx);
+        if (tid && !rowIndexByTaskId.has(tid)) rowIndexByTaskId.set(tid, idx);
       });
 
-      // Clear non-defs children
       Array.from(svg.children).forEach(ch => { if (ch.nodeName !== 'defs') svg.removeChild(ch); });
       svg.style.width = `${fixedColsWidth + tlPx}px`;
       svg.style.height = `${headerHeight + totalRowsHeight}px`;
 
-      // Debug: log how many rows have predecessors
-      const withPreds = flatRows.filter(r => r.predecessors?.length);
-      if (typeof window !== 'undefined') {
-        console.log(`[Gantt Arrows] ${flatRows.length} rows, ${withPreds.length} with predecessors, ${rowMapById.size} in rowMap`);
-        if (withPreds.length > 0) {
-          console.log(`[Gantt Arrows] Sample predecessor:`, withPreds[0].id, withPreds[0].predecessors?.[0]);
-        }
-      }
+      flatRows.forEach((targetRow, targetIdx) => {
+        if (!isTaskRow(targetRow)) return;
+        const preds = Array.isArray((targetRow as any).predecessors) ? (targetRow as any).predecessors : [];
+        if (!preds.length) return;
 
-      flatRows.forEach((item, idx) => {
-        if (!isTaskRow(item) || !item.predecessors?.length) return;
-        const itemStart = toDate(item.startDate);
-        const itemEnd = toDate(item.endDate) || itemStart;
-        if (!itemStart) return;
-        const ty = headerHeight + idx * rowHeight + rowHeight / 2;
-        const txStart = dateToX(itemStart);
-        const txEnd = itemEnd ? dateToX(itemEnd) : txStart;
+        const targetCurrent = barWindow(targetRow, false);
+        if (!targetCurrent) return;
+        const targetBaseline = showBaseline ? barWindow(targetRow, true) : null;
+        const ty = barCenterY(targetRow, targetIdx);
 
-        item.predecessors.forEach((pred: any) => {
-          // Resolve predecessor row — try predecessorTaskId (from MPP), then taskId (legacy), then with wbs prefix
-          const predId = String(pred.predecessorTaskId || pred.taskId || '');
-          let si = rowMapById.get(predId);
-          if (si === undefined) si = rowMapById.get(`wbs-task-${predId}`);
-          if (si === undefined) return;
-          const src = flatRows[si];
-          if (!isTaskRow(src)) return;
-          const srcStart = toDate(src.startDate) || toDate(src.endDate);
-          const srcEnd = toDate(src.endDate) || srcStart;
-          if (!srcStart) return;
+        preds.forEach((pred: any) => {
+          const predecessorTaskId = normalizeId(pred?.predecessorTaskId || pred?.predecessor_task_id);
+          if (!predecessorTaskId) return;
+          const sourceIdx = rowIndexByTaskId.get(predecessorTaskId);
+          if (sourceIdx === undefined) return;
+          const sourceRow = flatRows[sourceIdx];
+          if (!isTaskRow(sourceRow)) return;
+          const sy = barCenterY(sourceRow, sourceIdx);
+          const sourceCurrent = barWindow(sourceRow, false);
+          if (!sourceCurrent) return;
+          const sourceBaseline = showBaseline ? barWindow(sourceRow, true) : null;
 
-          const relationship = (pred.relationship || 'FS').toUpperCase();
-          const sy = headerHeight + si * rowHeight + rowHeight / 2;
+          const rel = relationType(pred?.relationship || pred?.relationshipType || pred?.relationship_type);
+          const sx = anchorX(rel, true, sourceCurrent);
+          const tx = anchorX(rel, false, targetCurrent);
+          const delayed = relationDelayed(rel, sourceCurrent, targetCurrent);
+          const critical = Boolean((targetRow as any).isCritical || (targetRow as any).is_critical);
 
-          // Determine start/end x based on relationship type
-          let fromX: number, toX: number;
-          if (relationship === 'SS') {
-            // Start-to-Start: from predecessor start to successor start
-            fromX = dateToX(srcStart);
-            toX = txStart;
-          } else if (relationship === 'FF') {
-            // Finish-to-Finish: from predecessor end to successor end
-            fromX = dateToX(srcEnd || srcStart);
-            toX = txEnd;
-          } else if (relationship === 'SF') {
-            // Start-to-Finish: from predecessor start to successor end
-            fromX = dateToX(srcStart);
-            toX = txEnd;
-          } else {
-            // FS (Finish-to-Start) — default
-            fromX = dateToX(srcEnd || srcStart);
-            toX = txStart;
-          }
-
-          const cp = Math.max(Math.abs(toX - fromX) * 0.5, 20);
-          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          path.setAttribute('d', `M${fromX},${sy} C${fromX + cp},${sy} ${toX - cp},${ty} ${toX},${ty}`);
-
-          const crit = item.isCritical || (item as any).is_critical;
-          const delay = srcEnd && itemStart && srcEnd > itemStart;
-          if (crit && (item.totalFloat === 0 || item.totalFloat === undefined)) {
-            path.setAttribute('stroke', '#EF4444'); path.setAttribute('stroke-width', '2');
-          } else if (delay) {
-            path.setAttribute('stroke', '#EF4444'); path.setAttribute('stroke-width', '1.5'); path.setAttribute('stroke-dasharray', '4,2');
-          } else {
-            path.setAttribute('stroke', '#40E0D0'); path.setAttribute('stroke-width', '1.5');
-          }
-          path.setAttribute('fill', 'none');
-          path.setAttribute('marker-end', crit ? 'url(#arrowhead-red)' : delay ? 'url(#arrowhead-red)' : 'url(#arrowhead-teal)');
-          path.setAttribute('opacity', '0.7');
-
-          // Add relationship label on hover
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          line.setAttribute('d', routePath(sx, sy, tx, ty));
+          line.setAttribute('fill', 'none');
+          line.setAttribute('stroke', critical || delayed ? '#EF4444' : '#40E0D0');
+          line.setAttribute('stroke-width', critical ? '2' : '1.5');
+          if (!critical && delayed) line.setAttribute('stroke-dasharray', '4,2');
+          line.setAttribute('marker-end', critical || delayed ? 'url(#arrowhead-red)' : 'url(#arrowhead-teal)');
+          line.setAttribute('opacity', '0.9');
           const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-          title.textContent = `${src.name || predId} → ${item.name || ''} (${relationship}${pred.lagDays ? `, lag: ${pred.lagDays}d` : ''})`;
-          path.appendChild(title);
+          title.textContent = `${sourceRow.name || predecessorTaskId} -> ${targetRow.name || ''} (${rel}${pred?.lagDays ? `, lag: ${pred.lagDays}d` : ''})`;
+          line.appendChild(title);
+          svg.appendChild(line);
 
-          svg.appendChild(path);
+          // Baseline connector overlay
+          if (showBaseline && sourceBaseline && targetBaseline) {
+            const bsx = anchorX(rel, true, sourceBaseline);
+            const btx = anchorX(rel, false, targetBaseline);
+            const baseLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            baseLine.setAttribute('d', routePath(bsx, sy, btx, ty));
+            baseLine.setAttribute('fill', 'none');
+            baseLine.setAttribute('stroke', '#94A3B8');
+            baseLine.setAttribute('stroke-width', '1');
+            baseLine.setAttribute('stroke-dasharray', '3,3');
+            baseLine.setAttribute('opacity', '0.75');
+            svg.appendChild(baseLine);
+          }
         });
       });
-    };
-    requestAnimationFrame(draw);
-  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight]);
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight, showBaseline]);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -1357,7 +1375,7 @@ export default function WBSGanttPage() {
                       <td className="number" style={{ ...TD_FONT, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     )}
                     <td className="number" style={{ ...TD_FONT, color: getProgressColor(progress), fontWeight: 700 }}>{`${Math.round(progress)}%`}</td>
-                    <td style={{ fontSize: '0.5rem' }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.taskId)).join(', ')}>{row.predecessors?.length ? `${row.predecessors.length} dep` : '-'}</td>
+                    <td style={{ fontSize: '0.5rem' }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.predecessorTaskId || p.predecessor_task_id)).join(', ')}>{row.predecessors?.length ? `${row.predecessors.length} dep` : '-'}</td>
                     <td className="number" style={{ ...TD_FONT, color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>{row.totalFloat != null ? row.totalFloat : '-'}</td>
                     <td style={{ textAlign: 'center', borderRight: '1px solid #444' }}>{isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.6rem' }}>CP</span>}</td>
 

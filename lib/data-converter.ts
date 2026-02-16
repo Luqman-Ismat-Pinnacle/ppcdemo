@@ -679,6 +679,50 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
   });
 
+  // Pass 3: Normalize predecessor links to task IDs present in this import.
+  const normalizeTaskId = (value: any) => String(value || '').trim().replace(/^wbs-(task|sub_task)-/, '');
+  const taskIdSet = new Set(tasks.map((t: any) => normalizeTaskId(t.id || t.taskId)));
+  const taskIdByName = new Map<string, string>();
+  tasks.forEach((t: any) => {
+    const id = normalizeTaskId(t.id || t.taskId);
+    const nameKey = String(t.name || t.taskName || '').trim().toLowerCase();
+    if (id && nameKey && !taskIdByName.has(nameKey)) taskIdByName.set(nameKey, id);
+  });
+  const resolveTaskId = (candidateId: any, candidateName: any): string | null => {
+    const raw = normalizeTaskId(candidateId);
+    if (raw && taskIdSet.has(raw)) return raw;
+    const idWithoutPrefix = raw.replace(/^task-/, '');
+    if (idWithoutPrefix && taskIdSet.has(idWithoutPrefix)) return idWithoutPrefix;
+    const idWithPrefix = raw && !raw.startsWith('task-') ? `task-${raw}` : '';
+    if (idWithPrefix && taskIdSet.has(idWithPrefix)) return idWithPrefix;
+    const nameKey = String(candidateName || '').trim().toLowerCase();
+    if (nameKey && taskIdByName.has(nameKey)) return taskIdByName.get(nameKey)!;
+    return null;
+  };
+
+  tasks.forEach((task: any) => {
+    const preds = Array.isArray(task.predecessors) ? task.predecessors : [];
+    const normalizedPreds = preds
+      .map((p: any) => {
+        const resolvedId = resolveTaskId(p.predecessorTaskId || p.predecessor_task_id, p.predecessorName || p.predecessor_name);
+        if (!resolvedId) return null;
+        const rel = String(p.relationship || p.relationshipType || p.relationship_type || 'FS').toUpperCase();
+        return {
+          ...p,
+          predecessorTaskId: resolvedId,
+          predecessorName: String(p.predecessorName || p.predecessor_name || ''),
+          relationship: rel === 'SS' || rel === 'FF' || rel === 'SF' ? rel : 'FS',
+          lagDays: Number(p.lagDays || p.lag_days || p.lag || 0) || 0,
+        };
+      })
+      .filter(Boolean);
+
+    task.predecessors = normalizedPreds;
+    const firstPred = normalizedPreds[0] as any;
+    task.predecessorId = firstPred?.predecessorTaskId || null;
+    task.predecessorRelationship = firstPred?.relationship || null;
+  });
+
   result.phases = phases;
   result.units = units;
   result.tasks = tasks;
