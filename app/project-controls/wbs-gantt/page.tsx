@@ -67,21 +67,19 @@ const COL = {
   SPARKLINE: 70,
   START: 82,
   END: 82,
-  DAYS: 48,
-  BL_HRS: 56,
-  ACT_HRS: 56,
-  REM_HRS: 50,
-  BL_COST: 65,
-  ACT_COST: 65,
-  REM_COST: 68,   // fits "Rem Cost" header
-  WORK: 62,
-  SCHED_COST: 78,
-  WORK_VAR: 70,
-  COST_VAR: 72,
-  PERF_METRIC: 72,
-  EFF: 48,        // fits "Eff%" header
-  PROG: 50,
-  PRED: 70,
+  DAYS: 52,
+  BL_HRS: 66,
+  ACT_HRS: 68,
+  REM_HRS: 70,
+  BL_COST: 80,
+  ACT_COST: 82,
+  REM_COST: 90,
+  WORK: 72,
+  SCHED_COST: 96,
+  PERF_METRIC: 96,
+  EFF: 56,
+  PROG: 74,
+  PRED: 72,
   TF: 40,
   CP: 36,
 } as const;
@@ -605,7 +603,7 @@ export default function WBSGanttPage() {
   const fixedColsWidth = useMemo(() =>
     wbsCodeColWidth + COL.NAME + COL.TYPE + COL.RESOURCE + COL.EMPLOYEE
     + COL.START + COL.END + COL.DAYS + COL.BL_HRS + COL.ACT_HRS + COL.REM_HRS
-    + COL.BL_COST + COL.ACT_COST + COL.REM_COST + COL.WORK + COL.SCHED_COST + COL.WORK_VAR + COL.COST_VAR + COL.PERF_METRIC + COL.EFF + COL.PROG
+    + COL.BL_COST + COL.ACT_COST + COL.REM_COST + COL.WORK + COL.SCHED_COST + COL.PERF_METRIC + COL.EFF + COL.PROG
     + COL.PRED + COL.TF + COL.CP + (showSparklines ? COL.SPARKLINE : 0),
     [wbsCodeColWidth, showSparklines],
   );
@@ -1081,8 +1079,8 @@ export default function WBSGanttPage() {
               <col style={{ width: `${COL.EMPLOYEE}px` }} />
               {showSparklines && <col style={{ width: `${COL.SPARKLINE}px` }} />}
               <col style={{ width: `${COL.START}px` }} /><col style={{ width: `${COL.END}px` }} />
-              <col style={{ width: `${COL.DAYS}px` }} /><col style={{ width: `${COL.BL_HRS}px` }} /><col style={{ width: `${COL.ACT_HRS}px` }} /><col style={{ width: `${COL.REM_HRS}px` }} /><col style={{ width: `${COL.WORK}px` }} /><col style={{ width: `${COL.WORK_VAR}px` }} />
-              <col style={{ width: `${COL.BL_COST}px` }} /><col style={{ width: `${COL.ACT_COST}px` }} /><col style={{ width: `${COL.REM_COST}px` }} /><col style={{ width: `${COL.SCHED_COST}px` }} /><col style={{ width: `${COL.COST_VAR}px` }} />
+              <col style={{ width: `${COL.DAYS}px` }} /><col style={{ width: `${COL.BL_HRS}px` }} /><col style={{ width: `${COL.ACT_HRS}px` }} /><col style={{ width: `${COL.REM_HRS}px` }} /><col style={{ width: `${COL.WORK}px` }} />
+              <col style={{ width: `${COL.BL_COST}px` }} /><col style={{ width: `${COL.ACT_COST}px` }} /><col style={{ width: `${COL.REM_COST}px` }} /><col style={{ width: `${COL.SCHED_COST}px` }} />
               <col style={{ width: `${COL.PERF_METRIC}px` }} /><col style={{ width: `${COL.EFF}px` }} /><col style={{ width: `${COL.PROG}px` }} />
               <col style={{ width: `${COL.PRED}px` }} /><col style={{ width: `${COL.TF}px` }} /><col style={{ width: `${COL.CP}px` }} />
               {dateColumns.map((_, i) => <col key={i} style={{ width: `${columnWidth}px` }} />)}
@@ -1103,16 +1101,14 @@ export default function WBSGanttPage() {
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ BL Hrs' : 'BL Hrs'}</th>
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : 'var(--pinnacle-teal)' }} className="number">{varianceMode ? 'Δ Act Hrs' : 'Act Hrs'}</th>
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ Rem' : 'Rem'}</th>
-                <th style={TH_BASE} className="number">Work</th>
-                <th style={TH_BASE} className="number">Work Var</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Work Var' : 'Work'}</th>
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ BL Cost' : 'BL Cost'}</th>
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : 'var(--pinnacle-teal)' }} className="number">{varianceMode ? 'Δ Act Cost' : 'Act Cost'}</th>
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ Rem Cost' : 'Rem Cost'}</th>
-                <th style={TH_BASE} className="number">Sched Cost</th>
-                <th style={TH_BASE} className="number">Cost Var</th>
+                <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Cost Var' : 'Sched Cost'}</th>
                 <th style={TH_BASE} className="number">Perf Metric</th>
                 <th style={{ ...TH_BASE, color: varianceMode ? '#8B5CF6' : undefined }} className="number">{varianceMode ? 'Δ Eff%' : 'Eff%'}</th>
-                <th style={TH_BASE} className="number">Prog</th>
+                <th style={TH_BASE} className="number">Progress %</th>
                 <th style={TH_BASE}>Pred</th>
                 <th style={{ ...TH_BASE, color: '#ff6b6b' }} className="number">TF</th>
                 <th style={{ ...TH_BASE, borderRight: '1px solid #444' }}>CP</th>
@@ -1273,11 +1269,10 @@ export default function WBSGanttPage() {
                     })() : (
                       <td className="number" style={TD_FONT}>{(row as any).remainingHours != null && isFinite(Number((row as any).remainingHours)) ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
                     )}
-                    <td className="number" style={TD_FONT}>
-                      {isFinite(work) ? work.toFixed(0) : '-'}
-                    </td>
-                    <td className="number" style={{ ...TD_FONT, color: workVariance > 0 ? '#ef4444' : workVariance < 0 ? '#22c55e' : 'var(--text-secondary)' }}>
-                      {isFinite(workVariance) ? `${workVariance > 0 ? '+' : ''}${workVariance.toFixed(0)}` : '-'}
+                    <td className="number" style={{ ...TD_FONT, color: varianceMode ? (workVariance > 0 ? '#ef4444' : workVariance < 0 ? '#22c55e' : 'var(--text-secondary)') : 'inherit' }}>
+                      {varianceMode
+                        ? (isFinite(workVariance) ? `${workVariance > 0 ? '+' : ''}${workVariance.toFixed(0)}` : '-')
+                        : (isFinite(work) ? work.toFixed(0) : '-')}
                     </td>
                     {/* BL Cost */}
                     {varianceMode ? (() => {
@@ -1322,11 +1317,10 @@ export default function WBSGanttPage() {
                     })() : (
                       <td className="number" style={TD_FONT}>{formatCurrency(Number((row as any).remainingCost))}</td>
                     )}
-                    <td className="number" style={TD_FONT}>
-                      {formatCurrency(scheduleCost)}
-                    </td>
-                    <td className="number" style={{ ...TD_FONT, color: costVariance > 0 ? '#ef4444' : costVariance < 0 ? '#22c55e' : 'var(--text-secondary)' }}>
-                      {`${costVariance > 0 ? '+' : ''}${formatCurrency(costVariance)}`}
+                    <td className="number" style={{ ...TD_FONT, color: varianceMode ? (costVariance > 0 ? '#ef4444' : costVariance < 0 ? '#22c55e' : 'var(--text-secondary)') : 'inherit' }}>
+                      {varianceMode
+                        ? `${costVariance > 0 ? '+' : ''}${formatCurrency(costVariance)}`
+                        : formatCurrency(scheduleCost)}
                     </td>
                     <td className="number" style={TD_FONT}>
                       {performingMetric != null && isFinite(performingMetric) ? performingMetric.toFixed(2) : '-'}
@@ -1347,7 +1341,7 @@ export default function WBSGanttPage() {
                     })() : (
                       <td className="number" style={{ ...TD_FONT, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     )}
-                    <td><div className="progress-bar" style={{ width: '30px', height: '6px' }}><div className="progress-bar-fill" style={{ width: `${progress}%`, background: barColor }} /></div></td>
+                    <td className="number" style={{ ...TD_FONT, color: getProgressColor(progress), fontWeight: 700 }}>{`${Math.round(progress)}%`}</td>
                     <td style={{ fontSize: '0.5rem' }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.taskId)).join(', ')}>{row.predecessors?.length ? `${row.predecessors.length} dep` : '-'}</td>
                     <td className="number" style={{ ...TD_FONT, color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>{row.totalFloat != null ? row.totalFloat : '-'}</td>
                     <td style={{ textAlign: 'center', borderRight: '1px solid #444' }}>{isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.6rem' }}>CP</span>}</td>
