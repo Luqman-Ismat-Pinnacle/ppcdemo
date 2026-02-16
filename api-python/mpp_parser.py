@@ -51,6 +51,52 @@ class ProjectParser:
         except:
             return 0.0
 
+    def _normalize_relation_type(self, relation):
+        try:
+            rel_type_obj = relation.getType()
+            rel_type = str(rel_type_obj) if rel_type_obj else 'FS'
+        except Exception:
+            rel_type = 'FS'
+
+        rel_type_upper = rel_type.upper().replace('_', '')
+        if 'FINISH_START' in rel_type.upper() or rel_type_upper == 'FS':
+            return 'FS'
+        if 'START_START' in rel_type.upper() or rel_type_upper == 'SS':
+            return 'SS'
+        if 'FINISH_FINISH' in rel_type.upper() or rel_type_upper == 'FF':
+            return 'FF'
+        if 'START_FINISH' in rel_type.upper() or rel_type_upper == 'SF':
+            return 'SF'
+        return 'FS'
+
+    def _extract_relation_tasks(self, relation):
+        predecessor_task = None
+        successor_task = None
+
+        # Modern MPXJ API (v13+)
+        try:
+            predecessor_task = relation.getPredecessorTask()
+        except Exception:
+            predecessor_task = None
+        try:
+            successor_task = relation.getSuccessorTask()
+        except Exception:
+            successor_task = None
+
+        # Backward compatibility fallback
+        if predecessor_task is None:
+            try:
+                predecessor_task = relation.getSourceTask()
+            except Exception:
+                predecessor_task = None
+        if successor_task is None:
+            try:
+                successor_task = relation.getTargetTask()
+            except Exception:
+                successor_task = None
+
+        return predecessor_task, successor_task
+
     def parse_file(self, path):
         # 1. Read the file
         project = self.reader.read(path)
@@ -74,7 +120,10 @@ class ProjectParser:
 
         # 4. Process all tasks in order
         all_tasks = []
-        tasks = project.getTasks()
+        try:
+            tasks = project.getAllTasks()
+        except Exception:
+            tasks = project.getTasks()
         
         for task in tasks:
             # We no longer skip empty names or Level 0 to preserve full hierarchy
@@ -119,48 +168,71 @@ class ProjectParser:
             except Exception:
                 pass  # MPXJ may not expose cost in some versions or file types
 
-            # ── Extract predecessor relationships using getPredecessors() ──
+            # Extract predecessor relationships using MPXJ Relation objects.
             predecessors = []
             try:
                 pred_relations = task.getPredecessors()
                 if pred_relations:
                     for relation in pred_relations:
                         try:
-                            target_task = relation.getTargetTask()
-                            if target_task and target_task.getUniqueID():
-                                rel_type_obj = relation.getType()
-                                rel_type = str(rel_type_obj) if rel_type_obj else 'FS'
-                                # Normalize relation type to standard abbreviations
-                                rel_type_upper = rel_type.upper().replace('_', '')
-                                if 'FINISH_START' in rel_type.upper() or rel_type_upper == 'FS':
-                                    rel_type_normalized = 'FS'
-                                elif 'START_START' in rel_type.upper() or rel_type_upper == 'SS':
-                                    rel_type_normalized = 'SS'
-                                elif 'FINISH_FINISH' in rel_type.upper() or rel_type_upper == 'FF':
-                                    rel_type_normalized = 'FF'
-                                elif 'START_FINISH' in rel_type.upper() or rel_type_upper == 'SF':
-                                    rel_type_normalized = 'SF'
-                                else:
-                                    rel_type_normalized = 'FS'
+                            predecessor_task, _ = self._extract_relation_tasks(relation)
+                            if not predecessor_task or not predecessor_task.getUniqueID():
+                                continue
 
-                                lag_duration = relation.getLag()
-                                lag_days = 0.0
-                                if lag_duration:
-                                    try:
-                                        lag_days = self._to_float(lag_duration.getDuration())
-                                    except:
-                                        lag_days = 0.0
+                            rel_type_normalized = self._normalize_relation_type(relation)
 
-                                predecessors.append({
-                                    'predecessorTaskId': str(target_task.getUniqueID()),
-                                    'predecessorName': str(target_task.getName() or ''),
-                                    'relationship': rel_type_normalized,
-                                    'lagDays': lag_days
-                                })
+                            lag_duration = relation.getLag()
+                            lag_days = 0.0
+                            if lag_duration:
+                                try:
+                                    lag_days = self._to_float(lag_duration.getDuration())
+                                except:
+                                    lag_days = 0.0
+
+                            predecessors.append({
+                                'predecessorTaskId': str(predecessor_task.getUniqueID()),
+                                'predecessorName': str(predecessor_task.getName() or ''),
+                                'relationship': rel_type_normalized,
+                                'lagDays': lag_days,
+                                'isExternal': bool(predecessor_task.getExternalTask())
+                            })
                         except Exception as rel_err:
                             print(f"  Warning: Could not parse relation for task {uid}: {rel_err}")
             except Exception as pred_err:
                 print(f"  Warning: getPredecessors() failed for task {uid}: {pred_err}")
+
+            # Extract successors explicitly as well.
+            successors = []
+            try:
+                succ_relations = task.getSuccessors()
+                if succ_relations:
+                    for relation in succ_relations:
+                        try:
+                            _, successor_task = self._extract_relation_tasks(relation)
+                            if not successor_task or not successor_task.getUniqueID():
+                                continue
+
+                            rel_type_normalized = self._normalize_relation_type(relation)
+
+                            lag_duration = relation.getLag()
+                            lag_days = 0.0
+                            if lag_duration:
+                                try:
+                                    lag_days = self._to_float(lag_duration.getDuration())
+                                except:
+                                    lag_days = 0.0
+
+                            successors.append({
+                                'successorTaskId': str(successor_task.getUniqueID()),
+                                'successorName': str(successor_task.getName() or ''),
+                                'relationship': rel_type_normalized,
+                                'lagDays': lag_days,
+                                'isExternal': bool(successor_task.getExternalTask())
+                            })
+                        except Exception as rel_err:
+                            print(f"  Warning: Could not parse successor relation for task {uid}: {rel_err}")
+            except Exception as succ_err:
+                print(f"  Warning: getSuccessors() failed for task {uid}: {succ_err}")
 
             node = {
                 'id': uid,
@@ -182,31 +254,10 @@ class ProjectParser:
                 'isCritical': bool(task.getCritical()),
                 'totalSlack': self._to_float(task.getTotalSlack().getDuration()) if task.getTotalSlack() else 0.0,
                 'comments': str(task.getNotes() or ""),
-                'predecessors': predecessors
+                'predecessors': predecessors,
+                'successors': successors
             }
             all_tasks.append(node)
-
-        # Build successor relationships from predecessor links so downstream
-        # consumers can validate both directions even when source files only
-        # explicitly encode predecessors.
-        task_by_id = {str(t.get('id') or ''): t for t in all_tasks}
-        for task in all_tasks:
-            task['successors'] = []
-
-        for successor_task in all_tasks:
-            for pred in successor_task.get('predecessors', []):
-                predecessor_id = str(pred.get('predecessorTaskId') or '').strip()
-                if not predecessor_id:
-                    continue
-                predecessor_task = task_by_id.get(predecessor_id)
-                if not predecessor_task:
-                    continue
-                predecessor_task['successors'].append({
-                    'successorTaskId': str(successor_task.get('id') or ''),
-                    'successorName': str(successor_task.get('name') or ''),
-                    'relationship': str(pred.get('relationship') or 'FS'),
-                    'lagDays': self._to_float(pred.get('lagDays'))
-                })
 
         total_pred_links = sum(len(t.get('predecessors') or []) for t in all_tasks)
         total_succ_links = sum(len(t.get('successors') or []) for t in all_tasks)
