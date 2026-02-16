@@ -154,7 +154,17 @@ export default function FeedbackPage() {
 
   const onCreateIssue = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!issueForm.title.trim() || !issueForm.description.trim() || !issueForm.userAction.trim() || !issueForm.reproSteps.trim() || !issueForm.expectedResult.trim() || !issueForm.actualResult.trim()) return;
+    const missing: string[] = [];
+    if (!issueForm.title.trim()) missing.push('Title');
+    if (!issueForm.userAction.trim()) missing.push('Action');
+    if (!issueForm.reproSteps.trim()) missing.push('Reproduction Steps');
+    if (!issueForm.expectedResult.trim()) missing.push('Expected Result');
+    if (!issueForm.actualResult.trim()) missing.push('Actual Result');
+    if (!issueForm.description.trim()) missing.push('Additional Context');
+    if (missing.length > 0) {
+      setError(`Please complete required issue fields: ${missing.join(', ')}`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -291,9 +301,9 @@ export default function FeedbackPage() {
         <section className="chart-card" style={{ padding: '1rem' }}>
           <h3 style={{ margin: 0, marginBottom: '0.7rem', fontSize: '0.95rem' }}>Log an Issue</h3>
           <form onSubmit={onCreateIssue} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
-            <input value={issueForm.title} onChange={e => setIssueForm(s => ({ ...s, title: e.target.value }))} placeholder="Issue title (required)" style={inputStyle} />
+            <input required value={issueForm.title} onChange={e => setIssueForm(s => ({ ...s, title: e.target.value }))} placeholder="Issue title (required)" style={inputStyle} />
             <input value={issueForm.pagePath} onChange={e => setIssueForm(s => ({ ...s, pagePath: e.target.value }))} placeholder="Page route (e.g. /project-controls/wbs-gantt)" style={inputStyle} />
-            <input value={issueForm.userAction} onChange={e => setIssueForm(s => ({ ...s, userAction: e.target.value }))} placeholder="What action caused it?" style={inputStyle} />
+            <input required value={issueForm.userAction} onChange={e => setIssueForm(s => ({ ...s, userAction: e.target.value }))} placeholder="What action caused it?" style={inputStyle} />
             <select value={issueForm.environment} onChange={e => setIssueForm(s => ({ ...s, environment: e.target.value }))} style={inputStyle}>
               <option value="production">Environment: Production</option>
               <option value="staging">Environment: Staging</option>
@@ -307,11 +317,11 @@ export default function FeedbackPage() {
               <option value="high">Severity: High</option>
               <option value="critical">Severity: Critical</option>
             </select>
-            <input value={issueForm.expectedResult} onChange={e => setIssueForm(s => ({ ...s, expectedResult: e.target.value }))} placeholder="Expected result" style={inputStyle} />
-            <input value={issueForm.actualResult} onChange={e => setIssueForm(s => ({ ...s, actualResult: e.target.value }))} placeholder="Actual result" style={inputStyle} />
+            <input required value={issueForm.expectedResult} onChange={e => setIssueForm(s => ({ ...s, expectedResult: e.target.value }))} placeholder="Expected result" style={inputStyle} />
+            <input required value={issueForm.actualResult} onChange={e => setIssueForm(s => ({ ...s, actualResult: e.target.value }))} placeholder="Actual result" style={inputStyle} />
             <input value={issueForm.errorMessage} onChange={e => setIssueForm(s => ({ ...s, errorMessage: e.target.value }))} placeholder="Exact error message (if shown)" style={{ ...inputStyle, gridColumn: '1 / -1' }} />
-            <textarea value={issueForm.reproSteps} onChange={e => setIssueForm(s => ({ ...s, reproSteps: e.target.value }))} placeholder="Step-by-step reproduction (required for fast diagnosis)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 88, resize: 'vertical' }} />
-            <textarea value={issueForm.description} onChange={e => setIssueForm(s => ({ ...s, description: e.target.value }))} placeholder="Additional context and technical details (required)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 82, resize: 'vertical' }} />
+            <textarea required value={issueForm.reproSteps} onChange={e => setIssueForm(s => ({ ...s, reproSteps: e.target.value }))} placeholder="Step-by-step reproduction (required for fast diagnosis)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 88, resize: 'vertical' }} />
+            <textarea required value={issueForm.description} onChange={e => setIssueForm(s => ({ ...s, description: e.target.value }))} placeholder="Additional context and technical details (required)" style={{ ...inputStyle, gridColumn: '1 / -1', minHeight: 82, resize: 'vertical' }} />
             <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
               <button type="submit" disabled={saving} className="btn btn-primary btn-sm">{saving ? 'Saving...' : 'Submit Issue'}</button>
             </div>
