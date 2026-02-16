@@ -285,6 +285,7 @@ export default function DocumentsPage() {
           file_name: d.fileName || d.file_name || d.name,
           storage_path: d.storagePath || d.storage_path,
           project_id: d.projectId || d.project_id,
+          version: d.version ?? 1,
           health_score: d.healthScore ?? d.health_score,
           health_check_json: d.healthCheckJson || d.health_check_json,
           uploaded_at: d.uploadedAt || d.uploaded_at,
@@ -343,8 +344,8 @@ export default function DocumentsPage() {
             status: dbDoc?.project_id ? 'complete' as const : 'uploaded' as const,
             storagePath,
             healthCheck: parseHealthCheck(dbDoc),
-            version: dbDoc?.version || 1,
-            isCurrentVersion: dbDoc?.is_current_version ?? true,
+            version: dbDoc?.version ?? 1,
+            isCurrentVersion: dbDoc?.is_current_version ?? false,
           });
         });
       }
@@ -363,8 +364,8 @@ export default function DocumentsPage() {
           status: doc.project_id ? 'complete' as const : 'uploaded' as const,
           storagePath: doc.storage_path,
           healthCheck: parseHealthCheck(doc),
-          version: doc.version || 1,
-          isCurrentVersion: doc.is_current_version ?? true,
+          version: doc.version ?? 1,
+          isCurrentVersion: doc.is_current_version ?? false,
         });
       });
 
@@ -503,10 +504,12 @@ export default function DocumentsPage() {
         f.id === fileId ? { ...f, status: 'uploaded' as const, storagePath: savedStoragePath } : f
       ));
 
-      // Determine version number — check existing docs for this project
-      const existingProjectDocs = uploadedFiles.filter(
-        f => f.workdayProjectId === workdayProjectId.trim() && f.id !== fileId
-      );
+      // Determine version from DB-backed documents for this project (avoid stale local UI state)
+      const existingProjectDocs = (data?.projectDocuments || []).filter((d: any) => {
+        const pid = String(d.projectId || d.project_id || '');
+        const type = String(d.documentType || d.document_type || '').toUpperCase();
+        return pid === workdayProjectId.trim() && (type === 'MPP' || type === '');
+      });
       const maxVersion = existingProjectDocs.reduce((max, f) => Math.max(max, f.version || 1), 0);
       const newVersion = maxVersion + 1;
 
@@ -522,7 +525,7 @@ export default function DocumentsPage() {
               body: JSON.stringify({
                 dataKey: 'projectDocuments',
                 operation: 'update',
-                records: [{ id: oldDoc.id, is_current_version: false }],
+                records: [{ id: oldDoc.id || oldDoc.documentId, is_current_version: false }],
               }),
             });
           }
@@ -607,7 +610,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects, refreshData]);
+  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects, data?.projectDocuments, refreshData]);
 
   // Persist process/upload logs to project_log (parser logs)
   const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
@@ -750,8 +753,21 @@ export default function DocumentsPage() {
 
       // Convert flat MPP data to proper hierarchy using our converter
       setProcessingStage({ step: 3, label: 'Converting data hierarchy...', fileName: file.fileName });
-      const timestamp = Date.now();
-      const projectId = file.workdayProjectId || `PRJ_MPP_${timestamp}`;
+      // Re-runs must resolve back to an existing project_id; never create random fallback IDs.
+      const projectId = (() => {
+        if (file.workdayProjectId) return file.workdayProjectId;
+        const docs = data?.projectDocuments || [];
+        const match = docs.find((d: any) => {
+          const byId = (d.id || d.documentId) === file.id;
+          const byPath = file.storagePath && (d.storagePath === file.storagePath || d.storage_path === file.storagePath);
+          const byName = (d.fileName || d.file_name || d.name) === file.fileName;
+          return byId || byPath || byName;
+        });
+        return match ? (match.projectId || match.project_id || '') : '';
+      })();
+      if (!projectId) {
+        throw new Error('File is not linked to a project. Link it to a project before running MPXJ.');
+      }
 
       pushLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
 
