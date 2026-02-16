@@ -6,22 +6,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pinnacle MPP Parser</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #0f172a;
+            --card: #111827;
+            --card-2: #1f2937;
+            --border: #334155;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #14b8a6;
+            --accent-2: #38bdf8;
+            --warn: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        html,
         body {
-            font-family: 'Inter', sans-serif;
+            height: 100%;
+            overflow: auto;
+            background: radial-gradient(1200px circle at 10% -10%, #134e4a 0%, #0f172a 45%), var(--bg);
+        }
+
+        body {
+            font-family: 'Manrope', sans-serif;
+            color: var(--text);
         }
 
         .json-key {
-            color: #818cf8;
+            color: #7dd3fc;
         }
 
         .json-string {
-            color: #34d399;
+            color: #5eead4;
         }
 
         .json-number {
-            color: #f472b6;
+            color: #fda4af;
         }
 
         .json-boolean {
@@ -32,46 +53,52 @@
             color: #9ca3af;
         }
 
-        /* Custom scrollbar for better look in split panes */
+        .pane-scroll {
+            min-height: 0;
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+        }
+
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #1e293b;
+            background: #0f172a;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #475569;
+            background: #334155;
             border-radius: 4px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #64748b;
+            background: #475569;
         }
     </style>
 </head>
 
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center py-8 px-4 sm:px-6 lg:px-8">
+<body class="min-h-screen py-6 px-4 sm:px-6 lg:px-8">
 
-    <div class="w-full max-w-7xl space-y-6">
+    <div class="w-full max-w-[1800px] mx-auto space-y-5">
         <!-- Header -->
         <div class="text-center">
-            <h1 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            <h1 class="text-3xl font-extrabold tracking-tight text-slate-100 sm:text-4xl">
                 MPP Parsing Service
             </h1>
-            <p class="mt-2 text-base text-slate-400">
-                Upload a Microsoft Project (.mpp) file to inspect hierarchy and JSON output.
+            <p class="mt-2 text-base text-slate-300">
+                Upload a Microsoft Project (.mpp) file to validate structure and dependency pickup before sync.
             </p>
         </div>
 
         <!-- Dropzone -->
-        <div class="bg-slate-800 rounded-xl shadow-xl p-6 border border-slate-700">
+        <div class="bg-slate-900/70 rounded-xl shadow-xl p-6 border border-slate-700 backdrop-blur">
             <div id="dropzone"
-                class="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center hover:border-indigo-500 transition-colors cursor-pointer group">
+                class="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center hover:border-cyan-400 transition-colors cursor-pointer group">
                 <div class="space-y-3">
-                    <div class="mx-auto h-10 w-10 text-slate-400 group-hover:text-indigo-400 transition-colors">
+                    <div class="mx-auto h-10 w-10 text-slate-400 group-hover:text-cyan-300 transition-colors">
                         <svg class="h-full w-full" fill="none" stroke="currentColor" stroke-width="1.5"
                             viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -80,7 +107,7 @@
                         </svg>
                     </div>
                     <div class="text-base font-medium text-white">
-                        <span class="text-indigo-400 group-hover:text-indigo-300">Click to upload</span> or drag and
+                        <span class="text-cyan-300 group-hover:text-cyan-200">Click to upload</span> or drag and
                         drop
                     </div>
                     <p class="text-xs text-slate-400">MPP files only (Max 10MB)</p>
@@ -91,11 +118,11 @@
             <!-- Progress -->
             <div id="progressContainer" class="hidden mt-4">
                 <div class="flex justify-between mb-1">
-                    <span class="text-xs font-medium text-indigo-400">Parsing file...</span>
-                    <span class="text-xs font-medium text-indigo-400 animate-pulse">Processing</span>
+                    <span class="text-xs font-medium text-cyan-300">Parsing file...</span>
+                    <span class="text-xs font-medium text-cyan-300 animate-pulse">Processing</span>
                 </div>
                 <div class="w-full bg-slate-700 rounded-full h-2">
-                    <div class="bg-indigo-600 h-2 rounded-full w-full animate-[loading_2s_ease-in-out_infinite]"></div>
+                    <div class="bg-cyan-500 h-2 rounded-full w-full animate-[loading_2s_ease-in-out_infinite]"></div>
                 </div>
             </div>
 
@@ -105,10 +132,10 @@
         </div>
 
         <!-- Result Area -->
-        <div id="resultContainer" class="hidden space-y-4">
+        <div id="resultContainer" class="hidden space-y-4 pb-4">
             <!-- Stats Bar -->
             <div
-                class="bg-slate-800 rounded-lg p-4 border border-slate-700 grid grid-cols-2 md:grid-cols-5 gap-4 shadow-lg">
+                class="bg-slate-900/70 rounded-lg p-4 border border-slate-700 grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4 shadow-lg">
                 <div>
                     <span class="block text-xs text-slate-400 uppercase tracking-wider">Project</span>
                     <span id="statProjectName" class="block text-sm font-semibold text-white truncate">-</span>
@@ -119,21 +146,35 @@
                 </div>
                 <div>
                     <span class="block text-xs text-slate-400 uppercase tracking-wider">Phases</span>
-                    <span id="statPhases" class="block text-xl font-bold text-indigo-400">0</span>
+                    <span id="statPhases" class="block text-xl font-bold text-cyan-300">0</span>
                 </div>
                 <div>
                     <span class="block text-xs text-slate-400 uppercase tracking-wider">Units</span>
-                    <span id="statUnits" class="block text-xl font-bold text-teal-400">0</span>
+                    <span id="statUnits" class="block text-xl font-bold text-teal-300">0</span>
                 </div>
                 <div>
                     <span class="block text-xs text-slate-400 uppercase tracking-wider">Leaf Tasks</span>
                     <span id="statTasks" class="block text-xl font-bold text-pink-400">0</span>
                 </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Tasks w/ Pred</span>
+                    <span id="statTasksWithPred" class="block text-xl font-bold text-amber-300">0</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Tasks w/ Succ</span>
+                    <span id="statTasksWithSucc" class="block text-xl font-bold text-sky-300">0</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase tracking-wider">Dep Coverage</span>
+                    <span id="statCoverage" class="block text-xl font-bold text-emerald-300">0%</span>
+                </div>
             </div>
+
+            <div id="dependencyStatus" class="rounded-lg border px-4 py-3 text-sm hidden"></div>
 
             <!-- Split View: JSON vs WBS -->
             <div class="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
-                <div class="grid grid-cols-1 lg:grid-cols-2 h-[800px]">
+                <div class="grid grid-cols-1 lg:grid-cols-2 h-[74vh] min-h-[580px] max-h-[980px]">
 
                     <!-- Left: JSON View -->
                     <div class="flex flex-col border-b lg:border-b-0 lg:border-r border-slate-700 bg-slate-900">
@@ -143,20 +184,20 @@
                                 <button id="copyBtn"
                                     class="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-xs text-white rounded transition-colors">Copy</button>
                                 <button id="downloadBtn"
-                                    class="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-xs text-white rounded transition-colors">Download</button>
+                                    class="px-2 py-1 bg-cyan-600 hover:bg-cyan-500 text-xs text-white rounded transition-colors">Download</button>
                             </div>
                         </div>
                         <pre id="jsonOutput"
-                            class="flex-1 p-4 text-xs font-mono overflow-auto text-slate-300 bg-slate-900/50"></pre>
+                            class="pane-scroll flex-1 p-4 text-xs font-mono text-slate-300 bg-slate-900/50"></pre>
                     </div>
 
                     <!-- Right: WBS Cascading Table -->
                     <div class="flex flex-col bg-slate-900">
                         <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
-                            <h3 class="text-sm font-semibold text-white">WBS Hierarchy</h3>
-                            <span class="text-xs text-slate-400">Cascading View</span>
+                            <h3 class="text-sm font-semibold text-white">WBS Hierarchy + Dependency Pickup</h3>
+                            <span class="text-xs text-slate-400">Predecessor / Successor</span>
                         </div>
-                        <div class="flex-1 overflow-auto bg-slate-900/50">
+                        <div class="pane-scroll flex-1 bg-slate-900/50">
                             <table class="min-w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-slate-800/80 sticky top-0 z-10 backdrop-blur-sm">
                                     <tr>
@@ -166,6 +207,8 @@
                                         <th class="px-3 py-2 text-slate-400 font-medium text-right">Dur (h)</th>
                                         <th class="px-3 py-2 text-slate-400 font-medium">Start</th>
                                         <th class="px-3 py-2 text-slate-400 font-medium">Finish</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium text-center">Pred</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium text-center">Succ</th>
                                     </tr>
                                 </thead>
                                 <tbody id="wbsTableBody" class="divide-y divide-slate-800">
@@ -195,6 +238,10 @@
         const statPhases = document.getElementById('statPhases');
         const statUnits = document.getElementById('statUnits');
         const statTasks = document.getElementById('statTasks');
+        const statTasksWithPred = document.getElementById('statTasksWithPred');
+        const statTasksWithSucc = document.getElementById('statTasksWithSucc');
+        const statCoverage = document.getElementById('statCoverage');
+        const dependencyStatus = document.getElementById('dependencyStatus');
 
         const copyBtn = document.getElementById('copyBtn');
         const downloadBtn = document.getElementById('downloadBtn');
@@ -207,6 +254,8 @@
             resultContainer.classList.add('hidden');
             jsonOutput.innerHTML = '';
             wbsTableBody.innerHTML = '';
+            dependencyStatus.classList.add('hidden');
+            dependencyStatus.textContent = '';
             currentData = null;
         };
 
@@ -239,6 +288,7 @@
 
             // 1. Calculate Stats
             const tasks = data.tasks || [];
+            const depSummary = data.summary?.dependencies || {};
             let phaseCount = 0;
             let unitCount = 0;
             let leafCount = 0;
@@ -270,6 +320,35 @@
             statUnits.textContent = unitCount;   // Approximation
             statTasks.textContent = leafCount;
 
+            const tasksWithPred = depSummary.tasksWithPredecessors ?? tasks.filter((t) => (t.predecessors || []).length > 0).length;
+            const tasksWithSucc = depSummary.tasksWithSuccessors ?? tasks.filter((t) => (t.successors || []).length > 0).length;
+            const totalLeafTasks = depSummary.totalLeafTasks ?? tasks.filter((t) => !t.is_summary).length;
+            const linkedLeafTasks = depSummary.linkedLeafTasks ?? tasks.filter((t) => !t.is_summary && ((t.predecessors || []).length > 0 || (t.successors || []).length > 0)).length;
+            const isolatedLeafTasks = depSummary.isolatedLeafTasks ?? Math.max(0, totalLeafTasks - linkedLeafTasks);
+            const coverage = depSummary.coveragePercent ?? (totalLeafTasks ? Math.round((linkedLeafTasks / totalLeafTasks) * 10000) / 100 : 0);
+            const totalPredLinks = depSummary.totalPredecessorLinks ?? tasks.reduce((sum, t) => sum + (t.predecessors || []).length, 0);
+            const totalSuccLinks = depSummary.totalSuccessorLinks ?? tasks.reduce((sum, t) => sum + (t.successors || []).length, 0);
+
+            statTasksWithPred.textContent = String(tasksWithPred);
+            statTasksWithSucc.textContent = String(tasksWithSucc);
+            statCoverage.textContent = `${coverage}%`;
+
+            const isHealthy = isolatedLeafTasks === 0 && totalPredLinks > 0;
+            dependencyStatus.className = `rounded-lg border px-4 py-3 text-sm ${isHealthy
+                ? 'border-emerald-500/50 bg-emerald-900/20 text-emerald-200'
+                : 'border-amber-500/50 bg-amber-900/20 text-amber-200'
+                }`;
+            dependencyStatus.innerHTML = `
+                <div class="font-semibold">${isHealthy ? 'Dependency pickup looks healthy' : 'Dependency pickup needs attention'}</div>
+                <div class="mt-1 text-xs text-slate-200">
+                    Predecessor links: <span class="font-semibold">${totalPredLinks}</span> ·
+                    Successor links: <span class="font-semibold">${totalSuccLinks}</span> ·
+                    Linked leaf tasks: <span class="font-semibold">${linkedLeafTasks}/${totalLeafTasks}</span> ·
+                    Missing both pred/succ: <span class="font-semibold">${isolatedLeafTasks}</span>
+                </div>
+            `;
+            dependencyStatus.classList.remove('hidden');
+
             // 2. Render JSON
             jsonOutput.innerHTML = syntaxHighlight(data);
 
@@ -291,6 +370,20 @@
                 const end = t.endDate ? t.endDate.split('T')[0] : '';
                 const dur = t.projectedHours ? Math.round(t.projectedHours) : '-';
                 const pct = t.percentComplete ? Math.round(t.percentComplete) + '%' : '0%';
+                const preds = t.predecessors || [];
+                const succs = t.successors || [];
+                const predTitle = preds.length
+                    ? preds.map(p => `${p.predecessorTaskId || '-'} (${p.relationship || 'FS'})`).join(', ')
+                    : 'No predecessors';
+                const succTitle = succs.length
+                    ? succs.map(s => `${s.successorTaskId || '-'} (${s.relationship || 'FS'})`).join(', ')
+                    : 'No successors';
+                const predBadge = preds.length
+                    ? `<span class="inline-flex min-w-8 justify-center rounded bg-amber-500/20 text-amber-200 px-2 py-0.5 text-xs font-semibold">${preds.length}</span>`
+                    : `<span class="inline-flex min-w-8 justify-center rounded bg-slate-700 text-slate-300 px-2 py-0.5 text-xs">0</span>`;
+                const succBadge = succs.length
+                    ? `<span class="inline-flex min-w-8 justify-center rounded bg-sky-500/20 text-sky-200 px-2 py-0.5 text-xs font-semibold">${succs.length}</span>`
+                    : `<span class="inline-flex min-w-8 justify-center rounded bg-slate-700 text-slate-300 px-2 py-0.5 text-xs">0</span>`;
 
                 // Icons
                 const icon = isSummary
@@ -310,6 +403,8 @@
                         <td class="px-3 py-2 text-right text-xs font-mono">${dur}</td>
                         <td class="px-3 py-2 text-xs text-slate-500">${start}</td>
                         <td class="px-3 py-2 text-xs text-slate-500">${end}</td>
+                        <td class="px-3 py-2 text-center" title="${predTitle}">${predBadge}</td>
+                        <td class="px-3 py-2 text-center" title="${succTitle}">${succBadge}</td>
                     </tr>
                 `;
             }).join('');

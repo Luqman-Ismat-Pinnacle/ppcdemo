@@ -186,12 +186,58 @@ class ProjectParser:
             }
             all_tasks.append(node)
 
+        # Build successor relationships from predecessor links so downstream
+        # consumers can validate both directions even when source files only
+        # explicitly encode predecessors.
+        task_by_id = {str(t.get('id') or ''): t for t in all_tasks}
+        for task in all_tasks:
+            task['successors'] = []
+
+        for successor_task in all_tasks:
+            for pred in successor_task.get('predecessors', []):
+                predecessor_id = str(pred.get('predecessorTaskId') or '').strip()
+                if not predecessor_id:
+                    continue
+                predecessor_task = task_by_id.get(predecessor_id)
+                if not predecessor_task:
+                    continue
+                predecessor_task['successors'].append({
+                    'successorTaskId': str(successor_task.get('id') or ''),
+                    'successorName': str(successor_task.get('name') or ''),
+                    'relationship': str(pred.get('relationship') or 'FS'),
+                    'lagDays': self._to_float(pred.get('lagDays'))
+                })
+
+        total_pred_links = sum(len(t.get('predecessors') or []) for t in all_tasks)
+        total_succ_links = sum(len(t.get('successors') or []) for t in all_tasks)
+        tasks_with_predecessors = sum(1 for t in all_tasks if (t.get('predecessors') or []))
+        tasks_with_successors = sum(1 for t in all_tasks if (t.get('successors') or []))
+        leaf_tasks = [t for t in all_tasks if not bool(t.get('is_summary'))]
+        linked_leaf_tasks = [
+            t for t in leaf_tasks
+            if (t.get('predecessors') or []) or (t.get('successors') or [])
+        ]
+        isolated_leaf_tasks = len(leaf_tasks) - len(linked_leaf_tasks)
+        coverage_percent = 0.0
+        if len(leaf_tasks) > 0:
+            coverage_percent = round((len(linked_leaf_tasks) / len(leaf_tasks)) * 100.0, 2)
+
         return {
             'success': True,
             'project': project_info,
             'tasks': all_tasks, # Returning a single source of truth list
             'summary': {
-                'total_rows': len(all_tasks)
+                'total_rows': len(all_tasks),
+                'dependencies': {
+                    'totalPredecessorLinks': total_pred_links,
+                    'totalSuccessorLinks': total_succ_links,
+                    'tasksWithPredecessors': tasks_with_predecessors,
+                    'tasksWithSuccessors': tasks_with_successors,
+                    'totalLeafTasks': len(leaf_tasks),
+                    'linkedLeafTasks': len(linked_leaf_tasks),
+                    'isolatedLeafTasks': isolated_leaf_tasks,
+                    'coveragePercent': coverage_percent
+                }
             }
         }
 
@@ -200,7 +246,7 @@ def ui():
     return render_template('index.html')
 
 @app.route('/health')
-def health(): return jsonify(status="ok", version="v16-predecessors-relations")
+def health(): return jsonify(status="ok", version="v17-dependency-coverage")
 
 @app.route('/parse', methods=['POST'])
 def parse():
