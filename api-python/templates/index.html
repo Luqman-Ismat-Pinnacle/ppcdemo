@@ -60,6 +60,10 @@
             overscroll-behavior: contain;
         }
 
+        .split-grid {
+            min-height: 0;
+        }
+
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -174,10 +178,10 @@
 
             <!-- Split View: JSON vs WBS -->
             <div class="bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
-                <div class="grid grid-cols-1 lg:grid-cols-2 h-[74vh] min-h-[580px] max-h-[980px]">
+                <div class="split-grid grid grid-cols-1 lg:grid-cols-2 h-[74vh] min-h-[580px] max-h-[980px]">
 
                     <!-- Left: JSON View -->
-                    <div class="flex flex-col border-b lg:border-b-0 lg:border-r border-slate-700 bg-slate-900">
+                    <div class="min-h-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-700 bg-slate-900">
                         <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
                             <h3 class="text-sm font-semibold text-white">JSON Output</h3>
                             <div class="flex space-x-2">
@@ -192,7 +196,7 @@
                     </div>
 
                     <!-- Right: WBS Cascading Table -->
-                    <div class="flex flex-col bg-slate-900">
+                    <div class="min-h-0 flex flex-col bg-slate-900">
                         <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
                             <h3 class="text-sm font-semibold text-white">WBS Hierarchy + Dependency Pickup</h3>
                             <span class="text-xs text-slate-400">Predecessor / Successor</span>
