@@ -498,6 +498,21 @@ export default function WBSGanttPage() {
     return filter(sortedWbsItems);
   }, [sortedWbsItems, wbsSearchQuery]);
 
+  const inferItemType = useCallback((item: any): string => {
+    const explicit = String(item?.itemType || item?.type || '').toLowerCase();
+    if (explicit) return explicit;
+    const id = String(item?.id || '').toLowerCase();
+    if (id.startsWith('wbs-unit-')) return 'unit';
+    if (id.startsWith('wbs-phase-')) return 'phase';
+    if (id.startsWith('wbs-project-')) return 'project';
+    if (id.startsWith('wbs-site-')) return 'site';
+    if (id.startsWith('wbs-customer-')) return 'customer';
+    if (id.startsWith('wbs-portfolio-')) return 'portfolio';
+    if (id.startsWith('wbs-task-')) return 'task';
+    if (id.startsWith('wbs-sub_task-')) return 'sub_task';
+    return 'task';
+  }, []);
+
   // Auto-expand on search
   useEffect(() => {
     if (!(wbsSearchQuery || '').trim()) return;
@@ -518,7 +533,7 @@ export default function WBSGanttPage() {
       if (seen.has(id)) return;
       seen.add(id);
       const hasChildren = !!(item.children?.length);
-      const itemType = item.itemType || item.type || 'task';
+      const itemType = inferItemType(item);
       const percentComplete = hasChildren
         ? (item.percentComplete ?? getRollupPercentComplete(item))
         : (item.percentComplete ?? 0);
@@ -536,7 +551,7 @@ export default function WBSGanttPage() {
     };
     searchFilteredItems.forEach((it: any) => walk(it, 1, null));
     return list;
-  }, [searchFilteredItems, expandedIds]);
+  }, [searchFilteredItems, expandedIds, inferItemType]);
 
   const flatRows = useMemo(() => {
     const vis = new Set<string>();
@@ -562,9 +577,30 @@ export default function WBSGanttPage() {
     collapseToLevel(2);
   }, [wbsDataForTable?.items]);
 
-  const taskNameMap = useMemo(() => new Map(flatRows.map(r => [r.id, r.name])), [flatRows]);
+  const taskNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const normalizeId = (id: unknown) => String(id || '').trim().replace(/^wbs-(task|sub_task)-/, '');
+    flatRows.forEach((r: any) => {
+      const rid = normalizeId(r.id);
+      const tid = normalizeId(r.taskId || r.task_id);
+      if (rid) map.set(rid, r.name);
+      if (tid) map.set(tid, r.name);
+      if (r.id) map.set(String(r.id), r.name);
+    });
+    (fullData.tasks || []).forEach((t: any) => {
+      const tid = normalizeId(t.id || t.taskId || t.task_id);
+      const tname = String(t.name || t.taskName || '').trim();
+      if (tid && tname && !map.has(tid)) map.set(tid, tname);
+    });
+    return map;
+  }, [flatRows, fullData.tasks]);
   const getTaskNameFromMap = useCallback(
-    (tid?: string) => tid ? (taskNameMap.get(tid)?.split(' ').slice(0, 3).join(' ') || tid.replace('wbs-', '')) : '-',
+    (tid?: string) => {
+      if (!tid) return '-';
+      const normalized = String(tid).trim().replace(/^wbs-(task|sub_task)-/, '');
+      const name = taskNameMap.get(normalized) || taskNameMap.get(String(tid));
+      return name ? name.split(' ').slice(0, 4).join(' ') : normalized.replace('wbs-', '');
+    },
     [taskNameMap],
   );
 
@@ -788,59 +824,29 @@ export default function WBSGanttPage() {
     }
 
     const raf = requestAnimationFrame(() => {
-      const tlStart = dateColumns[0].start.getTime();
-      const tlEnd = dateColumns[dateColumns.length - 1].end.getTime();
-      const tlDur = Math.max(1, tlEnd - tlStart);
       const tlPx = dateColumns.length * columnWidth;
+      const svgRect = svg.getBoundingClientRect();
+      const toSvgX = (rect: DOMRect, side: 'start' | 'end') => (side === 'start' ? rect.left : rect.right) - svgRect.left;
+      const toSvgY = (rect: DOMRect) => rect.top - svgRect.top + rect.height / 2;
 
       const isTaskRow = (row: any) => {
-        const itemType = String(row?.itemType || row?.type || '').toLowerCase();
-        return itemType === 'task' || itemType === 'sub_task' || /^wbs-(task|sub_task)-/.test(String(row?.id || ''));
-      };
-      const parseDate = (v: any): Date | null => {
-        if (!v) return null;
-        const d = new Date(v);
-        return Number.isFinite(d.getTime()) ? d : null;
-      };
-      const dateToX = (d: Date) => {
-        const t = Math.min(Math.max(d.getTime(), tlStart), tlEnd);
-        return fixedColsWidth + ((t - tlStart) / tlDur) * tlPx;
+        const itemType = inferItemType(row);
+        return itemType === 'task' || itemType === 'sub_task';
       };
       const normalizeId = (id: any) => String(id || '').trim().replace(/^wbs-(task|sub_task)-/, '');
-      const barCenterY = (row: any, idx: number) => {
-        const isMilestone = Boolean(row?.is_milestone || row?.isMilestone);
-        const centerOffset = isMilestone ? 14 : 12; // Matches bar top/height in row renderer
-        return headerHeight + idx * rowHeight + centerOffset;
-      };
-      const barWindow = (row: any, baseline: boolean) => {
-        const rawStart = baseline ? ((row as any).baselineStart || (row as any).baselineStartDate) : (row.startDate || (row as any).baselineStartDate);
-        const rawEnd = baseline ? ((row as any).baselineEnd || (row as any).baselineEndDate) : (row.endDate || (row as any).baselineEndDate || row.startDate);
-        const s = parseDate(rawStart);
-        const e = parseDate(rawEnd) || s;
-        if (!s || !e) return null;
-        const startDate = s.getTime() <= e.getTime() ? s : e;
-        const endDate = e.getTime() >= s.getTime() ? e : s;
-        return { startDate, endDate, xStart: dateToX(startDate), xEnd: dateToX(endDate) };
-      };
       const relationType = (v: any): 'FS' | 'SS' | 'FF' | 'SF' => {
         const rel = String(v || 'FS').toUpperCase();
         return rel === 'SS' || rel === 'FF' || rel === 'SF' ? rel : 'FS';
       };
-      const relationDelayed = (rel: 'FS' | 'SS' | 'FF' | 'SF', src: { startDate: Date; endDate: Date }, tgt: { startDate: Date; endDate: Date }) => {
-        if (rel === 'SS') return src.startDate > tgt.startDate;
-        if (rel === 'FF') return src.endDate > tgt.endDate;
-        if (rel === 'SF') return src.startDate > tgt.endDate;
-        return src.endDate > tgt.startDate; // FS
-      };
-      const anchorX = (rel: 'FS' | 'SS' | 'FF' | 'SF', isSource: boolean, win: { xStart: number; xEnd: number }) => {
-        if (rel === 'SS') return win.xStart;
-        if (rel === 'FF') return win.xEnd;
-        if (rel === 'SF') return isSource ? win.xStart : win.xEnd;
-        return isSource ? win.xEnd : win.xStart; // FS
+      const anchorSide = (rel: 'FS' | 'SS' | 'FF' | 'SF', isSource: boolean): 'start' | 'end' => {
+        if (rel === 'SS') return 'start';
+        if (rel === 'FF') return 'end';
+        if (rel === 'SF') return isSource ? 'start' : 'end';
+        return isSource ? 'end' : 'start';
       };
       const routePath = (sx: number, sy: number, tx: number, ty: number) => {
         const dir = tx >= sx ? 1 : -1;
-        const elbow = Math.max(16, Math.min(72, Math.abs(tx - sx) * 0.35));
+        const elbow = Math.max(14, Math.min(56, Math.abs(tx - sx) * 0.3));
         const mx = sx + dir * elbow;
         return `M${sx},${sy} L${mx},${sy} L${mx},${ty} L${tx},${ty}`;
       };
@@ -858,15 +864,34 @@ export default function WBSGanttPage() {
       svg.style.width = `${fixedColsWidth + tlPx}px`;
       svg.style.height = `${headerHeight + totalRowsHeight}px`;
 
-      flatRows.forEach((targetRow, targetIdx) => {
+      const currentBars = new Map<string, DOMRect>();
+      const baselineBars = new Map<string, DOMRect>();
+      document.querySelectorAll<HTMLElement>('[data-gantt-bar-current]').forEach((el) => {
+        currentBars.set(String(el.dataset.ganttBarCurrent), el.getBoundingClientRect());
+      });
+      document.querySelectorAll<HTMLElement>('[data-gantt-bar-baseline]').forEach((el) => {
+        baselineBars.set(String(el.dataset.ganttBarBaseline), el.getBoundingClientRect());
+      });
+
+      const depDrawn = new Set<string>();
+      flatRows.forEach((targetRow) => {
         if (!isTaskRow(targetRow)) return;
-        const preds = Array.isArray((targetRow as any).predecessors) ? (targetRow as any).predecessors : [];
+        const preds = Array.isArray((targetRow as any).predecessors) && (targetRow as any).predecessors.length
+          ? (targetRow as any).predecessors
+          : (((targetRow as any).predecessorId || (targetRow as any).predecessor_id)
+            ? [{
+                predecessorTaskId: (targetRow as any).predecessorId || (targetRow as any).predecessor_id,
+                relationship: (targetRow as any).predecessorRelationship || (targetRow as any).predecessor_relationship || 'FS',
+                lagDays: 0,
+              }]
+            : []);
         if (!preds.length) return;
 
-        const targetCurrent = barWindow(targetRow, false);
+        const targetId = normalizeId((targetRow as any).taskId || targetRow.id);
+        const targetCurrent = targetId ? currentBars.get(targetId) : null;
         if (!targetCurrent) return;
-        const targetBaseline = showBaseline ? barWindow(targetRow, true) : null;
-        const ty = barCenterY(targetRow, targetIdx);
+        const targetBaseline = showBaseline && targetId ? baselineBars.get(targetId) : null;
+        const ty = toSvgY(targetCurrent);
 
         preds.forEach((pred: any) => {
           const predecessorTaskId = normalizeId(pred?.predecessorTaskId || pred?.predecessor_task_id);
@@ -875,24 +900,26 @@ export default function WBSGanttPage() {
           if (sourceIdx === undefined) return;
           const sourceRow = flatRows[sourceIdx];
           if (!isTaskRow(sourceRow)) return;
-          const sy = barCenterY(sourceRow, sourceIdx);
-          const sourceCurrent = barWindow(sourceRow, false);
+          const sourceId = normalizeId((sourceRow as any).taskId || sourceRow.id);
+          const sourceCurrent = sourceId ? currentBars.get(sourceId) : null;
           if (!sourceCurrent) return;
-          const sourceBaseline = showBaseline ? barWindow(sourceRow, true) : null;
+          const sourceBaseline = showBaseline && sourceId ? baselineBars.get(sourceId) : null;
+          const sy = toSvgY(sourceCurrent);
 
           const rel = relationType(pred?.relationship || pred?.relationshipType || pred?.relationship_type);
-          const sx = anchorX(rel, true, sourceCurrent);
-          const tx = anchorX(rel, false, targetCurrent);
-          const delayed = relationDelayed(rel, sourceCurrent, targetCurrent);
+          const sx = toSvgX(sourceCurrent, anchorSide(rel, true));
+          const tx = toSvgX(targetCurrent, anchorSide(rel, false));
+          const depKey = `${sourceId}->${targetId}:${rel}`;
+          if (depDrawn.has(depKey)) return;
+          depDrawn.add(depKey);
           const critical = Boolean((targetRow as any).isCritical || (targetRow as any).is_critical);
 
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
           line.setAttribute('d', routePath(sx, sy, tx, ty));
           line.setAttribute('fill', 'none');
-          line.setAttribute('stroke', critical || delayed ? '#EF4444' : '#40E0D0');
+          line.setAttribute('stroke', critical ? '#EF4444' : '#40E0D0');
           line.setAttribute('stroke-width', critical ? '2' : '1.5');
-          if (!critical && delayed) line.setAttribute('stroke-dasharray', '4,2');
-          line.setAttribute('marker-end', critical || delayed ? 'url(#arrowhead-red)' : 'url(#arrowhead-teal)');
+          line.setAttribute('marker-end', critical ? 'url(#arrowhead-red)' : 'url(#arrowhead-teal)');
           line.setAttribute('opacity', '0.9');
           const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
           title.textContent = `${sourceRow.name || predecessorTaskId} -> ${targetRow.name || ''} (${rel}${pred?.lagDays ? `, lag: ${pred.lagDays}d` : ''})`;
@@ -901,10 +928,10 @@ export default function WBSGanttPage() {
 
           // Baseline connector overlay
           if (showBaseline && sourceBaseline && targetBaseline) {
-            const bsx = anchorX(rel, true, sourceBaseline);
-            const btx = anchorX(rel, false, targetBaseline);
+            const bsx = toSvgX(sourceBaseline, anchorSide(rel, true));
+            const btx = toSvgX(targetBaseline, anchorSide(rel, false));
             const baseLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            baseLine.setAttribute('d', routePath(bsx, sy, btx, ty));
+            baseLine.setAttribute('d', routePath(bsx, toSvgY(sourceBaseline), btx, toSvgY(targetBaseline)));
             baseLine.setAttribute('fill', 'none');
             baseLine.setAttribute('stroke', '#94A3B8');
             baseLine.setAttribute('stroke-width', '1');
@@ -917,7 +944,7 @@ export default function WBSGanttPage() {
     });
 
     return () => cancelAnimationFrame(raf);
-  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight, showBaseline]);
+  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight, showBaseline, inferItemType]);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -1179,7 +1206,8 @@ export default function WBSGanttPage() {
                 const remainingScheduleCost = Number((row as any).remainingCost) || 0;
                 const scheduleCost = actualCost + remainingScheduleCost;
                 const costVariance = scheduleCost - baselineCost;
-                const isTaskLike = (row.itemType === 'task' || row.itemType === 'sub_task' || String(row.id || '').startsWith('wbs-task-'));
+                const itemType = inferItemType(row);
+                const isTaskLike = itemType === 'task' || itemType === 'sub_task';
                 const completedCount = Number((row as any).completedCount) || 0;
                 // Performance Metric = Actual Work / Completed Count
                 const performingMetric = isTaskLike && completedCount > 0 ? (actualWork / completedCount) : null;
@@ -1211,12 +1239,12 @@ export default function WBSGanttPage() {
                       </EnhancedTooltip>
                     </td>
                     {/* Type badge */}
-                    <td style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
+                    <td style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}><span className={`type-badge ${itemType}`} style={{ fontSize: '0.5rem' }}>{(itemType || '').replace('_', ' ')}</span></td>
                     {/* Resource */}
                     <td style={{ ...TD_FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(row as any).assignedResource || ''}>{(row as any).assignedResource || '-'}</td>
                     {/* Employee (Assign dropdown) */}
                     <td style={{ ...TD_FONT, overflow: 'visible', position: 'relative' }} data-assign-cell="true">
-                      {(row.itemType === 'task' || row.itemType === 'sub_task' || row.itemType === 'phase') ? (
+                      {(itemType === 'task' || itemType === 'sub_task' || itemType === 'phase') ? (
                         editingTaskId === row.id ? (
                           <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 50, minWidth: '220px' }}>
                             <SearchableDropdown options={employeeOptions} value={row.assignedResourceId || null} onChange={id => handleAssignResource(row.id, id)} placeholder="Assign..." disabled={false} width="220px" />
@@ -1267,15 +1295,15 @@ export default function WBSGanttPage() {
                         style={{
                           ...TD_FONT,
                           color: 'var(--pinnacle-teal)',
-                          cursor: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'pointer' : 'default',
-                          textDecoration: (row.itemType === 'task' || row.itemType === 'sub_task') ? 'underline' : 'none',
+                          cursor: (itemType === 'task' || itemType === 'sub_task') ? 'pointer' : 'default',
+                          textDecoration: (itemType === 'task' || itemType === 'sub_task') ? 'underline' : 'none',
                         }}
-                        title={(row.itemType === 'task' || row.itemType === 'sub_task') ? 'Click to view hour entries' : undefined}
-                        onClick={() => (row.itemType === 'task' || row.itemType === 'sub_task') && setDrillDownRow(row)}
+                        title={(itemType === 'task' || itemType === 'sub_task') ? 'Click to view hour entries' : undefined}
+                        onClick={() => (itemType === 'task' || itemType === 'sub_task') && setDrillDownRow(row)}
                       >
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                           {row.actualHours && isFinite(Number(row.actualHours)) ? Number(row.actualHours).toFixed(0) : '-'}
-                          {hasComparison && (row.itemType === 'task' || row.itemType === 'sub_task') && (() => {
+                          {hasComparison && (itemType === 'task' || itemType === 'sub_task') && (() => {
                             const taskId = row.id || (row as any).taskId;
                             const snapH = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
                             if (snapH == null) return null;
@@ -1375,7 +1403,21 @@ export default function WBSGanttPage() {
                       <td className="number" style={{ ...TD_FONT, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     )}
                     <td className="number" style={{ ...TD_FONT, color: getProgressColor(progress), fontWeight: 700 }}>{`${Math.round(progress)}%`}</td>
-                    <td style={{ fontSize: '0.5rem' }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.predecessorTaskId || p.predecessor_task_id)).join(', ')}>{row.predecessors?.length ? `${row.predecessors.length} dep` : '-'}</td>
+                    {(() => {
+                      const rowPreds = Array.isArray((row as any).predecessors) && (row as any).predecessors.length
+                        ? (row as any).predecessors
+                        : (((row as any).predecessorId || (row as any).predecessor_id)
+                          ? [{ predecessorTaskId: (row as any).predecessorId || (row as any).predecessor_id }]
+                          : []);
+                      const names = rowPreds
+                        .map((p: any) => p.predecessorName || p.predecessor_name || getTaskNameFromMap(p.predecessorTaskId || p.predecessor_task_id))
+                        .filter(Boolean);
+                      return (
+                        <td style={{ fontSize: '0.5rem' }} title={names.join(', ') || '-'}>
+                          {names.length ? names.join(', ') : '-'}
+                        </td>
+                      );
+                    })()}
                     <td className="number" style={{ ...TD_FONT, color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>{row.totalFloat != null ? row.totalFloat : '-'}</td>
                     <td style={{ textAlign: 'center', borderRight: '1px solid #444' }}>{isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.6rem' }}>CP</span>}</td>
 
@@ -1413,7 +1455,7 @@ export default function WBSGanttPage() {
                                 position: 'absolute', left: `calc(${dateColumns.length * 100}% * ${bL / 100})`,
                                 width: `calc(${dateColumns.length * 100}% * ${bW / 100})`, height: '6px', top: '18px',
                                 background: 'rgba(107,114,128,0.4)', borderRadius: '2px', zIndex: 3, border: '1px solid rgba(107,114,128,0.6)',
-                              }} />
+                              }} data-gantt-bar-baseline={String((row as any).taskId || row.id || '').replace(/^wbs-(task|sub_task)-/, '')} />
                             );
                           }
                         }
@@ -1446,6 +1488,7 @@ export default function WBSGanttPage() {
                                 display: 'flex', alignItems: 'center',
                                 cursor: 'default',
                               }}
+                              data-gantt-bar-current={String((row as any).taskId || row.id || '').replace(/^wbs-(task|sub_task)-/, '')}
                             >
                               {!isMilestone && <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '3px' }} />}
                               {isMilestone && <div style={{ width: '4px', height: '100%', background: '#ef4444', marginLeft: '-2px' }} />}
