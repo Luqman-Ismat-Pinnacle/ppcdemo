@@ -97,6 +97,79 @@ class ProjectParser:
 
         return predecessor_task, successor_task
 
+    def _task_id(self, task, fallback=''):
+        try:
+            uid = task.getUniqueID()
+            if uid is not None:
+                return str(uid)
+        except Exception:
+            pass
+        try:
+            tid = task.getID()
+            if tid is not None:
+                return f"task-{tid}"
+        except Exception:
+            pass
+        try:
+            outline = task.getOutlineNumber()
+            if outline:
+                return f"outline-{outline}"
+        except Exception:
+            pass
+        return fallback
+
+    def _collect_tasks(self, project):
+        candidates = []
+
+        # Strategy 1: MPXJ all tasks API
+        try:
+            all_tasks = project.getAllTasks()
+            if all_tasks:
+                for t in all_tasks:
+                    if t is not None:
+                        candidates.append(t)
+        except Exception:
+            pass
+
+        # Strategy 2: direct project tasks API
+        try:
+            top_tasks = project.getTasks()
+            if top_tasks:
+                for t in top_tasks:
+                    if t is not None:
+                        candidates.append(t)
+        except Exception:
+            pass
+
+        # Strategy 3: recurse child tasks from each top-level node.
+        def add_descendants(task):
+            try:
+                children = task.getChildTasks()
+            except Exception:
+                children = None
+            if not children:
+                return
+            for child in children:
+                if child is None:
+                    continue
+                candidates.append(child)
+                add_descendants(child)
+
+        for task in list(candidates):
+            add_descendants(task)
+
+        # De-duplicate while preserving order.
+        deduped = []
+        seen = set()
+        for idx, task in enumerate(candidates):
+            stable_id = self._task_id(task, fallback=f"row-{idx + 1}")
+            if stable_id in seen:
+                continue
+            seen.add(stable_id)
+            deduped.append(task)
+
+        return deduped
+
     def parse_file(self, path):
         # 1. Read the file
         project = self.reader.read(path)
@@ -120,21 +193,20 @@ class ProjectParser:
 
         # 4. Process all tasks in order
         all_tasks = []
-        try:
-            tasks = project.getAllTasks()
-        except Exception:
-            tasks = project.getTasks()
+        tasks = self._collect_tasks(project)
         
-        for task in tasks:
+        for idx, task in enumerate(tasks):
             # We no longer skip empty names or Level 0 to preserve full hierarchy
-            uid = str(task.getUniqueID())
+            uid = self._task_id(task, fallback=f"row-{idx + 1}")
             name = str(task.getName() or "")
             level = int(task.getOutlineLevel() or 0)
             
             # Determine hierarchy info
             is_summary = bool(task.getSummary())
             parent_task = task.getParentTask()
-            parent_id = str(parent_task.getUniqueID()) if parent_task and parent_task.getUniqueID() else None
+            parent_id = self._task_id(parent_task, fallback='') if parent_task else None
+            if not parent_id:
+                parent_id = None
 
             # Resource extraction
             res_names = []
@@ -176,7 +248,8 @@ class ProjectParser:
                     for relation in pred_relations:
                         try:
                             predecessor_task, _ = self._extract_relation_tasks(relation)
-                            if not predecessor_task or not predecessor_task.getUniqueID():
+                            predecessor_id = self._task_id(predecessor_task, fallback='')
+                            if not predecessor_task or not predecessor_id:
                                 continue
 
                             rel_type_normalized = self._normalize_relation_type(relation)
@@ -190,7 +263,7 @@ class ProjectParser:
                                     lag_days = 0.0
 
                             predecessors.append({
-                                'predecessorTaskId': str(predecessor_task.getUniqueID()),
+                                'predecessorTaskId': predecessor_id,
                                 'predecessorName': str(predecessor_task.getName() or ''),
                                 'relationship': rel_type_normalized,
                                 'lagDays': lag_days,
@@ -209,7 +282,8 @@ class ProjectParser:
                     for relation in succ_relations:
                         try:
                             _, successor_task = self._extract_relation_tasks(relation)
-                            if not successor_task or not successor_task.getUniqueID():
+                            successor_id = self._task_id(successor_task, fallback='')
+                            if not successor_task or not successor_id:
                                 continue
 
                             rel_type_normalized = self._normalize_relation_type(relation)
@@ -223,7 +297,7 @@ class ProjectParser:
                                     lag_days = 0.0
 
                             successors.append({
-                                'successorTaskId': str(successor_task.getUniqueID()),
+                                'successorTaskId': successor_id,
                                 'successorName': str(successor_task.getName() or ''),
                                 'relationship': rel_type_normalized,
                                 'lagDays': lag_days,
@@ -287,8 +361,12 @@ class ProjectParser:
                     'totalLeafTasks': len(leaf_tasks),
                     'linkedLeafTasks': len(linked_leaf_tasks),
                     'isolatedLeafTasks': isolated_leaf_tasks,
-                    'coveragePercent': coverage_percent
-                }
+                    'coveragePercent': coverage_percent,
+                },
+                'taskCollection': {
+                    'collectedTaskCount': len(tasks),
+                    'parsedTaskCount': len(all_tasks),
+                },
             }
         }
 
