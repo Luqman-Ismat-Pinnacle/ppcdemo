@@ -326,8 +326,8 @@ const TPWExecuteDonut = ({ hours, nonExecuteHours, selectedTaskId }: { hours: an
     };
   }, [hours, nonExecuteHours, selectedTaskId]);
 
-  const total = hours.reduce((s: number, h: any) => s + (h.hours || 0), 0);
-  const tpwPct = nonExecuteHours?.percent || 0;
+  const total = hours.reduce((s: number, h: any) => s + asNumber(h.hours), 0);
+  const tpwPct = asNumber(nonExecuteHours?.percent);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -357,7 +357,7 @@ const ContributorSwimlanes = ({ task, hours, laborByWorker, qcByNameAndRole }: {
     taskHours.forEach((h: any) => {
       const key = h.employeeId;
       const existing = empMap.get(key) || { name: '', actual: 0, employeeId: key };
-      existing.actual += h.hours;
+      existing.actual += asNumber(h.hours);
       existing.name = h.employeeName || laborByWorker.find((w: any) => w.name)?.name || key;
       empMap.set(key, existing);
     });

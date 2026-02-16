@@ -580,7 +580,21 @@ export function DataProvider({ children }: DataProviderProps) {
    */
   const filteredData = useMemo(() => {
     const filtered = { ...data };
-    const hasPlan = (project: any) => project?.has_schedule === true || project?.hasSchedule === true;
+    const projectIdsWithDocs = new Set(
+      (filtered.projectDocuments || [])
+        .map((d: any) => String(d.projectId ?? d.project_id ?? ''))
+        .filter(Boolean)
+    );
+    const hasPlan = (project: any) => {
+      const rawHasSchedule = project?.has_schedule ?? project?.hasSchedule;
+      const hasSchedule =
+        rawHasSchedule === true ||
+        rawHasSchedule === 1 ||
+        String(rawHasSchedule || '').toLowerCase() === 'true' ||
+        String(rawHasSchedule || '') === '1';
+      const projectId = String(project?.id ?? project?.projectId ?? '');
+      return hasSchedule || (projectId && projectIdsWithDocs.has(projectId));
+    };
 
     // =========================================================================
     // ACTIVE PORTFOLIOS ONLY (WBS, Gantt, and app-wide views exclude inactive)
@@ -596,16 +610,17 @@ export function DataProvider({ children }: DataProviderProps) {
         activePortfolioIds.has(p.id || p.portfolioId)
       );
     }
-    if (filtered.projects) {
+    if (filtered.projects && activePortfolioIds.size > 0) {
       filtered.projects = (filtered.projects as any[]).filter((p: any) => {
         const pid = p.portfolioId ?? p.portfolio_id;
-        return pid && activePortfolioIds.has(pid);
+        // Keep project if it has no portfolio mapping to avoid blanking whole app due partial hierarchy load.
+        return !pid || activePortfolioIds.has(pid);
       });
     }
-    if (filtered.customers) {
+    if (filtered.customers && activePortfolioIds.size > 0) {
       filtered.customers = (filtered.customers as any[]).filter((c: any) => {
         const pid = c.portfolioId ?? c.portfolio_id;
-        return pid && activePortfolioIds.has(pid);
+        return !pid || activePortfolioIds.has(pid);
       });
     }
     const activeCustomerIds = new Set((filtered.customers || []).map((c: any) => c.id || c.customerId));
@@ -618,7 +633,10 @@ export function DataProvider({ children }: DataProviderProps) {
 
     // Only surface projects with uploaded plans and cascade that to dependent entities.
     if (filtered.projects) {
-      filtered.projects = (filtered.projects as any[]).filter((p: any) => hasPlan(p));
+      const originalProjects = filtered.projects as any[];
+      const plannedOnly = originalProjects.filter((p: any) => hasPlan(p));
+      // Guard: if plan metadata is missing during initial load, do not zero-out all views.
+      filtered.projects = plannedOnly.length > 0 ? plannedOnly : originalProjects;
     }
     const plannedProjectIds = new Set((filtered.projects || []).map((p: any) => p.id || p.projectId));
     if (filtered.units) {
@@ -646,7 +664,7 @@ export function DataProvider({ children }: DataProviderProps) {
       const wbsFiltered = (filtered.wbsData.items as any[]).filter((item: any) => {
         if (!isPortfolio(item)) return true;
         const portfolioId = (item.id || '').replace(/^wbs-portfolio-/, '');
-        if (!portfolioId || !activePortfolioIds.has(portfolioId)) return false;
+        if (activePortfolioIds.size > 0 && portfolioId && !activePortfolioIds.has(portfolioId)) return false;
         // Hide portfolio if it has nothing in it (no children)
         if (!item.children || item.children.length === 0) return false;
         return true;
