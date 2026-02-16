@@ -973,20 +973,46 @@ export default function DocumentsPage() {
       // Only include deps where BOTH predecessor and successor exist in the tasks table (FK constraint)
       const taskIdSet = new Set((convertedData.tasks || []).map((t: any) => String(t.id || t.taskId)));
       const depRecords: any[] = [];
+      const depKeySet = new Set<string>();
+      const addDependency = (predecessorTaskId: string, successorTaskId: string, relationshipType: string, lagDays: number, idHint?: string) => {
+        const predId = String(predecessorTaskId || '');
+        const succId = String(successorTaskId || '');
+        if (!predId || !succId || predId === succId) return;
+        if (!taskIdSet.has(predId) || !taskIdSet.has(succId)) return;
+        const rel = relationshipType || 'FS';
+        const lag = Number(lagDays) || 0;
+        const dedupeKey = `${predId}__${succId}__${rel}__${lag}`;
+        if (depKeySet.has(dedupeKey)) return;
+        depKeySet.add(dedupeKey);
+        depRecords.push({
+          id: idHint || `${succId}-${predId}-${rel}-${lag}`,
+          predecessorTaskId: predId,
+          successorTaskId: succId,
+          relationshipType: rel,
+          lagDays: lag,
+        });
+      };
       (convertedData.tasks || []).forEach((task: any) => {
         const preds = task.predecessors || [];
         preds.forEach((pred: any) => {
-          const predId = String(pred.predecessorTaskId || '');
-          const succId = String(task.id || task.taskId);
-          if (predId && taskIdSet.has(predId) && taskIdSet.has(succId) && predId !== succId) {
-            depRecords.push({
-              id: pred.id || `${succId}-${predId}`,
-              predecessorTaskId: predId,
-              successorTaskId: succId,
-              relationshipType: pred.relationship || 'FS',
-              lagDays: pred.lagDays || 0,
-            });
-          }
+          addDependency(
+            String(pred.predecessorTaskId || pred.predecessor_task_id || ''),
+            String(task.id || task.taskId || ''),
+            String(pred.relationship || pred.relationshipType || pred.relationship_type || 'FS'),
+            Number(pred.lagDays || pred.lag_days || pred.lag || 0),
+            pred.id || undefined,
+          );
+        });
+
+        const succs = task.successors || [];
+        succs.forEach((succ: any) => {
+          addDependency(
+            String(task.id || task.taskId || ''),
+            String(succ.successorTaskId || succ.successor_task_id || ''),
+            String(succ.relationship || succ.relationshipType || succ.relationship_type || 'FS'),
+            Number(succ.lagDays || succ.lag_days || succ.lag || 0),
+            succ.id || undefined,
+          );
         });
       });
       if (depRecords.length > 0) {

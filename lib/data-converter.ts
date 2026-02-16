@@ -354,6 +354,105 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     return result;
   }
 
+  const normalizeRelationship = (value: unknown): 'FS' | 'SS' | 'FF' | 'SF' => {
+    const v = String(value || 'FS').toUpperCase();
+    return v === 'SS' || v === 'FF' || v === 'SF' ? v : 'FS';
+  };
+
+  const parseLinkString = (raw: string) => {
+    const text = String(raw || '').trim();
+    if (!text) return null;
+    const idMatch = text.match(/^([A-Za-z0-9_.-]+)/);
+    if (!idMatch) return null;
+    const relMatch = text.match(/\b(FS|SS|FF|SF)\b/i);
+    const lagMatch = text.match(/([+-]?\d+)/);
+    return {
+      id: idMatch[1],
+      relationship: normalizeRelationship(relMatch?.[1] || 'FS'),
+      lagDays: lagMatch ? Number(lagMatch[1]) || 0 : 0,
+    };
+  };
+
+  const normalizePredecessors = (task: any): any[] => {
+    const rawLinks =
+      task.predecessors ??
+      task.predecessorLinks ??
+      task.predecessor_links ??
+      task.predecessorIds ??
+      task.predecessor_ids ??
+      [];
+    const links = Array.isArray(rawLinks) ? rawLinks : [rawLinks];
+    return links
+      .map((link: any) => {
+        if (typeof link === 'string') {
+          const parsed = parseLinkString(link);
+          if (!parsed) return null;
+          return {
+            predecessorTaskId: parsed.id,
+            predecessorName: '',
+            relationship: parsed.relationship,
+            lagDays: parsed.lagDays,
+          };
+        }
+        if (!link || typeof link !== 'object') return null;
+        const predecessorTaskId =
+          link.predecessorTaskId ??
+          link.predecessor_task_id ??
+          link.taskId ??
+          link.task_id ??
+          link.id ??
+          link.uid;
+        if (!predecessorTaskId) return null;
+        return {
+          predecessorTaskId: String(predecessorTaskId),
+          predecessorName: String(link.predecessorName ?? link.predecessor_name ?? link.name ?? ''),
+          relationship: normalizeRelationship(link.relationship ?? link.relationshipType ?? link.relationship_type),
+          lagDays: Number(link.lagDays ?? link.lag_days ?? link.lag ?? 0) || 0,
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const normalizeSuccessors = (task: any): any[] => {
+    const rawLinks =
+      task.successors ??
+      task.successorLinks ??
+      task.successor_links ??
+      task.successorIds ??
+      task.successor_ids ??
+      [];
+    const links = Array.isArray(rawLinks) ? rawLinks : [rawLinks];
+    return links
+      .map((link: any) => {
+        if (typeof link === 'string') {
+          const parsed = parseLinkString(link);
+          if (!parsed) return null;
+          return {
+            successorTaskId: parsed.id,
+            successorName: '',
+            relationship: parsed.relationship,
+            lagDays: parsed.lagDays,
+          };
+        }
+        if (!link || typeof link !== 'object') return null;
+        const successorTaskId =
+          link.successorTaskId ??
+          link.successor_task_id ??
+          link.taskId ??
+          link.task_id ??
+          link.id ??
+          link.uid;
+        if (!successorTaskId) return null;
+        return {
+          successorTaskId: String(successorTaskId),
+          successorName: String(link.successorName ?? link.successor_name ?? link.name ?? ''),
+          relationship: normalizeRelationship(link.relationship ?? link.relationshipType ?? link.relationship_type),
+          lagDays: Number(link.lagDays ?? link.lag_days ?? link.lag ?? 0) || 0,
+        };
+      })
+      .filter(Boolean);
+  };
+
   // Build hierarchy: level 1 = unit; level 2+ with children = phase; leaf = task. (Project -> Unit -> Phase -> Task)
   const raw = (data.tasks as any[])
     .filter((t: any) => (t.outline_level ?? 0) !== 0)
@@ -365,18 +464,25 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       startDate: t.startDate || null,
       endDate: t.endDate || null,
       percentComplete: t.percentComplete || 0,
-      baselineHours: t.baselineHours || 0,
-      actualHours: t.actualHours || 0,
+      baselineHours: t.baselineHours ?? t.baselineWork ?? t.baseline_work ?? t.baseline_hours ?? 0,
+      actualHours: t.actualHours ?? t.actualWork ?? t.actual_work ?? t.actual_hours ?? 0,
       projectedHours: t.projectedHours || 0,
-      remainingHours: t.remainingHours ?? t.remaining_hours ?? 0,
+      remainingHours: t.remainingHours ?? t.remainingWork ?? t.remaining_work ?? t.remaining_hours ?? 0,
       baselineCost: t.baselineCost ?? t.baseline_cost ?? 0,
       actualCost: t.actualCost ?? t.actual_cost ?? 0,
       remainingCost: t.remainingCost ?? t.remaining_cost ?? null,
+      baselineCount: t.baselineCount ?? t.baseline_count ?? t.baselineQty ?? t.baseline_qty ?? 0,
+      actualCount: t.actualCount ?? t.actual_count ?? t.actualQty ?? t.actual_qty ?? 0,
+      completedCount: t.completedCount ?? t.completed_count ?? t.completedQty ?? t.completed_qty ?? 0,
+      baselineMetric: t.baselineMetric ?? t.baseline_metric ?? null,
+      baselineUom: t.baselineUom ?? t.baseline_uom ?? t.uom ?? null,
       isCritical: t.isCritical || false,
       totalSlack: Math.round(t.totalSlack || 0),
       comments: t.comments || '',
       is_summary: t.is_summary || false,
       assignedResource: t.assignedResource || '',
+      predecessors: normalizePredecessors(t),
+      successors: normalizeSuccessors(t),
     }));
 
   const byId = new Map<string, (typeof raw)[0]>();
@@ -428,6 +534,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       baselineCost: r.baselineCost ?? r.baseline_cost ?? 0,
       actualCost: r.actualCost ?? r.actual_cost ?? 0,
       remainingCost: r.remainingCost ?? r.remaining_cost ?? null,
+      baselineCount: Number(r.baselineCount ?? r.baseline_count ?? 0) || 0,
+      actualCount: Number(r.actualCount ?? r.actual_count ?? 0) || 0,
+      completedCount: Number(r.completedCount ?? r.completed_count ?? 0) || 0,
+      baselineMetric: r.baselineMetric ?? r.baseline_metric ?? null,
+      baselineUom: r.baselineUom ?? r.baseline_uom ?? null,
       isCritical: r.isCritical || false,
       totalSlack: r.totalSlack ?? 0,
       comments: r.comments || '',
@@ -484,6 +595,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
         priority: 'medium' as const,
         predecessorId: firstPred?.predecessorTaskId || null,
         predecessorRelationship: (firstPred?.relationship as 'FS' | 'SS' | 'FF' | 'SF') || null,
+        baselineCount: baseTask.baselineCount,
+        actualCount: baseTask.actualCount,
+        completedCount: baseTask.completedCount,
+        baselineMetric: baseTask.baselineMetric,
+        baselineUom: baseTask.baselineUom,
         // Full predecessors array for Gantt dependency arrows
         predecessors: preds.map((p: any) => ({
           id: `${id}-${p.predecessorTaskId}`,
@@ -813,8 +929,15 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
         comments: (t.comments as string) || '',
         baselineHours: (t.baselineHours as number) ?? (t.baseline_work as number) ?? (t.baseline_hours as number) ?? 0,
         actualHours: (t.actualHours as number) ?? (t.actual_work as number) ?? (t.actual_hours as number) ?? 0,
+        remainingHours: (t.remainingHours as number) ?? (t.remaining_work as number) ?? (t.remaining_hours as number) ?? 0,
         baselineCost: (t.baselineCost as number) ?? (t.baseline_cost as number) ?? 0,
         actualCost: (t.actualCost as number) ?? (t.actual_cost as number) ?? 0,
+        remainingCost: (t.remainingCost as number) ?? (t.remaining_cost as number) ?? 0,
+        baselineCount: (t.baselineCount as number) ?? (t.baseline_count as number) ?? 0,
+        actualCount: (t.actualCount as number) ?? (t.actual_count as number) ?? 0,
+        completedCount: (t.completedCount as number) ?? (t.completed_count as number) ?? 0,
+        baselineMetric: (t.baselineMetric as string) ?? (t.baseline_metric as string) ?? null,
+        baselineUom: (t.baselineUom as string) ?? (t.baseline_uom as string) ?? (t.uom as string) ?? null,
         predecessorId: (t.predecessorId as string) || (t.predecessor_id as string) || null,
         predecessorRelationship: (t.predecessorRelationship as 'FS' | 'SS' | 'FF' | 'SF') || (t.predecessor_relationship as any) || null,
         // Full predecessors array for Gantt dependency arrows
@@ -826,6 +949,16 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
               predecessorName: (p.predecessorName || p.predecessor_name || '') as string,
               relationship: ((p.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF'),
               lagDays: (p.lagDays || p.lag_days || 0) as number,
+            }))
+          : [],
+        successors: Array.isArray(t.successors)
+          ? (t.successors as any[]).map((s: any) => ({
+              id: `${taskId}-${s.successorTaskId || s.successor_task_id}`,
+              taskId: taskId,
+              successorTaskId: String(s.successorTaskId || s.successor_task_id || ''),
+              successorName: (s.successorName || s.successor_name || '') as string,
+              relationship: ((s.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF'),
+              lagDays: (s.lagDays || s.lag_days || 0) as number,
             }))
           : [],
         createdAt: (t.createdAt as string) || now,
@@ -896,4 +1029,3 @@ export function detectCSVDataType(headers: string[]): 'employees' | 'timecards' 
 
   return 'unknown';
 }
-
