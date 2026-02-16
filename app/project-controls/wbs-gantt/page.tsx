@@ -788,12 +788,27 @@ export default function WBSGanttPage() {
       const tlDur = tlEnd - tlStart;
       const tlPx = dateColumns.length * columnWidth;
 
-      // Build multiple lookup maps so we can resolve by various ID formats
+      const isTaskRow = (row: any) => {
+        const itemType = (row?.itemType || row?.type || '').toString().toLowerCase();
+        return itemType === 'task' || itemType === 'sub_task' || /^wbs-(task|sub_task)-/.test(String(row?.id || ''));
+      };
+      const toDate = (value: any): Date | null => {
+        if (!value) return null;
+        const d = new Date(value);
+        return Number.isFinite(d.getTime()) ? d : null;
+      };
+      const dateToX = (date: Date) => {
+        const clamped = Math.min(Math.max(date.getTime(), tlStart), tlEnd);
+        return fixedColsWidth + ((clamped - tlStart) / tlDur) * tlPx;
+      };
+
+      // Build task-only lookup maps so dependency lines never bind to phase/unit rows.
       const rowMapById = new Map<string, number>();
       flatRows.forEach((r, i) => {
+        if (!isTaskRow(r)) return;
         rowMapById.set(r.id, i);
-        // Also index by the raw ID without WBS prefix (e.g., "wbs-task-123" → "123")
-        const rawId = r.id.replace(/^wbs-(task|phase|unit|project|sub_task)-/, '');
+        // Also index by the raw ID without WBS task prefix.
+        const rawId = r.id.replace(/^wbs-(task|sub_task)-/, '');
         if (rawId !== r.id) rowMapById.set(rawId, i);
         // Also by taskId if present
         if ((r as any).taskId) rowMapById.set((r as any).taskId, i);
@@ -814,19 +829,25 @@ export default function WBSGanttPage() {
       }
 
       flatRows.forEach((item, idx) => {
-        if (!item.predecessors?.length || !item.startDate) return;
+        if (!isTaskRow(item) || !item.predecessors?.length) return;
+        const itemStart = toDate(item.startDate);
+        const itemEnd = toDate(item.endDate) || itemStart;
+        if (!itemStart) return;
         const ty = headerHeight + idx * rowHeight + rowHeight / 2;
-        const tOff = Math.max(0, new Date(item.startDate).getTime() - tlStart);
-        const tx = fixedColsWidth + (tOff / tlDur) * tlPx;
+        const txStart = dateToX(itemStart);
+        const txEnd = itemEnd ? dateToX(itemEnd) : txStart;
 
         item.predecessors.forEach((pred: any) => {
           // Resolve predecessor row — try predecessorTaskId (from MPP), then taskId (legacy), then with wbs prefix
-          const predId = pred.predecessorTaskId || pred.taskId || '';
+          const predId = String(pred.predecessorTaskId || pred.taskId || '');
           let si = rowMapById.get(predId);
           if (si === undefined) si = rowMapById.get(`wbs-task-${predId}`);
           if (si === undefined) return;
           const src = flatRows[si];
-          if (!src.endDate) return;
+          if (!isTaskRow(src)) return;
+          const srcStart = toDate(src.startDate) || toDate(src.endDate);
+          const srcEnd = toDate(src.endDate) || srcStart;
+          if (!srcStart) return;
 
           const relationship = (pred.relationship || 'FS').toUpperCase();
           const sy = headerHeight + si * rowHeight + rowHeight / 2;
@@ -835,26 +856,20 @@ export default function WBSGanttPage() {
           let fromX: number, toX: number;
           if (relationship === 'SS') {
             // Start-to-Start: from predecessor start to successor start
-            const sStartOff = Math.max(0, new Date(src.startDate || src.endDate).getTime() - tlStart);
-            fromX = fixedColsWidth + (sStartOff / tlDur) * tlPx;
-            toX = tx;
+            fromX = dateToX(srcStart);
+            toX = txStart;
           } else if (relationship === 'FF') {
             // Finish-to-Finish: from predecessor end to successor end
-            const sEndOff = Math.max(0, Math.min(tlEnd, new Date(src.endDate).getTime()) - tlStart);
-            const tEndOff = Math.max(0, Math.min(tlEnd, new Date(item.endDate || item.startDate).getTime()) - tlStart);
-            fromX = fixedColsWidth + (sEndOff / tlDur) * tlPx;
-            toX = fixedColsWidth + (tEndOff / tlDur) * tlPx;
+            fromX = dateToX(srcEnd || srcStart);
+            toX = txEnd;
           } else if (relationship === 'SF') {
             // Start-to-Finish: from predecessor start to successor end
-            const sStartOff = Math.max(0, new Date(src.startDate || src.endDate).getTime() - tlStart);
-            const tEndOff = Math.max(0, Math.min(tlEnd, new Date(item.endDate || item.startDate).getTime()) - tlStart);
-            fromX = fixedColsWidth + (sStartOff / tlDur) * tlPx;
-            toX = fixedColsWidth + (tEndOff / tlDur) * tlPx;
+            fromX = dateToX(srcStart);
+            toX = txEnd;
           } else {
             // FS (Finish-to-Start) — default
-            const sOff = Math.max(0, Math.min(tlEnd, new Date(src.endDate).getTime()) - tlStart);
-            fromX = fixedColsWidth + (sOff / tlDur) * tlPx;
-            toX = tx;
+            fromX = dateToX(srcEnd || srcStart);
+            toX = txStart;
           }
 
           const cp = Math.max(Math.abs(toX - fromX) * 0.5, 20);
@@ -862,7 +877,7 @@ export default function WBSGanttPage() {
           path.setAttribute('d', `M${fromX},${sy} C${fromX + cp},${sy} ${toX - cp},${ty} ${toX},${ty}`);
 
           const crit = item.isCritical || (item as any).is_critical;
-          const delay = src.endDate && item.startDate && new Date(src.endDate) > new Date(item.startDate);
+          const delay = srcEnd && itemStart && srcEnd > itemStart;
           if (crit && (item.totalFloat === 0 || item.totalFloat === undefined)) {
             path.setAttribute('stroke', '#EF4444'); path.setAttribute('stroke-width', '2');
           } else if (delay) {
@@ -1146,10 +1161,10 @@ export default function WBSGanttPage() {
                 const remainingScheduleCost = Number((row as any).remainingCost) || 0;
                 const scheduleCost = actualCost + remainingScheduleCost;
                 const costVariance = scheduleCost - baselineCost;
-                const completedCount =
-                  Number((row as any).completedCount) ||
-                  (progress >= 100 ? 1 : 0);
-                const performingMetric = completedCount > 0 ? (actualWork / completedCount) : null;
+                const isTaskLike = (row.itemType === 'task' || row.itemType === 'sub_task' || String(row.id || '').startsWith('wbs-task-'));
+                const completedCount = Number((row as any).completedCount) || 0;
+                // Performance Metric = Actual Work / Completed Count
+                const performingMetric = isTaskLike && completedCount > 0 ? (actualWork / completedCount) : null;
 
                 // Simplified bar colour: progress-based for ALL bars (parent + leaf), critical path override
                 const barColor = isCritical ? '#EF4444' : getProgressColor(progress);

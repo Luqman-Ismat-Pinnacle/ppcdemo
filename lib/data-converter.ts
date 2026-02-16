@@ -485,6 +485,19 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       successors: normalizeSuccessors(t),
     }));
 
+  // Reconstruct missing parent links from outline levels when parent_id is absent.
+  // Some MPXJ reads expose outline_level consistently but can omit parent pointers.
+  const outlineStack: string[] = [];
+  raw.forEach((r: any) => {
+    const level = Math.max(1, Number(r.outline_level) || 1);
+    outlineStack.length = Math.max(0, level - 1);
+    if (!r.parent_id && outlineStack.length > 0) {
+      r.parent_id = outlineStack[outlineStack.length - 1];
+    }
+    outlineStack[level - 1] = String(r.id);
+    outlineStack.length = level;
+  });
+
   const byId = new Map<string, (typeof raw)[0]>();
   raw.forEach((r: any) => byId.set(String(r.id), r));
 
@@ -506,8 +519,9 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       typeById.set(id, 'unit');
       return;
     }
-    // Level 2+: phase if this node has children (container), otherwise task (leaf).
-    if (hasChildren.has(id)) {
+    // Level 2+: treat summary rows as phases. This is more robust than relying
+    // solely on parent/child links, which can be incomplete in some MPP files.
+    if (r.is_summary || hasChildren.has(id)) {
       typeById.set(id, 'phase');
     } else {
       typeById.set(id, 'task');
