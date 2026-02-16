@@ -125,6 +125,7 @@ export default function FeedbackPage() {
       setError(null);
       const res = await fetch('/api/feedback?type=all&limit=250', { cache: 'no-store' });
       const payload = await res.json();
+      if (payload?.error) throw new Error(payload.error);
       if (!res.ok) throw new Error(payload?.error || 'Failed to load feedback');
       setItems(payload?.items || []);
     } catch (e: unknown) {

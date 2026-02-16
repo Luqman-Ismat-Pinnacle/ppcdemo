@@ -34,7 +34,7 @@ function asNullableText(v: unknown): string | null {
 export async function GET(request: NextRequest) {
   try {
     if (!isPostgresConfigured()) {
-      return NextResponse.json({ items: [], error: 'PostgreSQL not configured' }, { status: 200 });
+      return NextResponse.json({ items: [], error: 'PostgreSQL not configured' }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
