@@ -408,8 +408,11 @@ function buildHierarchyMaps(data: {
       tasksByPhase.get(key)!.push(task);
     }
 
+    // Always index by project as a fallback. Some imports can carry a phaseId
+    // that doesn't resolve to any current phase row, and WBS still needs to
+    // surface those tasks under the project node instead of dropping them.
     const projectId = task.projectId ?? task.project_id;
-    if (projectId != null && projectId !== '' && !phaseId) {
+    if (projectId != null && projectId !== '') {
       const key = String(projectId);
       if (!tasksByProject.has(key)) tasksByProject.set(key, []);
       tasksByProject.get(key)!.push(task);
