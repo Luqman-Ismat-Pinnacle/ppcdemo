@@ -83,7 +83,7 @@ export default function Header() {
         >
           <button
             type="button"
-            className={`nav-dropdown-trigger ${logoMenuOpen ? 'active' : ''}`}
+            className={`nav-dropdown-trigger app-logo-trigger ${logoMenuOpen ? 'active' : ''}`}
             onClick={() => setLogoMenuOpen((prev) => !prev)}
             aria-label="Open WBS navigation"
           >

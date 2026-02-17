@@ -178,6 +178,7 @@ function buildRowsFromData(source: Record<string, unknown>): V2Row[] {
     const projectId = readString(project, 'id', 'projectId');
     return readBoolean(project, 'has_schedule', 'hasSchedule') || projectsWithDocs.has(projectId);
   });
+  const sourceProjects = plannedProjects.length ? plannedProjects : projects;
 
   const siteToCustomer = new Map<string, string>();
   sites.forEach((site) => {
@@ -203,7 +204,7 @@ function buildRowsFromData(source: Record<string, unknown>): V2Row[] {
 
   const projectsByCustomer = new Map<string, unknown[]>();
   const projectsBySite = new Map<string, unknown[]>();
-  plannedProjects.forEach((project) => {
+  sourceProjects.forEach((project) => {
     const siteId = readString(project, 'siteId', 'site_id');
     const customerId = readString(project, 'customerId', 'customer_id') || siteToCustomer.get(siteId) || '';
     if (customerId) {
@@ -544,6 +545,30 @@ function buildRowsFromData(source: Record<string, unknown>): V2Row[] {
     }
   });
 
+  // Fallback: when portfolio/customer hierarchy is absent, still render projects from Data Management.
+  if (!rootNodes.length && sourceProjects.length) {
+    const fallbackRoot = createNode({
+      key: 'portfolio:unassigned',
+      id: 'unassigned',
+      projectId: '',
+      taskId: '',
+      name: 'Unassigned Portfolio',
+      nodeType: 'portfolio',
+      startDate: null,
+      endDate: null,
+      baselineHours: 0,
+      actualHours: 0,
+      remainingHours: 0,
+      percentComplete: 0,
+      predecessors: [],
+    });
+    sortByName(sourceProjects, (project) => readString(project, 'name', 'projectNumber') || '').forEach((project) => {
+      fallbackRoot.children.push(createProjectNode(project));
+    });
+    aggregateNode(fallbackRoot);
+    rootNodes.push(fallbackRoot);
+  }
+
   const rows: V2Row[] = [];
   const visit = (node: TreeNode, path: string[]) => {
     const pathSegment = `${node.name}__${node.key}`;
@@ -631,6 +656,10 @@ export default function WBSGanttV2Page() {
     if (!gridApi) return;
     collectVisibleRows(gridApi);
   }, [gridApi, rowData, collectVisibleRows]);
+
+  useEffect(() => {
+    if (!gridApi) setVisibleRows(rowData);
+  }, [gridApi, rowData]);
 
   useEffect(() => {
     const gridViewport = gridWrapRef.current?.querySelector('.ag-body-viewport') as HTMLElement | null;

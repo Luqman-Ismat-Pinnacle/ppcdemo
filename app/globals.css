@@ -509,6 +509,18 @@ body {
   width: auto;
 }
 
+.app-logo-trigger {
+  padding: 0.2rem 0.45rem !important;
+  gap: 0.22rem !important;
+  border-radius: 8px;
+}
+
+.app-logo-trigger img {
+  height: 22px !important;
+  width: auto !important;
+  display: block;
+}
+
 .header-right {
   display: flex;
   align-items: center;
