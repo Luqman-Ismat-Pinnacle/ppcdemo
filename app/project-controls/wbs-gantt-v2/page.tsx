@@ -7,7 +7,7 @@ import { Arrow, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import { useData } from '@/lib/data-context';
 import PageLoader from '@/components/ui/PageLoader';
 
-type TimelineInterval = 'week' | 'month' | 'quarter' | 'year';
+type TimelineInterval = 'day' | 'month' | 'quarter' | 'year';
 
 type FlatWbsRow = {
   id: string;
@@ -231,9 +231,18 @@ export default function WBSGanttV2Page() {
   const [leftPanePct, setLeftPanePct] = useState(50);
   const [draggingSplit, setDraggingSplit] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState<Set<string>>(new Set(defaultVisibleColumns));
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
 
   const [gridTheme, setGridTheme] = useState<Theme | undefined>(undefined);
+  const [timelineColors, setTimelineColors] = useState({
+    header: '#0f172a',
+    gridMinor: '#23334b',
+    gridMajor: '#4a607c',
+    rowLine: '#1f3149',
+    text: '#d0d9e8',
+    quarter: '#9eb0c7',
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -265,22 +274,31 @@ export default function WBSGanttV2Page() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 10,
       cellVerticalPadding: 7,
-      headerFontStyle: '600 12px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '600 10px var(--font-montserrat, sans-serif)',
       headerIconSize: 16,
-      baseFontStyle: '500 11px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '500 11px var(--font-mono, monospace)',
+      baseFontStyle: '500 10px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '500 10px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '11px',
+      editorFontSize: '10px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
       roundingRadius: 6,
     });
+
+    setTimelineColors({
+      header: pick('--bg-secondary', '#0f172a'),
+      gridMinor: 'rgba(148,163,184,0.16)',
+      gridMajor: 'rgba(148,163,184,0.35)',
+      rowLine: 'rgba(148,163,184,0.22)',
+      text: pick('--text-secondary', '#d0d9e8'),
+      quarter: pick('--text-muted', '#9eb0c7'),
+    });
   }, []);
 
   useEffect(() => {
     const defaults: Record<TimelineInterval, number> = {
-      week: 4,
+      day: 8,
       month: 2,
       quarter: 1,
       year: 0.55,
@@ -455,9 +473,21 @@ export default function WBSGanttV2Page() {
   const visibleDefs = useMemo(() => ALL_COLUMNS.filter((c) => visibleColumnIds.has(c.id)), [visibleColumnIds]);
   const columns = useMemo<GridColumn[]>(() => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: c.width })), [visibleDefs]);
 
+  const filteredRows = useMemo(() => {
+    return flatRows.filter((row) => {
+      for (const def of visibleDefs) {
+        const query = (columnFilters[def.id] || '').trim().toLowerCase();
+        if (!query) continue;
+        const value = def.value(row).toLowerCase();
+        if (!value.includes(query)) return false;
+      }
+      return true;
+    });
+  }, [flatRows, visibleDefs, columnFilters]);
+
   const getCellContent = useCallback((cell: Item): GridCell => {
     const [col, row] = cell;
-    const r = flatRows[row];
+    const r = filteredRows[row];
     if (!r) {
       return { kind: GridCellKind.Text, data: '', displayData: '', allowOverlay: false };
     }
@@ -481,13 +511,13 @@ export default function WBSGanttV2Page() {
       displayData: text,
       allowOverlay: false,
     };
-  }, [flatRows, visibleDefs]);
+  }, [filteredRows, visibleDefs]);
 
   const onCellClicked = useCallback((cell: Item) => {
     const [col, row] = cell;
     const def = visibleDefs[col];
     if (!def || (def.id !== 'wbs' && def.id !== 'name')) return;
-    const target = flatRows[row];
+    const target = filteredRows[row];
     if (!target?.hasChildren) return;
 
     setExpandedIds((prev) => {
@@ -496,19 +526,19 @@ export default function WBSGanttV2Page() {
       else next.add(target.id);
       return next;
     });
-  }, [flatRows, visibleDefs]);
+  }, [filteredRows, visibleDefs]);
 
   const onVisibleRegionChanged = useCallback((range: Rectangle, _tx: number, ty: number) => {
     const byRange = Math.max(0, range.y * ROW_HEIGHT);
-    setVerticalOffset(Math.max(byRange, ty));
+    setVerticalOffset(Number.isFinite(ty) ? Math.max(0, ty) : byRange);
   }, []);
 
-  const rowsWithDates = useMemo(() => flatRows.filter((r) => {
+  const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
     if (!r.startDate || !r.endDate) return false;
     const y1 = r.startDate.getFullYear();
     const y2 = r.endDate.getFullYear();
     return y1 >= 2000 && y1 <= 2100 && y2 >= 2000 && y2 <= 2100;
-  }), [flatRows]);
+  }), [filteredRows]);
 
   const timelineRange = useMemo(() => {
     if (!rowsWithDates.length) {
@@ -548,44 +578,19 @@ export default function WBSGanttV2Page() {
   const visibleWindow = useMemo(() => {
     const startIdx = Math.max(0, Math.floor(verticalOffset / ROW_HEIGHT) - 3);
     const count = Math.ceil(Math.max(0, rightPanelHeight - HEADER_HEIGHT) / ROW_HEIGHT) + 6;
-    const endIdx = Math.min(flatRows.length - 1, startIdx + count);
+    const endIdx = Math.min(filteredRows.length - 1, startIdx + count);
     return { startIdx, endIdx };
-  }, [verticalOffset, rightPanelHeight, flatRows.length]);
+  }, [verticalOffset, rightPanelHeight, filteredRows.length]);
 
   const indexByTaskId = useMemo(() => {
     const map = new Map<string, number>();
-    flatRows.forEach((r, idx) => {
+    filteredRows.forEach((r, idx) => {
       const rid = normalizeTaskId(r.id);
       if (rid && !map.has(rid)) map.set(rid, idx);
       if (r.taskId && !map.has(r.taskId)) map.set(r.taskId, idx);
     });
     return map;
-  }, [flatRows]);
-
-  const monthTicks = useMemo(() => {
-    const ticks: Date[] = [];
-    const start = new Date(timelineRange.min.getFullYear(), timelineRange.min.getMonth(), 1);
-    const end = new Date(timelineRange.max.getFullYear(), timelineRange.max.getMonth(), 1);
-    const cursor = new Date(start);
-    while (cursor <= end) {
-      ticks.push(new Date(cursor));
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-    return ticks;
-  }, [timelineRange]);
-
-  const quarterTicks = useMemo(() => {
-    const ticks: Date[] = [];
-    const startQuarter = Math.floor(timelineRange.min.getMonth() / 3) * 3;
-    const start = new Date(timelineRange.min.getFullYear(), startQuarter, 1);
-    const end = new Date(timelineRange.max.getFullYear(), timelineRange.max.getMonth(), 1);
-    const cursor = new Date(start);
-    while (cursor <= end) {
-      ticks.push(new Date(cursor));
-      cursor.setMonth(cursor.getMonth() + 3);
-    }
-    return ticks;
-  }, [timelineRange]);
+  }, [filteredRows]);
 
   const yearTicks = useMemo(() => {
     const ticks: Date[] = [];
@@ -598,6 +603,69 @@ export default function WBSGanttV2Page() {
     }
     return ticks;
   }, [timelineRange]);
+
+  const axisTicks = useMemo(() => {
+    const ticks: Date[] = [];
+    const min = timelineRange.min;
+    const max = timelineRange.max;
+
+    if (timelineInterval === 'day') {
+      const start = new Date(min.getFullYear(), min.getMonth(), min.getDate());
+      const end = new Date(max.getFullYear(), max.getMonth(), max.getDate());
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        ticks.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return ticks;
+    }
+
+    if (timelineInterval === 'month') {
+      const start = new Date(min.getFullYear(), min.getMonth(), 1);
+      const end = new Date(max.getFullYear(), max.getMonth(), 1);
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        ticks.push(new Date(cursor));
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+      return ticks;
+    }
+
+    if (timelineInterval === 'quarter') {
+      const startQuarter = Math.floor(min.getMonth() / 3) * 3;
+      const start = new Date(min.getFullYear(), startQuarter, 1);
+      const end = new Date(max.getFullYear(), max.getMonth(), 1);
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        ticks.push(new Date(cursor));
+        cursor.setMonth(cursor.getMonth() + 3);
+      }
+      return ticks;
+    }
+
+    const start = new Date(min.getFullYear(), 0, 1);
+    const end = new Date(max.getFullYear(), 0, 1);
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      ticks.push(new Date(cursor));
+      cursor.setFullYear(cursor.getFullYear() + 1);
+    }
+    return ticks;
+  }, [timelineRange, timelineInterval]);
+
+  const tickLabel = useCallback((tick: Date): string => {
+    if (timelineInterval === 'day') {
+      return tick.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+    }
+    if (timelineInterval === 'month') {
+      return tick.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    }
+    if (timelineInterval === 'quarter') {
+      const q = Math.floor(tick.getMonth() / 3) + 1;
+      return `Q${q} ${String(tick.getFullYear()).slice(-2)}`;
+    }
+    return String(tick.getFullYear());
+  }, [timelineInterval]);
 
   const scrollToToday = useCallback(() => {
     const el = rightScrollRef.current;
@@ -648,7 +716,7 @@ export default function WBSGanttV2Page() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 2, background: 'var(--bg-tertiary)', borderRadius: 6, padding: 2 }}>
-            {(['week', 'month', 'quarter', 'year'] as TimelineInterval[]).map((iv) => (
+            {(['day', 'month', 'quarter', 'year'] as TimelineInterval[]).map((iv) => (
               <button
                 key={iv}
                 type="button"
@@ -714,7 +782,33 @@ export default function WBSGanttV2Page() {
             )}
           </div>
 
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{flatRows.length} rows</div>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{filteredRows.length} rows</div>
+        </div>
+      </div>
+
+      <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: 6, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', minWidth: 'max-content', gap: 6 }}>
+          {visibleDefs.map((def) => (
+            <div key={def.id} style={{ width: def.width, minWidth: def.width }}>
+              <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginBottom: 3, fontWeight: 700 }}>{def.title}</div>
+              <input
+                type="text"
+                value={columnFilters[def.id] || ''}
+                placeholder="Filter..."
+                onChange={(e) => setColumnFilters((prev) => ({ ...prev, [def.id]: e.target.value }))}
+                style={{
+                  width: '100%',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 4,
+                  color: 'var(--text-primary)',
+                  fontSize: '0.62rem',
+                  padding: '4px 6px',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
@@ -726,7 +820,7 @@ export default function WBSGanttV2Page() {
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (
             <DataEditor
               columns={columns}
-              rows={flatRows.length}
+              rows={filteredRows.length}
               rowHeight={ROW_HEIGHT}
               headerHeight={HEADER_HEIGHT}
               getCellContent={getCellContent}
@@ -759,35 +853,43 @@ export default function WBSGanttV2Page() {
             <div ref={rightScrollRef} style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
               <Stage width={timelineInnerWidth} height={rightPanelHeight}>
                 <Layer>
-                  <Rect x={0} y={0} width={timelineInnerWidth} height={HEADER_HEIGHT} fill={'#0d1625'} />
+                  <Rect x={0} y={0} width={timelineInnerWidth} height={HEADER_HEIGHT} fill={timelineColors.header} />
 
-                  {monthTicks.map((tick) => {
+                  {axisTicks.map((tick) => {
                     const x = toX(tick);
-                    return <Line key={`m-${tick.toISOString()}`} points={[x, HEADER_HEIGHT, x, rightPanelHeight]} stroke={'#23334b'} strokeWidth={0.9} />;
-                  })}
-
-                  {quarterTicks.map((tick) => {
-                    const x = toX(tick);
-                    const q = Math.floor(tick.getMonth() / 3) + 1;
+                    const isMajor =
+                      timelineInterval === 'year' ||
+                      (timelineInterval === 'quarter' && tick.getMonth() === 0) ||
+                      (timelineInterval === 'month' && tick.getMonth() === 0) ||
+                      (timelineInterval === 'day' && tick.getDate() === 1);
+                    const showLabel = timelineInterval === 'day' ? (tick.getDate() === 1 || tick.getDate() === 15) : true;
                     return (
-                      <React.Fragment key={`q-${tick.toISOString()}`}>
-                        <Line points={[x, 0, x, rightPanelHeight]} stroke={'#314762'} strokeWidth={1.1} />
-                        {(timelineInterval === 'week' || timelineInterval === 'month') && (
-                          <Text x={x + 3} y={2} text={`Q${q}`} fill={'#9eb0c7'} fontSize={10} />
+                      <React.Fragment key={`axis-${tick.toISOString()}`}>
+                        <Line
+                          points={[x, HEADER_HEIGHT, x, rightPanelHeight]}
+                          stroke={isMajor ? timelineColors.gridMajor : timelineColors.gridMinor}
+                          strokeWidth={isMajor ? 1.25 : 0.8}
+                        />
+                        {showLabel && (
+                          <Text
+                            x={x + 3}
+                            y={timelineInterval === 'day' ? 16 : 10}
+                            text={tickLabel(tick)}
+                            fill={isMajor ? timelineColors.text : timelineColors.quarter}
+                            fontSize={timelineInterval === 'day' ? 9 : 10}
+                          />
                         )}
                       </React.Fragment>
                     );
                   })}
 
-                  {yearTicks.map((tick) => {
-                    const x = toX(tick);
-                    return (
-                      <React.Fragment key={`y-${tick.toISOString()}`}>
-                        <Line points={[x, 0, x, rightPanelHeight]} stroke={'#4a607c'} strokeWidth={1.35} />
-                        <Text x={x + 4} y={12} text={String(tick.getFullYear())} fill={'#d0d9e8'} fontSize={11} />
-                      </React.Fragment>
-                    );
-                  })}
+                  {(timelineInterval === 'day' || timelineInterval === 'month' || timelineInterval === 'quarter') &&
+                    yearTicks.map((tick) => {
+                      const x = toX(tick);
+                      return (
+                        <Line key={`year-line-${tick.toISOString()}`} points={[x, 0, x, rightPanelHeight]} stroke={timelineColors.gridMajor} strokeWidth={1.4} />
+                      );
+                    })}
 
                   {/* Today line */}
                   {(() => {
@@ -802,7 +904,7 @@ export default function WBSGanttV2Page() {
                     );
                   })()}
 
-                  {flatRows.slice(visibleWindow.startIdx, visibleWindow.endIdx + 1).map((row, localIdx) => {
+                  {filteredRows.slice(visibleWindow.startIdx, visibleWindow.endIdx + 1).map((row, localIdx) => {
                     const idx = visibleWindow.startIdx + localIdx;
                     const y = HEADER_HEIGHT + idx * ROW_HEIGHT - verticalOffset;
 
@@ -814,7 +916,7 @@ export default function WBSGanttV2Page() {
                     return (
                       <React.Fragment key={row.id}>
                         <Rect x={0} y={y} width={timelineInnerWidth} height={ROW_HEIGHT} fill={row.isCritical ? 'rgba(239,68,68,0.05)' : 'transparent'} />
-                        <Line points={[0, y + ROW_HEIGHT - 1, timelineInnerWidth, y + ROW_HEIGHT - 1]} stroke={'#1f3149'} strokeWidth={1} />
+                        <Line points={[0, y + ROW_HEIGHT - 1, timelineInnerWidth, y + ROW_HEIGHT - 1]} stroke={timelineColors.rowLine} strokeWidth={1} />
 
                         {showBaseline && row.baselineStart && row.baselineEnd && (
                           <Rect
@@ -863,7 +965,7 @@ export default function WBSGanttV2Page() {
                     );
                   })}
 
-                  {showDependencies && flatRows.slice(visibleWindow.startIdx, visibleWindow.endIdx + 1).flatMap((targetRow, localIdx) => {
+                  {showDependencies && filteredRows.slice(visibleWindow.startIdx, visibleWindow.endIdx + 1).flatMap((targetRow, localIdx) => {
                     const targetIdx = visibleWindow.startIdx + localIdx;
                     if (!targetRow.startDate) return [];
 
@@ -874,7 +976,7 @@ export default function WBSGanttV2Page() {
                       const sourceIdx = indexByTaskId.get(normalizeTaskId(pred));
                       if (sourceIdx === undefined) return [];
 
-                      const source = flatRows[sourceIdx];
+                      const source = filteredRows[sourceIdx];
                       if (!source?.endDate) return [];
 
                       const sourceY = HEADER_HEIGHT + sourceIdx * ROW_HEIGHT - verticalOffset + ROW_HEIGHT / 2;
