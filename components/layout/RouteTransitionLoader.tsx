@@ -127,35 +127,26 @@ export default function RouteTransitionLoader() {
       <div
         style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 2,
-          background: 'linear-gradient(90deg, transparent, var(--pinnacle-teal), var(--pinnacle-lime), transparent)',
-          animation: 'shimmer 1.1s linear infinite',
-        }}
-      />
-      <div
-        style={{
-          position: 'fixed',
-          top: 70,
-          right: 18,
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          background: 'rgba(0, 0, 0, 0.72)',
+          gap: 10,
+          background: 'rgba(0, 0, 0, 0.78)',
           border: '1px solid rgba(255,255,255,0.16)',
           borderRadius: 999,
-          padding: '6px 10px',
+          padding: '10px 14px',
           color: '#d1d5db',
-          fontSize: '0.72rem',
+          fontSize: '0.76rem',
           fontWeight: 600,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
         }}
       >
         <span
           style={{
-            width: 10,
-            height: 10,
+            width: 12,
+            height: 12,
             borderRadius: '50%',
             border: '2px solid rgba(255,255,255,0.3)',
             borderTopColor: 'var(--pinnacle-teal)',
