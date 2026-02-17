@@ -144,6 +144,8 @@ function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
 export default function MosPage() {
   const { filteredData, isLoading } = useData();
   const [progressView, setProgressView] = useState<'burnup' | 'gantt'>('burnup');
+  const [axisDetail, setAxisDetail] = useState<'standard' | 'detailed'>('detailed');
+  const [entityViewSize, setEntityViewSize] = useState<12 | 24 | 40>(24);
 
   const model = useMemo(() => {
     const customers = (filteredData.customers || []) as any[];
@@ -499,13 +501,37 @@ export default function MosPage() {
   if (isLoading) return <PageLoader />;
 
   const entityLabel = model.entities[0]?.type === 'customer' ? 'Customer' : 'Project';
-  const entityRows = model.projects.slice(0, 24);
+  const entityRows = model.projects.slice(0, entityViewSize);
+  const detailedAxes = axisDetail === 'detailed';
+
+  const categoryAxis = (data: string[], name?: string) => ({
+    type: 'category' as const,
+    data,
+    name,
+    axisLabel: {
+      color: COLORS.muted,
+      fontSize: detailedAxes ? 10 : 9,
+      rotate: detailedAxes ? 28 : 0,
+      interval: detailedAxes ? 0 : 'auto',
+    },
+    axisLine: { lineStyle: { color: 'rgba(148,163,184,0.4)' } },
+    axisTick: { lineStyle: { color: 'rgba(148,163,184,0.35)' } },
+  });
+  const valueAxis = (name?: string, max?: number) => ({
+    type: 'value' as const,
+    name,
+    max,
+    axisLabel: { color: COLORS.muted, fontSize: detailedAxes ? 10 : 9 },
+    axisLine: { show: false },
+    splitLine: { show: true, lineStyle: { color: 'rgba(148,163,184,0.14)', type: 'dashed' as const } },
+  });
+  const optionalZoom = detailedAxes ? [{ type: 'inside' as const }, { type: 'slider' as const, height: 12, bottom: 0 }] : undefined;
 
   const setupChartOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 140, right: 24, top: 20, bottom: 22, containLabel: true },
-    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
-    yAxis: { type: 'category', data: model.setupRows.map((r) => r.entity) },
+    xAxis: { ...valueAxis('Completion %', 100), axisLabel: { color: COLORS.muted, formatter: '{value}%' } },
+    yAxis: categoryAxis(model.setupRows.map((r) => r.entity)),
     series: [
       { type: 'bar', name: 'Client Signed Off', stack: 'g', data: model.setupRows.map((r) => Number(r.clientPct.toFixed(1))), itemStyle: { color: COLORS.green } },
       { type: 'bar', name: 'Procedures Documented', stack: 'g', data: model.setupRows.map((r) => Number(r.proceduresPct.toFixed(1))), itemStyle: { color: COLORS.blue } },
@@ -517,8 +543,9 @@ export default function MosPage() {
   const burnupOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 40, right: 16, top: 28, bottom: 26, containLabel: true },
-    xAxis: { type: 'category', data: entityRows.map((r) => r.name) },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(entityRows.map((r) => r.name), 'Entity'),
+    yAxis: valueAxis('Hours'),
+    dataZoom: optionalZoom,
     series: [
       {
         type: 'line',
@@ -575,8 +602,9 @@ export default function MosPage() {
       },
     },
     grid: { left: 140, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: { type: 'time', min: minTime, max: maxTime },
-    yAxis: { type: 'category', data: ganttRows.map((r) => r.name) },
+    xAxis: { ...valueAxis('Date'), type: 'time', min: minTime, max: maxTime },
+    yAxis: categoryAxis(ganttRows.map((r) => r.name), 'Entity'),
+    dataZoom: optionalZoom,
     series: [
       {
         type: 'custom',
@@ -621,8 +649,8 @@ export default function MosPage() {
   const forecastTrendOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 36, right: 16, top: 24, bottom: 22, containLabel: true },
-    xAxis: { type: 'category', data: forecastTrendDates },
-    yAxis: { type: 'value', name: 'Predicted End Shift (days)' },
+    xAxis: categoryAxis(forecastTrendDates, 'Report Date'),
+    yAxis: valueAxis('Predicted End Shift (days)'),
     series: [{ type: 'line', smooth: true, data: avgForecast, itemStyle: { color: COLORS.teal }, lineStyle: { color: COLORS.teal } }],
   };
 
@@ -639,8 +667,8 @@ export default function MosPage() {
   const forecastStackedOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 45, right: 16, top: 22, bottom: 22, containLabel: true },
-    xAxis: { type: 'category', data: reasonKeys },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(reasonKeys, 'Delay Class'),
+    yAxis: valueAxis('Milestone Count'),
     series: [
       { type: 'bar', stack: 'f', name: 'On Time', data: reasonKeys.map((k) => reasonMap.get(k)?.onTime || 0), itemStyle: { color: COLORS.green } },
       { type: 'bar', stack: 'f', name: 'Delayed', data: reasonKeys.map((k) => reasonMap.get(k)?.delayed || 0), itemStyle: { color: COLORS.red } },
@@ -653,8 +681,8 @@ export default function MosPage() {
   const waterfallOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 50, right: 16, top: 22, bottom: 30, containLabel: true },
-    xAxis: { type: 'category', data: waterfallData.map((r) => r.role) },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(waterfallData.map((r) => r.role), 'Role'),
+    yAxis: valueAxis('Hours'),
     series: [
       { type: 'bar', stack: 'w', name: 'Available Hours', data: waterfallData.map((r) => r.available), itemStyle: { color: 'rgba(64,224,208,0.35)' } },
       { type: 'bar', stack: 'w', name: 'Non-Billable', data: waterfallData.map((r) => -r.nonBillable), itemStyle: { color: COLORS.amber } },
@@ -667,8 +695,8 @@ export default function MosPage() {
   const evActualOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 42, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: { type: 'category', data: model.months },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(model.months, 'Timeline'),
+    yAxis: valueAxis('Hours'),
     series: [
       {
         type: 'line',
@@ -698,8 +726,8 @@ export default function MosPage() {
       },
     },
     grid: { left: 44, right: 16, top: 16, bottom: 28, containLabel: true },
-    xAxis: { type: 'value', name: 'Schedule Variance %' },
-    yAxis: { type: 'value', name: 'Cost Variance %' },
+    xAxis: valueAxis('Schedule Variance %'),
+    yAxis: valueAxis('Cost Variance %'),
     series: [{
       type: 'scatter',
       data: model.projects.slice(0, 40).map((p) => ({
@@ -715,8 +743,8 @@ export default function MosPage() {
   const eacTrendOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 38, right: 16, top: 20, bottom: 22, containLabel: true },
-    xAxis: { type: 'category', data: model.months },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(model.months, 'Timeline'),
+    yAxis: valueAxis('Cost'),
     series: [
       {
         type: 'line',
@@ -750,8 +778,8 @@ export default function MosPage() {
   const paretoOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 46, right: 38, top: 22, bottom: 32, containLabel: true },
-    xAxis: { type: 'category', data: defectCats.map((d0) => d0.category) },
-    yAxis: [{ type: 'value', name: 'Rework Hours' }, { type: 'value', name: 'Cumulative Cost', position: 'right' }],
+    xAxis: categoryAxis(defectCats.map((d0) => d0.category), 'Defect Category'),
+    yAxis: [{ ...valueAxis('Rework Hours') }, { ...valueAxis('Cumulative Cost'), position: 'right' }],
     series: [
       { type: 'bar', name: 'Rework Hours', data: defectCats.map((d0) => Number(d0.reworkHours.toFixed(1))), itemStyle: { color: COLORS.amber } },
       { type: 'line', name: 'Cumulative Cost', yAxisIndex: 1, data: cumulativeCost, itemStyle: { color: COLORS.red }, smooth: true },
@@ -762,8 +790,8 @@ export default function MosPage() {
   const reworkAreaOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 38, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: { type: 'category', data: model.months },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(model.months, 'Timeline'),
+    yAxis: valueAxis('Rework Hours'),
     series: [{ type: 'line', smooth: true, areaStyle: { color: 'rgba(239,68,68,0.22)' }, data: model.months.map((_, i) => Number(((defectCats.reduce((s, d0) => s + d0.reworkHours, 0) / Math.max(1, model.months.length)) * (0.7 + i * 0.2)).toFixed(1))), itemStyle: { color: COLORS.red } }],
   };
 
@@ -779,8 +807,8 @@ export default function MosPage() {
   const capacityDemandOption: EChartsOption = {
     tooltip: TT,
     grid: { left: 38, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: { type: 'category', data: model.months },
-    yAxis: { type: 'value' },
+    xAxis: categoryAxis(model.months, 'Timeline'),
+    yAxis: valueAxis('Hours'),
     series: [
       { type: 'bar', name: 'Forecasted Demand Hours', data: monthDemand.map((x) => Number(x.demand.toFixed(1))), itemStyle: { color: COLORS.purple } },
       { type: 'line', name: 'Total Capacity Hours', data: monthDemand.map((x) => Number(x.capacity.toFixed(1))), itemStyle: { color: COLORS.teal }, lineStyle: { color: COLORS.teal, width: 2.4 } },
@@ -803,8 +831,8 @@ export default function MosPage() {
       formatter: (p: any) => `Probability ${Number(p.value[0]) + 1}, Impact ${Number(p.value[1]) + 1}<br/>Active Risks: ${p.value[2]}`,
     },
     grid: { left: 36, right: 16, top: 18, bottom: 24, containLabel: true },
-    xAxis: { type: 'category', data: ['1', '2', '3', '4', '5'], name: 'Probability' },
-    yAxis: { type: 'category', data: ['1', '2', '3', '4', '5'], name: 'Impact' },
+    xAxis: categoryAxis(['1', '2', '3', '4', '5'], 'Probability'),
+    yAxis: categoryAxis(['1', '2', '3', '4', '5'], 'Impact'),
     visualMap: {
       min: 0,
       max: Math.max(3, ...riskMatrix.filter((_, i) => i % 3 === 2)),
@@ -827,8 +855,8 @@ export default function MosPage() {
       },
     },
     grid: { left: 40, right: 16, top: 16, bottom: 24, containLabel: true },
-    xAxis: { type: 'value', name: 'Time to Detect (days)' },
-    yAxis: { type: 'value', name: 'Exposure Score' },
+    xAxis: valueAxis('Time to Detect (days)'),
+    yAxis: valueAxis('Exposure Score'),
     series: [{
       type: 'scatter',
       data: model.risks.slice(0, 50).map((r) => ({ name: r.entity, value: [r.detectDays, r.exposure] })),
@@ -1084,7 +1112,28 @@ export default function MosPage() {
             Executive health, forecast reliability, productivity, overrun, quality, capacity, and risk controls in one context-aware page.
           </p>
         </div>
-        <div style={{ color: COLORS.muted, fontSize: '0.72rem', display: 'grid', gap: 3 }}>
+        <div style={{ color: COLORS.muted, fontSize: '0.72rem', display: 'grid', gap: 6, justifyItems: 'end' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <label style={{ fontSize: '0.66rem' }}>Axes</label>
+            <select
+              value={axisDetail}
+              onChange={(e) => setAxisDetail(e.target.value as 'standard' | 'detailed')}
+              style={{ background: 'rgba(0,0,0,0.45)', border: `1px solid ${COLORS.border}`, color: COLORS.text, borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem' }}
+            >
+              <option value="detailed">Detailed</option>
+              <option value="standard">Standard</option>
+            </select>
+            <label style={{ fontSize: '0.66rem' }}>Entities</label>
+            <select
+              value={String(entityViewSize)}
+              onChange={(e) => setEntityViewSize(Number(e.target.value) as 12 | 24 | 40)}
+              style={{ background: 'rgba(0,0,0,0.45)', border: `1px solid ${COLORS.border}`, color: COLORS.text, borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem' }}
+            >
+              <option value="12">Top 12</option>
+              <option value="24">Top 24</option>
+              <option value="40">Top 40</option>
+            </select>
+          </div>
           <span>{model.projects.length.toLocaleString()} entities in scope</span>
           <span>{model.tasks.length.toLocaleString()} tasks</span>
           <span>{model.units.length.toLocaleString()} units • {model.phases.length.toLocaleString()} phases</span>

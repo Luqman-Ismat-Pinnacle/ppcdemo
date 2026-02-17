@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import DataEditor, { DataEditorRef, GridCell, GridCellKind, GridColumn, Item, Rectangle, Theme } from '@glideapps/glide-data-grid';
@@ -185,7 +186,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: 'name', title: 'Name', width: 260, value: (r) => r.name },
   { id: 'type', title: 'Type', width: 110, value: (r) => r.type },
   { id: 'resource', title: 'Resource', width: 160, value: (r) => r.assignedResource || r.resourceName },
-  { id: 'fte', title: 'FTE Load', width: 120, value: (_r) => '' },
+  { id: 'fte', title: 'FTE Load', width: 120, value: () => '' },
   { id: 'start', title: 'Start', width: 105, value: (r) => formatDate(r.startDate) },
   { id: 'end', title: 'End', width: 105, value: (r) => formatDate(r.endDate) },
   { id: 'days', title: 'Days', width: 70, value: (r) => formatInt(r.daysRequired) },
@@ -223,7 +224,6 @@ export default function WBSGanttV2Page() {
   const rightPanel = useElementSize<HTMLDivElement>();
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const rightVirtualScrollRef = useRef<HTMLDivElement>(null);
-  const syncGuardRef = useRef<'left' | 'right' | null>(null);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [verticalOffset, setVerticalOffset] = useState(0);
@@ -234,8 +234,10 @@ export default function WBSGanttV2Page() {
   const [leftPanePct, setLeftPanePct] = useState(50);
   const [draggingSplit, setDraggingSplit] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState<Set<string>>(new Set(defaultVisibleColumns));
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
   const [headerFilterColumnId, setHeaderFilterColumnId] = useState<string | null>(null);
+  const [headerMenu, setHeaderMenu] = useState<{ columnId: string; x: number; y: number } | null>(null);
   const [barTip, setBarTip] = useState<{ row: FlatWbsRow; x: number; y: number } | null>(null);
 
   const [gridTheme, setGridTheme] = useState<Theme | undefined>(undefined);
@@ -243,18 +245,18 @@ export default function WBSGanttV2Page() {
     textPrimary: '#e5e7eb',
     textSecondary: '#cbd5e1',
     textMuted: '#94a3b8',
-    bgPrimary: '#0f172a',
-    bgSecondary: '#111827',
-    bgTertiary: '#1f2937',
+    bgPrimary: 'rgba(0,0,0,0.5)',
+    bgSecondary: 'rgba(0,0,0,0.82)',
+    bgTertiary: 'rgba(7,13,19,0.92)',
     border: '#334155',
-    teal: '#2ed3c6',
+    teal: '#40e0d0',
   });
   const [timelineColors, setTimelineColors] = useState({
-    header: '#0f172a',
-    gridMinor: '#23334b',
-    gridMajor: '#4a607c',
-    rowLine: '#1f3149',
-    text: '#d0d9e8',
+    header: 'rgba(0,0,0,0.88)',
+    gridMinor: 'rgba(100,131,167,0.2)',
+    gridMajor: 'rgba(100,131,167,0.42)',
+    rowLine: 'rgba(95,126,163,0.26)',
+    text: '#e2ebff',
     quarter: '#9eb0c7',
   });
 
@@ -265,35 +267,35 @@ export default function WBSGanttV2Page() {
 
     setGridTheme({
       accentColor: pick('--pinnacle-teal', '#2ed3c6'),
-      accentFg: '#06171b',
-      accentLight: 'rgba(46,211,198,0.22)',
+      accentFg: '#010509',
+      accentLight: 'rgba(64,224,208,0.32)',
       textDark: pick('--text-primary', '#e5e7eb'),
       textMedium: pick('--text-secondary', '#cbd5e1'),
       textLight: pick('--text-muted', '#94a3b8'),
       textBubble: '#e2e8f0',
-      bgIconHeader: pick('--bg-secondary', '#111827'),
+      bgIconHeader: 'rgba(6,10,14,0.96)',
       fgIconHeader: pick('--text-secondary', '#cbd5e1'),
-      textHeader: pick('--text-secondary', '#cbd5e1'),
+      textHeader: pick('--text-primary', '#e5e7eb'),
       textHeaderSelected: pick('--text-primary', '#e5e7eb'),
-      bgCell: pick('--bg-primary', '#0f172a'),
-      bgCellMedium: pick('--bg-secondary', '#111827'),
-      bgHeader: pick('--bg-secondary', '#111827'),
-      bgHeaderHasFocus: pick('--bg-tertiary', '#1f2937'),
-      bgHeaderHovered: pick('--bg-tertiary', '#1f2937'),
-      bgBubble: pick('--bg-tertiary', '#1f2937'),
-      bgBubbleSelected: pick('--bg-tertiary', '#1f2937'),
+      bgCell: 'rgba(0,0,0,0.56)',
+      bgCellMedium: 'rgba(0,0,0,0.72)',
+      bgHeader: 'rgba(0,0,0,0.88)',
+      bgHeaderHasFocus: 'rgba(0,0,0,0.96)',
+      bgHeaderHovered: 'rgba(6,10,14,0.95)',
+      bgBubble: 'rgba(0,0,0,0.84)',
+      bgBubbleSelected: 'rgba(0,0,0,0.9)',
       bgSearchResult: 'rgba(46,211,198,0.2)',
       borderColor: pick('--border-color', '#334155'),
       drilldownBorder: pick('--border-color', '#334155'),
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 10,
       cellVerticalPadding: 7,
-      headerFontStyle: '600 10px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '700 11px var(--font-montserrat, sans-serif)',
       headerIconSize: 16,
-      baseFontStyle: '500 10px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '500 10px var(--font-mono, monospace)',
+      baseFontStyle: '600 11px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '600 11px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '10px',
+      editorFontSize: '11px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -301,23 +303,23 @@ export default function WBSGanttV2Page() {
     });
 
     setTimelineColors({
-      header: pick('--bg-secondary', '#0f172a'),
-      gridMinor: 'rgba(148,163,184,0.16)',
-      gridMajor: 'rgba(148,163,184,0.35)',
-      rowLine: 'rgba(148,163,184,0.22)',
-      text: pick('--text-secondary', '#d0d9e8'),
-      quarter: pick('--text-muted', '#9eb0c7'),
+      header: 'rgba(0,0,0,0.88)',
+      gridMinor: 'rgba(100,131,167,0.2)',
+      gridMajor: 'rgba(100,131,167,0.42)',
+      rowLine: 'rgba(95,126,163,0.26)',
+      text: '#e2ebff',
+      quarter: '#9eb0c7',
     });
 
     setUiColors({
       textPrimary: pick('--text-primary', '#e5e7eb'),
       textSecondary: pick('--text-secondary', '#cbd5e1'),
       textMuted: pick('--text-muted', '#94a3b8'),
-      bgPrimary: 'rgba(15,23,42,0.74)',
-      bgSecondary: pick('--bg-secondary', '#111827'),
-      bgTertiary: pick('--bg-tertiary', '#1f2937'),
+      bgPrimary: 'rgba(0,0,0,0.5)',
+      bgSecondary: 'rgba(0,0,0,0.82)',
+      bgTertiary: 'rgba(7,13,19,0.92)',
       border: pick('--border-color', '#334155'),
-      teal: pick('--pinnacle-teal', '#2ed3c6'),
+      teal: '#40e0d0',
     });
   }, []);
 
@@ -356,8 +358,9 @@ export default function WBSGanttV2Page() {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest('[data-header-filter-popup]')) return;
+      if (target.closest('[data-header-filter-popup]') || target.closest('[data-header-menu-popup]')) return;
       setHeaderFilterColumnId(null);
+      setHeaderMenu(null);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
@@ -372,6 +375,41 @@ export default function WBSGanttV2Page() {
     });
     return map;
   }, [fullData.employees]);
+
+  const predecessorMapByTaskId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const allTasks = [...(filteredData.tasks || []), ...(fullData.tasks || [])];
+    allTasks.forEach((task: unknown) => {
+      const rec = toRecord(task);
+      const taskId = normalizeTaskId(readString(rec, 'id', 'taskId', 'task_id'));
+      if (!taskId) return;
+
+      const fromArrayRaw = rec.predecessors;
+      const fromArray = Array.isArray(fromArrayRaw)
+        ? fromArrayRaw
+          .map((p) => normalizeTaskId(readString(p, 'predecessorTaskId', 'predecessor_task_id', 'taskId', 'task_id', 'id')))
+          .filter(Boolean)
+        : [];
+
+      const raw = readString(rec, 'predecessorId', 'predecessor_id', 'predecessorsText', 'predecessors_text');
+      const fromString = raw
+        ? raw
+          .split(/[;,]+/)
+          .map((token) => token.trim())
+          .filter(Boolean)
+          .map((token) => {
+            const relMatch = token.match(/(FS|SS|FF|SF)(?:\s*[+-].*)?$/i);
+            const idPart = relMatch && typeof relMatch.index === 'number' ? token.slice(0, relMatch.index).trim() : token;
+            return normalizeTaskId(idPart);
+          })
+          .filter(Boolean)
+        : [];
+
+      const merged = Array.from(new Set([...fromArray, ...fromString]));
+      if (merged.length > 0) map.set(taskId, merged);
+    });
+    return map;
+  }, [filteredData.tasks, fullData.tasks]);
 
   const wbsRootItems = useMemo(() => {
     const raw = ((filteredData as Record<string, unknown>).wbsData as Record<string, unknown> | undefined)?.items;
@@ -477,7 +515,11 @@ export default function WBSGanttV2Page() {
           scheduleCost,
           efficiency,
           percentComplete: Math.max(0, Math.min(100, Math.round(readNumber(rec, 'percentComplete', 'percent_complete')))),
-          predecessorIds: getPredecessorIds(rec),
+          predecessorIds: (() => {
+            const direct = getPredecessorIds(rec);
+            if (direct.length > 0) return direct;
+            return predecessorMapByTaskId.get(taskId) || [];
+          })(),
           totalFloat: readNumber(rec, 'totalFloat', 'total_float'),
           isCritical: Boolean(rec.isCritical || rec.is_critical),
         });
@@ -490,10 +532,13 @@ export default function WBSGanttV2Page() {
 
     walk(wbsRootItems, 1, true);
     return rows;
-  }, [expandedIds, wbsRootItems, employeeNameById]);
+  }, [expandedIds, wbsRootItems, employeeNameById, predecessorMapByTaskId]);
 
   const visibleDefs = useMemo(() => ALL_COLUMNS.filter((c) => visibleColumnIds.has(c.id)), [visibleColumnIds]);
-  const columns = useMemo<GridColumn[]>(() => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: c.width })), [visibleDefs]);
+  const columns = useMemo<GridColumn[]>(
+    () => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: Math.max(56, Math.round(columnWidths[c.id] || c.width)) })),
+    [visibleDefs, columnWidths],
+  );
   const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'eff', 'pct', 'tf']), []);
 
   const filteredRows = useMemo(() => {
@@ -562,7 +607,7 @@ export default function WBSGanttV2Page() {
 
     if (isHovered) {
       ctx.fillStyle = uiColors.textMuted;
-      ctx.font = '700 10px var(--font-mono, monospace)';
+      ctx.font = '700 11px var(--font-mono, monospace)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       // Filter trigger
@@ -572,7 +617,7 @@ export default function WBSGanttV2Page() {
     }
   }, [uiColors]);
 
-  const drawCell = useCallback((args: any, _drawContent: () => void) => {
+  const drawCell = useCallback((args: any) => {
     const { ctx, rect, col, row } = args;
     const r = filteredRows[row];
     const def = visibleDefs[col];
@@ -624,11 +669,16 @@ export default function WBSGanttV2Page() {
       const baselineHours = Math.max(0, r.baselineHours || 0);
       const days = Math.max(1, r.daysRequired || 1);
       const ftePerDay = baselineHours > 0 ? baselineHours / (days * 8) : 0;
-      const intensity = Math.max(0.15, Math.min(1, r.percentComplete / 100 || 0.15));
+      const intensity = Math.max(0.2, Math.min(1, r.percentComplete / 100 || 0.2));
       const plotX = rect.x + 6;
       const plotY = rect.y + 7;
       const plotW = rect.width - 12;
       const plotH = rect.height - 14;
+      const maxFte = 3.5;
+      const yForValue = (val: number) => {
+        const normalized = Math.max(0, Math.min(1, val / maxFte));
+        return plotY + plotH - normalized * (plotH - 2);
+      };
 
       ctx.strokeStyle = uiColors.border;
       ctx.lineWidth = 1;
@@ -637,22 +687,33 @@ export default function WBSGanttV2Page() {
       ctx.lineTo(plotX + plotW, plotY + plotH);
       ctx.stroke();
 
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      for (let i = 0; i <= 12; i += 1) {
-        const t = i / 12;
-        const wave = Math.sin(t * Math.PI * 2) * 0.15 + 0.85;
-        const y = plotY + plotH - Math.min(plotH - 2, (ftePerDay * 5) * wave * intensity);
+      for (let i = 0; i <= 18; i += 1) {
+        const t = i / 18;
+        const gaussian = Math.exp(-Math.pow((t - 0.32) * 2.9, 2));
+        const variation = 0.78 + gaussian * 0.5;
+        const y = yForValue(ftePerDay * variation * intensity);
         const x = plotX + t * plotW;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
+
+      const progressX = plotX + (Math.max(0, Math.min(100, r.percentComplete)) / 100) * plotW;
+      ctx.strokeStyle = '#40e0d0';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 2]);
+      ctx.beginPath();
+      ctx.moveTo(progressX, plotY);
+      ctx.lineTo(progressX, plotY + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
       return;
     }
 
-    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '700' : '500'} 10px var(--font-montserrat, sans-serif)`;
+    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '700' : '600'} 11px var(--font-montserrat, sans-serif)`;
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';
@@ -704,21 +765,34 @@ export default function WBSGanttV2Page() {
       setHeaderFilterColumnId((prev) => (prev === def.id ? null : def.id));
       return;
     }
+    setHeaderMenu({
+      columnId: def.id,
+      x: event.bounds?.x ?? 0,
+      y: (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
+    });
+  }, [visibleDefs]);
+
+  const onHeaderMouseMove = useCallback((event: any) => {
+    if (event?.kind !== 'header') {
+      setHeaderMenu(null);
+      return;
+    }
+    const col = event.location?.[0];
+    if (typeof col !== 'number') return;
+    const def = visibleDefs[col];
+    if (!def) return;
+    const next = {
+      columnId: def.id,
+      x: event.bounds?.x ?? 0,
+      y: (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
+    };
+    setHeaderMenu((prev) => (prev?.columnId === next.columnId ? prev : next));
   }, [visibleDefs]);
 
   const onVisibleRegionChanged = useCallback((range: Rectangle, _tx: number, ty: number) => {
     const byRange = Math.max(0, range.y * ROW_HEIGHT);
     const nextTop = Number.isFinite(ty) ? Math.max(0, ty) : byRange;
     setVerticalOffset(nextTop);
-    if (syncGuardRef.current === 'right') return;
-    const scrollEl = rightScrollRef.current;
-    if (scrollEl && Math.abs(scrollEl.scrollTop - nextTop) > 1) {
-      syncGuardRef.current = 'left';
-      scrollEl.scrollTop = nextTop;
-      requestAnimationFrame(() => {
-        if (syncGuardRef.current === 'left') syncGuardRef.current = null;
-      });
-    }
   }, []);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
@@ -775,13 +849,15 @@ export default function WBSGanttV2Page() {
     const el = e.currentTarget;
     const top = el.scrollTop;
     setVerticalOffset(top);
-    if (syncGuardRef.current === 'left') return;
-    syncGuardRef.current = 'right';
-    dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: top, unit: 'px' }, 'vertical');
-    requestAnimationFrame(() => {
-      if (syncGuardRef.current === 'right') syncGuardRef.current = null;
-    });
   }, []);
+
+  useEffect(() => {
+    const scrollEl = rightScrollRef.current;
+    if (scrollEl && Math.abs(scrollEl.scrollTop - verticalOffset) > 1) {
+      scrollEl.scrollTop = verticalOffset;
+    }
+    dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: verticalOffset, unit: 'px' }, 'vertical');
+  }, [verticalOffset, filteredRows.length]);
 
   const indexByTaskId = useMemo(() => {
     const map = new Map<string, number>();
@@ -1002,10 +1078,10 @@ export default function WBSGanttV2Page() {
         </div>
       )}
 
-      <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
+      <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.46)' }}>
         <div
           ref={leftPanel.ref}
-          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'var(--bg-card)', position: 'relative' }}
+          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.34)', position: 'relative' }}
         >
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (
             <DataEditor
@@ -1018,6 +1094,12 @@ export default function WBSGanttV2Page() {
               onVisibleRegionChanged={onVisibleRegionChanged}
               onCellClicked={onCellClicked}
               onHeaderClicked={onHeaderClicked}
+              onMouseMove={onHeaderMouseMove}
+              onColumnResize={(column, newSize) => {
+                const id = String((column as any).id || '');
+                if (!id) return;
+                setColumnWidths((prev) => ({ ...prev, [id]: Math.max(56, Math.round(newSize)) }));
+              }}
               drawCell={drawCell}
               drawHeader={drawHeader}
               smoothScrollX
@@ -1032,7 +1114,7 @@ export default function WBSGanttV2Page() {
         </div>
 
         <div
-          style={{ width: 8, cursor: 'col-resize', background: 'var(--bg-tertiary)', borderLeft: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', display: 'grid', placeItems: 'center', userSelect: 'none' }}
+          style={{ width: 8, cursor: 'col-resize', background: 'rgba(7,13,19,0.92)', borderLeft: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', display: 'grid', placeItems: 'center', userSelect: 'none' }}
           onMouseDown={() => setDraggingSplit(true)}
           title="Resize panels"
         >
@@ -1041,7 +1123,7 @@ export default function WBSGanttV2Page() {
 
         <div
           ref={rightPanel.ref}
-          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'var(--bg-card)', position: 'relative' }}
+          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.34)', position: 'relative' }}
         >
           {rightPanelWidth > 20 && rightPanelHeight > 20 ? (
             <div ref={rightScrollRef} style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'auto', position: 'relative' }} onScroll={onRightTimelineScroll}>
@@ -1124,6 +1206,9 @@ export default function WBSGanttV2Page() {
                             stroke={'rgba(107,114,128,0.75)'}
                             strokeWidth={1}
                             cornerRadius={2}
+                            onMouseEnter={(evt) => setBarTip({ row, x: evt.evt.clientX + 14, y: evt.evt.clientY - 18 })}
+                            onMouseMove={(evt) => setBarTip({ row, x: evt.evt.clientX + 14, y: evt.evt.clientY - 18 })}
+                            onMouseLeave={() => setBarTip(null)}
                           />
                         )}
 
@@ -1211,7 +1296,7 @@ export default function WBSGanttV2Page() {
                         />,
                         <Arrow
                           key={`dep-arrow-${key}`}
-                          points={[targetX - 15, targetY, targetX - 2, targetY]}
+                          points={[targetX - 14, targetY, targetX, targetY]}
                           stroke={stroke}
                           fill={stroke}
                           strokeWidth={source.isCritical || targetRow.isCritical ? 1.9 : 1.45}
@@ -1268,6 +1353,11 @@ export default function WBSGanttV2Page() {
           </div>
           <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: 8 }}>{barTip.row.daysRequired} working days</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', marginBottom: 6 }}>
+            <span style={{ color: '#8d96a6' }}>Baseline</span>
+            <span>{barTip.row.baselineStart ? new Date(barTip.row.baselineStart).toLocaleDateString() : '-'} → {barTip.row.baselineEnd ? new Date(barTip.row.baselineEnd).toLocaleDateString() : '-'}</span>
+          </div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <div style={{ flex: 1, height: 7, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ width: `${barTip.row.percentComplete || 0}%`, height: '100%', background: getProgressColor(barTip.row.percentComplete || 0, barTip.row.isCritical), borderRadius: 4 }} />
@@ -1281,6 +1371,53 @@ export default function WBSGanttV2Page() {
             <div><span style={{ color: '#777' }}>BL Cost: </span>{formatCurrency(barTip.row.baselineCost)}</div>
             <div><span style={{ color: '#777' }}>Act Cost: </span><span style={{ color: uiColors.teal }}>{formatCurrency(barTip.row.actualCost)}</span></div>
           </div>
+        </div>
+      )}
+
+      {headerMenu && (
+        <div
+          data-header-menu-popup
+          style={{
+            position: 'fixed',
+            left: Math.max(10, Math.min(headerMenu.x + 18, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 260)),
+            top: Math.max(80, Math.min(headerMenu.y + 64, (typeof window !== 'undefined' ? window.innerHeight : 720) - 210)),
+            zIndex: 11000,
+            width: 240,
+            maxWidth: 'calc(100vw - 20px)',
+            background: 'rgba(8,12,18,0.96)',
+            border: '1px solid rgba(64,224,208,0.22)',
+            borderRadius: 8,
+            boxShadow: '0 10px 24px rgba(0,0,0,0.42)',
+            padding: 8,
+            pointerEvents: 'auto',
+          }}
+        >
+          <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#e6f7ff', marginBottom: 6 }}>Column Options</div>
+          <div style={{ fontSize: '0.62rem', color: '#9fb1c9', marginBottom: 8 }}>
+            {ALL_COLUMNS.find((c) => c.id === headerMenu.columnId)?.title}
+          </div>
+          <button
+            type="button"
+            onClick={() => setHeaderFilterColumnId(headerMenu.columnId)}
+            style={{ width: '100%', textAlign: 'left', border: '1px solid rgba(64,224,208,0.24)', background: 'rgba(64,224,208,0.08)', borderRadius: 6, color: '#b8f6ef', padding: '6px 8px', fontSize: '0.64rem', cursor: 'pointer', marginBottom: 6 }}
+          >
+            Filter Column
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setVisibleColumnIds((prev) => {
+                if (prev.size <= 3) return prev;
+                const next = new Set(prev);
+                next.delete(headerMenu.columnId);
+                return next;
+              });
+              setHeaderMenu(null);
+            }}
+            style={{ width: '100%', textAlign: 'left', border: '1px solid rgba(239,68,68,0.24)', background: 'rgba(239,68,68,0.09)', borderRadius: 6, color: '#fecaca', padding: '6px 8px', fontSize: '0.64rem', cursor: 'pointer' }}
+          >
+            Hide Column
+          </button>
         </div>
       )}
     </div>
