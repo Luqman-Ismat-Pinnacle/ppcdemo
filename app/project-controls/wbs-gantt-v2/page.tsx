@@ -8,13 +8,18 @@ import type {
   GridApi,
   GridReadyEvent,
   ModelUpdatedEvent,
-  RowGroupOpenedEvent,
   ValueFormatterParams,
 } from 'ag-grid-community';
 import { useData } from '@/lib/data-context';
 import PageLoader from '@/components/ui/PageLoader';
 
 type NodeType = 'portfolio' | 'customer' | 'site' | 'project' | 'unit' | 'phase' | 'task';
+type RelationshipType = 'FS' | 'SS' | 'FF' | 'SF';
+
+interface PredecessorRef {
+  taskId: string;
+  relationship: RelationshipType;
+}
 
 interface TreeNode {
   key: string;
@@ -29,13 +34,15 @@ interface TreeNode {
   actualHours: number;
   remainingHours: number;
   percentComplete: number;
-  predecessors: string[];
+  predecessors: PredecessorRef[];
   children: TreeNode[];
 }
 
 interface V2Row {
   key: string;
   id: string;
+  wbsCode: string;
+  level: number;
   name: string;
   nodeType: NodeType;
   path: string[];
@@ -48,7 +55,7 @@ interface V2Row {
   actualHours: number;
   remainingHours: number;
   percentComplete: number;
-  predecessors: string[];
+  predecessors: PredecessorRef[];
 }
 
 const ROW_HEIGHT = 32;
@@ -117,27 +124,51 @@ const readBoolean = (value: unknown, ...keys: string[]): boolean => {
 
 const normalizeTaskRef = (value: string): string => value.replace(/^wbs-(task|sub_task)-/, '').trim();
 
-const parsePredecessors = (task: unknown): string[] => {
-  const result: string[] = [];
+const normalizeRelationship = (value: string): RelationshipType => {
+  const rel = value.toUpperCase();
+  if (rel === 'SS' || rel === 'FF' || rel === 'SF') return rel;
+  return 'FS';
+};
+
+const parsePredecessorToken = (token: string): PredecessorRef | null => {
+  const t = token.trim();
+  if (!t) return null;
+  const relMatch = t.match(/(FS|SS|FF|SF)(?:\s*[+-].*)?$/i);
+  const relationship = relMatch ? normalizeRelationship(relMatch[1]) : 'FS';
+  const idPart = relMatch && typeof relMatch.index === 'number' ? t.slice(0, relMatch.index).trim() : t;
+  const taskId = normalizeTaskRef(idPart);
+  if (!taskId) return null;
+  return { taskId, relationship };
+};
+
+const parsePredecessors = (task: unknown): PredecessorRef[] => {
+  const result: PredecessorRef[] = [];
   const rawSingle = readString(task, 'predecessorId', 'predecessor_id');
   if (rawSingle) {
     rawSingle
       .split(/[;,]+/)
-      .map((id) => normalizeTaskRef(id))
-      .filter(Boolean)
-      .forEach((id) => result.push(id));
+      .forEach((token) => {
+        const parsed = parsePredecessorToken(token);
+        if (parsed) result.push(parsed);
+      });
   }
 
   const predecessorsRaw = toRecord(task).predecessors;
   if (Array.isArray(predecessorsRaw)) {
     predecessorsRaw.forEach((pred) => {
       const predecessorTaskId = readString(pred, 'predecessorTaskId', 'predecessor_task_id', 'taskId');
+      const relationship = normalizeRelationship(readString(pred, 'relationship', 'relationshipType', 'relationship_type') || 'FS');
       const normalized = normalizeTaskRef(predecessorTaskId);
-      if (normalized) result.push(normalized);
+      if (normalized) result.push({ taskId: normalized, relationship });
     });
   }
 
-  return Array.from(new Set(result));
+  const dedup = new Map<string, PredecessorRef>();
+  result.forEach((pred) => {
+    const key = `${pred.taskId}:${pred.relationship}`;
+    if (!dedup.has(key)) dedup.set(key, pred);
+  });
+  return Array.from(dedup.values());
 };
 
 const createNode = (init: Omit<TreeNode, 'children'>): TreeNode => ({ ...init, children: [] });
@@ -570,12 +601,14 @@ function buildRowsFromData(source: Record<string, unknown>): V2Row[] {
   }
 
   const rows: V2Row[] = [];
-  const visit = (node: TreeNode, path: string[]) => {
+  const visit = (node: TreeNode, path: string[], level: number, wbsCode: string) => {
     const pathSegment = `${node.name}__${node.key}`;
     const nextPath = [...path, pathSegment];
     rows.push({
       key: node.key,
       id: node.id,
+      wbsCode,
+      level,
       name: node.name,
       nodeType: node.nodeType,
       path: nextPath,
@@ -590,10 +623,10 @@ function buildRowsFromData(source: Record<string, unknown>): V2Row[] {
       percentComplete: Math.max(0, Math.min(100, Math.round(node.percentComplete))),
       predecessors: node.predecessors,
     });
-    node.children.forEach((child) => visit(child, nextPath));
+    node.children.forEach((child, idx) => visit(child, nextPath, level + 1, `${wbsCode}.${idx + 1}`));
   };
 
-  rootNodes.forEach((node) => visit(node, []));
+  rootNodes.forEach((node, idx) => visit(node, [], 0, `${idx + 1}`));
   return rows;
 }
 
@@ -648,10 +681,6 @@ export default function WBSGanttV2Page() {
     collectVisibleRows(event.api);
   }, [collectVisibleRows]);
 
-  const onRowGroupOpened = useCallback((event: RowGroupOpenedEvent<V2Row>) => {
-    collectVisibleRows(event.api);
-  }, [collectVisibleRows]);
-
   useEffect(() => {
     if (!gridApi) return;
     collectVisibleRows(gridApi);
@@ -692,6 +721,23 @@ export default function WBSGanttV2Page() {
   }, [gridApi]);
 
   const colDefs = useMemo<ColDef<V2Row>[]>(() => [
+    {
+      field: 'wbsCode',
+      headerName: 'WBS',
+      width: 360,
+      pinned: 'left',
+      cellRenderer: (params: { data?: V2Row }) => {
+        const row = params.data;
+        if (!row) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: row.level * 12 }}>
+            <span style={{ color: 'var(--text-muted)', minWidth: 52, fontVariantNumeric: 'tabular-nums' }}>{row.wbsCode}</span>
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: typeColor[row.nodeType] }} />
+            <span style={{ color: 'var(--text-primary)', fontWeight: row.nodeType === 'task' ? 500 : 700 }}>{row.name}</span>
+          </div>
+        );
+      },
+    },
     {
       field: 'nodeType',
       headerName: 'Type',
@@ -741,16 +787,6 @@ export default function WBSGanttV2Page() {
     },
   ], []);
 
-  const autoGroupColumnDef = useMemo<ColDef<V2Row>>(() => ({
-    headerName: 'WBS',
-    minWidth: 300,
-    pinned: 'left',
-    valueGetter: (params) => params.data?.name || '',
-    cellRendererParams: {
-      suppressCount: true,
-    },
-  }), []);
-
   const { minDate, maxDate } = useMemo(() => {
     const dates = visibleRows
       .flatMap((row) => [row.startDate, row.endDate])
@@ -794,6 +830,7 @@ export default function WBSGanttV2Page() {
     visibleRows.forEach((row, idx) => {
       if (row.taskId) map.set(normalizeTaskRef(row.taskId), idx);
       if (row.nodeType === 'task' && row.id) map.set(normalizeTaskRef(row.id), idx);
+      if (row.nodeType === 'task' && row.wbsCode) map.set(row.wbsCode, idx);
     });
     return map;
   }, [visibleRows]);
@@ -832,17 +869,13 @@ export default function WBSGanttV2Page() {
             <AgGridReact<V2Row>
               rowData={rowData}
               columnDefs={colDefs}
-              autoGroupColumnDef={autoGroupColumnDef}
-              treeData
               animateRows={false}
-              groupDefaultExpanded={2}
-              getDataPath={(row) => row.path}
               rowHeight={ROW_HEIGHT}
               suppressRowTransform
               suppressCellFocus
               onGridReady={onGridReady}
               onModelUpdated={onModelUpdated}
-              onRowGroupOpened={onRowGroupOpened}
+              defaultColDef={{ sortable: true, filter: true, resizable: true }}
             />
           </div>
         </div>
@@ -856,7 +889,7 @@ export default function WBSGanttV2Page() {
                   <g key={tick.toISOString()} transform={`translate(${x},0)`}>
                     <line y1={0} y2={HEADER_HEIGHT} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
                     <text x={4} y={12} fill="var(--text-muted)" fontSize={10}>
-                      {d3.timeFormat('%b %d')(tick)}
+                      {d3.timeFormat('%b %d %Y')(tick)}
                     </text>
                   </g>
                 );
@@ -903,27 +936,40 @@ export default function WBSGanttV2Page() {
               {renderRows.flatMap((row, localIndex) => {
                 const targetIndex = startIndex + localIndex;
                 const targetStart = row.startDate ? new Date(row.startDate) : null;
-                if (!targetStart || Number.isNaN(targetStart.getTime())) return [];
-
+                const targetEnd = row.endDate ? new Date(row.endDate) : null;
+                if (!targetStart || !targetEnd || Number.isNaN(targetStart.getTime()) || Number.isNaN(targetEnd.getTime())) return [];
                 const targetY = targetIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
-                const targetX = xScale(targetStart);
 
                 return row.predecessors
-                  .map((predId) => {
-                    const sourceIndex = rowIndexByTaskId.get(normalizeTaskRef(predId));
-                    if (sourceIndex == null || sourceIndex < startIndex || sourceIndex >= endIndex) return null;
+                  .map((pred) => {
+                    const sourceIndex = rowIndexByTaskId.get(normalizeTaskRef(pred.taskId)) ?? rowIndexByTaskId.get(pred.taskId);
+                    if (sourceIndex == null) return null;
 
                     const sourceRow = visibleRows[sourceIndex];
+                    const sourceStart = sourceRow?.startDate ? new Date(sourceRow.startDate) : null;
                     const sourceEnd = sourceRow?.endDate ? new Date(sourceRow.endDate) : null;
-                    if (!sourceEnd || Number.isNaN(sourceEnd.getTime())) return null;
+                    if (!sourceStart || !sourceEnd || Number.isNaN(sourceStart.getTime()) || Number.isNaN(sourceEnd.getTime())) return null;
 
                     const sourceY = sourceIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
-                    const sourceX = xScale(sourceEnd);
+                    const sourceX = pred.relationship === 'SS' || pred.relationship === 'SF'
+                      ? xScale(sourceStart)
+                      : xScale(sourceEnd);
+                    const targetX = pred.relationship === 'FF' || pred.relationship === 'SF'
+                      ? xScale(targetEnd)
+                      : xScale(targetStart);
                     const cp1 = sourceX + 24;
                     const cp2 = targetX - 24;
                     const path = `M${sourceX},${sourceY} C${cp1},${sourceY} ${cp2},${targetY} ${targetX},${targetY}`;
 
-                    return <path key={`${row.key}-${predId}`} d={path} fill="none" stroke="#40E0D0" strokeWidth={1.4} markerEnd="url(#v2-arrow)" strokeLinecap="round" />;
+                    const stroke = pred.relationship === 'FS'
+                      ? '#40E0D0'
+                      : pred.relationship === 'SS'
+                        ? '#F59E0B'
+                        : pred.relationship === 'FF'
+                          ? '#8B5CF6'
+                          : '#EF4444';
+
+                    return <path key={`${row.key}-${pred.taskId}-${pred.relationship}`} d={path} fill="none" stroke={stroke} strokeWidth={1.5} markerEnd="url(#v2-arrow)" strokeLinecap="round" />;
                   })
                   .filter((shape): shape is JSX.Element => shape !== null);
               })}
