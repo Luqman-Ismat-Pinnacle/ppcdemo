@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import 'frappe-gantt/dist/frappe-gantt.css';
+import './frappe-gantt.local.css';
 import { useData } from '@/lib/data-context';
 import PageLoader from '@/components/ui/PageLoader';
 

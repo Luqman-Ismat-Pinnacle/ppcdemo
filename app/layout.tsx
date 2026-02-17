@@ -15,6 +15,7 @@
  */
 
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Montserrat, JetBrains_Mono } from 'next/font/google';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
@@ -102,7 +103,9 @@ export default function RootLayout({
                         <SnapshotProvider>
                           <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
                             <Header />
-                            <RouteTransitionLoader />
+                            <Suspense fallback={null}>
+                              <RouteTransitionLoader />
+                            </Suspense>
                             <main className="main-content">
                               {children}
                             </main>
