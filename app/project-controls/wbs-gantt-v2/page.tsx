@@ -235,6 +235,16 @@ export default function WBSGanttV2Page() {
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
 
   const [gridTheme, setGridTheme] = useState<Theme | undefined>(undefined);
+  const [uiColors, setUiColors] = useState({
+    textPrimary: '#e5e7eb',
+    textSecondary: '#cbd5e1',
+    textMuted: '#94a3b8',
+    bgPrimary: '#0f172a',
+    bgSecondary: '#111827',
+    bgTertiary: '#1f2937',
+    border: '#334155',
+    teal: '#2ed3c6',
+  });
   const [timelineColors, setTimelineColors] = useState({
     header: '#0f172a',
     gridMinor: '#23334b',
@@ -293,6 +303,17 @@ export default function WBSGanttV2Page() {
       rowLine: 'rgba(148,163,184,0.22)',
       text: pick('--text-secondary', '#d0d9e8'),
       quarter: pick('--text-muted', '#9eb0c7'),
+    });
+
+    setUiColors({
+      textPrimary: pick('--text-primary', '#e5e7eb'),
+      textSecondary: pick('--text-secondary', '#cbd5e1'),
+      textMuted: pick('--text-muted', '#94a3b8'),
+      bgPrimary: pick('--bg-primary', '#0f172a'),
+      bgSecondary: pick('--bg-secondary', '#111827'),
+      bgTertiary: pick('--bg-tertiary', '#1f2937'),
+      border: pick('--border-color', '#334155'),
+      teal: pick('--pinnacle-teal', '#2ed3c6'),
     });
   }, []);
 
@@ -472,6 +493,7 @@ export default function WBSGanttV2Page() {
 
   const visibleDefs = useMemo(() => ALL_COLUMNS.filter((c) => visibleColumnIds.has(c.id)), [visibleColumnIds]);
   const columns = useMemo<GridColumn[]>(() => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: c.width })), [visibleDefs]);
+  const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'eff', 'pct', 'tf']), []);
 
   const filteredRows = useMemo(() => {
     return flatRows.filter((row) => {
@@ -485,6 +507,18 @@ export default function WBSGanttV2Page() {
     });
   }, [flatRows, visibleDefs, columnFilters]);
 
+  const getDisplayText = useCallback((def: ColumnDef, r: FlatWbsRow): string => {
+    let text = def.value(r);
+
+    if (def.id === 'wbs' || def.id === 'name') {
+      const indent = '\u00A0\u00A0'.repeat(Math.max(0, r.level - 1));
+      const expander = r.hasChildren ? (r.isExpanded ? '▾ ' : '▸ ') : '';
+      text = def.id === 'name' ? `${indent}${expander}${text}` : `${indent}${text}`;
+    }
+
+    return text;
+  }, []);
+
   const getCellContent = useCallback((cell: Item): GridCell => {
     const [col, row] = cell;
     const r = filteredRows[row];
@@ -497,13 +531,7 @@ export default function WBSGanttV2Page() {
       return { kind: GridCellKind.Text, data: '', displayData: '', allowOverlay: false };
     }
 
-    let text = def.value(r);
-
-    if (def.id === 'wbs' || def.id === 'name') {
-      const indent = '\u00A0\u00A0'.repeat(Math.max(0, r.level - 1));
-      const expander = r.hasChildren ? (r.isExpanded ? '▾ ' : '▸ ') : '';
-      text = def.id === 'name' ? `${indent}${expander}${text}` : `${indent}${text}`;
-    }
+    const text = getDisplayText(def, r);
 
     return {
       kind: GridCellKind.Text,
@@ -511,7 +539,89 @@ export default function WBSGanttV2Page() {
       displayData: text,
       allowOverlay: false,
     };
-  }, [filteredRows, visibleDefs]);
+  }, [filteredRows, visibleDefs, getDisplayText]);
+
+  const drawHeader = useCallback((args: any, drawContent: () => void) => {
+    const { ctx, rect, column } = args;
+    ctx.fillStyle = uiColors.bgSecondary;
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    drawContent();
+
+    ctx.strokeStyle = uiColors.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rect.x + rect.width - 0.5, rect.y);
+    ctx.lineTo(rect.x + rect.width - 0.5, rect.y + rect.height);
+    ctx.stroke();
+
+    if (column?.id === 'acth' || column?.id === 'actc') {
+      ctx.fillStyle = uiColors.teal;
+      ctx.fillRect(rect.x + 1, rect.y + rect.height - 2, rect.width - 2, 1);
+    }
+  }, [uiColors]);
+
+  const drawCell = useCallback((args: any, _drawContent: () => void) => {
+    const { ctx, rect, col, row } = args;
+    const r = filteredRows[row];
+    const def = visibleDefs[col];
+    if (!r || !def) return;
+
+    const isNumeric = numericColumnIds.has(def.id);
+    const isCritical = r.isCritical;
+    const bg = isCritical ? 'rgba(220,38,38,0.07)' : uiColors.bgPrimary;
+
+    ctx.fillStyle = bg;
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+
+    ctx.strokeStyle = uiColors.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rect.x + rect.width - 0.5, rect.y);
+    ctx.lineTo(rect.x + rect.width - 0.5, rect.y + rect.height);
+    ctx.stroke();
+
+    let color = uiColors.textSecondary;
+    if (def.id === 'acth' || def.id === 'actc') color = uiColors.teal;
+    if (def.id === 'pct') color = getProgressColor(r.percentComplete, r.isCritical);
+    if (def.id === 'tf' && r.totalFloat <= 0) color = '#ef4444';
+    if (def.id === 'cp' && r.isCritical) color = '#ef4444';
+    if (def.id === 'name' || def.id === 'wbs') color = uiColors.textPrimary;
+
+    const text = getDisplayText(def, r);
+
+    if (def.id === 'type') {
+      const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
+      const label = r.type.replace('_', ' ').toUpperCase();
+      ctx.font = '600 9px var(--font-montserrat, sans-serif)';
+      const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
+      const badgeW = Math.max(36, textWidth + 4);
+      const badgeX = rect.x + 5;
+      const badgeY = rect.y + Math.floor((rect.height - 14) / 2);
+      ctx.fillStyle = `${badgeColor}33`;
+      ctx.fillRect(badgeX, badgeY, badgeW, 14);
+      ctx.strokeStyle = `${badgeColor}99`;
+      ctx.strokeRect(badgeX, badgeY, badgeW, 14);
+      ctx.fillStyle = badgeColor;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, badgeX + 4, badgeY + 7);
+      return;
+    }
+
+    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '700' : '500'} 10px var(--font-montserrat, sans-serif)`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = isNumeric ? 'right' : 'left';
+
+    const x = isNumeric ? rect.x + rect.width - 6 : rect.x + 6;
+    const y = rect.y + rect.height / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+    ctx.clip();
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }, [filteredRows, visibleDefs, numericColumnIds, uiColors, getDisplayText]);
 
   const onCellClicked = useCallback((cell: Item) => {
     const [col, row] = cell;
@@ -826,6 +936,8 @@ export default function WBSGanttV2Page() {
               getCellContent={getCellContent}
               onVisibleRegionChanged={onVisibleRegionChanged}
               onCellClicked={onCellClicked}
+              drawCell={drawCell}
+              drawHeader={drawHeader}
               smoothScrollX
               smoothScrollY
               width={leftPanel.size.width}
@@ -933,20 +1045,37 @@ export default function WBSGanttV2Page() {
 
                         {barStart !== null && barEnd !== null && (
                           <>
+                            {(() => {
+                              const slipped = row.baselineEnd && row.endDate && row.baselineEnd.getTime() < row.endDate.getTime();
+                              if (!slipped) return null;
+                              return (
+                                <Rect
+                                  x={Math.max(barStart, toX(row.baselineEnd))}
+                                  y={y + 7}
+                                  width={Math.max(2, barEnd - Math.max(barStart, toX(row.baselineEnd)))}
+                                  height={ROW_HEIGHT - 14}
+                                  fill={'rgba(245,158,11,0.25)'}
+                                  stroke={'#f59e0b'}
+                                  strokeWidth={1}
+                                  dash={[4, 2]}
+                                  cornerRadius={4}
+                                />
+                              );
+                            })()}
                             <Rect
                               x={barStart}
-                              y={y + 7}
+                              y={row.hasChildren ? y + 9 : y + 7}
                               width={Math.max(6, barEnd - barStart)}
-                              height={ROW_HEIGHT - 14}
+                              height={row.hasChildren ? ROW_HEIGHT - 18 : ROW_HEIGHT - 14}
                               fill={TYPE_COLOR[row.type] || '#2ed3c6'}
                               opacity={0.22}
                               cornerRadius={4}
                             />
                             <Rect
                               x={barStart}
-                              y={y + 7}
+                              y={row.hasChildren ? y + 9 : y + 7}
                               width={Math.max(3, (Math.max(6, barEnd - barStart) * row.percentComplete) / 100)}
-                              height={ROW_HEIGHT - 14}
+                              height={row.hasChildren ? ROW_HEIGHT - 18 : ROW_HEIGHT - 14}
                               fill={getProgressColor(row.percentComplete, row.isCritical)}
                               cornerRadius={4}
                             />
