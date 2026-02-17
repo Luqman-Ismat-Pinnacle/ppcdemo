@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import DataEditor, { GridCell, GridCellKind, GridColumn, Item, Rectangle, Theme } from '@glideapps/glide-data-grid';
+import DataEditor, { DataEditorRef, GridCell, GridCellKind, GridColumn, Item, Rectangle, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 import { Arrow, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import { useData } from '@/lib/data-context';
@@ -48,8 +48,8 @@ type ColumnDef = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ROW_HEIGHT = 34;
-const HEADER_HEIGHT = 40;
+const ROW_HEIGHT = 42;
+const HEADER_HEIGHT = 44;
 
 const TYPE_COLOR: Record<string, string> = {
   portfolio: '#8b5cf6',
@@ -185,6 +185,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: 'name', title: 'Name', width: 260, value: (r) => r.name },
   { id: 'type', title: 'Type', width: 110, value: (r) => r.type },
   { id: 'resource', title: 'Resource', width: 160, value: (r) => r.assignedResource || r.resourceName },
+  { id: 'fte', title: 'FTE Load', width: 120, value: (_r) => '' },
   { id: 'start', title: 'Start', width: 105, value: (r) => formatDate(r.startDate) },
   { id: 'end', title: 'End', width: 105, value: (r) => formatDate(r.endDate) },
   { id: 'days', title: 'Days', width: 70, value: (r) => formatInt(r.daysRequired) },
@@ -217,10 +218,12 @@ const getProgressColor = (progress: number, critical: boolean) => {
 export default function WBSGanttV2Page() {
   const { filteredData, data: fullData, isLoading } = useData();
   const splitHostRef = useRef<HTMLDivElement>(null);
+  const dataEditorRef = useRef<DataEditorRef | null>(null);
   const leftPanel = useElementSize<HTMLDivElement>();
   const rightPanel = useElementSize<HTMLDivElement>();
   const rightScrollRef = useRef<HTMLDivElement>(null);
-  const columnsMenuRef = useRef<HTMLDivElement>(null);
+  const rightVirtualScrollRef = useRef<HTMLDivElement>(null);
+  const syncGuardRef = useRef<'left' | 'right' | null>(null);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [verticalOffset, setVerticalOffset] = useState(0);
@@ -232,7 +235,8 @@ export default function WBSGanttV2Page() {
   const [draggingSplit, setDraggingSplit] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState<Set<string>>(new Set(defaultVisibleColumns));
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
-  const [columnsMenuOpen, setColumnsMenuOpen] = useState(false);
+  const [headerFilterColumnId, setHeaderFilterColumnId] = useState<string | null>(null);
+  const [barTip, setBarTip] = useState<{ row: FlatWbsRow; x: number; y: number } | null>(null);
 
   const [gridTheme, setGridTheme] = useState<Theme | undefined>(undefined);
   const [uiColors, setUiColors] = useState({
@@ -309,7 +313,7 @@ export default function WBSGanttV2Page() {
       textPrimary: pick('--text-primary', '#e5e7eb'),
       textSecondary: pick('--text-secondary', '#cbd5e1'),
       textMuted: pick('--text-muted', '#94a3b8'),
-      bgPrimary: pick('--bg-primary', '#0f172a'),
+      bgPrimary: 'rgba(15,23,42,0.74)',
       bgSecondary: pick('--bg-secondary', '#111827'),
       bgTertiary: pick('--bg-tertiary', '#1f2937'),
       border: pick('--border-color', '#334155'),
@@ -319,7 +323,7 @@ export default function WBSGanttV2Page() {
 
   useEffect(() => {
     const defaults: Record<TimelineInterval, number> = {
-      day: 8,
+      day: 16,
       month: 2,
       quarter: 1,
       year: 0.55,
@@ -350,17 +354,14 @@ export default function WBSGanttV2Page() {
   }, [draggingSplit]);
 
   useEffect(() => {
-    if (!columnsMenuOpen) return;
-
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (columnsMenuRef.current?.contains(target)) return;
-      setColumnsMenuOpen(false);
+      if (target.closest('[data-header-filter-popup]')) return;
+      setHeaderFilterColumnId(null);
     };
-
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
-  }, [columnsMenuOpen]);
+  }, []);
 
   const employeeNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -542,7 +543,7 @@ export default function WBSGanttV2Page() {
   }, [filteredRows, visibleDefs, getDisplayText]);
 
   const drawHeader = useCallback((args: any, drawContent: () => void) => {
-    const { ctx, rect, column } = args;
+    const { ctx, rect, column, isHovered } = args;
     ctx.fillStyle = uiColors.bgSecondary;
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     drawContent();
@@ -557,6 +558,17 @@ export default function WBSGanttV2Page() {
     if (column?.id === 'acth' || column?.id === 'actc') {
       ctx.fillStyle = uiColors.teal;
       ctx.fillRect(rect.x + 1, rect.y + rect.height - 2, rect.width - 2, 1);
+    }
+
+    if (isHovered) {
+      ctx.fillStyle = uiColors.textMuted;
+      ctx.font = '700 10px var(--font-mono, monospace)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Filter trigger
+      ctx.fillText('F', rect.x + rect.width - 22, rect.y + rect.height / 2);
+      // Hide trigger
+      ctx.fillText('x', rect.x + rect.width - 10, rect.y + rect.height / 2);
     }
   }, [uiColors]);
 
@@ -608,12 +620,44 @@ export default function WBSGanttV2Page() {
       return;
     }
 
+    if (def.id === 'fte') {
+      const baselineHours = Math.max(0, r.baselineHours || 0);
+      const days = Math.max(1, r.daysRequired || 1);
+      const ftePerDay = baselineHours > 0 ? baselineHours / (days * 8) : 0;
+      const intensity = Math.max(0.15, Math.min(1, r.percentComplete / 100 || 0.15));
+      const plotX = rect.x + 6;
+      const plotY = rect.y + 7;
+      const plotW = rect.width - 12;
+      const plotH = rect.height - 14;
+
+      ctx.strokeStyle = uiColors.border;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plotX, plotY + plotH);
+      ctx.lineTo(plotX + plotW, plotY + plotH);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i <= 12; i += 1) {
+        const t = i / 12;
+        const wave = Math.sin(t * Math.PI * 2) * 0.15 + 0.85;
+        const y = plotY + plotH - Math.min(plotH - 2, (ftePerDay * 5) * wave * intensity);
+        const x = plotX + t * plotW;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      return;
+    }
+
     ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '700' : '500'} 10px var(--font-montserrat, sans-serif)`;
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
-    ctx.textAlign = isNumeric ? 'right' : 'left';
+    ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';
 
-    const x = isNumeric ? rect.x + rect.width - 6 : rect.x + 6;
+    const x = def.id === 'tf' ? rect.x + rect.width / 2 : isNumeric ? rect.x + rect.width - 6 : rect.x + 6;
     const y = rect.y + rect.height / 2;
     ctx.save();
     ctx.beginPath();
@@ -638,9 +682,43 @@ export default function WBSGanttV2Page() {
     });
   }, [filteredRows, visibleDefs]);
 
+  const onHeaderClicked = useCallback((col: number, event: any) => {
+    const def = visibleDefs[col];
+    if (!def) return;
+    const clickX = event.localEventX as number;
+    const width = event.bounds?.width ?? def.width;
+
+    // Right-most "x" area: hide column
+    if (clickX >= width - 14) {
+      setVisibleColumnIds((prev) => {
+        if (prev.size <= 3) return prev;
+        const next = new Set(prev);
+        next.delete(def.id);
+        return next;
+      });
+      return;
+    }
+
+    // "F" area: open/close filter popup for this column
+    if (clickX >= width - 30) {
+      setHeaderFilterColumnId((prev) => (prev === def.id ? null : def.id));
+      return;
+    }
+  }, [visibleDefs]);
+
   const onVisibleRegionChanged = useCallback((range: Rectangle, _tx: number, ty: number) => {
     const byRange = Math.max(0, range.y * ROW_HEIGHT);
-    setVerticalOffset(Number.isFinite(ty) ? Math.max(0, ty) : byRange);
+    const nextTop = Number.isFinite(ty) ? Math.max(0, ty) : byRange;
+    setVerticalOffset(nextTop);
+    if (syncGuardRef.current === 'right') return;
+    const scrollEl = rightScrollRef.current;
+    if (scrollEl && Math.abs(scrollEl.scrollTop - nextTop) > 1) {
+      syncGuardRef.current = 'left';
+      scrollEl.scrollTop = nextTop;
+      requestAnimationFrame(() => {
+        if (syncGuardRef.current === 'left') syncGuardRef.current = null;
+      });
+    }
   }, []);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
@@ -691,6 +769,19 @@ export default function WBSGanttV2Page() {
     const endIdx = Math.min(filteredRows.length - 1, startIdx + count);
     return { startIdx, endIdx };
   }, [verticalOffset, rightPanelHeight, filteredRows.length]);
+  const totalRowsHeight = useMemo(() => filteredRows.length * ROW_HEIGHT, [filteredRows.length]);
+
+  const onRightTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const top = el.scrollTop;
+    setVerticalOffset(top);
+    if (syncGuardRef.current === 'left') return;
+    syncGuardRef.current = 'right';
+    dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: top, unit: 'px' }, 'vertical');
+    requestAnimationFrame(() => {
+      if (syncGuardRef.current === 'right') syncGuardRef.current = null;
+    });
+  }, []);
 
   const indexByTaskId = useMemo(() => {
     const map = new Map<string, number>();
@@ -777,6 +868,11 @@ export default function WBSGanttV2Page() {
     return String(tick.getFullYear());
   }, [timelineInterval]);
 
+  const activeHeaderFilter = useMemo(() => {
+    if (!headerFilterColumnId) return null;
+    return visibleDefs.find((d) => d.id === headerFilterColumnId) || null;
+  }, [headerFilterColumnId, visibleDefs]);
+
   const scrollToToday = useCallback(() => {
     const el = rightScrollRef.current;
     if (!el) return;
@@ -790,27 +886,6 @@ export default function WBSGanttV2Page() {
     const fit = (rightPanelWidth - 140) / Math.max(1, totalDays);
     setPxPerDay(Math.max(0.25, Math.min(12, fit)));
   }, [rightPanelWidth, totalDays]);
-
-  const toggleColumn = useCallback((id: string) => {
-    setVisibleColumnIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        if (next.size <= 3) return prev;
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
-  const selectEssentialColumns = useCallback(() => {
-    setVisibleColumnIds(new Set(['wbs', 'name', 'type', 'resource', 'start', 'end', 'pct', 'pred']));
-  }, []);
-
-  const selectAllColumns = useCallback(() => {
-    setVisibleColumnIds(new Set(ALL_COLUMNS.map((c) => c.id)));
-  }, []);
 
   if (isLoading) return <PageLoader message="Loading WBS Gantt V2..." />;
 
@@ -872,55 +947,60 @@ export default function WBSGanttV2Page() {
             <span>Dependencies</span>
           </label>
 
-          <div ref={columnsMenuRef} style={{ position: 'relative' }}>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setColumnsMenuOpen((v) => !v)}>
-              Columns ({visibleDefs.length})
-            </button>
-            {columnsMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', width: 220, maxHeight: 340, overflow: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.35)', padding: 8, zIndex: 500 }}>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  <button type="button" onClick={selectEssentialColumns} style={{ flex: 1, padding: '4px 6px', fontSize: '0.62rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' }}>Essential</button>
-                  <button type="button" onClick={selectAllColumns} style={{ flex: 1, padding: '4px 6px', fontSize: '0.62rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' }}>All</button>
-                </div>
-                {ALL_COLUMNS.map((c) => (
-                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 2px', fontSize: '0.67rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={visibleColumnIds.has(c.id)} onChange={() => toggleColumn(c.id)} style={{ accentColor: 'var(--pinnacle-teal)' }} />
-                    <span>{c.title}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{filteredRows.length} rows</div>
         </div>
       </div>
 
-      <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: 6, overflowX: 'auto' }}>
-        <div style={{ display: 'flex', minWidth: 'max-content', gap: 6 }}>
-          {visibleDefs.map((def) => (
-            <div key={def.id} style={{ width: def.width, minWidth: def.width }}>
-              <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginBottom: 3, fontWeight: 700 }}>{def.title}</div>
-              <input
-                type="text"
-                value={columnFilters[def.id] || ''}
-                placeholder="Filter..."
-                onChange={(e) => setColumnFilters((prev) => ({ ...prev, [def.id]: e.target.value }))}
-                style={{
-                  width: '100%',
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: 4,
-                  color: 'var(--text-primary)',
-                  fontSize: '0.62rem',
-                  padding: '4px 6px',
-                  outline: 'none',
-                }}
-              />
-            </div>
-          ))}
+      {activeHeaderFilter && (
+        <div
+          data-header-filter-popup
+          style={{
+            width: 320,
+            maxWidth: '100%',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 8,
+            padding: 8,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+          }}
+        >
+          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 700 }}>
+            Filter: {activeHeaderFilter.title}
+          </div>
+          <input
+            type="text"
+            value={columnFilters[activeHeaderFilter.id] || ''}
+            onChange={(e) => setColumnFilters((prev) => ({ ...prev, [activeHeaderFilter.id]: e.target.value }))}
+            placeholder={`Search ${activeHeaderFilter.title.toLowerCase()}...`}
+            style={{
+              width: '100%',
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 6,
+              color: 'var(--text-primary)',
+              fontSize: '0.68rem',
+              padding: '6px 8px',
+              outline: 'none',
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setColumnFilters((prev) => ({ ...prev, [activeHeaderFilter.id]: '' }))}
+              style={{ padding: '4px 8px', fontSize: '0.62rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' }}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setHeaderFilterColumnId(null)}
+              style={{ padding: '4px 8px', fontSize: '0.62rem', background: 'var(--pinnacle-teal)', border: 'none', borderRadius: 4, color: '#041717', cursor: 'pointer', fontWeight: 700 }}
+            >
+              Done
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
         <div
@@ -929,6 +1009,7 @@ export default function WBSGanttV2Page() {
         >
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (
             <DataEditor
+              ref={dataEditorRef}
               columns={columns}
               rows={filteredRows.length}
               rowHeight={ROW_HEIGHT}
@@ -936,6 +1017,7 @@ export default function WBSGanttV2Page() {
               getCellContent={getCellContent}
               onVisibleRegionChanged={onVisibleRegionChanged}
               onCellClicked={onCellClicked}
+              onHeaderClicked={onHeaderClicked}
               drawCell={drawCell}
               drawHeader={drawHeader}
               smoothScrollX
@@ -962,7 +1044,9 @@ export default function WBSGanttV2Page() {
           style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'var(--bg-card)', position: 'relative' }}
         >
           {rightPanelWidth > 20 && rightPanelHeight > 20 ? (
-            <div ref={rightScrollRef} style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+            <div ref={rightScrollRef} style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'auto', position: 'relative' }} onScroll={onRightTimelineScroll}>
+              <div ref={rightVirtualScrollRef} style={{ width: timelineInnerWidth, height: HEADER_HEIGHT + totalRowsHeight, position: 'relative' }}>
+                <div style={{ position: 'sticky', top: 0 }}>
               <Stage width={timelineInnerWidth} height={rightPanelHeight}>
                 <Layer>
                   <Rect x={0} y={0} width={timelineInnerWidth} height={HEADER_HEIGHT} fill={timelineColors.header} />
@@ -1078,15 +1162,9 @@ export default function WBSGanttV2Page() {
                               height={row.hasChildren ? ROW_HEIGHT - 18 : ROW_HEIGHT - 14}
                               fill={getProgressColor(row.percentComplete, row.isCritical)}
                               cornerRadius={4}
-                            />
-                            <Text
-                              x={barStart + 6}
-                              y={y + 10}
-                              width={Math.max(45, barEnd - barStart - 10)}
-                              text={row.name}
-                              fill={row.isCritical ? '#fff3f3' : '#032320'}
-                              fontSize={11}
-                              ellipsis
+                              onMouseEnter={(evt) => setBarTip({ row, x: evt.evt.clientX + 14, y: evt.evt.clientY - 18 })}
+                              onMouseMove={(evt) => setBarTip({ row, x: evt.evt.clientX + 14, y: evt.evt.clientY - 18 })}
+                              onMouseLeave={() => setBarTip(null)}
                             />
                           </>
                         )}
@@ -1145,12 +1223,66 @@ export default function WBSGanttV2Page() {
                   })}
                 </Layer>
               </Stage>
+                </div>
+              </div>
             </div>
           ) : (
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Preparing timeline...</div>
           )}
         </div>
       </div>
+
+      {barTip && (
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.min(barTip.x, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 360),
+            top: Math.max(10, Math.min(barTip.y, (typeof window !== 'undefined' ? window.innerHeight : 720) - 310)),
+            zIndex: 10000,
+            width: 320,
+            maxWidth: 'calc(100vw - 24px)',
+            background: 'rgba(18, 18, 22, 0.97)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 10,
+            padding: '12px 14px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+            pointerEvents: 'none',
+            backdropFilter: 'blur(20px)',
+            color: '#d0d0d0',
+            fontSize: '0.72rem',
+            lineHeight: 1.45,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#fff', flex: 1, marginRight: 8 }}>{barTip.row.name}</div>
+            <span style={{ fontSize: '0.52rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: `${TYPE_COLOR[barTip.row.type] || '#666'}33`, color: TYPE_COLOR[barTip.row.type] || '#999', whiteSpace: 'nowrap' }}>
+              {barTip.row.type.replace('_', ' ')}
+            </span>
+          </div>
+          <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: 8 }}>WBS {barTip.row.wbsCode}</div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+            <span>{barTip.row.startDate ? new Date(barTip.row.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+            <span style={{ color: '#555' }}>→</span>
+            <span>{barTip.row.endDate ? new Date(barTip.row.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
+          </div>
+          <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: 8 }}>{barTip.row.daysRequired} working days</div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{ flex: 1, height: 7, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: `${barTip.row.percentComplete || 0}%`, height: '100%', background: getProgressColor(barTip.row.percentComplete || 0, barTip.row.isCritical), borderRadius: 4 }} />
+            </div>
+            <span style={{ fontWeight: 700, color: getProgressColor(barTip.row.percentComplete || 0, barTip.row.isCritical), fontSize: '0.78rem', minWidth: 36, textAlign: 'right' }}>{Math.round(barTip.row.percentComplete || 0)}%</span>
+          </div>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 12px', fontSize: '0.65rem' }}>
+            <div><span style={{ color: '#777' }}>BL Hours: </span>{barTip.row.baselineHours.toLocaleString()}</div>
+            <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: uiColors.teal }}>{barTip.row.actualHours.toLocaleString()}</span></div>
+            <div><span style={{ color: '#777' }}>BL Cost: </span>{formatCurrency(barTip.row.baselineCost)}</div>
+            <div><span style={{ color: '#777' }}>Act Cost: </span><span style={{ color: uiColors.teal }}>{formatCurrency(barTip.row.actualCost)}</span></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

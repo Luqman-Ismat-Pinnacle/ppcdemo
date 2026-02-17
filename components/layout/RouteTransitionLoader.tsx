@@ -13,6 +13,7 @@ export default function RouteTransitionLoader() {
   const { isLoading } = useData();
 
   const [visible, setVisible] = useState(false);
+  const [pageLoaderVisible, setPageLoaderVisible] = useState(false);
   const startedAtRef = useRef(0);
   const hideTimerRef = useRef<number | null>(null);
   const currentRouteRef = useRef('');
@@ -99,6 +100,14 @@ export default function RouteTransitionLoader() {
   }, []);
 
   useEffect(() => {
+    const getCount = () => Number((window as any).__ppcPageLoaderCount || 0);
+    setPageLoaderVisible(getCount() > 0);
+    const onVisibility = () => setPageLoaderVisible(getCount() > 0);
+    window.addEventListener('ppc-page-loader-visibility', onVisibility as EventListener);
+    return () => window.removeEventListener('ppc-page-loader-visibility', onVisibility as EventListener);
+  }, []);
+
+  useEffect(() => {
     if (!visible) return;
     if (isLoading) return;
 
@@ -108,7 +117,7 @@ export default function RouteTransitionLoader() {
     return () => window.clearTimeout(timer);
   }, [visible, currentRoute, isLoading]);
 
-  if (!visible) return null;
+  if (!visible || pageLoaderVisible) return null;
 
   return (
     <div

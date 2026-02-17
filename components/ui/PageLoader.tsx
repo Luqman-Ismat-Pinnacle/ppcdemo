@@ -6,12 +6,23 @@
  */
 
 import React from 'react';
+import { useEffect } from 'react';
 
 interface PageLoaderProps {
   message?: string;
 }
 
 export default function PageLoader({ message = 'Loading data...' }: PageLoaderProps) {
+  useEffect(() => {
+    const w = window as any;
+    w.__ppcPageLoaderCount = (w.__ppcPageLoaderCount || 0) + 1;
+    window.dispatchEvent(new CustomEvent('ppc-page-loader-visibility', { detail: { count: w.__ppcPageLoaderCount } }));
+    return () => {
+      w.__ppcPageLoaderCount = Math.max(0, (w.__ppcPageLoaderCount || 1) - 1);
+      window.dispatchEvent(new CustomEvent('ppc-page-loader-visibility', { detail: { count: w.__ppcPageLoaderCount } }));
+    };
+  }, []);
+
   return (
     <div
       style={{

@@ -54,16 +54,7 @@ const fmt = (n: number, d = 0) =>
 // ═══════════════════════════════════════════════════════════════════
 
 function ResourcingPageLoading() {
-  // Uses EnhancedPageLoader via route-level loading.tsx now
-  return (
-    <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'calc(100vh - 60px)' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: '48px', height: '48px', border: '3px solid var(--border-color)', borderTopColor: 'var(--pinnacle-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
-        <p style={{ color: 'var(--text-secondary)' }}>Loading Resourcing...</p>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
+  return <PageLoader message="Loading Resourcing..." />;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -76,14 +67,14 @@ function ResourcingPageContent() {
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
-  const [heatmapView, setHeatmapView] = useState<'role' | 'employee'>('employee');
+  const [heatmapView] = useState<'role'>('role');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [orgSearch, setOrgSearch] = useState('');
   const [analyticsSearch, setAnalyticsSearch] = useState('');
-  const [heatmapRoleFilter, setHeatmapRoleFilter] = useState<string>('all');
+  const heatmapRoleFilter = 'all';
   const [treeZoom, setTreeZoom] = useState(1);
 
   // ── Data ──────────────────────────────────────────────────────
@@ -704,7 +695,7 @@ function ResourcingPageContent() {
       .map((r) => ({
         ...r,
         gapHours: r.capacityHours - r.demandHours,
-        demandPct: r.capacityHours > 0 ? Math.round((r.demandHours / r.capacityHours) * 100) : 0,
+        demandPct: r.capacityHours > 0 ? Math.max(0, Math.min(999, Math.round((r.demandHours / r.capacityHours) * 100))) : 0,
         fteRequired: Math.round((r.demandHours / HOURS_PER_YEAR) * 100) / 100,
       }))
       .sort((a, b) => b.demandHours - a.demandHours);
@@ -993,23 +984,25 @@ function ResourcingPageContent() {
       backgroundColor: 'transparent',
       tooltip: {
         position: 'top', confine: true,
-        backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
+        backgroundColor: 'rgba(9,14,20,0.96)', borderColor: 'rgba(148,163,184,0.45)',
         textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;white-space:normal;',
+        extraCssText: 'border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);backdrop-filter:blur(8px);max-width:360px;white-space:normal;',
         formatter: (params: any) => {
           const [wi, ri, val] = params.data;
           const role = sortedRoles[ri];
           const week = displayWeeks[wi]?.label;
-          const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
-          const uc = getUtilColor(utilPct);
-          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : 'Available';
+          const fteEquivalent = HOURS_PER_WEEK > 0 ? (val / HOURS_PER_WEEK) : 0;
+          const cappedPct = HOURS_PER_WEEK > 0 ? Math.min(999, Math.round((val / HOURS_PER_WEEK) * 100)) : 0;
+          const uc = getUtilColor(cappedPct);
+          const statusLabel = cappedPct > 100 ? 'Overloaded' : cappedPct > 85 ? 'Busy' : cappedPct > 50 ? 'Optimal' : 'Available';
           return `<div style="padding:8px 10px">
             <div style="font-weight:700;font-size:13px;margin-bottom:4px">${role}</div>
             <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
             <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
               <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
               <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
-              <span style="color:#9ca3af">Utilization</span><span style="font-weight:700;color:${uc}">${utilPct}% — ${statusLabel}</span>
+              <span style="color:#9ca3af">FTE Needed</span><span style="font-weight:700;color:${uc}">${fteEquivalent.toFixed(2)} FTE</span>
+              <span style="color:#9ca3af">Load Status</span><span style="font-weight:700;color:${uc}">${cappedPct}% — ${statusLabel}</span>
             </div>
           </div>`;
         },
@@ -1353,10 +1346,7 @@ function ResourcingPageContent() {
         )}
         {activeTab === 'heatmap' && (
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {heatmapView === 'role'
-              ? `${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`
-              : `${Math.max(heatmapSharedData ? [...heatmapSharedData.empWeekHours.keys()].length : 0, data.employees.length)} employees`
-            } across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
+            {`${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`} across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
           </div>
         )}
       </div>
@@ -1439,7 +1429,7 @@ function ResourcingPageContent() {
 
           {/* Utilization by Role + FTE Requirements */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 330, maxHeight: 330, overflowY: 'auto' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Utilization by Role</div>
               {(() => {
                 const roleMap = new Map<string, { total: number; count: number }>();
@@ -1453,9 +1443,9 @@ function ResourcingPageContent() {
                   .sort((a, b) => b.avgUtil - a.avgUtil);
                 if (roleData.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No role data available</div>;
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '240px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {roleData.map(r => (
-                      <div key={r.role} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div key={r.role} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }} title={`${r.role} - ${r.avgUtil}% utilization across ${r.count} people`}>
                         <div style={{ width: '120px', fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }} title={r.role}>{r.role}</div>
                         <div style={{ flex: 1, height: '20px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
                           <div style={{ height: '100%', width: `${Math.min(r.avgUtil, 150) / 1.5}%`, background: getUtilColor(r.avgUtil), borderRadius: '4px', transition: 'width 0.4s ease' }} />
@@ -1468,7 +1458,7 @@ function ResourcingPageContent() {
                 );
               })()}
             </div>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 330, maxHeight: 330, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.6rem' }}>FTE Requirements by Role</div>
               <div style={{ flex: 1, overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
@@ -1573,64 +1563,22 @@ function ResourcingPageContent() {
               <div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>Resource Heatmap</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Weekly planned hours derived from project plan task schedules — {heatmapView === 'employee' ? 'grouped by individual employee' : 'grouped by individual role'}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                {/* Role filter (employee view only) */}
-                {heatmapView === 'employee' && allHeatmapRoles.length > 0 && (
-                  <select
-                    value={heatmapRoleFilter}
-                    onChange={e => setHeatmapRoleFilter(e.target.value)}
-                    style={{
-                      padding: '0.35rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)',
-                      background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.72rem',
-                      cursor: 'pointer', maxWidth: 200,
-                    }}
-                  >
-                    <option value="all">All Roles</option>
-                    {allHeatmapRoles.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                )}
-                {/* View toggle — Employee first, then Role */}
-                <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px' }}>
-                  {(['employee', 'role'] as const).map(v => (
-                    <button key={v} onClick={() => setHeatmapView(v)} style={{
-                      padding: '0.35rem 0.85rem', borderRadius: '4px', border: 'none', cursor: 'pointer',
-                      background: heatmapView === v ? 'rgba(64,224,208,0.2)' : 'transparent',
-                      color: heatmapView === v ? '#40E0D0' : 'var(--text-muted)',
-                      fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize',
-                    }}>By {v}</button>
-                  ))}
+                  Weekly planned hours derived from project plan task schedules — grouped by role
                 </div>
               </div>
             </div>
 
             {/* Heatmap chart — full width */}
-            {heatmapView === 'employee' ? (
-              heatmapByEmployeeOption ? (
-                <ChartWrapper option={heatmapByEmployeeOption} height={`${(heatmapByEmployeeOption as any)._dynamicHeight || 600}px`} />
-              ) : (
-                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                  </svg>
-                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-                </div>
-              )
+            {heatmapByRoleOption ? (
+              <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
             ) : (
-              heatmapByRoleOption ? (
-                <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
-              ) : (
-                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                  </svg>
-                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                  <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-                </div>
-              )
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                </svg>
+                <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
+                <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+              </div>
             )}
           </div>
         </div>
