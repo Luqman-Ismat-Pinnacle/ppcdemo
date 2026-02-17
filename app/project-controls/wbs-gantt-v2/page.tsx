@@ -1,43 +1,35 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import './frappe-gantt.local.css';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DataEditor, {
+  GridCell,
+  GridCellKind,
+  GridColumn,
+  Item,
+  Rectangle,
+  VisibleRegionChangedEventArgs,
+} from '@glideapps/glide-data-grid';
+import '@glideapps/glide-data-grid/dist/index.css';
+import { Arrow, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import { useData } from '@/lib/data-context';
 import PageLoader from '@/components/ui/PageLoader';
 
-type ViewMode = 'Day' | 'Week' | 'Month' | 'Year';
-
-type FrappeTask = {
+type GanttTask = {
   id: string;
+  wbsCode: string;
   name: string;
-  start: string;
-  end: string;
+  projectName: string;
+  unitName: string;
+  phaseName: string;
+  startDate: Date;
+  endDate: Date;
   progress: number;
-  dependencies?: string;
-  custom_class?: string;
+  predecessors: string[];
 };
 
-type FrappeGanttInstance = {
-  change_view_mode: (mode: ViewMode) => void;
-  refresh: (tasks: FrappeTask[]) => void;
-};
-
-type FrappeGanttCtor = new (
-  element: Element,
-  tasks: FrappeTask[],
-  options: {
-    view_mode?: ViewMode;
-    language?: string;
-    readonly?: boolean;
-    popup_on?: 'click' | 'hover';
-    date_format?: string;
-    bar_height?: number;
-    column_width?: number;
-    container_height?: string;
-    header_height?: number;
-    today_button?: boolean;
-  },
-) => FrappeGanttInstance;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const ROW_HEIGHT = 34;
+const HEADER_HEIGHT = 52;
 
 const toRecord = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object') return {};
@@ -72,196 +64,433 @@ const readDate = (value: unknown, ...keys: string[]): Date | null => {
   for (const key of keys) {
     const raw = rec[key];
     if (!raw) continue;
-    const parsed = new Date(String(raw));
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const d = new Date(String(raw));
+    if (!Number.isNaN(d.getTime())) return d;
   }
   return null;
 };
 
-const normalizeTaskId = (value: string): string => value.replace(/^wbs-(task|sub_task)-/, '').trim();
+const normalizeTaskId = (input: string): string => input.replace(/^wbs-(task|sub_task)-/i, '').trim();
 
-const normalizeDepId = (token: string): string => {
-  const t = token.trim();
-  if (!t) return '';
-  // Strip relation suffixes like "12FS", "TSK-1 SS"
-  const relMatch = t.match(/(FS|SS|FF|SF)(?:\s*[+-].*)?$/i);
-  const idPart = relMatch && typeof relMatch.index === 'number' ? t.slice(0, relMatch.index).trim() : t;
-  return normalizeTaskId(idPart);
+const parsePredecessorTokens = (raw: string): string[] => {
+  if (!raw.trim()) return [];
+  return raw
+    .split(/[;,]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => {
+      const relMatch = token.match(/(FS|SS|FF|SF)(?:\s*[+-].*)?$/i);
+      const idPart = relMatch && typeof relMatch.index === 'number' ? token.slice(0, relMatch.index).trim() : token;
+      return normalizeTaskId(idPart);
+    })
+    .filter(Boolean);
 };
 
-const toYmd = (date: Date): string => {
-  return date.toISOString().slice(0, 10);
+const useElementSize = <T extends HTMLElement>() => {
+  const ref = useRef<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const next = {
+        width: Math.floor(entry.contentRect.width),
+        height: Math.floor(entry.contentRect.height),
+      };
+      setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, size };
 };
 
-function buildFrappeTasks(source: Record<string, unknown>): FrappeTask[] {
+function buildTasks(source: Record<string, unknown>): GanttTask[] {
   const tasksRaw = (source.tasks as unknown[] | undefined) ?? [];
-  const projectDocs = (source.projectDocuments as unknown[] | undefined) ?? [];
+  const unitsRaw = (source.units as unknown[] | undefined) ?? [];
+  const phasesRaw = (source.phases as unknown[] | undefined) ?? [];
   const projectsRaw = (source.projects as unknown[] | undefined) ?? [];
+  const docsRaw = (source.projectDocuments as unknown[] | undefined) ?? [];
 
-  const projectsWithPlans = new Set<string>();
+  const projectsById = new Map<string, string>();
+  const unitsById = new Map<string, string>();
+  const phasesById = new Map<string, string>();
+
+  projectsRaw.forEach((p) => {
+    const id = readString(p, 'id', 'projectId', 'project_id');
+    const name = readString(p, 'name', 'projectName', 'project_name');
+    if (id) projectsById.set(id, name || id);
+  });
+
+  unitsRaw.forEach((u) => {
+    const id = readString(u, 'id', 'unitId', 'unit_id');
+    const name = readString(u, 'name', 'unitName', 'unit_name');
+    if (id) unitsById.set(id, name || id);
+  });
+
+  phasesRaw.forEach((p) => {
+    const id = readString(p, 'id', 'phaseId', 'phase_id');
+    const name = readString(p, 'name', 'phaseName', 'phase_name');
+    if (id) phasesById.set(id, name || id);
+  });
+
+  const projectsWithPlan = new Set<string>();
   projectsRaw.forEach((project) => {
-    const id = readString(project, 'id', 'projectId');
-    const hasScheduleRaw = readString(project, 'has_schedule', 'hasSchedule');
-    const hasScheduleBool = hasScheduleRaw.toLowerCase() === 'true' || hasScheduleRaw === '1';
-    if (id && hasScheduleBool) projectsWithPlans.add(id);
+    const id = readString(project, 'id', 'projectId', 'project_id');
+    const hasSchedule = readString(project, 'has_schedule', 'hasSchedule');
+    if (id && ['1', 'true', 'yes'].includes(hasSchedule.toLowerCase())) {
+      projectsWithPlan.add(id);
+    }
   });
-  projectDocs.forEach((doc) => {
+
+  docsRaw.forEach((doc) => {
     const pid = readString(doc, 'projectId', 'project_id');
-    if (pid) projectsWithPlans.add(pid);
+    if (pid) projectsWithPlan.add(pid);
   });
 
-  const validTasks = tasksRaw.filter((task) => {
-    const projectId = readString(task, 'projectId', 'project_id');
-    return projectsWithPlans.size === 0 || !projectId || projectsWithPlans.has(projectId);
-  });
+  const rows = tasksRaw
+    .map((task, index) => {
+      const rawId = readString(task, 'id', 'taskId', 'task_id') || `task-${index + 1}`;
+      const id = normalizeTaskId(rawId) || `task-${index + 1}`;
 
-  const rows = validTasks.map((task, idx) => {
-    const rawId = readString(task, 'id', 'taskId') || `task-${idx + 1}`;
-    const id = normalizeTaskId(rawId) || `task-${idx + 1}`;
-    const name = readString(task, 'name', 'taskName') || `Task ${idx + 1}`;
+      const projectId = readString(task, 'projectId', 'project_id');
+      if (projectsWithPlan.size > 0 && projectId && !projectsWithPlan.has(projectId)) return null;
 
-    const start = readDate(task, 'startDate', 'baselineStartDate', 'plannedStartDate');
-    const end = readDate(task, 'endDate', 'baselineEndDate', 'plannedEndDate');
+      const unitId = readString(task, 'unitId', 'unit_id');
+      const phaseId = readString(task, 'phaseId', 'phase_id');
 
-    const fallbackStart = start ?? new Date();
-    const fallbackEnd = end ?? (() => {
-      const d = new Date(fallbackStart);
-      d.setDate(d.getDate() + Math.max(1, Math.round(readNumber(task, 'daysRequired', 'duration') || 7)));
-      return d;
-    })();
+      const start = readDate(task, 'baselineStartDate', 'plannedStartDate', 'startDate', 'actualStartDate') ?? new Date();
+      const directEnd = readDate(task, 'baselineEndDate', 'plannedEndDate', 'endDate', 'actualEndDate');
+      const durationDays = Math.max(1, Math.round(readNumber(task, 'daysRequired', 'duration', 'durationDays') || 7));
+      const fallbackEnd = new Date(start.getTime() + durationDays * DAY_MS);
+      const end = directEnd && directEnd >= start ? directEnd : fallbackEnd;
 
-    const percent = Math.max(0, Math.min(100, Math.round(readNumber(task, 'percentComplete', 'percent_complete'))));
+      return {
+        id,
+        wbsCode: readString(task, 'wbsCode', 'wbs_code') || `${index + 1}`,
+        name: readString(task, 'taskName', 'name') || `Task ${index + 1}`,
+        projectName: projectsById.get(projectId) || readString(task, 'projectName', 'project_name') || '-',
+        unitName: unitsById.get(unitId) || readString(task, 'unitName', 'unit_name') || '-',
+        phaseName: phasesById.get(phaseId) || readString(task, 'phaseName', 'phase_name') || '-',
+        startDate: start,
+        endDate: end,
+        progress: Math.max(0, Math.min(100, Math.round(readNumber(task, 'percentComplete', 'percent_complete')))),
+        predecessors: parsePredecessorTokens(readString(task, 'predecessorId', 'predecessor_id')),
+      } satisfies GanttTask;
+    })
+    .filter((task): task is GanttTask => task !== null);
 
-    const deps = new Set<string>();
-    const predecessorRaw = readString(task, 'predecessorId', 'predecessor_id');
-    if (predecessorRaw) {
-      predecessorRaw
-        .split(/[;,]+/)
-        .map(normalizeDepId)
-        .filter(Boolean)
-        .forEach((d) => deps.add(d));
-    }
-
-    const predecessors = toRecord(task).predecessors;
-    if (Array.isArray(predecessors)) {
-      predecessors.forEach((pred) => {
-        const depId = normalizeDepId(readString(pred, 'predecessorTaskId', 'predecessor_task_id', 'taskId'));
-        if (depId) deps.add(depId);
-      });
-    }
-
-    return {
-      id,
-      name,
-      start: toYmd(fallbackStart),
-      end: toYmd(fallbackEnd < fallbackStart ? fallbackStart : fallbackEnd),
-      progress: percent,
-      dependencies: Array.from(deps).join(','),
-      custom_class: 'ppc-v2-task',
-    } satisfies FrappeTask;
-  });
-
-  const idSet = new Set(rows.map((r) => r.id));
-  // keep only dependencies that exist in this dataset (frappe drops broken ones, but this avoids warning noise)
-  rows.forEach((row) => {
-    if (!row.dependencies) return;
-    row.dependencies = row.dependencies
-      .split(',')
-      .map((d) => d.trim())
-      .filter((d) => idSet.has(d))
-      .join(',');
+  const idSet = new Set(rows.map((t) => t.id));
+  rows.forEach((task) => {
+    task.predecessors = task.predecessors.filter((dep) => idSet.has(dep));
   });
 
   return rows;
 }
 
+function monthTicks(minDate: Date, maxDate: Date): Date[] {
+  const ticks: Date[] = [];
+  const start = new Date(minDate);
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(maxDate);
+  end.setDate(1);
+  end.setHours(0, 0, 0, 0);
+
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    ticks.push(new Date(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return ticks;
+}
+
 export default function WBSGanttV2Page() {
   const { filteredData, isLoading } = useData();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const ganttRef = useRef<FrappeGanttInstance | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('Week');
+  const leftPanel = useElementSize<HTMLDivElement>();
+  const rightPanel = useElementSize<HTMLDivElement>();
+  const [gridScrollY, setGridScrollY] = useState(0);
 
-  const frappeTasks = useMemo(() => {
-    return buildFrappeTasks(filteredData as unknown as Record<string, unknown>);
-  }, [filteredData]);
+  const tasks = useMemo(() => buildTasks(filteredData as unknown as Record<string, unknown>), [filteredData]);
+  const taskById = useMemo(() => new Map(tasks.map((task, i) => [task.id, { task, index: i }])), [tasks]);
 
-  useEffect(() => {
-    let active = true;
+  const columns = useMemo<GridColumn[]>(() => {
+    return [
+      { id: 'wbs', title: 'WBS', width: 90 },
+      { id: 'name', title: 'Task', width: 260 },
+      { id: 'project', title: 'Project', width: 180 },
+      { id: 'unit', title: 'Unit', width: 140 },
+      { id: 'phase', title: 'Phase', width: 140 },
+      { id: 'start', title: 'Start', width: 110 },
+      { id: 'end', title: 'End', width: 110 },
+      { id: 'progress', title: '%', width: 60 },
+    ];
+  }, []);
 
-    const mount = async () => {
-      if (!containerRef.current) return;
+  const getCellContent = useCallback(
+    ([col, row]: Item): GridCell => {
+      const task = tasks[row];
+      if (!task) {
+        return { kind: GridCellKind.Text, allowOverlay: false, data: '', displayData: '' };
+      }
 
-      const mod = await import('frappe-gantt');
-      const Gantt = (mod.default || (mod as unknown)) as FrappeGanttCtor;
+      const startText = task.startDate.toLocaleDateString('en-US');
+      const endText = task.endDate.toLocaleDateString('en-US');
+      const values = [
+        task.wbsCode,
+        task.name,
+        task.projectName,
+        task.unitName,
+        task.phaseName,
+        startText,
+        endText,
+        `${task.progress}%`,
+      ];
 
-      if (!active || !containerRef.current) return;
+      return {
+        kind: GridCellKind.Text,
+        data: values[col] ?? '',
+        displayData: values[col] ?? '',
+        allowOverlay: false,
+      };
+    },
+    [tasks],
+  );
 
-      containerRef.current.innerHTML = '';
-      if (!frappeTasks.length) return;
+  const onVisibleRegionChanged = useCallback(
+    (_range: Rectangle, _tx: number, ty: number, _extras: VisibleRegionChangedEventArgs) => {
+      setGridScrollY(Math.max(0, ty));
+    },
+    [],
+  );
 
-      ganttRef.current = new Gantt(containerRef.current, frappeTasks, {
-        view_mode: viewMode,
-        language: 'en',
-        readonly: true,
-        popup_on: 'hover',
-        date_format: 'YYYY-MM-DD',
-        bar_height: 20,
-        column_width: viewMode === 'Day' ? 42 : viewMode === 'Week' ? 64 : viewMode === 'Month' ? 120 : 220,
-        container_height: '100%',
-        header_height: 56,
-        today_button: true,
-      });
+  const dateBounds = useMemo(() => {
+    if (!tasks.length) return null;
+    const min = tasks.reduce((d, t) => (t.startDate < d ? t.startDate : d), tasks[0].startDate);
+    const max = tasks.reduce((d, t) => (t.endDate > d ? t.endDate : d), tasks[0].endDate);
+    const paddedMin = new Date(min.getTime() - 14 * DAY_MS);
+    const paddedMax = new Date(max.getTime() + 14 * DAY_MS);
+    return { min: paddedMin, max: paddedMax };
+  }, [tasks]);
+
+  const stageWidth = Math.max(320, rightPanel.size.width - 2);
+  const stageHeight = Math.max(220, rightPanel.size.height - 2);
+
+  const chartRange = useMemo(() => {
+    if (!dateBounds) return null;
+    const totalMs = Math.max(DAY_MS, dateBounds.max.getTime() - dateBounds.min.getTime());
+    return {
+      min: dateBounds.min,
+      max: dateBounds.max,
+      totalMs,
+      plotLeft: 14,
+      plotRight: Math.max(120, stageWidth - 20),
     };
+  }, [dateBounds, stageWidth]);
 
-    mount();
+  const toX = useCallback(
+    (date: Date) => {
+      if (!chartRange) return 0;
+      const pct = (date.getTime() - chartRange.min.getTime()) / chartRange.totalMs;
+      return chartRange.plotLeft + pct * (chartRange.plotRight - chartRange.plotLeft);
+    },
+    [chartRange],
+  );
 
-    return () => {
-      active = false;
-    };
-  }, [frappeTasks, viewMode]);
+  const ticks = useMemo(() => {
+    if (!chartRange) return [];
+    return monthTicks(chartRange.min, chartRange.max);
+  }, [chartRange]);
 
   if (isLoading) return <PageLoader message="Loading WBS Gantt V2..." />;
 
   return (
-    <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem' }}>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+    <div
+      className="page-panel"
+      style={{
+        height: 'calc(100vh - 62px)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: '0.5rem 0.75rem 0.5rem',
+      }}
+    >
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>WBS Gantt V2</h1>
           <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.74rem' }}>
-            Powered by Frappe Gantt with Data Management tasks and dependencies
+            Glide Data Grid + React Konva (from Data Management)
           </div>
         </div>
-
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 8, padding: '4px 6px' }}>
-          {(['Day', 'Week', 'Month', 'Year'] as ViewMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => {
-                setViewMode(mode);
-                ganttRef.current?.change_view_mode(mode);
-              }}
-              className="btn btn-sm"
-              style={{
-                background: viewMode === mode ? 'var(--pinnacle-teal)' : 'transparent',
-                color: viewMode === mode ? '#000' : 'var(--text-secondary)',
-                border: 'none',
-                fontWeight: 700,
-              }}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{tasks.length} tasks</div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card)', position: 'relative' }}>
-        {frappeTasks.length === 0 ? (
-          <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            No task rows found in Data Management for current filters.
-          </div>
-        ) : null}
-        <div ref={containerRef} style={{ height: '100%', width: '100%', overflow: 'auto' }} />
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'grid',
+          gridTemplateColumns: '50% 50%',
+          gap: 8,
+        }}
+      >
+        <div
+          ref={leftPanel.ref}
+          style={{
+            minHeight: 0,
+            borderRadius: 10,
+            border: '1px solid var(--border-color)',
+            overflow: 'hidden',
+            background: 'var(--bg-card)',
+          }}
+        >
+          {leftPanel.size.width > 0 && leftPanel.size.height > 0 && (
+            <DataEditor
+              columns={columns}
+              rows={tasks.length}
+              rowHeight={ROW_HEIGHT}
+              headerHeight={40}
+              getCellContent={getCellContent}
+              onVisibleRegionChanged={onVisibleRegionChanged}
+              smoothScrollX
+              smoothScrollY
+              width={leftPanel.size.width}
+              height={leftPanel.size.height}
+            />
+          )}
+        </div>
+
+        <div
+          ref={rightPanel.ref}
+          style={{
+            minHeight: 0,
+            borderRadius: 10,
+            border: '1px solid var(--border-color)',
+            overflow: 'hidden',
+            background: 'var(--bg-card)',
+          }}
+        >
+          {tasks.length === 0 ? (
+            <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              No task data found for current filters.
+            </div>
+          ) : (
+            <Stage width={stageWidth} height={stageHeight}>
+              <Layer>
+                <Rect x={0} y={0} width={stageWidth} height={HEADER_HEIGHT} fill="#0b1320" />
+                {ticks.map((tick) => {
+                  const x = toX(tick);
+                  return (
+                    <React.Fragment key={tick.toISOString()}>
+                      <Line points={[x, 0, x, stageHeight]} stroke="#263243" strokeWidth={1} />
+                      <Text
+                        x={x + 4}
+                        y={14}
+                        text={tick.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                        fill="#b7c2d1"
+                        fontSize={11}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+
+                {tasks.map((task, rowIndex) => {
+                  const y = HEADER_HEIGHT + rowIndex * ROW_HEIGHT - gridScrollY;
+                  if (y + ROW_HEIGHT < HEADER_HEIGHT || y > stageHeight) return null;
+
+                  const startX = toX(task.startDate);
+                  const endX = Math.max(startX + 4, toX(task.endDate));
+                  const barY = y + 7;
+                  const barH = ROW_HEIGHT - 14;
+
+                  return (
+                    <React.Fragment key={task.id}>
+                      <Rect
+                        x={0}
+                        y={y + ROW_HEIGHT - 1}
+                        width={stageWidth}
+                        height={1}
+                        fill="#1e2939"
+                        opacity={0.55}
+                      />
+                      <Rect
+                        x={startX}
+                        y={barY}
+                        width={endX - startX}
+                        height={barH}
+                        fill="#2ed3c6"
+                        cornerRadius={4}
+                      />
+                      <Rect
+                        x={startX}
+                        y={barY}
+                        width={(endX - startX) * (task.progress / 100)}
+                        height={barH}
+                        fill="#17a59a"
+                        cornerRadius={4}
+                      />
+                      <Text
+                        x={startX + 6}
+                        y={barY + 4}
+                        width={Math.max(50, endX - startX - 10)}
+                        text={task.name}
+                        fill="#032320"
+                        fontSize={11}
+                        ellipsis
+                      />
+                    </React.Fragment>
+                  );
+                })}
+
+                {tasks.flatMap((task, rowIndex) => {
+                  const toY = HEADER_HEIGHT + rowIndex * ROW_HEIGHT - gridScrollY + ROW_HEIGHT / 2;
+                  if (toY < HEADER_HEIGHT || toY > stageHeight) return [];
+
+                  return task.predecessors.flatMap((predId) => {
+                    const pred = taskById.get(predId);
+                    if (!pred) return [];
+
+                    const fromY = HEADER_HEIGHT + pred.index * ROW_HEIGHT - gridScrollY + ROW_HEIGHT / 2;
+                    if (fromY < HEADER_HEIGHT || fromY > stageHeight) return [];
+
+                    const fromX = Math.max(toX(pred.task.startDate) + 4, toX(pred.task.endDate));
+                    const toBarX = toX(task.startDate);
+                    const elbowX = Math.max(fromX + 14, toBarX - 14);
+
+                    const key = `${predId}->${task.id}`;
+                    return [
+                      <Line
+                        key={`line-${key}`}
+                        points={[fromX, fromY, elbowX, fromY, elbowX, toY, toBarX - 9, toY]}
+                        stroke="#ffb84d"
+                        strokeWidth={1.5}
+                        lineJoin="round"
+                        lineCap="round"
+                      />,
+                      <Arrow
+                        key={`arrow-${key}`}
+                        points={[toBarX - 14, toY, toBarX - 2, toY]}
+                        stroke="#ffb84d"
+                        fill="#ffb84d"
+                        strokeWidth={1.5}
+                        pointerLength={5}
+                        pointerWidth={5}
+                      />, 
+                    ];
+                  });
+                })}
+              </Layer>
+            </Stage>
+          )}
+        </div>
       </div>
     </div>
   );
