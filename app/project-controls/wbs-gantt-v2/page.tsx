@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import DataEditor, {
   GridCell,
   GridCellKind,
@@ -90,23 +90,40 @@ const useElementSize = <T extends HTMLElement>() => {
   const ref = useRef<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
-    if (!ref.current) return;
+  const measure = useCallback(() => {
     const el = ref.current;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      const next = {
-        width: Math.floor(entry.contentRect.width),
-        height: Math.floor(entry.contentRect.height),
-      };
-      setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
-    });
-
-    observer.observe(el);
-    return () => observer.disconnect();
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const next = {
+      width: Math.max(0, Math.floor(rect.width)),
+      height: Math.max(0, Math.floor(rect.height)),
+    };
+    setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
   }, []);
+
+  useLayoutEffect(() => {
+    let rafId = requestAnimationFrame(measure);
+    measure();
+
+    const onWindowResize = () => measure();
+    window.addEventListener('resize', onWindowResize);
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && ref.current) {
+      observer = new ResizeObserver(() => measure());
+      observer.observe(ref.current);
+    }
+
+    // Fallback for environments where observer misses first paint/layout changes.
+    const intervalId = window.setInterval(measure, 300);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', onWindowResize);
+      if (observer) observer.disconnect();
+      window.clearInterval(intervalId);
+    };
+  }, [measure]);
 
   return { ref, size };
 };
@@ -281,8 +298,8 @@ export default function WBSGanttV2Page() {
     return { min: paddedMin, max: paddedMax };
   }, [tasks]);
 
-  const stageWidth = Math.max(320, rightPanel.size.width - 2);
-  const stageHeight = Math.max(220, rightPanel.size.height - 2);
+  const stageWidth = Math.max(320, rightPanel.size.width || 0);
+  const stageHeight = Math.max(220, rightPanel.size.height || 0);
 
   const chartRange = useMemo(() => {
     if (!dateBounds) return null;
@@ -346,13 +363,15 @@ export default function WBSGanttV2Page() {
           ref={leftPanel.ref}
           style={{
             minHeight: 0,
+            minWidth: 0,
             borderRadius: 10,
             border: '1px solid var(--border-color)',
             overflow: 'hidden',
             background: 'var(--bg-card)',
+            position: 'relative',
           }}
         >
-          {leftPanel.size.width > 0 && leftPanel.size.height > 0 && (
+          {leftPanel.size.width > 20 && leftPanel.size.height > 20 && (
             <DataEditor
               columns={columns}
               rows={tasks.length}
@@ -366,16 +385,23 @@ export default function WBSGanttV2Page() {
               height={leftPanel.size.height}
             />
           )}
+          {(leftPanel.size.width <= 20 || leftPanel.size.height <= 20) && (
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+              Preparing WBS grid...
+            </div>
+          )}
         </div>
 
         <div
           ref={rightPanel.ref}
           style={{
             minHeight: 0,
+            minWidth: 0,
             borderRadius: 10,
             border: '1px solid var(--border-color)',
             overflow: 'hidden',
             background: 'var(--bg-card)',
+            position: 'relative',
           }}
         >
           {tasks.length === 0 ? (
