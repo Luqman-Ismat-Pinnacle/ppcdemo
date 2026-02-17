@@ -26,6 +26,7 @@ import Auth0Provider from '@/components/providers/Auth0Provider';
 import AuthGuard from '@/components/auth/AuthGuard';
 import InactivityLogout from '@/components/auth/InactivityLogout';
 import Header from '@/components/layout/Header';
+import RouteTransitionLoader from '@/components/layout/RouteTransitionLoader';
 import SnapshotPopup from '@/components/snapshot/SnapshotPopup';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
@@ -99,6 +100,7 @@ export default function RootLayout({
                         <SnapshotProvider>
                           <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
                             <Header />
+                            <RouteTransitionLoader />
                             <main className="main-content">
                               {children}
                             </main>

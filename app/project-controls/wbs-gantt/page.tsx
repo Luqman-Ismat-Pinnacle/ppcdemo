@@ -606,6 +606,18 @@ export default function WBSGanttPage() {
     [taskNameMap],
   );
 
+  const getPredecessorsForRow = useCallback((row: any) => {
+    if (Array.isArray(row?.predecessors) && row.predecessors.length) return row.predecessors;
+    const rawPredecessor = String(row?.predecessorId || row?.predecessor_id || '').trim();
+    if (!rawPredecessor) return [];
+    const relationship = row?.predecessorRelationship || row?.predecessor_relationship || 'FS';
+    return rawPredecessor
+      .split(/[;,]+/)
+      .map((id: string) => id.trim())
+      .filter(Boolean)
+      .map((predecessorTaskId: string) => ({ predecessorTaskId, relationship, lagDays: 0 }));
+  }, []);
+
   const remainingHoursVarianceSummary = useMemo(() => {
     if (!varianceMode) return null;
     let currentRemaining = 0;
@@ -878,15 +890,7 @@ export default function WBSGanttPage() {
       const depDrawn = new Set<string>();
       flatRows.forEach((targetRow) => {
         if (!isTaskRow(targetRow)) return;
-        const preds = Array.isArray((targetRow as any).predecessors) && (targetRow as any).predecessors.length
-          ? (targetRow as any).predecessors
-          : (((targetRow as any).predecessorId || (targetRow as any).predecessor_id)
-            ? [{
-                predecessorTaskId: (targetRow as any).predecessorId || (targetRow as any).predecessor_id,
-                relationship: (targetRow as any).predecessorRelationship || (targetRow as any).predecessor_relationship || 'FS',
-                lagDays: 0,
-              }]
-            : []);
+        const preds = getPredecessorsForRow(targetRow as any);
         if (!preds.length) return;
 
         const targetId = normalizeId((targetRow as any).taskId || targetRow.id);
@@ -909,8 +913,12 @@ export default function WBSGanttPage() {
           const sy = toSvgY(sourceCurrent);
 
           const rel = relationType(pred?.relationship || pred?.relationshipType || pred?.relationship_type);
-          const sx = toSvgX(sourceCurrent, anchorSide(rel, true));
-          const tx = toSvgX(targetCurrent, anchorSide(rel, false));
+          const sourceSide = anchorSide(rel, true);
+          const targetSide = anchorSide(rel, false);
+          const sx = toSvgX(sourceCurrent, sourceSide);
+          const txRaw = toSvgX(targetCurrent, targetSide);
+          // Keep arrowhead tip centered on the target bar edge.
+          const tx = targetSide === 'start' ? txRaw - 1 : txRaw + 1;
           const depKey = `${sourceId}->${targetId}:${rel}`;
           if (depDrawn.has(depKey)) return;
           depDrawn.add(depKey);
@@ -921,6 +929,8 @@ export default function WBSGanttPage() {
           line.setAttribute('fill', 'none');
           line.setAttribute('stroke', critical ? '#EF4444' : '#40E0D0');
           line.setAttribute('stroke-width', critical ? '2' : '1.5');
+          line.setAttribute('stroke-linecap', 'round');
+          line.setAttribute('stroke-linejoin', 'round');
           line.setAttribute('marker-end', critical ? 'url(#arrowhead-red)' : 'url(#arrowhead-teal)');
           line.setAttribute('opacity', '0.9');
           const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
@@ -930,13 +940,16 @@ export default function WBSGanttPage() {
 
           // Baseline connector overlay
           if (showBaseline && sourceBaseline && targetBaseline) {
-            const bsx = toSvgX(sourceBaseline, anchorSide(rel, true));
-            const btx = toSvgX(targetBaseline, anchorSide(rel, false));
+            const bsx = toSvgX(sourceBaseline, sourceSide);
+            const btxRaw = toSvgX(targetBaseline, targetSide);
+            const btx = targetSide === 'start' ? btxRaw - 1 : btxRaw + 1;
             const baseLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             baseLine.setAttribute('d', routePath(bsx, toSvgY(sourceBaseline), btx, toSvgY(targetBaseline)));
             baseLine.setAttribute('fill', 'none');
             baseLine.setAttribute('stroke', '#94A3B8');
             baseLine.setAttribute('stroke-width', '1');
+            baseLine.setAttribute('stroke-linecap', 'round');
+            baseLine.setAttribute('stroke-linejoin', 'round');
             baseLine.setAttribute('stroke-dasharray', '3,3');
             baseLine.setAttribute('opacity', '0.75');
             svg.appendChild(baseLine);
@@ -946,7 +959,7 @@ export default function WBSGanttPage() {
     });
 
     return () => cancelAnimationFrame(raf);
-  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight, showBaseline, inferItemType]);
+  }, [flatRows, dateColumns, columnWidth, fixedColsWidth, totalRowsHeight, showDependencies, rowHeight, headerHeight, showBaseline, inferItemType, getPredecessorsForRow]);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -1124,9 +1137,9 @@ export default function WBSGanttPage() {
           {/* Dependency SVG */}
           <svg ref={svgRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 5 }}>
             <defs>
-              <marker id="arrowhead-red" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#EF4444" /></marker>
-              <marker id="arrowhead-gray" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6B7280" /></marker>
-              <marker id="arrowhead-teal" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#40E0D0" /></marker>
+              <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#EF4444" /></marker>
+              <marker id="arrowhead-gray" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#6B7280" /></marker>
+              <marker id="arrowhead-teal" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 8 3.5, 0 7" fill="#40E0D0" /></marker>
             </defs>
           </svg>
           {/* Inazuma line removed per user request */}
@@ -1406,11 +1419,7 @@ export default function WBSGanttPage() {
                     )}
                     <td className="number" style={{ ...TD_FONT, color: getProgressColor(progress), fontWeight: 700 }}>{`${Math.round(progress)}%`}</td>
                     {(() => {
-                      const rowPreds = Array.isArray((row as any).predecessors) && (row as any).predecessors.length
-                        ? (row as any).predecessors
-                        : (((row as any).predecessorId || (row as any).predecessor_id)
-                          ? [{ predecessorTaskId: (row as any).predecessorId || (row as any).predecessor_id }]
-                          : []);
+                      const rowPreds = getPredecessorsForRow(row as any);
                       const names = rowPreds
                         .map((p: any) => p.predecessorName || p.predecessor_name || getTaskNameFromMap(p.predecessorTaskId || p.predecessor_task_id))
                         .filter(Boolean);

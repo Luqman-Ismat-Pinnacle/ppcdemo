@@ -83,6 +83,27 @@ const safeNum = (v: any): number => {
   return isFinite(n) ? n : 0;
 };
 
+const normalizeId = (value: unknown): string => String(value ?? '').trim();
+
+const hasTruthyPlanFlag = (value: unknown): boolean => {
+  return value === true || value === 1 || String(value ?? '').toLowerCase() === 'true' || String(value ?? '') === '1';
+};
+
+const getPlannedProjectIdSet = (data: Partial<SampleData>): Set<string> => {
+  const planned = new Set<string>();
+  (data.projects || []).forEach((project: any) => {
+    const id = normalizeId(project?.id ?? project?.projectId);
+    if (!id) return;
+    const hasSchedule = hasTruthyPlanFlag(project?.has_schedule ?? project?.hasSchedule);
+    if (hasSchedule) planned.add(id);
+  });
+  ((data as any).projectDocuments || []).forEach((doc: any) => {
+    const id = normalizeId(doc?.projectId ?? doc?.project_id);
+    if (id) planned.add(id);
+  });
+  return planned;
+};
+
 // Snapshot helpers for trend charts
 type SnapshotRow = Snapshot;
 
@@ -318,6 +339,10 @@ function buildHierarchyMaps(data: {
   const tasksByPhase = new Map<string, any[]>();
   const tasksByProject = new Map<string, any[]>();
   const employeesById = new Map<string, any>();
+  const plannedProjectIds = getPlannedProjectIdSet(data);
+  const unitToProject = new Map<string, string>();
+  const siteToCustomer = new Map<string, string>();
+  const phaseToProject = new Map<string, string>();
 
   // Build customer maps (supports both hierarchy_nodes parent_id and legacy portfolio_id). Use String keys for consistent lookup.
   customers.forEach((customer: any) => {
@@ -332,6 +357,10 @@ function buildHierarchyMaps(data: {
   // Build site maps (supports both hierarchy_nodes parent_id and legacy customer_id). Use String keys for consistent lookup.
   sites.forEach((site: any) => {
     const customerId = site.parent_id ?? site.customerId ?? site.customer_id;
+    const siteId = normalizeId(site.id ?? site.siteId);
+    if (siteId && customerId != null && customerId !== '') {
+      siteToCustomer.set(siteId, String(customerId));
+    }
     if (customerId != null && customerId !== '') {
       const key = String(customerId);
       if (!sitesByCustomer.has(key)) sitesByCustomer.set(key, []);
@@ -342,6 +371,10 @@ function buildHierarchyMaps(data: {
   // Build unit maps: units belong to project (hierarchy is Project -> Unit -> Phase -> Task)
   units.forEach((unit: any) => {
     const projectId = unit.projectId ?? unit.project_id;
+    const unitId = normalizeId(unit.id ?? unit.unitId);
+    if (unitId && projectId != null && projectId !== '') {
+      unitToProject.set(unitId, String(projectId));
+    }
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
       if (!unitsByProject.has(key)) unitsByProject.set(key, []);
@@ -351,18 +384,25 @@ function buildHierarchyMaps(data: {
     // Legacy support (Site -> Unit)
     const siteId = unit.parent_id || unit.siteId || unit.site_id;
     if (siteId) {
-      if (!unitsBySite.has(siteId)) {
-        unitsBySite.set(siteId, []);
+      const siteKey = String(siteId);
+      if (!unitsBySite.has(siteKey)) {
+        unitsBySite.set(siteKey, []);
       }
-      unitsBySite.get(siteId)!.push(unit);
+      unitsBySite.get(siteKey)!.push(unit);
     }
   });
 
-  // Build project maps - only include projects with MPP uploaded (has_schedule = true). Use String keys for consistent lookup.
-  (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true).forEach((project: any) => {
+  // Build project maps - only include projects with an uploaded plan (schedule flag or project document).
+  (data.projects || []).forEach((project: any) => {
+    const projectId = normalizeId(project.id ?? project.projectId);
+    if (!projectId || !plannedProjectIds.has(projectId)) return;
     const unitId = project.unitId ?? project.unit_id;
     const siteId = project.siteId ?? project.site_id;
-    const customerId = project.customerId ?? project.customer_id;
+    const customerIdRaw = project.customerId ?? project.customer_id;
+    const customerId =
+      customerIdRaw != null && customerIdRaw !== ''
+        ? String(customerIdRaw)
+        : (siteId != null && siteId !== '' ? siteToCustomer.get(String(siteId)) || '' : '');
 
     if (unitId != null && unitId !== '') {
       const key = String(unitId);
@@ -385,13 +425,15 @@ function buildHierarchyMaps(data: {
 
   // Build phase maps: phases belong to unit (unit_id) or directly to project (legacy)
   (data.phases || []).forEach((phase: any) => {
+    const phaseId = normalizeId(phase.id ?? phase.phaseId);
     const unitId = phase.unitId ?? phase.unit_id;
     if (unitId != null && unitId !== '') {
       const key = String(unitId);
       if (!phasesByUnit.has(key)) phasesByUnit.set(key, []);
       phasesByUnit.get(key)!.push(phase);
     }
-    const projectId = phase.projectId ?? phase.project_id;
+    const projectId = phase.projectId ?? phase.project_id ?? (unitId != null && unitId !== '' ? unitToProject.get(String(unitId)) : undefined);
+    if (phaseId && projectId != null && projectId !== '') phaseToProject.set(phaseId, String(projectId));
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
       if (!phasesByProject.has(key)) phasesByProject.set(key, []);
@@ -411,7 +453,12 @@ function buildHierarchyMaps(data: {
     // Always index by project as a fallback. Some imports can carry a phaseId
     // that doesn't resolve to any current phase row, and WBS still needs to
     // surface those tasks under the project node instead of dropping them.
-    const projectId = task.projectId ?? task.project_id;
+    const unitId = task.unitId ?? task.unit_id;
+    const projectId =
+      task.projectId ??
+      task.project_id ??
+      (phaseId != null && phaseId !== '' ? phaseToProject.get(String(phaseId)) : undefined) ??
+      (unitId != null && unitId !== '' ? unitToProject.get(String(unitId)) : undefined);
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
       if (!tasksByProject.has(key)) tasksByProject.set(key, []);
@@ -1097,8 +1144,12 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     const customers = data.customers || [];
     const sites = data.sites || [];
     const units = data.units || [];
-    // Only include projects with MPP uploaded (has_schedule = true)
-    const projects = (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
+    // Only include projects with an uploaded plan (schedule flag or project document).
+    const plannedProjectIds = getPlannedProjectIdSet(data);
+    const projects = (data.projects || []).filter((p: any) => {
+      const projectId = normalizeId(p?.id ?? p?.projectId);
+      return projectId ? plannedProjectIds.has(projectId) : false;
+    });
     const tasks = data.tasks || [];
     const employees = data.employees || [];
 
@@ -1123,16 +1174,21 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     // Also build a quick predecessor lookup from the tasks' own predecessor_id column (legacy single-predecessor)
     // This ensures arrows even if task_dependencies table hasn't been populated yet
     tasks.forEach((task: any) => {
-      const taskId = String(task.id || task.taskId || '');
-      const predId = String(task.predecessorId || task.predecessor_id || '');
-      if (!taskId || !predId || depsBySuccessor.has(taskId)) return;
-      depsBySuccessor.set(taskId, [{
-        id: `${taskId}-pred`,
+      const taskId = String(task.id || task.taskId || '').trim();
+      const rawPred = String(task.predecessorId || task.predecessor_id || '').trim();
+      if (!taskId || !rawPred || depsBySuccessor.has(taskId)) return;
+      const predecessors = rawPred
+        .split(/[;,]+/)
+        .map((id: string) => id.trim())
+        .filter(Boolean);
+      if (!predecessors.length) return;
+      depsBySuccessor.set(taskId, predecessors.map((predId, idx) => ({
+        id: `${taskId}-pred-${idx + 1}`,
         taskId,
         predecessorTaskId: predId,
         relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS',
         lagDays: 0,
-      }]);
+      })));
     });
 
     // Extract work items if available (new consolidated structure)
