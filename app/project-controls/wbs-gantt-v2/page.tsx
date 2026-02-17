@@ -6,6 +6,8 @@ import DataEditor, { DataEditorRef, GridCell, GridCellKind, GridColumn, Item, Re
 import '@glideapps/glide-data-grid/dist/index.css';
 import { Arrow, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import { useData } from '@/lib/data-context';
+import { useSnapshotVariance } from '@/lib/use-snapshot-variance';
+import { CPMEngine } from '@/lib/cpm-engine';
 import PageLoader from '@/components/ui/PageLoader';
 
 type TimelineInterval = 'day' | 'month' | 'quarter' | 'year';
@@ -39,6 +41,8 @@ type FlatWbsRow = {
   predecessorIds: string[];
   totalFloat: number;
   isCritical: boolean;
+  varianceHours: number | null;
+  varianceCost: number | null;
 };
 
 type ColumnDef = {
@@ -218,6 +222,7 @@ const getProgressColor = (progress: number, critical: boolean) => {
 
 export default function WBSGanttV2Page() {
   const { filteredData, data: fullData, isLoading } = useData();
+  const { getSnapshotValue, hasComparison } = useSnapshotVariance();
   const splitHostRef = useRef<HTMLDivElement>(null);
   const dataEditorRef = useRef<DataEditorRef | null>(null);
   const leftPanel = useElementSize<HTMLDivElement>();
@@ -231,6 +236,8 @@ export default function WBSGanttV2Page() {
   const [timelineInterval, setTimelineInterval] = useState<TimelineInterval>('month');
   const [showDependencies, setShowDependencies] = useState(true);
   const [showBaseline, setShowBaseline] = useState(true);
+  const [showVariance, setShowVariance] = useState(false);
+  const [runCpm, setRunCpm] = useState(true);
   const [leftPanePct, setLeftPanePct] = useState(50);
   const [draggingSplit, setDraggingSplit] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState<Set<string>>(new Set(defaultVisibleColumns));
@@ -488,7 +495,6 @@ export default function WBSGanttV2Page() {
 
         const taskId = normalizeTaskId(readString(rec, 'taskId', 'task_id', 'id'));
         const assignedResourceId = readString(rec, 'assignedResourceId', 'assigned_resource_id', 'employeeId', 'employee_id');
-
         rows.push({
           id,
           taskId,
@@ -522,6 +528,8 @@ export default function WBSGanttV2Page() {
           })(),
           totalFloat: readNumber(rec, 'totalFloat', 'total_float'),
           isCritical: Boolean(rec.isCritical || rec.is_critical),
+          varianceHours: null,
+          varianceCost: null,
         });
 
         if (hasChildren) {
@@ -541,7 +549,7 @@ export default function WBSGanttV2Page() {
   );
   const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'eff', 'pct', 'tf']), []);
 
-  const filteredRows = useMemo(() => {
+  const baseFilteredRows = useMemo(() => {
     return flatRows.filter((row) => {
       for (const def of visibleDefs) {
         const query = (columnFilters[def.id] || '').trim().toLowerCase();
@@ -552,6 +560,59 @@ export default function WBSGanttV2Page() {
       return true;
     });
   }, [flatRows, visibleDefs, columnFilters]);
+
+  const cpmByTaskId = useMemo(() => {
+    if (!runCpm) return new Map<string, { totalFloat: number; isCritical: boolean }>();
+    const tasks = baseFilteredRows
+      .filter((r) => r.type === 'task' || r.type === 'sub_task')
+      .map((r) => ({
+        id: normalizeTaskId(r.taskId || r.id),
+        name: r.name,
+        wbsCode: r.wbsCode,
+        daysRequired: Math.max(1, r.daysRequired || 1),
+        predecessors: r.predecessorIds.map((pid) => ({ taskId: normalizeTaskId(pid), relationship: 'FS' as const, lagDays: 0 })),
+      }))
+      .filter((t) => t.id);
+    const map = new Map<string, { totalFloat: number; isCritical: boolean }>();
+    if (!tasks.length) return map;
+    try {
+      const engine = new CPMEngine();
+      engine.loadTasks(tasks);
+      const result = engine.calculate();
+      result.tasks.forEach((t) => {
+        map.set(normalizeTaskId(t.id), { totalFloat: t.totalFloat, isCritical: t.isCritical });
+      });
+    } catch {
+      return map;
+    }
+    return map;
+  }, [baseFilteredRows, runCpm]);
+
+  const filteredRows = useMemo(() => {
+    return baseFilteredRows.map((r) => {
+      const taskId = normalizeTaskId(r.taskId || r.id);
+      const cpm = cpmByTaskId.get(taskId);
+      const snapActualHours = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
+      const snapActualCost = taskId ? getSnapshotValue('actualCost', { taskId }) : null;
+      return {
+        ...r,
+        totalFloat: cpm?.totalFloat ?? r.totalFloat,
+        isCritical: cpm?.isCritical ?? r.isCritical,
+        varianceHours: snapActualHours == null ? null : r.actualHours - snapActualHours,
+        varianceCost: snapActualCost == null ? null : r.actualCost - snapActualCost,
+      };
+    });
+  }, [baseFilteredRows, cpmByTaskId, getSnapshotValue]);
+
+  const cpmStats = useMemo(() => {
+    const rows = filteredRows.filter((r) => r.type === 'task' || r.type === 'sub_task');
+    let critical = 0;
+    rows.forEach((r) => {
+      const cpm = cpmByTaskId.get(normalizeTaskId(r.taskId || r.id));
+      if (cpm?.isCritical) critical += 1;
+    });
+    return { total: rows.length, critical };
+  }, [filteredRows, cpmByTaskId]);
 
   const getDisplayText = useCallback((def: ColumnDef, r: FlatWbsRow): string => {
     let text = def.value(r);
@@ -577,7 +638,15 @@ export default function WBSGanttV2Page() {
       return { kind: GridCellKind.Text, data: '', displayData: '', allowOverlay: false };
     }
 
-    const text = getDisplayText(def, r);
+    let text = getDisplayText(def, r);
+    if (showVariance && def.id === 'acth' && r.varianceHours != null) {
+      const v = Math.round(r.varianceHours);
+      text = `${text} (${v > 0 ? '+' : ''}${v})`;
+    }
+    if (showVariance && def.id === 'actc' && r.varianceCost != null) {
+      const v = Math.round(r.varianceCost);
+      text = `${text} (${v > 0 ? '+' : ''}${formatCurrency(v)})`;
+    }
 
     return {
       kind: GridCellKind.Text,
@@ -585,10 +654,10 @@ export default function WBSGanttV2Page() {
       displayData: text,
       allowOverlay: false,
     };
-  }, [filteredRows, visibleDefs, getDisplayText]);
+  }, [filteredRows, visibleDefs, getDisplayText, showVariance]);
 
   const drawHeader = useCallback((args: any, drawContent: () => void) => {
-    const { ctx, rect, column, isHovered } = args;
+    const { ctx, rect, column } = args;
     ctx.fillStyle = uiColors.bgSecondary;
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     drawContent();
@@ -605,16 +674,6 @@ export default function WBSGanttV2Page() {
       ctx.fillRect(rect.x + 1, rect.y + rect.height - 2, rect.width - 2, 1);
     }
 
-    if (isHovered) {
-      ctx.fillStyle = uiColors.textMuted;
-      ctx.font = '700 11px var(--font-mono, monospace)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      // Filter trigger
-      ctx.fillText('F', rect.x + rect.width - 22, rect.y + rect.height / 2);
-      // Hide trigger
-      ctx.fillText('x', rect.x + rect.width - 10, rect.y + rect.height / 2);
-    }
   }, [uiColors]);
 
   const drawCell = useCallback((args: any) => {
@@ -639,6 +698,8 @@ export default function WBSGanttV2Page() {
 
     let color = uiColors.textSecondary;
     if (def.id === 'acth' || def.id === 'actc') color = uiColors.teal;
+    if (showVariance && def.id === 'acth' && r.varianceHours != null) color = r.varianceHours > 0 ? '#ef4444' : '#22c55e';
+    if (showVariance && def.id === 'actc' && r.varianceCost != null) color = r.varianceCost > 0 ? '#ef4444' : '#22c55e';
     if (def.id === 'pct') color = getProgressColor(r.percentComplete, r.isCritical);
     if (def.id === 'tf' && r.totalFloat <= 0) color = '#ef4444';
     if (def.id === 'cp' && r.isCritical) color = '#ef4444';
@@ -726,7 +787,7 @@ export default function WBSGanttV2Page() {
     ctx.clip();
     ctx.fillText(text, x, y);
     ctx.restore();
-  }, [filteredRows, visibleDefs, numericColumnIds, uiColors, getDisplayText]);
+  }, [filteredRows, visibleDefs, numericColumnIds, uiColors, getDisplayText, showVariance]);
 
   const onCellClicked = useCallback((cell: Item) => {
     const [col, row] = cell;
@@ -746,31 +807,13 @@ export default function WBSGanttV2Page() {
   const onHeaderClicked = useCallback((col: number, event: any) => {
     const def = visibleDefs[col];
     if (!def) return;
-    const clickX = event.localEventX as number;
-    const width = event.bounds?.width ?? def.width;
-
-    // Right-most "x" area: hide column
-    if (clickX >= width - 14) {
-      setVisibleColumnIds((prev) => {
-        if (prev.size <= 3) return prev;
-        const next = new Set(prev);
-        next.delete(def.id);
-        return next;
-      });
-      return;
-    }
-
-    // "F" area: open/close filter popup for this column
-    if (clickX >= width - 30) {
-      setHeaderFilterColumnId((prev) => (prev === def.id ? null : def.id));
-      return;
-    }
+    const panelRect = leftPanel.ref.current?.getBoundingClientRect();
     setHeaderMenu({
       columnId: def.id,
-      x: event.bounds?.x ?? 0,
-      y: (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
+      x: (panelRect?.left || 0) + (event.bounds?.x ?? 0),
+      y: (panelRect?.top || 0) + (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
     });
-  }, [visibleDefs]);
+  }, [visibleDefs, leftPanel.ref]);
 
   const onHeaderMouseMove = useCallback((event: any) => {
     if (event?.kind !== 'header') {
@@ -781,13 +824,14 @@ export default function WBSGanttV2Page() {
     if (typeof col !== 'number') return;
     const def = visibleDefs[col];
     if (!def) return;
+    const panelRect = leftPanel.ref.current?.getBoundingClientRect();
     const next = {
       columnId: def.id,
-      x: event.bounds?.x ?? 0,
-      y: (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
+      x: (panelRect?.left || 0) + (event.bounds?.x ?? 0),
+      y: (panelRect?.top || 0) + (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
     };
     setHeaderMenu((prev) => (prev?.columnId === next.columnId ? prev : next));
-  }, [visibleDefs]);
+  }, [visibleDefs, leftPanel.ref]);
 
   const onVisibleRegionChanged = useCallback((range: Rectangle, _tx: number, ty: number) => {
     const byRange = Math.max(0, range.y * ROW_HEIGHT);
@@ -848,8 +892,19 @@ export default function WBSGanttV2Page() {
   const onRightTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
     const top = el.scrollTop;
-    setVerticalOffset(top);
+    if (top !== 0) {
+      el.scrollTop = 0;
+    }
   }, []);
+
+  const onRightTimelineWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    const maxOffset = Math.max(0, filteredRows.length * ROW_HEIGHT - Math.max(0, rightPanelHeight - HEADER_HEIGHT));
+    const next = Math.max(0, Math.min(maxOffset, verticalOffset + e.deltaY));
+    setVerticalOffset(next);
+    dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: next, unit: 'px' }, 'vertical');
+  }, [filteredRows.length, rightPanelHeight, verticalOffset]);
 
   useEffect(() => {
     const scrollEl = rightScrollRef.current;
@@ -1022,8 +1077,17 @@ export default function WBSGanttV2Page() {
             <input type="checkbox" checked={showDependencies} onChange={(e) => setShowDependencies(e.target.checked)} style={{ accentColor: '#40e0d0' }} />
             <span>Dependencies</span>
           </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: hasComparison ? '#22c55e' : '#6b7280' }}>
+            <input type="checkbox" checked={showVariance} disabled={!hasComparison} onChange={(e) => setShowVariance(e.target.checked)} style={{ accentColor: '#22c55e' }} />
+            <span>Variance</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: '#f59e0b' }}>
+            <input type="checkbox" checked={runCpm} onChange={(e) => setRunCpm(e.target.checked)} style={{ accentColor: '#f59e0b' }} />
+            <span>CPM</span>
+          </label>
 
           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{filteredRows.length} rows</div>
+          <div style={{ color: '#f59e0b', fontSize: '0.7rem', fontWeight: 600 }}>CP: {cpmStats.critical}/{cpmStats.total}</div>
         </div>
       </div>
 
@@ -1126,7 +1190,12 @@ export default function WBSGanttV2Page() {
           style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.34)', position: 'relative' }}
         >
           {rightPanelWidth > 20 && rightPanelHeight > 20 ? (
-            <div ref={rightScrollRef} style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'auto', position: 'relative' }} onScroll={onRightTimelineScroll}>
+            <div
+              ref={rightScrollRef}
+              style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}
+              onScroll={onRightTimelineScroll}
+              onWheel={onRightTimelineWheel}
+            >
               <div ref={rightVirtualScrollRef} style={{ width: timelineInnerWidth, height: HEADER_HEIGHT + totalRowsHeight, position: 'relative' }}>
                 <div style={{ position: 'sticky', top: 0 }}>
               <Stage width={timelineInnerWidth} height={rightPanelHeight}>
@@ -1239,6 +1308,9 @@ export default function WBSGanttV2Page() {
                               fill={TYPE_COLOR[row.type] || '#2ed3c6'}
                               opacity={0.22}
                               cornerRadius={4}
+                              onMouseEnter={(evt) => setBarTip({ row, x: evt.evt.clientX + 14, y: evt.evt.clientY - 18 })}
+                              onMouseMove={(evt) => setBarTip({ row, x: evt.evt.clientX + 14, y: evt.evt.clientY - 18 })}
+                              onMouseLeave={() => setBarTip(null)}
                             />
                             <Rect
                               x={barStart}
@@ -1370,6 +1442,22 @@ export default function WBSGanttV2Page() {
             <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: uiColors.teal }}>{barTip.row.actualHours.toLocaleString()}</span></div>
             <div><span style={{ color: '#777' }}>BL Cost: </span>{formatCurrency(barTip.row.baselineCost)}</div>
             <div><span style={{ color: '#777' }}>Act Cost: </span><span style={{ color: uiColors.teal }}>{formatCurrency(barTip.row.actualCost)}</span></div>
+            {showVariance && hasComparison && (
+              <>
+                <div>
+                  <span style={{ color: '#777' }}>Var Hrs: </span>
+                  <span style={{ color: (barTip.row.varianceHours || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+                    {barTip.row.varianceHours == null ? '-' : `${barTip.row.varianceHours > 0 ? '+' : ''}${Math.round(barTip.row.varianceHours)}`}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: '#777' }}>Var Cost: </span>
+                  <span style={{ color: (barTip.row.varianceCost || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+                    {barTip.row.varianceCost == null ? '-' : `${barTip.row.varianceCost > 0 ? '+' : ''}${formatCurrency(barTip.row.varianceCost)}`}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1379,8 +1467,8 @@ export default function WBSGanttV2Page() {
           data-header-menu-popup
           style={{
             position: 'fixed',
-            left: Math.max(10, Math.min(headerMenu.x + 18, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 260)),
-            top: Math.max(80, Math.min(headerMenu.y + 64, (typeof window !== 'undefined' ? window.innerHeight : 720) - 210)),
+            left: Math.max(10, Math.min(headerMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 260)),
+            top: Math.max(70, Math.min(headerMenu.y + 4, (typeof window !== 'undefined' ? window.innerHeight : 720) - 210)),
             zIndex: 11000,
             width: 240,
             maxWidth: 'calc(100vw - 20px)',

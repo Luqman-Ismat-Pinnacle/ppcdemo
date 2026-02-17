@@ -1,16 +1,16 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import PageLoader from '@/components/ui/PageLoader';
 import { useData } from '@/lib/data-context';
 
 const COLORS = {
-  bg: '#18181b',
-  panel: 'rgba(24,24,27,0.84)',
-  border: 'rgba(64,224,208,0.22)',
+  bg: 'transparent',
+  panel: '#18181b',
+  border: '#3f3f46',
   text: '#f4f4f5',
   muted: '#a1a1aa',
   teal: '#40E0D0',
@@ -99,8 +99,37 @@ function AccordionSection({
 }
 
 function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
+  const [filters, setFilters] = useState<Record<number, string>>({});
+  const toText = useCallback((cell: React.ReactNode): string => {
+    if (cell == null) return '';
+    if (typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean') return String(cell);
+    if (Array.isArray(cell)) return cell.map((x) => toText(x)).join(' ');
+    if (typeof cell === 'object' && 'props' in (cell as any)) return toText((cell as any).props?.children);
+    return '';
+  }, []);
+  const optionsByColumn = useMemo(() => {
+    return headers.map((_, idx) => {
+      const values = new Set<string>();
+      rows.forEach((r) => {
+        const v = toText(r.cells[idx]).trim();
+        if (v) values.add(v);
+      });
+      return Array.from(values).slice(0, 120);
+    });
+  }, [headers, rows, toText]);
+  const filteredRows = useMemo(() => {
+    return rows.filter((r) => {
+      for (let i = 0; i < headers.length; i += 1) {
+        const selected = filters[i];
+        if (!selected) continue;
+        if (toText(r.cells[i]) !== selected) return false;
+      }
+      return true;
+    });
+  }, [rows, filters, headers, toText]);
+
   return (
-    <div style={{ overflowX: 'auto', border: `1px solid rgba(64,224,208,0.16)`, borderRadius: 10 }}>
+    <div style={{ overflow: 'auto', maxHeight: 360, border: `1px solid rgba(64,224,208,0.16)`, borderRadius: 10 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
         <thead>
           <tr>
@@ -120,14 +149,30 @@ function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
               </th>
             ))}
           </tr>
+          <tr>
+            {headers.map((h, idx) => (
+              <th key={`f-${h}`} style={{ padding: '0.3rem 0.45rem', borderBottom: `1px solid rgba(64,224,208,0.14)` }}>
+                <select
+                  value={filters[idx] || ''}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, [idx]: e.target.value }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(64,224,208,0.22)', color: COLORS.text, borderRadius: 5, fontSize: '0.65rem', padding: '0.2rem 0.3rem' }}
+                >
+                  <option value="">All {h}</option>
+                  {optionsByColumn[idx].map((opt) => (
+                    <option key={`${h}-${opt}`} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </th>
+            ))}
+          </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {filteredRows.length === 0 ? (
             <tr>
               <td style={{ color: COLORS.muted, padding: '0.85rem' }} colSpan={headers.length}>No data in current filter scope.</td>
             </tr>
           ) : (
-            rows.map((r) => (
+            filteredRows.map((r) => (
               <tr key={r.key} style={{ borderBottom: `1px solid rgba(64,224,208,0.1)` }}>
                 {r.cells.map((c, idx) => (
                   <td key={`${r.key}-${idx}`} style={{ padding: '0.52rem 0.45rem', color: COLORS.text }}>{c}</td>
@@ -875,7 +920,7 @@ export default function MosPage() {
       defaultOpen: true,
       content: (
         <div style={{ display: 'grid', gap: '0.8rem' }}>
-          <ChartWrapper option={setupChartOption} height={320} />
+          <ChartWrapper option={setupChartOption} height={380} />
           <DataTable
             headers={[
               `${entityLabel} / Deliverable Name`,
@@ -924,7 +969,7 @@ export default function MosPage() {
               </button>
             </div>
           </div>
-          <ChartWrapper option={progressView === 'burnup' ? burnupOption : customGanttOption} height={340} />
+          <ChartWrapper option={progressView === 'burnup' ? burnupOption : customGanttOption} height={420} />
           <DataTable
             headers={['Entity Name', 'Baseline Hours', 'Added Scope Hours', 'Actual Hours', 'Remaining Hours', 'SPI / CPI Trend']}
             rows={entityRows.map((r) => {
@@ -948,8 +993,8 @@ export default function MosPage() {
         'Measures prediction stability. Frequently changing forecast dates and concentrated delay volume signal weak predictability and higher schedule risk.',
       content: (
         <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={forecastTrendOption} height={300} />
-          <ChartWrapper option={forecastStackedOption} height={300} />
+          <ChartWrapper option={forecastTrendOption} height={380} />
+          <ChartWrapper option={forecastStackedOption} height={380} />
           <div style={{ gridColumn: '1 / -1' }}>
             <DataTable
               headers={['Entity Name', 'Baseline End Date', 'Current Forecast Date', 'Days Variance', '# of Forecast Changes', 'Delay Category (Systemic vs. Isolated)']}
@@ -982,8 +1027,8 @@ export default function MosPage() {
         'Tracks conversion of paid capacity into earned value, identifies effective FTE loss from inefficiency, and monitors productivity behavior over time.',
       content: (
         <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={waterfallOption} height={300} />
-          <ChartWrapper option={evActualOption} height={300} />
+          <ChartWrapper option={waterfallOption} height={380} />
+          <ChartWrapper option={evActualOption} height={380} />
           <div style={{ gridColumn: '1 / -1' }}>
             <DataTable
               headers={['Team / Role', 'Available Hours', 'Logged Hours', 'Earned Value Hours', 'Efficiency % (Earned / Logged)', 'Effective FTE Loss']}
@@ -1011,8 +1056,8 @@ export default function MosPage() {
         'Highlights entities exceeding baseline budget and hours so leadership can quickly identify overrun concentration and whether overrun velocity is accelerating.',
       content: (
         <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={quadrantOption} height={300} />
-          <ChartWrapper option={eacTrendOption} height={300} />
+          <ChartWrapper option={quadrantOption} height={380} />
+          <ChartWrapper option={eacTrendOption} height={380} />
           <div style={{ gridColumn: '1 / -1' }}>
             <DataTable
               headers={['Entity Name', 'Baseline Budget / Hours', 'Added Scope Hours', 'Actuals to Date', 'EAC (Projected Final Cost)', 'Variance %']}
@@ -1040,8 +1085,8 @@ export default function MosPage() {
         'Measures hours and financial cost of quality failures, trends rework over time, and indicates whether QC is catching issues early.',
       content: (
         <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={paretoOption} height={300} />
-          <ChartWrapper option={reworkAreaOption} height={300} />
+          <ChartWrapper option={paretoOption} height={380} />
+          <ChartWrapper option={reworkAreaOption} height={380} />
           <div style={{ gridColumn: '1 / -1' }}>
             <DataTable
               headers={['Defect Category', 'Rework Hours Logged', 'Cost Impact (Hours * Blended Rate)', 'Detection Phase (Peer Review, QA, Client)']}
@@ -1062,7 +1107,7 @@ export default function MosPage() {
         'Forecasts work demand against roster capacity to identify shortages and hiring/reallocation needs before delivery impact occurs.',
       content: (
         <div style={{ display: 'grid', gap: '0.8rem' }}>
-          <ChartWrapper option={capacityDemandOption} height={320} />
+          <ChartWrapper option={capacityDemandOption} height={380} />
           <DataTable
             headers={['Role / Discipline', 'Time Period', 'Capacity Hours', 'Demand Hours', 'Utilization %', 'Shortage / Surplus FTE']}
             rows={model.roleCapacityDemandRows.slice(0, 80).map((r) => ({
@@ -1081,8 +1126,8 @@ export default function MosPage() {
         'Evaluates risk identification timing, corrective action quality, and concentration of exposure so leadership can focus on the highest-impact risks first.',
       content: (
         <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={riskHeatmapOption} height={300} />
-          <ChartWrapper option={riskDetectScatter} height={300} />
+          <ChartWrapper option={riskHeatmapOption} height={380} />
+          <ChartWrapper option={riskDetectScatter} height={380} />
           <div style={{ gridColumn: '1 / -1' }}>
             <DataTable
               headers={['Entity / Risk Description', 'Probability & Impact', 'Exposure Score', 'Time to Detect (Days) / Corrective Action Status', 'Mitigation Success Rate (Y/N)']}
