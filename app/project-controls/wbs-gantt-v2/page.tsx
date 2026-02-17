@@ -229,6 +229,7 @@ export default function WBSGanttV2Page() {
   const rightPanel = useElementSize<HTMLDivElement>();
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const rightVirtualScrollRef = useRef<HTMLDivElement>(null);
+  const syncFromRightRef = useRef(false);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [verticalOffset, setVerticalOffset] = useState(0);
@@ -614,6 +615,20 @@ export default function WBSGanttV2Page() {
     return { total: rows.length, critical };
   }, [filteredRows, cpmByTaskId]);
 
+  const taskNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    filteredRows.forEach((r) => {
+      const id = normalizeTaskId(r.taskId || r.id);
+      if (id && r.name) map.set(id, r.name);
+    });
+    (fullData.tasks || []).forEach((t: unknown) => {
+      const id = normalizeTaskId(readString(t, 'id', 'taskId', 'task_id'));
+      const name = readString(t, 'name', 'taskName');
+      if (id && name && !map.has(id)) map.set(id, name);
+    });
+    return map;
+  }, [filteredRows, fullData.tasks]);
+
   const getDisplayText = useCallback((def: ColumnDef, r: FlatWbsRow): string => {
     let text = def.value(r);
 
@@ -622,9 +637,16 @@ export default function WBSGanttV2Page() {
       const expander = r.hasChildren ? (r.isExpanded ? '▾ ' : '▸ ') : '';
       text = def.id === 'name' ? `${indent}${expander}${text}` : `${indent}${text}`;
     }
+    if (def.id === 'pred') {
+      text = r.predecessorIds.length
+        ? r.predecessorIds
+          .map((pid) => taskNameById.get(normalizeTaskId(pid)) || normalizeTaskId(pid))
+          .join(', ')
+        : '-';
+    }
 
     return text;
-  }, []);
+  }, [taskNameById]);
 
   const getCellContent = useCallback((cell: Item): GridCell => {
     const [col, row] = cell;
@@ -811,12 +833,16 @@ export default function WBSGanttV2Page() {
     setHeaderMenu({
       columnId: def.id,
       x: (panelRect?.left || 0) + (event.bounds?.x ?? 0),
-      y: (panelRect?.top || 0) + (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
+      y: (panelRect?.top || 0) + HEADER_HEIGHT + 2,
     });
   }, [visibleDefs, leftPanel.ref]);
 
   const onHeaderMouseMove = useCallback((event: any) => {
     if (event?.kind !== 'header') {
+      setHeaderMenu(null);
+      return;
+    }
+    if (typeof event.localEventY === 'number' && event.localEventY > HEADER_HEIGHT) {
       setHeaderMenu(null);
       return;
     }
@@ -828,7 +854,7 @@ export default function WBSGanttV2Page() {
     const next = {
       columnId: def.id,
       x: (panelRect?.left || 0) + (event.bounds?.x ?? 0),
-      y: (panelRect?.top || 0) + (event.bounds?.y ?? 0) + (event.bounds?.height ?? HEADER_HEIGHT),
+      y: (panelRect?.top || 0) + HEADER_HEIGHT + 2,
     };
     setHeaderMenu((prev) => (prev?.columnId === next.columnId ? prev : next));
   }, [visibleDefs, leftPanel.ref]);
@@ -836,7 +862,11 @@ export default function WBSGanttV2Page() {
   const onVisibleRegionChanged = useCallback((range: Rectangle, _tx: number, ty: number) => {
     const byRange = Math.max(0, range.y * ROW_HEIGHT);
     const nextTop = Number.isFinite(ty) ? Math.max(0, ty) : byRange;
-    setVerticalOffset(nextTop);
+    if (syncFromRightRef.current) {
+      syncFromRightRef.current = false;
+      return;
+    }
+    setVerticalOffset((prev) => (Math.abs(prev - nextTop) > 0.5 ? nextTop : prev));
   }, []);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
@@ -891,10 +921,7 @@ export default function WBSGanttV2Page() {
 
   const onRightTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    const top = el.scrollTop;
-    if (top !== 0) {
-      el.scrollTop = 0;
-    }
+    if (el.scrollTop !== 0) el.scrollTop = 0;
   }, []);
 
   const onRightTimelineWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -902,17 +929,10 @@ export default function WBSGanttV2Page() {
     e.preventDefault();
     const maxOffset = Math.max(0, filteredRows.length * ROW_HEIGHT - Math.max(0, rightPanelHeight - HEADER_HEIGHT));
     const next = Math.max(0, Math.min(maxOffset, verticalOffset + e.deltaY));
+    syncFromRightRef.current = true;
     setVerticalOffset(next);
     dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: next, unit: 'px' }, 'vertical');
   }, [filteredRows.length, rightPanelHeight, verticalOffset]);
-
-  useEffect(() => {
-    const scrollEl = rightScrollRef.current;
-    if (scrollEl && Math.abs(scrollEl.scrollTop - verticalOffset) > 1) {
-      scrollEl.scrollTop = verticalOffset;
-    }
-    dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: verticalOffset, unit: 'px' }, 'vertical');
-  }, [verticalOffset, filteredRows.length]);
 
   const indexByTaskId = useMemo(() => {
     const map = new Map<string, number>();
@@ -1145,7 +1165,7 @@ export default function WBSGanttV2Page() {
       <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.46)' }}>
         <div
           ref={leftPanel.ref}
-          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.34)', position: 'relative' }}
+          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
         >
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (
             <DataEditor
@@ -1187,7 +1207,7 @@ export default function WBSGanttV2Page() {
 
         <div
           ref={rightPanel.ref}
-          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.34)', position: 'relative' }}
+          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
         >
           {rightPanelWidth > 20 && rightPanelHeight > 20 ? (
             <div
@@ -1329,55 +1349,64 @@ export default function WBSGanttV2Page() {
                     );
                   })}
 
-                  {showDependencies && filteredRows.slice(visibleWindow.startIdx, visibleWindow.endIdx + 1).flatMap((targetRow, localIdx) => {
-                    const targetIdx = visibleWindow.startIdx + localIdx;
-                    if (!targetRow.startDate) return [];
+                  {showDependencies && (() => {
+                    const drawn = new Set<string>();
+                    return filteredRows.slice(visibleWindow.startIdx, visibleWindow.endIdx + 1).flatMap((targetRow, localIdx) => {
+                      const targetIdx = visibleWindow.startIdx + localIdx;
+                      if (!targetRow.startDate) return [];
 
-                    const targetY = HEADER_HEIGHT + targetIdx * ROW_HEIGHT - verticalOffset + ROW_HEIGHT / 2;
-                    const targetX = toX(targetRow.startDate);
+                      const targetY = HEADER_HEIGHT + targetIdx * ROW_HEIGHT - verticalOffset + ROW_HEIGHT / 2;
+                      const targetX = toX(targetRow.startDate);
+                      if (!Number.isFinite(targetX)) return [];
 
-                    return targetRow.predecessorIds.flatMap((pred) => {
-                      const sourceIdx = indexByTaskId.get(normalizeTaskId(pred));
-                      if (sourceIdx === undefined) return [];
+                      return targetRow.predecessorIds.flatMap((pred) => {
+                        const sourceIdx = indexByTaskId.get(normalizeTaskId(pred));
+                        if (sourceIdx === undefined || sourceIdx === targetIdx) return [];
+                        if (sourceIdx < visibleWindow.startIdx || sourceIdx > visibleWindow.endIdx) return [];
 
-                      const source = filteredRows[sourceIdx];
-                      if (!source?.endDate) return [];
+                        const source = filteredRows[sourceIdx];
+                        if (!source?.endDate) return [];
 
-                      const sourceY = HEADER_HEIGHT + sourceIdx * ROW_HEIGHT - verticalOffset + ROW_HEIGHT / 2;
-                      if (sourceY < HEADER_HEIGHT - ROW_HEIGHT || sourceY > rightPanelHeight + ROW_HEIGHT) return [];
+                        const sourceY = HEADER_HEIGHT + sourceIdx * ROW_HEIGHT - verticalOffset + ROW_HEIGHT / 2;
+                        if (sourceY < HEADER_HEIGHT - ROW_HEIGHT || sourceY > rightPanelHeight + ROW_HEIGHT) return [];
 
-                      const sourceX = toX(source.endDate);
-                      const routeX = targetX >= sourceX ? Math.max(sourceX + 16, targetX - 16) : sourceX + 16;
-                      const leftDetourX = targetX >= sourceX ? routeX : Math.max(10, targetX - 18);
-                      const key = `${source.id}->${targetRow.id}`;
+                        const sourceX = toX(source.endDate);
+                        if (!Number.isFinite(sourceX)) return [];
 
-                      const points = targetX >= sourceX
-                        ? [sourceX, sourceY, routeX, sourceY, routeX, targetY, targetX - 10, targetY]
-                        : [sourceX, sourceY, routeX, sourceY, routeX, targetY, leftDetourX, targetY, targetX - 10, targetY];
+                        const key = `${source.id}->${targetRow.id}`;
+                        if (drawn.has(key)) return [];
+                        drawn.add(key);
 
-                      const stroke = source.isCritical || targetRow.isCritical ? '#ef4444' : '#40e0d0';
+                        const routeX = targetX >= sourceX ? Math.max(sourceX + 16, targetX - 16) : sourceX + 16;
+                        const leftDetourX = targetX >= sourceX ? routeX : Math.max(10, targetX - 18);
+                        const points = targetX >= sourceX
+                          ? [sourceX, sourceY, routeX, sourceY, routeX, targetY, targetX - 10, targetY]
+                          : [sourceX, sourceY, routeX, sourceY, routeX, targetY, leftDetourX, targetY, targetX - 10, targetY];
 
-                      return [
-                        <Line
-                          key={`dep-line-${key}`}
-                          points={points}
-                          stroke={stroke}
-                          strokeWidth={source.isCritical || targetRow.isCritical ? 1.9 : 1.45}
-                          lineJoin="round"
-                          lineCap="round"
-                        />,
-                        <Arrow
-                          key={`dep-arrow-${key}`}
-                          points={[targetX - 14, targetY, targetX, targetY]}
-                          stroke={stroke}
-                          fill={stroke}
-                          strokeWidth={source.isCritical || targetRow.isCritical ? 1.9 : 1.45}
-                          pointerLength={5}
-                          pointerWidth={5}
-                        />,
-                      ];
+                        const stroke = source.isCritical || targetRow.isCritical ? '#ef4444' : '#40e0d0';
+
+                        return [
+                          <Line
+                            key={`dep-line-${key}`}
+                            points={points}
+                            stroke={stroke}
+                            strokeWidth={source.isCritical || targetRow.isCritical ? 1.9 : 1.45}
+                            lineJoin="round"
+                            lineCap="round"
+                          />,
+                          <Arrow
+                            key={`dep-arrow-${key}`}
+                            points={[targetX - 14, targetY, targetX, targetY]}
+                            stroke={stroke}
+                            fill={stroke}
+                            strokeWidth={source.isCritical || targetRow.isCritical ? 1.9 : 1.45}
+                            pointerLength={5}
+                            pointerWidth={5}
+                          />,
+                        ];
+                      });
                     });
-                  })}
+                  })()}
                 </Layer>
               </Stage>
                 </div>

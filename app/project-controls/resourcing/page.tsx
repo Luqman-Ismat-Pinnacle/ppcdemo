@@ -968,12 +968,14 @@ function ResourcingPageContent() {
       .map(r => r.role);
 
     const heatData: [number, number, number][] = [];
+    const overlayData: Array<{ value: [number, number, number]; overload: boolean }> = [];
     let maxVal = 0;
     sortedRoles.forEach((role, ri) => {
       const weekMap = roleWeekHours.get(role)!;
       displayWeeks.forEach((_, wi) => {
         const val = Math.round(weekMap.get(wi) || 0);
         heatData.push([wi, ri, val]);
+        if (val > 0) overlayData.push({ value: [wi, ri, val], overload: val > HOURS_PER_WEEK });
         if (val > maxVal) maxVal = val;
       });
     });
@@ -1031,7 +1033,42 @@ function ResourcingPageContent() {
         textStyle: { color: '#a1a1aa', fontSize: 9 },
         inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
       },
-      series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
+      series: [
+        {
+          type: 'heatmap',
+          data: heatData,
+          label: { show: false },
+          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } },
+        },
+        {
+          type: 'scatter',
+          data: overlayData,
+          symbol: 'rect',
+          symbolSize: [10, 10],
+          itemStyle: {
+            color: 'transparent',
+            borderColor: '#93c5fd',
+            borderWidth: 1,
+          },
+          label: {
+            show: true,
+            fontSize: 8,
+            color: '#cbd5e1',
+            formatter: (params: any) => {
+              const val = Number(params?.data?.value?.[2] || 0);
+              if (val <= 0) return '';
+              return `${Math.round(val)}/${HOURS_PER_WEEK}`;
+            },
+          },
+          emphasis: {
+            itemStyle: {
+              borderColor: '#40E0D0',
+              borderWidth: 1.6,
+            },
+          },
+          z: 4,
+        },
+      ],
       _dynamicHeight: dynamicHeight,
     } as any;
   }, [heatmapSharedData]);
