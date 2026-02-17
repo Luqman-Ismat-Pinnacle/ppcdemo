@@ -14,27 +14,44 @@ interface PageLoaderProps {
 export default function PageLoader({ message = 'Loading data...' }: PageLoaderProps) {
   return (
     <div
-      className="page-panel"
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '60vh',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 19999,
+        display: 'grid',
+        placeItems: 'center',
+        pointerEvents: 'none',
+        background: 'rgba(7, 10, 16, 0.2)',
+        backdropFilter: 'blur(1px)',
+        WebkitBackdropFilter: 'blur(1px)',
       }}
     >
-      <div style={{ textAlign: 'center' }}>
-        <div
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: 'rgba(0, 0, 0, 0.78)',
+          border: '1px solid rgba(255,255,255,0.16)',
+          borderRadius: 999,
+          padding: '10px 14px',
+          color: '#d1d5db',
+          fontSize: '0.76rem',
+          fontWeight: 600,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+        }}
+      >
+        <span
           style={{
-            width: 40,
-            height: 40,
-            border: '3px solid rgba(255,255,255,0.1)',
-            borderTopColor: 'var(--pinnacle-teal, #40E0D0)',
+            width: 12,
+            height: 12,
             borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem',
+            border: '2px solid rgba(255,255,255,0.3)',
+            borderTopColor: 'var(--pinnacle-teal)',
+            animation: 'spin 0.75s linear infinite',
           }}
         />
-        <div style={{ color: 'var(--text-muted, #888)', fontSize: '0.9rem' }}>{message}</div>
+        {message}
       </div>
     </div>
   );
