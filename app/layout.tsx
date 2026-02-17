@@ -16,6 +16,8 @@
 
 import type { Metadata } from 'next';
 import { Montserrat, JetBrains_Mono } from 'next/font/google';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-quartz.css';
 import './globals.css';
 import { ThemeProvider } from '@/components/layout/ThemeProvider';
 import { DataProvider } from '@/lib/data-context';
