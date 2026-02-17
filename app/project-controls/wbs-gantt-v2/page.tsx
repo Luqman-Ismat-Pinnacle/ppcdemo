@@ -229,7 +229,6 @@ export default function WBSGanttV2Page() {
   const rightPanel = useElementSize<HTMLDivElement>();
   const rightScrollRef = useRef<HTMLDivElement>(null);
   const rightVirtualScrollRef = useRef<HTMLDivElement>(null);
-  const syncFromRightRef = useRef(false);
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [verticalOffset, setVerticalOffset] = useState(0);
@@ -247,6 +246,7 @@ export default function WBSGanttV2Page() {
   const [headerFilterColumnId, setHeaderFilterColumnId] = useState<string | null>(null);
   const [headerMenu, setHeaderMenu] = useState<{ columnId: string; x: number; y: number } | null>(null);
   const [barTip, setBarTip] = useState<{ row: FlatWbsRow; x: number; y: number } | null>(null);
+  const [hoursBreakdownRow, setHoursBreakdownRow] = useState<FlatWbsRow | null>(null);
 
   const [gridTheme, setGridTheme] = useState<Theme | undefined>(undefined);
   const [uiColors, setUiColors] = useState({
@@ -661,13 +661,39 @@ export default function WBSGanttV2Page() {
     }
 
     let text = getDisplayText(def, r);
-    if (showVariance && def.id === 'acth' && r.varianceHours != null) {
-      const v = Math.round(r.varianceHours);
-      text = `${text} (${v > 0 ? '+' : ''}${v})`;
-    }
-    if (showVariance && def.id === 'actc' && r.varianceCost != null) {
-      const v = Math.round(r.varianceCost);
-      text = `${text} (${v > 0 ? '+' : ''}${formatCurrency(v)})`;
+    if (showVariance) {
+      const taskId = normalizeTaskId(r.taskId || r.id);
+      const snapPlanHours = taskId ? getSnapshotValue('planHours', { taskId }) : null;
+      const snapActualHours = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
+      const snapPlanCost = taskId ? getSnapshotValue('planCost', { taskId }) : null;
+      const snapActualCost = taskId ? getSnapshotValue('actualCost', { taskId }) : null;
+
+      if (def.id === 'blh' && snapPlanHours != null) {
+        const v = Math.round(r.baselineHours - snapPlanHours);
+        text = `${text} (${v > 0 ? '+' : ''}${v})`;
+      }
+      if (def.id === 'acth' && r.varianceHours != null) {
+        const v = Math.round(r.varianceHours);
+        text = `${text} (${v > 0 ? '+' : ''}${v})`;
+      }
+      if (def.id === 'remh' && snapPlanHours != null && snapActualHours != null) {
+        const snapRem = Math.max(0, snapPlanHours - snapActualHours);
+        const v = Math.round(r.remainingHours - snapRem);
+        text = `${text} (${v > 0 ? '+' : ''}${v})`;
+      }
+      if (def.id === 'blc' && snapPlanCost != null) {
+        const v = Math.round(r.baselineCost - snapPlanCost);
+        text = `${text} (${v > 0 ? '+' : ''}${formatCurrency(v)})`;
+      }
+      if (def.id === 'actc' && r.varianceCost != null) {
+        const v = Math.round(r.varianceCost);
+        text = `${text} (${v > 0 ? '+' : ''}${formatCurrency(v)})`;
+      }
+      if (def.id === 'remc' && snapPlanCost != null && snapActualCost != null) {
+        const snapRemCost = Math.max(0, snapPlanCost - snapActualCost);
+        const v = Math.round(r.remainingCost - snapRemCost);
+        text = `${text} (${v > 0 ? '+' : ''}${formatCurrency(v)})`;
+      }
     }
 
     return {
@@ -676,7 +702,7 @@ export default function WBSGanttV2Page() {
       displayData: text,
       allowOverlay: false,
     };
-  }, [filteredRows, visibleDefs, getDisplayText, showVariance]);
+  }, [filteredRows, visibleDefs, getDisplayText, showVariance, getSnapshotValue]);
 
   const drawHeader = useCallback((args: any, drawContent: () => void) => {
     const { ctx, rect, column } = args;
@@ -720,8 +746,30 @@ export default function WBSGanttV2Page() {
 
     let color = uiColors.textSecondary;
     if (def.id === 'acth' || def.id === 'actc') color = uiColors.teal;
+    if (showVariance && def.id === 'blh') {
+      const taskId = normalizeTaskId(r.taskId || r.id);
+      const snap = taskId ? getSnapshotValue('planHours', { taskId }) : null;
+      if (snap != null) color = (r.baselineHours - snap) > 0 ? '#ef4444' : '#22c55e';
+    }
     if (showVariance && def.id === 'acth' && r.varianceHours != null) color = r.varianceHours > 0 ? '#ef4444' : '#22c55e';
+    if (showVariance && def.id === 'remh') {
+      const taskId = normalizeTaskId(r.taskId || r.id);
+      const snapP = taskId ? getSnapshotValue('planHours', { taskId }) : null;
+      const snapA = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
+      if (snapP != null && snapA != null) color = (r.remainingHours - Math.max(0, snapP - snapA)) > 0 ? '#ef4444' : '#22c55e';
+    }
+    if (showVariance && def.id === 'blc') {
+      const taskId = normalizeTaskId(r.taskId || r.id);
+      const snap = taskId ? getSnapshotValue('planCost', { taskId }) : null;
+      if (snap != null) color = (r.baselineCost - snap) > 0 ? '#ef4444' : '#22c55e';
+    }
     if (showVariance && def.id === 'actc' && r.varianceCost != null) color = r.varianceCost > 0 ? '#ef4444' : '#22c55e';
+    if (showVariance && def.id === 'remc') {
+      const taskId = normalizeTaskId(r.taskId || r.id);
+      const snapP = taskId ? getSnapshotValue('planCost', { taskId }) : null;
+      const snapA = taskId ? getSnapshotValue('actualCost', { taskId }) : null;
+      if (snapP != null && snapA != null) color = (r.remainingCost - Math.max(0, snapP - snapA)) > 0 ? '#ef4444' : '#22c55e';
+    }
     if (def.id === 'pct') color = getProgressColor(r.percentComplete, r.isCritical);
     if (def.id === 'tf' && r.totalFloat <= 0) color = '#ef4444';
     if (def.id === 'cp' && r.isCritical) color = '#ef4444';
@@ -809,14 +857,20 @@ export default function WBSGanttV2Page() {
     ctx.clip();
     ctx.fillText(text, x, y);
     ctx.restore();
-  }, [filteredRows, visibleDefs, numericColumnIds, uiColors, getDisplayText, showVariance]);
+  }, [filteredRows, visibleDefs, numericColumnIds, uiColors, getDisplayText, showVariance, getSnapshotValue]);
 
   const onCellClicked = useCallback((cell: Item) => {
     const [col, row] = cell;
     const def = visibleDefs[col];
-    if (!def || (def.id !== 'wbs' && def.id !== 'name')) return;
     const target = filteredRows[row];
-    if (!target?.hasChildren) return;
+    if (!def || !target) return;
+
+    if (def.id === 'acth' && (target.type === 'task' || target.type === 'sub_task' || target.type === 'phase' || target.type === 'unit')) {
+      setHoursBreakdownRow(target);
+      return;
+    }
+    if (def.id !== 'wbs' && def.id !== 'name') return;
+    if (!target.hasChildren) return;
 
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -859,14 +913,9 @@ export default function WBSGanttV2Page() {
     setHeaderMenu((prev) => (prev?.columnId === next.columnId ? prev : next));
   }, [visibleDefs, leftPanel.ref]);
 
-  const onVisibleRegionChanged = useCallback((range: Rectangle, _tx: number, ty: number) => {
+  const onVisibleRegionChanged = useCallback((range: Rectangle) => {
     const byRange = Math.max(0, range.y * ROW_HEIGHT);
-    const nextTop = Number.isFinite(ty) ? Math.max(0, ty) : byRange;
-    if (syncFromRightRef.current) {
-      syncFromRightRef.current = false;
-      return;
-    }
-    setVerticalOffset((prev) => (Math.abs(prev - nextTop) > 0.5 ? nextTop : prev));
+    setVerticalOffset((prev) => (Math.abs(prev - byRange) > 0.5 ? byRange : prev));
   }, []);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
@@ -917,7 +966,6 @@ export default function WBSGanttV2Page() {
     const endIdx = Math.min(filteredRows.length - 1, startIdx + count);
     return { startIdx, endIdx };
   }, [verticalOffset, rightPanelHeight, filteredRows.length]);
-  const totalRowsHeight = useMemo(() => filteredRows.length * ROW_HEIGHT, [filteredRows.length]);
 
   const onRightTimelineScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -925,14 +973,10 @@ export default function WBSGanttV2Page() {
   }, []);
 
   const onRightTimelineWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-    e.preventDefault();
-    const maxOffset = Math.max(0, filteredRows.length * ROW_HEIGHT - Math.max(0, rightPanelHeight - HEADER_HEIGHT));
-    const next = Math.max(0, Math.min(maxOffset, verticalOffset + e.deltaY));
-    syncFromRightRef.current = true;
-    setVerticalOffset(next);
-    dataEditorRef.current?.scrollTo({ amount: 0, unit: 'px' }, { amount: next, unit: 'px' }, 'vertical');
-  }, [filteredRows.length, rightPanelHeight, verticalOffset]);
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+    }
+  }, []);
 
   const indexByTaskId = useMemo(() => {
     const map = new Map<string, number>();
@@ -1038,6 +1082,50 @@ export default function WBSGanttV2Page() {
     setPxPerDay(Math.max(0.25, Math.min(12, fit)));
   }, [rightPanelWidth, totalDays]);
 
+  const hoursBreakdown = useMemo(() => {
+    if (!hoursBreakdownRow) return null;
+    const allTasks = (fullData.tasks || []) as unknown[];
+    const allHours = (fullData.hours || []) as unknown[];
+    const allPhases = (fullData.phases || []) as unknown[];
+    const allUnits = (fullData.units || []) as unknown[];
+    const taskId = normalizeTaskId(hoursBreakdownRow.taskId || hoursBreakdownRow.id);
+    const rowType = hoursBreakdownRow.type;
+
+    const taskRec = allTasks.find((t) => normalizeTaskId(readString(t, 'id', 'taskId', 'task_id')) === taskId);
+    const phaseId = rowType === 'phase'
+      ? readString({ id: hoursBreakdownRow.id }, 'id').replace(/^wbs-phase-/i, '')
+      : readString(taskRec, 'phaseId', 'phase_id');
+    const unitId = rowType === 'unit'
+      ? readString({ id: hoursBreakdownRow.id }, 'id').replace(/^wbs-unit-/i, '')
+      : readString(taskRec, 'unitId', 'unit_id');
+
+    const taskIdsInPhase = allTasks
+      .filter((t) => readString(t, 'phaseId', 'phase_id') === phaseId)
+      .map((t) => normalizeTaskId(readString(t, 'id', 'taskId', 'task_id')))
+      .filter(Boolean);
+    const taskIdsInUnit = allTasks
+      .filter((t) => readString(t, 'unitId', 'unit_id') === unitId)
+      .map((t) => normalizeTaskId(readString(t, 'id', 'taskId', 'task_id')))
+      .filter(Boolean);
+
+    const taskEntries = allHours.filter((h) => normalizeTaskId(readString(h, 'taskId', 'task_id')) === taskId);
+    const phaseEntries = allHours.filter((h) => taskIdsInPhase.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
+    const unitEntries = allHours.filter((h) => taskIdsInUnit.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
+
+    const sumHours = (arr: unknown[]) => arr.reduce((s, h) => s + readNumber(h, 'hours', 'actualHours', 'totalHoursWorked'), 0);
+    const phaseName = phaseId ? (allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId) ? readString(allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId), 'name') : phaseId) : '-';
+    const unitName = unitId ? (allUnits.find((u) => readString(u, 'id', 'unitId') === unitId) ? readString(allUnits.find((u) => readString(u, 'id', 'unitId') === unitId), 'name') : unitId) : '-';
+
+    return {
+      taskHours: sumHours(taskEntries),
+      phaseHours: sumHours(phaseEntries),
+      unitHours: sumHours(unitEntries),
+      phaseName,
+      unitName,
+      entries: taskEntries.slice(0, 200),
+    };
+  }, [hoursBreakdownRow, fullData.tasks, fullData.hours, fullData.phases, fullData.units]);
+
   if (isLoading) return <PageLoader message="Loading WBS Gantt V2..." />;
 
   return (
@@ -1097,10 +1185,23 @@ export default function WBSGanttV2Page() {
             <input type="checkbox" checked={showDependencies} onChange={(e) => setShowDependencies(e.target.checked)} style={{ accentColor: '#40e0d0' }} />
             <span>Dependencies</span>
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: hasComparison ? '#22c55e' : '#6b7280' }}>
-            <input type="checkbox" checked={showVariance} disabled={!hasComparison} onChange={(e) => setShowVariance(e.target.checked)} style={{ accentColor: '#22c55e' }} />
-            <span>Variance</span>
-          </label>
+          <button
+            type="button"
+            disabled={!hasComparison}
+            onClick={() => setShowVariance((v) => !v)}
+            style={{
+              padding: '0.28rem 0.52rem',
+              fontSize: '0.64rem',
+              fontWeight: 700,
+              borderRadius: 5,
+              border: `1px solid ${showVariance ? 'rgba(34,197,94,0.5)' : 'var(--border-color)'}`,
+              background: showVariance ? 'rgba(34,197,94,0.18)' : 'transparent',
+              color: hasComparison ? (showVariance ? '#22c55e' : 'var(--text-secondary)') : '#6b7280',
+              cursor: hasComparison ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Variance
+          </button>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: '#f59e0b' }}>
             <input type="checkbox" checked={runCpm} onChange={(e) => setRunCpm(e.target.checked)} style={{ accentColor: '#f59e0b' }} />
             <span>CPM</span>
@@ -1216,7 +1317,7 @@ export default function WBSGanttV2Page() {
               onScroll={onRightTimelineScroll}
               onWheel={onRightTimelineWheel}
             >
-              <div ref={rightVirtualScrollRef} style={{ width: timelineInnerWidth, height: HEADER_HEIGHT + totalRowsHeight, position: 'relative' }}>
+              <div ref={rightVirtualScrollRef} style={{ width: timelineInnerWidth, height: rightPanelHeight, position: 'relative' }}>
                 <div style={{ position: 'sticky', top: 0 }}>
               <Stage width={timelineInnerWidth} height={rightPanelHeight}>
                 <Layer>
@@ -1487,6 +1588,82 @@ export default function WBSGanttV2Page() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {hoursBreakdownRow && hoursBreakdown && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 10020,
+            background: 'rgba(0,0,0,0.62)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 16,
+          }}
+          onClick={() => setHoursBreakdownRow(null)}
+        >
+          <div
+            style={{
+              width: 'min(920px, 100%)',
+              maxHeight: '88vh',
+              overflow: 'auto',
+              background: 'rgba(12,15,19,0.97)',
+              border: '1px solid rgba(100,131,167,0.35)',
+              borderRadius: 12,
+              boxShadow: '0 18px 48px rgba(0,0,0,0.56)',
+              padding: 14,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div>
+                <div style={{ color: '#f4f4f5', fontWeight: 700, fontSize: '0.92rem' }}>Actual Hours Breakdown</div>
+                <div style={{ color: '#9ca3af', fontSize: '0.68rem' }}>{hoursBreakdownRow.name} ({hoursBreakdownRow.wbsCode})</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHoursBreakdownRow(null)}
+                style={{ background: 'transparent', border: '1px solid rgba(148,163,184,0.35)', color: '#cbd5e1', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
+              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
+                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Task Actual Hours</div>
+                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.taskHours).toLocaleString()}h</div>
+              </div>
+              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
+                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Phase ({hoursBreakdown.phaseName})</div>
+                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.phaseHours).toLocaleString()}h</div>
+              </div>
+              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
+                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Unit ({hoursBreakdown.unitName})</div>
+                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.unitHours).toLocaleString()}h</div>
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', background: 'rgba(17,24,39,0.82)', color: '#a1a1aa', fontSize: '0.63rem', fontWeight: 700, padding: '7px 8px' }}>
+                <span>Date</span><span>Employee</span><span>Charge Type</span><span style={{ textAlign: 'right' }}>Hours</span>
+              </div>
+              <div style={{ maxHeight: 320, overflow: 'auto' }}>
+                {hoursBreakdown.entries.length === 0 ? (
+                  <div style={{ color: '#94a3b8', fontSize: '0.72rem', padding: 10 }}>No timecard entries mapped to this task.</div>
+                ) : hoursBreakdown.entries.map((entry, idx) => (
+                  <div key={`hb-${idx}`} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', color: '#e2e8f0', fontSize: '0.68rem', padding: '6px 8px', borderTop: '1px solid rgba(100,131,167,0.18)' }}>
+                    <span>{formatDate(readDate(entry, 'date', 'entryDate', 'createdAt'))}</span>
+                    <span>{readString(entry, 'employeeName', 'employeeId', 'employee_id') || '-'}</span>
+                    <span>{readString(entry, 'chargeType', 'charge_type') || '-'}</span>
+                    <span style={{ textAlign: 'right' }}>{readNumber(entry, 'hours', 'actualHours', 'totalHoursWorked').toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

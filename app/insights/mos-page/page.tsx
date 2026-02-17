@@ -13,7 +13,7 @@ const COLORS = {
   border: '#3f3f46',
   text: '#f4f4f5',
   muted: '#a1a1aa',
-  teal: '#40E0D0',
+  teal: '#10B981',
   blue: '#3B82F6',
   purple: '#8B5CF6',
   amber: '#F59E0B',
@@ -81,7 +81,7 @@ function AccordionSection({
           cursor: 'pointer',
           listStyle: 'none',
           padding: '0.9rem 1rem',
-          borderBottom: `1px solid rgba(64,224,208,0.16)`,
+          borderBottom: `1px solid rgba(16,185,129,0.16)`,
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
@@ -129,7 +129,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
   }, [rows, filters, headers, toText]);
 
   return (
-    <div style={{ overflow: 'auto', maxHeight: 360, border: `1px solid rgba(64,224,208,0.16)`, borderRadius: 10 }}>
+    <div style={{ overflow: 'auto', maxHeight: 360, border: `1px solid rgba(16,185,129,0.18)`, borderRadius: 10 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
         <thead>
           <tr>
@@ -139,10 +139,14 @@ function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
                 style={{
                   textAlign: 'left',
                   color: COLORS.muted,
-                  borderBottom: `1px solid rgba(64,224,208,0.16)`,
+                  borderBottom: `1px solid rgba(16,185,129,0.16)`,
                   padding: '0.5rem 0.45rem',
                   whiteSpace: 'nowrap',
                   fontWeight: 600,
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 2,
+                  background: '#18181b',
                 }}
               >
                 {h}
@@ -151,11 +155,11 @@ function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
           </tr>
           <tr>
             {headers.map((h, idx) => (
-              <th key={`f-${h}`} style={{ padding: '0.3rem 0.45rem', borderBottom: `1px solid rgba(64,224,208,0.14)` }}>
+              <th key={`f-${h}`} style={{ padding: '0.3rem 0.45rem', borderBottom: `1px solid rgba(16,185,129,0.14)`, position: 'sticky', top: 34, zIndex: 2, background: '#18181b' }}>
                 <select
                   value={filters[idx] || ''}
                   onChange={(e) => setFilters((prev) => ({ ...prev, [idx]: e.target.value }))}
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(64,224,208,0.22)', color: COLORS.text, borderRadius: 5, fontSize: '0.65rem', padding: '0.2rem 0.3rem' }}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(16,185,129,0.24)', color: COLORS.text, borderRadius: 5, fontSize: '0.65rem', padding: '0.2rem 0.3rem' }}
                 >
                   <option value="">All {h}</option>
                   {optionsByColumn[idx].map((opt) => (
@@ -173,7 +177,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
             </tr>
           ) : (
             filteredRows.map((r) => (
-              <tr key={r.key} style={{ borderBottom: `1px solid rgba(64,224,208,0.1)` }}>
+              <tr key={r.key} style={{ borderBottom: `1px solid rgba(16,185,129,0.1)` }}>
                 {r.cells.map((c, idx) => (
                   <td key={`${r.key}-${idx}`} style={{ padding: '0.52rem 0.45rem', color: COLORS.text }}>{c}</td>
                 ))}
@@ -606,8 +610,8 @@ export default function MosPage() {
         name: 'Actual Hours Burned',
         smooth: true,
         data: entityRows.map((r) => Number(r.actualHours.toFixed(1))),
-        lineStyle: { color: COLORS.teal, width: 2.2 },
-        itemStyle: { color: COLORS.teal },
+        lineStyle: { color: COLORS.green, width: 2.2 },
+        itemStyle: { color: COLORS.green },
       },
       {
         type: 'line',
@@ -671,7 +675,7 @@ export default function MosPage() {
               {
                 type: 'rect',
                 shape: { x: s[0], y: s[1] - h / 2 + 4, width: Math.max(3, e2[0] - s[0]), height: 6 },
-                style: { fill: 'rgba(64,224,208,0.75)' },
+                style: { fill: 'rgba(16,185,129,0.75)' },
               },
             ],
           };
@@ -696,7 +700,7 @@ export default function MosPage() {
     grid: { left: 36, right: 16, top: 24, bottom: 22, containLabel: true },
     xAxis: categoryAxis(forecastTrendDates, 'Report Date'),
     yAxis: valueAxis('Predicted End Shift (days)'),
-    series: [{ type: 'line', smooth: true, data: avgForecast, itemStyle: { color: COLORS.teal }, lineStyle: { color: COLORS.teal } }],
+    series: [{ type: 'line', smooth: true, data: avgForecast, itemStyle: { color: COLORS.green }, lineStyle: { color: COLORS.green } }],
   };
 
   const reasonMap = new Map<string, { onTime: number; delayed: number }>();
@@ -729,7 +733,7 @@ export default function MosPage() {
     xAxis: categoryAxis(waterfallData.map((r) => r.role), 'Role'),
     yAxis: valueAxis('Hours'),
     series: [
-      { type: 'bar', stack: 'w', name: 'Available Hours', data: waterfallData.map((r) => r.available), itemStyle: { color: 'rgba(64,224,208,0.35)' } },
+      { type: 'bar', stack: 'w', name: 'Available Hours', data: waterfallData.map((r) => r.available), itemStyle: { color: 'rgba(16,185,129,0.35)' } },
       { type: 'bar', stack: 'w', name: 'Non-Billable', data: waterfallData.map((r) => -r.nonBillable), itemStyle: { color: COLORS.amber } },
       { type: 'bar', stack: 'w', name: 'Inefficiency', data: waterfallData.map((r) => -r.ineff), itemStyle: { color: COLORS.red } },
       { type: 'bar', name: 'True Productive', data: waterfallData.map((r) => r.productive), itemStyle: { color: COLORS.green } },
@@ -856,7 +860,7 @@ export default function MosPage() {
     yAxis: valueAxis('Hours'),
     series: [
       { type: 'bar', name: 'Forecasted Demand Hours', data: monthDemand.map((x) => Number(x.demand.toFixed(1))), itemStyle: { color: COLORS.purple } },
-      { type: 'line', name: 'Total Capacity Hours', data: monthDemand.map((x) => Number(x.capacity.toFixed(1))), itemStyle: { color: COLORS.teal }, lineStyle: { color: COLORS.teal, width: 2.4 } },
+      { type: 'line', name: 'Total Capacity Hours', data: monthDemand.map((x) => Number(x.capacity.toFixed(1))), itemStyle: { color: COLORS.green }, lineStyle: { color: COLORS.green, width: 2.4 } },
     ],
     legend: { top: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
   };
@@ -905,7 +909,7 @@ export default function MosPage() {
     series: [{
       type: 'scatter',
       data: model.risks.slice(0, 50).map((r) => ({ name: r.entity, value: [r.detectDays, r.exposure] })),
-      itemStyle: { color: COLORS.teal, opacity: 0.8 },
+      itemStyle: { color: COLORS.green, opacity: 0.8 },
       symbolSize: (v: number[]) => Math.max(8, v[1] * 1.6),
     }],
   };
@@ -957,13 +961,13 @@ export default function MosPage() {
             <div style={{ display: 'inline-flex', border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: 'hidden' }}>
               <button
                 onClick={() => setProgressView('burnup')}
-                style={{ background: progressView === 'burnup' ? 'rgba(64,224,208,0.2)' : 'transparent', color: COLORS.text, border: 'none', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.72rem' }}
+                style={{ background: progressView === 'burnup' ? 'rgba(16,185,129,0.2)' : 'transparent', color: COLORS.text, border: 'none', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.72rem' }}
               >
                 Burn-Up
               </button>
               <button
                 onClick={() => setProgressView('gantt')}
-                style={{ background: progressView === 'gantt' ? 'rgba(64,224,208,0.2)' : 'transparent', color: COLORS.text, border: 'none', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.72rem' }}
+                style={{ background: progressView === 'gantt' ? 'rgba(16,185,129,0.2)' : 'transparent', color: COLORS.text, border: 'none', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.72rem' }}
               >
                 Custom Gantt
               </button>
