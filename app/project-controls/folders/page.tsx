@@ -546,17 +546,16 @@ export default function DocumentsPage() {
         }
       }
 
-      // Save metadata to project_documents
+      // Save metadata to project_documents (use fileId so Process can look up by file.id)
       try {
-        const docId = `DOC_${Date.now()}`;
         const docRes = await fetch('/api/data/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             dataKey: 'projectDocuments',
             records: [{
-              id: docId,
-              documentId: docId,
+              id: fileId,
+              documentId: fileId,
               projectId: workdayProjectId.trim() || null,
               name: selectedFile.name,
               fileName: selectedFile.name,
@@ -671,6 +670,7 @@ export default function DocumentsPage() {
       const formData = new FormData();
       formData.append('documentId', file.id);
       formData.append('projectId', String(projectId));
+      if (file.storagePath) formData.append('storagePath', file.storagePath);
       if (portfolioId) formData.append('portfolioId', portfolioId);
       if (customerId) formData.append('customerId', customerId);
       if (siteId) formData.append('siteId', siteId);

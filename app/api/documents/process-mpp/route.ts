@@ -78,6 +78,16 @@ function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
   return cleaned;
 }
 
+function ensureRowId(row: Record<string, unknown>, tableName: string): void {
+  if (row.id !== undefined && row.id !== null && String(row.id).trim() !== '') return;
+  const fallback =
+    tableName === 'tasks' ? row.task_id ?? (row as any).taskId
+    : tableName === 'units' ? row.unit_id ?? (row as any).unitId
+    : tableName === 'phases' ? row.phase_id ?? (row as any).phaseId
+    : null;
+  if (fallback != null) row.id = String(fallback);
+}
+
 async function upsertRows(
   client: any,
   tableName: 'units' | 'phases' | 'tasks' | 'task_dependencies',
@@ -89,6 +99,7 @@ async function upsertRows(
   const formattedRows = rows
     .map((row) => sanitizeRow(toSupabaseFormat(row) as Record<string, unknown>))
     .map((row) => {
+      ensureRowId(row, tableName);
       const filtered: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(row)) {
         if (tableColumns.has(key)) {
@@ -208,13 +219,21 @@ export async function POST(req: NextRequest) {
     const portfolioId = readString(formData, 'portfolioId');
     const customerId = readString(formData, 'customerId');
     const siteId = readString(formData, 'siteId');
+    const storagePathParam = readString(formData, 'storagePath');
     logDiag(`[Input] documentId=${documentId} projectId=${projectId}`);
 
     const docResult = await withClient((client) =>
       client.query('SELECT id, file_name, storage_path FROM project_documents WHERE id = $1 LIMIT 1', [documentId])
     );
 
-    const doc = docResult.rows[0] as { id: string; file_name: string; storage_path: string } | undefined;
+    let doc = docResult?.rows?.[0] as { id: string; file_name: string; storage_path: string } | undefined;
+    if (!doc && storagePathParam) {
+      const byPathResult = await withClient((client) =>
+        client.query('SELECT id, file_name, storage_path FROM project_documents WHERE storage_path = $1 LIMIT 1', [storagePathParam])
+      );
+      doc = byPathResult?.rows?.[0] as { id: string; file_name: string; storage_path: string } | undefined;
+      if (doc) logDiag(`[Document] found by storage_path (id=${doc.id})`);
+    }
     if (!doc) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
