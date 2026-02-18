@@ -2,7 +2,6 @@
 
 Database schema is consolidated in the project root:
 
-- **`/schema.sql`** – Full schema with DROP/recreate (clean install or reset).
-- **`/schema_full_postgres.sql`** – First-time setup for Azure Postgres (no DROP; includes Workday sync).
+- **`/DB 2.17.26.sql`** – Canonical schema (single source of truth).
 
-Supabase migrations live in **`supabase/migrations/`**.
+No legacy SQL migrations are active in this folder.

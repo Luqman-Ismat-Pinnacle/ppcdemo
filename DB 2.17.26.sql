@@ -1,7 +1,48 @@
 -- ============================================================================
--- PPC V3 Full Database Schema (first-time setup, e.g. Azure Postgres)
--- Single file: no DROP/purge. Run once on empty database. Includes Workday sync.
+-- PPC V3 Database Schema - DB 2.17.26
+-- Canonical single schema for this repository.
 -- ============================================================================
+
+BEGIN;
+
+-- ============================================================================
+-- DROP EXISTING TABLES (reverse dependency order)
+-- ============================================================================
+DROP TABLE IF EXISTS visual_snapshots CASCADE;
+DROP TABLE IF EXISTS project_documents CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS feedback_items CASCADE;
+DROP TABLE IF EXISTS engine_logs CASCADE;
+DROP TABLE IF EXISTS change_logs CASCADE;
+DROP TABLE IF EXISTS workday_tasks CASCADE;
+DROP TABLE IF EXISTS project_mappings CASCADE;
+DROP TABLE IF EXISTS change_impacts CASCADE;
+DROP TABLE IF EXISTS change_requests CASCADE;
+DROP TABLE IF EXISTS snapshots CASCADE;
+DROP TABLE IF EXISTS project_log CASCADE;
+DROP TABLE IF EXISTS project_health CASCADE;
+DROP TABLE IF EXISTS forecasts CASCADE;
+DROP TABLE IF EXISTS sprint_tasks CASCADE;
+DROP TABLE IF EXISTS sprints CASCADE;
+DROP TABLE IF EXISTS user_stories CASCADE;
+DROP TABLE IF EXISTS features CASCADE;
+DROP TABLE IF EXISTS epics CASCADE;
+DROP TABLE IF EXISTS milestones CASCADE;
+DROP TABLE IF EXISTS deliverables CASCADE;
+DROP TABLE IF EXISTS qc_tasks CASCADE;
+DROP TABLE IF EXISTS hour_entries CASCADE;
+DROP TABLE IF EXISTS task_quantity_entries CASCADE;
+DROP TABLE IF EXISTS task_dependencies CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS phases CASCADE;
+DROP TABLE IF EXISTS subprojects CASCADE;
+DROP TABLE IF EXISTS projects CASCADE;
+DROP TABLE IF EXISTS units CASCADE;
+DROP TABLE IF EXISTS sites CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS portfolios CASCADE;
+DROP TABLE IF EXISTS employees CASCADE;
+DROP TABLE IF EXISTS app_settings CASCADE;
 
 -- ============================================================================
 -- SEQUENCES: Create sequences for ID generation
@@ -9,30 +50,34 @@
 
 DO $$
 BEGIN
-  CREATE SEQUENCE seq_portfolio_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_customer_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_site_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_project_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_unit_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_phase_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_task_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_subproject_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_hour_entry_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_milestone_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_deliverable_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE SEQUENCE seq_qc_task_id START 1;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  -- Drop existing sequences if recreating
+  DROP SEQUENCE IF EXISTS seq_portfolio_id CASCADE;
+  -- Note: seq_customer_id, seq_site_id, seq_project_id removed - using Workday IDs directly
+  DROP SEQUENCE IF EXISTS seq_unit_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_phase_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_task_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_subproject_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_hour_entry_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_milestone_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_deliverable_id CASCADE;
+  DROP SEQUENCE IF EXISTS seq_qc_task_id CASCADE;
+  
+  -- Create sequences only for entities without Workday IDs
+  CREATE SEQUENCE seq_portfolio_id START 1; -- Portfolios generated from employees
+  CREATE SEQUENCE seq_unit_id START 1;
+  CREATE SEQUENCE seq_phase_id START 1;
+  CREATE SEQUENCE seq_task_id START 1;
+  CREATE SEQUENCE seq_subproject_id START 1;
+  CREATE SEQUENCE seq_hour_entry_id START 1;
+  CREATE SEQUENCE seq_milestone_id START 1;
+  CREATE SEQUENCE seq_deliverable_id START 1;
+  CREATE SEQUENCE seq_qc_task_id START 1;
+  
+  -- Note: Projects, Sites, and Customers use Workday IDs directly as primary keys
+  -- Project_by_ID from Workday → id in projects table
+  -- Site IDs from Workday → id in sites table  
+  -- Customer IDs from Workday → id in customers table
+END $$;
 
 -- ============================================================================
 -- HELPER FUNCTIONS
@@ -112,6 +157,13 @@ CREATE TABLE IF NOT EXISTS employees (
 
 CREATE INDEX IF NOT EXISTS idx_employees_employee_id ON employees(employee_id);
 CREATE INDEX IF NOT EXISTS idx_employees_is_active ON employees(is_active);
+
+-- APP SETTINGS (key-value for cron schedule, etc.)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- PORTFOLIOS (depends on employees)
 CREATE TABLE IF NOT EXISTS portfolios (
@@ -208,6 +260,7 @@ CREATE TABLE IF NOT EXISTS units (
   id VARCHAR(50) PRIMARY KEY,
   unit_id VARCHAR(50),
   site_id VARCHAR(50) REFERENCES sites(id),
+  project_id VARCHAR(50),
   employee_id VARCHAR(50) REFERENCES employees(id),
   name VARCHAR(255) NOT NULL,
   description TEXT,
@@ -230,6 +283,7 @@ CREATE TABLE IF NOT EXISTS units (
 );
 
 CREATE INDEX IF NOT EXISTS idx_units_site_id ON units(site_id);
+CREATE INDEX IF NOT EXISTS idx_units_project_id ON units(project_id);
 CREATE INDEX IF NOT EXISTS idx_units_start_date ON units(start_date);
 CREATE INDEX IF NOT EXISTS idx_units_employee_id ON units(employee_id);
 CREATE INDEX IF NOT EXISTS idx_units_is_active ON units(is_active);
@@ -291,26 +345,6 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_billable_type ON projects(billable_type);
 CREATE INDEX IF NOT EXISTS idx_projects_portfolio_active ON projects(portfolio_id, is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_projects_dates ON projects(baseline_start_date, baseline_end_date) WHERE baseline_start_date IS NOT NULL;
-
--- WORKDAY TASKS (Workday sync: task reference from View Project Plan Integration report)
-CREATE TABLE IF NOT EXISTS workday_tasks (
-  id VARCHAR(50) PRIMARY KEY,
-  project_id VARCHAR(50) REFERENCES projects(id),
-  task_name VARCHAR(255),
-  task_number VARCHAR(100),
-  start_date TIMESTAMP WITH TIME ZONE,
-  end_date TIMESTAMP WITH TIME ZONE,
-  budgeted_hours NUMERIC(10, 2) DEFAULT 0,
-  actual_hours NUMERIC(10, 2) DEFAULT 0,
-  actual_cost NUMERIC(12, 2) DEFAULT 0,
-  status VARCHAR(50),
-  assigned_resource VARCHAR(255),
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  deleted BOOLEAN DEFAULT false
-);
-CREATE INDEX IF NOT EXISTS idx_workday_tasks_project_id ON workday_tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_workday_tasks_task_number ON workday_tasks(task_number);
 
 -- SUBPROJECTS (depends on projects)
 CREATE TABLE IF NOT EXISTS subprojects (
@@ -468,8 +502,8 @@ CREATE TABLE IF NOT EXISTS hour_entries (
   entry_id VARCHAR(50),
   employee_id VARCHAR(50) REFERENCES employees(id),
   project_id VARCHAR(50) REFERENCES projects(id),
-  phase_id VARCHAR(50) REFERENCES phases(id),
-  task_id VARCHAR(50) REFERENCES tasks(id),
+  phase_id VARCHAR(50) REFERENCES phases(id) ON DELETE SET NULL,
+  task_id VARCHAR(50) REFERENCES tasks(id) ON DELETE SET NULL,
   user_story_id VARCHAR(50),
   date DATE NOT NULL,
   hours NUMERIC(10, 2) NOT NULL CHECK (hours >= 0),
@@ -486,7 +520,6 @@ CREATE TABLE IF NOT EXISTS hour_entries (
   invoice_number VARCHAR(50),
   invoice_status VARCHAR(50),
   charge_type VARCHAR(10),
-  charge_code VARCHAR(255),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -502,8 +535,6 @@ CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_phase ON hour_entries(workda
 CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_task ON hour_entries(workday_task);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_project_workday ON hour_entries(project_id, workday_phase, workday_task);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_actual_cost ON hour_entries(actual_cost);
-CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_type ON hour_entries(charge_type);
-CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_code ON hour_entries(charge_code);
 
 -- TASK QUANTITY ENTRIES
 CREATE TABLE IF NOT EXISTS task_quantity_entries (
@@ -737,35 +768,55 @@ CREATE TABLE IF NOT EXISTS visual_snapshots (
 CREATE INDEX IF NOT EXISTS idx_visual_snapshots_visual_id ON visual_snapshots(visual_id);
 CREATE INDEX IF NOT EXISTS idx_visual_snapshots_date ON visual_snapshots(snapshot_date);
 
--- PROJECT HEALTH (comprehensive health assessment per project)
+-- METRICS HISTORY (for variance trending feature)
+CREATE TABLE IF NOT EXISTS metrics_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recorded_date DATE NOT NULL,
+  scope VARCHAR(50) NOT NULL DEFAULT 'all',  -- 'project', 'phase', 'task', 'all'
+  scope_id VARCHAR(50),                       -- ID of the scoped entity
+  
+  -- Progress metrics
+  total_tasks INTEGER,
+  completed_tasks INTEGER,
+  percent_complete NUMERIC(5, 2),
+  
+  -- Hours metrics  
+  baseline_hours NUMERIC(12, 2),
+  actual_hours NUMERIC(12, 2),
+  remaining_hours NUMERIC(12, 2),
+  
+  -- Cost metrics
+  baseline_cost NUMERIC(14, 2),
+  actual_cost NUMERIC(14, 2),
+  remaining_cost NUMERIC(14, 2),
+  
+  -- EVM metrics
+  earned_value NUMERIC(14, 2),
+  planned_value NUMERIC(14, 2),
+  cpi NUMERIC(5, 3),
+  spi NUMERIC(5, 3),
+  
+  -- QC metrics
+  qc_pass_rate NUMERIC(5, 2),
+  qc_critical_errors INTEGER,
+  qc_total_tasks INTEGER,
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(recorded_date, scope, scope_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metrics_history_date ON metrics_history(recorded_date);
+CREATE INDEX IF NOT EXISTS idx_metrics_history_scope ON metrics_history(scope, scope_id);
+CREATE INDEX IF NOT EXISTS idx_metrics_history_date_scope ON metrics_history(recorded_date DESC, scope);
+
+-- PROJECT HEALTH
 CREATE TABLE IF NOT EXISTS project_health (
   id VARCHAR(50) PRIMARY KEY,
   project_id VARCHAR(50) REFERENCES projects(id),
-  project_name VARCHAR(255),
-  workday_status VARCHAR(100),
-  schedule_required BOOLEAN DEFAULT false,
-  total_contract NUMERIC(15, 2) DEFAULT 0,
-  rev_td NUMERIC(15, 2) DEFAULT 0,
-  billed_td NUMERIC(15, 2) DEFAULT 0,
-  latest_forecasted_cost NUMERIC(15, 2) DEFAULT 0,
-  forecasted_gp NUMERIC(15, 2) DEFAULT 0,
-  forecasted_gm NUMERIC(10, 4) DEFAULT 0,
-  baseline_work NUMERIC(12, 2) DEFAULT 0,
-  actual_work NUMERIC(12, 2) DEFAULT 0,
-  remaining_work NUMERIC(12, 2) DEFAULT 0,
-  work_variance NUMERIC(12, 2) DEFAULT 0,
-  baseline_cost NUMERIC(15, 2) DEFAULT 0,
-  actual_cost NUMERIC(15, 2) DEFAULT 0,
-  schedule_forecasted_cost NUMERIC(15, 2) DEFAULT 0,
-  cost_variance NUMERIC(15, 2) DEFAULT 0,
-  schedule_cost_forecasted_cost_variance NUMERIC(15, 2) DEFAULT 0,
-  overall_status VARCHAR(50),
-  overall_score NUMERIC(5, 2),
   health_score NUMERIC(5, 2),
   status VARCHAR(50),
   risk_level VARCHAR(50),
-  checks JSONB,
-  approvals JSONB,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -773,7 +824,6 @@ CREATE TABLE IF NOT EXISTS project_health (
 CREATE INDEX IF NOT EXISTS idx_project_health_project_id ON project_health(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_health_status ON project_health(status) WHERE status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_project_health_updated_at ON project_health(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_project_health_overall_status ON project_health(overall_status);
 
 -- PROJECT LOG (no FK on project_id so parser can log before project exists)
 CREATE TABLE IF NOT EXISTS project_log (
@@ -883,6 +933,118 @@ CREATE TABLE IF NOT EXISTS project_mappings (
 CREATE INDEX IF NOT EXISTS idx_project_mappings_mpp ON project_mappings(mpp_project_id);
 CREATE INDEX IF NOT EXISTS idx_project_mappings_workday ON project_mappings(workday_project_id);
 CREATE INDEX IF NOT EXISTS idx_project_mappings_active ON project_mappings(is_active);
+
+-- WORKDAY TASKS (used by Workday sync service)
+CREATE TABLE IF NOT EXISTS workday_tasks (
+  id VARCHAR(50) PRIMARY KEY,
+  project_id VARCHAR(50) REFERENCES projects(id),
+  task_name VARCHAR(255),
+  task_number VARCHAR(100),
+  start_date TIMESTAMP WITH TIME ZONE,
+  end_date TIMESTAMP WITH TIME ZONE,
+  budgeted_hours NUMERIC(10, 2) DEFAULT 0,
+  actual_hours NUMERIC(10, 2) DEFAULT 0,
+  actual_cost NUMERIC(12, 2) DEFAULT 0,
+  status VARCHAR(50),
+  assigned_resource VARCHAR(255),
+  deleted BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_workday_tasks_project_id ON workday_tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_workday_tasks_task_number ON workday_tasks(task_number);
+
+-- FEEDBACK ITEMS (issues + feature requests)
+CREATE TABLE IF NOT EXISTS feedback_items (
+  id BIGSERIAL PRIMARY KEY,
+  item_type TEXT NOT NULL CHECK (item_type IN ('issue', 'feature')),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  page_path TEXT,
+  user_action TEXT,
+  expected_result TEXT,
+  actual_result TEXT,
+  error_message TEXT,
+  severity TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'triaged', 'in_progress', 'planned', 'resolved', 'released', 'closed')),
+  progress_percent INTEGER NOT NULL DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+  notes TEXT,
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'runtime', 'import')),
+  created_by_name TEXT,
+  created_by_email TEXT,
+  created_by_employee_id TEXT,
+  browser_info TEXT,
+  runtime_error_name TEXT,
+  runtime_stack TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_items_type_status_created
+  ON feedback_items (item_type, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_items_status_updated
+  ON feedback_items (status, updated_at DESC);
+
+-- NOTIFICATIONS
+CREATE TABLE IF NOT EXISTS notifications (
+  id BIGSERIAL PRIMARY KEY,
+  employee_id TEXT,
+  role TEXT,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  related_task_id TEXT,
+  related_project_id TEXT,
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_employee_role_read_created
+  ON notifications (employee_id, role, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_role_created
+  ON notifications (role, created_at DESC);
+
+-- ENGINE LOGS
+CREATE TABLE IF NOT EXISTS engine_logs (
+  id TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  execution_time_ms INTEGER,
+  project_duration_days INTEGER,
+  critical_path_count INTEGER,
+  logs JSONB,
+  engine_name TEXT,
+  user_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_engine_logs_created_at ON engine_logs(created_at DESC);
+
+-- CHANGE LOGS
+CREATE TABLE IF NOT EXISTS change_logs (
+  id TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  user_id TEXT,
+  action TEXT,
+  entity_type TEXT,
+  entity_id TEXT,
+  description TEXT,
+  old_value TEXT,
+  new_value TEXT,
+  user_name TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_change_logs_created_at ON change_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_change_logs_entity ON change_logs(entity_type, entity_id, created_at DESC);
+
+-- PERFORMANCE INDEXES FOR HOT PATHS
+CREATE INDEX IF NOT EXISTS idx_employees_name_lower ON employees (LOWER(name));
+CREATE INDEX IF NOT EXISTS idx_employees_email_lower ON employees (LOWER(email));
+CREATE INDEX IF NOT EXISTS idx_tasks_project_name ON tasks (project_id, name);
+CREATE INDEX IF NOT EXISTS idx_tasks_project_phase ON tasks (project_id, phase_id);
+CREATE INDEX IF NOT EXISTS idx_units_site_name ON units (site_id, name);
+CREATE INDEX IF NOT EXISTS idx_hour_entries_unmatched ON hour_entries (project_id, date DESC) WHERE task_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_hour_entries_task_date ON hour_entries (task_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_project_documents_storage_path ON project_documents (storage_path);
 
 -- ============================================================================
 -- AUTO-GENERATE ID TRIGGERS
@@ -1455,135 +1617,22 @@ CREATE TRIGGER trigger_update_updated_at_employees
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- ============================================================================
--- INCREMENTAL MIGRATIONS (safe to re-run on existing databases)
--- ============================================================================
+CREATE TRIGGER trigger_update_updated_at_workday_tasks
+  BEFORE UPDATE ON workday_tasks
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
 
--- Add charge_code column to hour_entries if it doesn't exist
-DO $$ BEGIN
-  ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_code VARCHAR(255);
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Add charge_type column to hour_entries if it doesn't exist
-DO $$ BEGIN
-  ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_type VARCHAR(10);
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Expand project_health table with comprehensive fields
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS project_name VARCHAR(255);
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS workday_status VARCHAR(100);
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS schedule_required BOOLEAN DEFAULT false;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS total_contract NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS rev_td NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS billed_td NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS latest_forecasted_cost NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS forecasted_gp NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS forecasted_gm NUMERIC(10, 4) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS baseline_work NUMERIC(12, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS actual_work NUMERIC(12, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS remaining_work NUMERIC(12, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS work_variance NUMERIC(12, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS baseline_cost NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS schedule_forecasted_cost NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS cost_variance NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS schedule_cost_forecasted_cost_variance NUMERIC(15, 2) DEFAULT 0;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS overall_status VARCHAR(50);
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS overall_score NUMERIC(5, 2);
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS checks JSONB;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-DO $$ BEGIN
-  ALTER TABLE project_health ADD COLUMN IF NOT EXISTS approvals JSONB;
-EXCEPTION WHEN duplicate_column THEN NULL; END $$;
-
--- Indexes for new columns
-CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_type ON hour_entries(charge_type);
-CREATE INDEX IF NOT EXISTS idx_hour_entries_charge_code ON hour_entries(charge_code);
-CREATE INDEX IF NOT EXISTS idx_project_health_overall_status ON project_health(overall_status);
+CREATE TRIGGER trigger_update_updated_at_feedback_items
+  BEFORE UPDATE ON feedback_items
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
--- MIGRATION NOTES
+-- DB 2.17.26 Notes
+-- - This is the single canonical schema file for PPC.
+-- - Includes runtime tables required by current APIs:
+--   app_settings, feedback_items, notifications, engine_logs, change_logs, workday_tasks.
+-- - Includes additional hot-path indexes for auth lookup, matching, notifications, and documents.
 -- ============================================================================
--- 
--- This complete schema includes:
--- 
--- 1. **All Tables**: Complete table definitions for all entities in the system
--- 2. **Indexes**: Optimized indexes for foreign keys and common queries
--- 3. **ID Generation**: Automatic ID generation for all tables using sequences
--- 4. **Calculated Fields**: Automatic calculation of:
---    - remainingHours = baselineHours - actualHours
---    - remainingCost = baselineCost - actualCost
---    - varianceDays = days between planned and actual dates
---    - CPI/SPI for projects (EVM metrics)
--- 
--- **Table Creation Order**:
--- Tables are created in dependency order to ensure foreign key constraints work:
--- 1. employees (no dependencies)
--- 2. portfolios (depends on employees)
--- 3. customers (depends on portfolios)
--- 4. sites (depends on customers)
--- 5. units (depends on sites)
--- 6. hierarchy_nodes (depends on employees, self-referential for parent_id)
--- 7. projects (depends on units, sites, customers, portfolios)
--- 8. subprojects, phases (depend on projects)
--- 9. tasks (depends on phases, projects)
--- 10. epics, features, user_stories (work items - old structure)
--- 11. work_items (unified work items - depends on projects, sprints, employees, self-referential)
--- 12. All other tables
--- 
--- **Triggers**:
--- - ID generation triggers fire BEFORE INSERT
--- - Calculated field triggers fire BEFORE INSERT OR UPDATE
--- 
--- **Testing**:
--- After running this schema, test by:
--- 1. Inserting a record without an ID (should auto-generate)
--- 2. Inserting a record with baselineHours=100, actualHours=30
---    - Verify remainingHours = 70
--- 3. Updating actualHours to 50
---    - Verify remainingHours = 50
--- 4. Inserting a milestone with planned_date and actual_date
---    - Verify varianceDays is calculated correctly
--- 
--- ============================================================================
+
+COMMIT;

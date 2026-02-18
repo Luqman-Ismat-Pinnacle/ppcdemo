@@ -7,10 +7,10 @@ Next.js app for project controls: WBS/Gantt, resourcing, hours, forecasting, ins
 ## Current setup
 
 - **Frontend / API:** Next.js 15 (React 19), hosted e.g. on Vercel or any Node host.
-- **Database:** Supabase (PostgreSQL). The app uses `@supabase/supabase-js` and expects `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- **Database:** PostgreSQL (Azure Postgres recommended). Supabase client is still supported as fallback in some paths.
 - **Workday sync:** Today this runs via **Supabase Edge Functions** (Deno) triggered by the Next.js API route `/api/workday`. It fetches employees, project hierarchy, and Project Labor Transactions from Workday and writes to Supabase.
 - **Auth:** Auth0 via `@auth0/nextjs-auth0` (optional; configure Auth0 and env vars if used).
-- **Schema:** Single source of truth for “drop and recreate” is `schema.sql`. Supabase migrations live in `supabase/migrations/` (e.g. `00000000000001_full_schema.sql`).
+- **Schema:** Single source of truth is `DB 2.17.26.sql`.
 - **MPP parser API:** Python Flask app in `api-python/` (MPXJ/Java) parses MPP files; often hosted on **Railway**. The Next.js app calls it when processing project plans (e.g. Documents / Project Plans).
 
 ---
@@ -20,9 +20,9 @@ Next.js app for project controls: WBS/Gantt, resourcing, hours, forecasting, ins
 High-level steps:
 
 1. **Database**  
-   Use **Azure Database for PostgreSQL**. Run the first-time schema once (no DROP scripts):
-   - **File:** `schema_full_postgres.sql`  
-   - Run it in Azure Postgres (e.g. Query Editor or `psql`). It includes tables and triggers needed for the app and for the Workday sync (e.g. `employees`, `hour_entries` with `workday_phase` / `workday_task` / `actual_cost`, etc.).
+   Use **Azure Database for PostgreSQL** and run:
+   - **File:** `DB 2.17.26.sql`
+   - Run it in Azure Postgres (e.g. Query Editor or `psql`). It includes tables, indexes, and triggers used by the app and sync services.
 
 2. **Web app**  
    Point the Next.js app at Azure Postgres instead of Supabase:
@@ -81,30 +81,44 @@ More detail: see `azure-functions-workday-sync/README.md`.
 
 ## Environment variables
 
-### Next.js app (current / Supabase)
+### Required env vars for website (Next.js)
+
+These are the minimum required variables for production website operation:
+
+| Variable | Required | Purpose |
+|---------|---------|--------|
+| `DATABASE_URL` (or `AZURE_POSTGRES_CONNECTION_STRING`) | Yes | Primary PostgreSQL connection string |
+| `NEXT_PUBLIC_AUTH_DISABLED` | Yes | `false` in production (set `true` only for local/demo bypass) |
+| `AUTH0_SECRET` | Yes (when auth enabled) | Auth0 session secret |
+| `AUTH0_BASE_URL` | Yes (when auth enabled) | Public website URL |
+| `AUTH0_ISSUER_BASE_URL` | Yes (when auth enabled) | Auth0 tenant issuer URL |
+| `AUTH0_CLIENT_ID` | Yes (when auth enabled) | Auth0 app client ID |
+| `AUTH0_CLIENT_SECRET` | Yes (when auth enabled) | Auth0 app client secret |
+
+### Strongly recommended / feature-required website vars
+
+| Variable | Required for | Purpose |
+|---------|--------------|--------|
+| `AUTH0_CONNECTION` | Enterprise login routing | Forces a specific Auth0 connection (example: Azure AD connection name) |
+| `AUTH0_AUDIENCE` | Custom API claims | Audience for custom role claims |
+| `AUTH0_ROLE_SCOPE` | Custom API claims | Extra scope to request role claims |
+| `NEXT_PUBLIC_AUTH_ROLE_SOURCE` | OAuth role mapping | `oauth-first` (default), `oauth-only`, `employee-only` |
+| `NEXT_PUBLIC_AUTH_ROLE_CLAIM` | OAuth role mapping | Primary claim key containing user role |
+| `NEXT_PUBLIC_AUTH_ROLE_CLAIMS` | OAuth role mapping | Fallback claim keys list |
+| `NEXT_PUBLIC_MPP_PARSER_URL` | Project Plans / MPP processing | Browser-facing MPP parser base URL |
+| `MPP_PARSER_URL` | `/api/documents/process-mpp` | Server-side MPP parser base URL |
+| `AZURE_DEVOPS_ORGANIZATION` | Sprint/QC Azure sync | Azure DevOps org |
+| `AZURE_DEVOPS_PROJECT` | Sprint/QC Azure sync | Azure DevOps project |
+| `AZURE_DEVOPS_TEAM` | Sprint/QC Azure sync | Azure DevOps team |
+| `AZURE_DEVOPS_PAT` | Sprint/QC Azure sync | Azure DevOps PAT |
+| `AZURE_DEVOPS_BASE_URL` | Sprint/QC Azure sync | Defaults to `https://dev.azure.com` |
+
+### Optional fallback (legacy Supabase mode)
 
 | Variable | Purpose |
 |---------|--------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `AUTH0_SECRET` | Auth0 app secret (if using Auth0) |
-| `AUTH0_BASE_URL` | App base URL (e.g. `https://yourapp.vercel.app`) |
-| `AUTH0_ISSUER_BASE_URL` | Auth0 tenant URL |
-| `AUTH0_CLIENT_ID` | Auth0 client ID |
-| `AUTH0_CLIENT_SECRET` | Auth0 client secret |
-| `AUTH0_CONNECTION` | Optional: force a specific Auth0 connection at login (e.g. Azure AD enterprise connection name) |
-| `AUTH0_AUDIENCE` | Optional: Auth0 API audience if roles/claims are added there |
-| `AUTH0_ROLE_SCOPE` | Optional: extra scope to request role claims (space-safe single scope token) |
-
-Optional client-side role mapping controls (for OAuth-first role resolution):
-
-- `NEXT_PUBLIC_AUTH_ROLE_SOURCE` = `oauth-first` (default), `oauth-only`, or `employee-only`
-- `NEXT_PUBLIC_AUTH_ROLE_CLAIM` = exact custom claim key to read first
-- `NEXT_PUBLIC_AUTH_ROLE_CLAIMS` = comma-separated claim keys fallback list (defaults include `roles`, `role`, and common namespaced variants)
-
-For Azure Postgres instead of Supabase you would also set (or use in your adapter):
-
-- `DATABASE_URL` or `AZURE_POSTGRES_CONNECTION_STRING` – full Postgres connection string.
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL (fallback mode only) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (fallback mode only) |
 
 ### Azure Functions (Workday sync)
 
@@ -188,8 +202,6 @@ Point the Next.js app at the new MPP parser URL:
 | `api-python/` | Flask MPP parser (MPXJ); deploy to Railway or Azure (App Service / Container Apps) |
 | `components/` | Shared React components and charts |
 | `lib/` | Data layer, DB client, transforms, Workday sync stream, etc. |
-| `schema.sql` | Full DB schema (drop + recreate; Supabase/clean install) |
-| `schema_full_postgres.sql` | First-time Azure Postgres schema (no DROP; includes Workday sync tables) |
-| `supabase/migrations/` | Supabase migration(s) mirroring `schema.sql` |
+| `DB 2.17.26.sql` | Canonical database schema for the app |
 | `azure-functions-workday-sync/` | Azure Functions app for Workday → Postgres sync |
 | `pipeline/azure-pipeline.yaml` | Azure DevOps build/deploy pipeline |
