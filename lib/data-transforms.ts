@@ -57,6 +57,7 @@ interface TransformWBSItem {
   predecessors?: any[];
   children?: TransformWBSItem[];
   taskId?: string;
+  parentTaskId?: string | null;
   phaseId?: string;
   projectId?: string;
   claimPct?: number;
@@ -1245,6 +1246,79 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       return owner?.name || null;
     };
 
+    const isSubTaskRow = (task: any): boolean => {
+      const explicit = String(task.hierarchy_type ?? task.hierarchyType ?? '').toLowerCase();
+      if (explicit === 'sub_task') return true;
+      return Boolean(task.isSubTask || task.is_sub_task);
+    };
+
+    const toTaskNode = (task: any, taskWbs: string, fallbackName: string): TransformWBSItem => {
+      const taskId = task.id || task.taskId;
+      const isSubTask = isSubTaskRow(task);
+      return {
+        id: `${isSubTask ? 'wbs-sub_task' : 'wbs-task'}-${taskId}`,
+        wbsCode: taskWbs,
+        name: task.name || task.taskName || fallbackName,
+        type: isSubTask ? 'sub_task' : 'task',
+        itemType: isSubTask ? 'sub_task' : 'task',
+        startDate: task.baselineStartDate || task.startDate,
+        endDate: task.baselineEndDate || task.endDate,
+        daysRequired: (task.duration !== undefined ? task.duration : (task.daysRequired !== undefined ? task.daysRequired : 1)),
+        percentComplete: safeNum(task.percentComplete ?? task.percent_complete),
+        baselineHours: safeNum(task.baselineHours ?? task.budgetHours),
+        actualHours: safeNum(task.actualHours ?? task.actual_hours),
+        remainingHours: safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours),
+        baselineCost: safeNum(task.baselineCost ?? task.baseline_cost),
+        actualCost: safeNum(task.actualCost ?? task.actual_cost),
+        remainingCost: safeNum(task.remainingCost ?? task.remaining_cost),
+        assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+        assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
+        is_milestone: task.is_milestone || task.isMilestone || false,
+        isCritical: task.is_critical || task.isCritical || false,
+        predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
+          ? task.predecessors
+          : depsBySuccessor.get(String(taskId)) || [],
+        totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
+        parentTaskId: task.parentTaskId ?? task.parent_task_id ?? null,
+      };
+    };
+
+    const buildNestedTaskTree = (taskRows: any[], parentWbs: string, startIndex = 0): TransformWBSItem[] => {
+      const deduped = Array.from(new Map(taskRows.map((t: any) => [String(t.id ?? t.taskId), t])).values());
+      const taskIdSet = new Set(deduped.map((t: any) => String(t.id ?? t.taskId)));
+      const childrenByParent = new Map<string, any[]>();
+      const roots: any[] = [];
+
+      deduped.forEach((task: any) => {
+        const parentIdRaw = task.parentTaskId ?? task.parent_task_id;
+        const parentId = parentIdRaw != null ? String(parentIdRaw) : '';
+        if (parentId && taskIdSet.has(parentId)) {
+          if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+          childrenByParent.get(parentId)!.push(task);
+          return;
+        }
+        roots.push(task);
+      });
+
+      const buildRecursive = (task: any, rowWbs: string, ancestry: Set<string>): TransformWBSItem => {
+        const taskId = String(task.id ?? task.taskId);
+        const node = toTaskNode(task, rowWbs, 'Task');
+        if (ancestry.has(taskId)) return node;
+        const nextAncestry = new Set(ancestry);
+        nextAncestry.add(taskId);
+        const children = childrenByParent.get(taskId) || [];
+        if (children.length > 0) {
+          node.children = children.map((child, idx) => buildRecursive(child, `${rowWbs}.${idx + 1}`, nextAncestry));
+        }
+        return node;
+      };
+
+      return roots.map((task: any, idx: number) => {
+        const rowWbs = `${parentWbs}.${startIndex + idx + 1}`;
+        return buildRecursive(task, rowWbs, new Set<string>());
+      });
+    };
+
     // Unified helper to build a project node with all its children and rollup logic
     const buildProjectNode = (project: any, projectWbs: string): TransformWBSItem => {
       const projectId = String(project.id ?? project.projectId ?? '');
@@ -1357,12 +1431,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           const phaseTasksRaw = maps.tasksByPhase.get(phaseId) || [];
           const phaseTasks = Array.from(new Map(phaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
 
-          phaseTasks.forEach((task: any, tIdx: number) => {
-            const taskId = task.id || task.taskId;
-            const taskWbs = `${phaseWbs}.${tIdx + 1}`;
-            const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
-            const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
-            const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
+	          phaseTasks.forEach((task: any) => {
+	            const taskId = task.id || task.taskId;
+	            const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
+	            const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
+	            const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
             const taskActualCst = safeNum(task.actualCost ?? task.actual_cost);
             const taskRemainingHrs = safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours);
             const taskRemainingCst = safeNum(task.remainingCost ?? task.remaining_cost);
@@ -1373,37 +1446,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             phaseRollupBaselineCst += taskBaselineCst;
             phaseRollupActualCst += taskActualCst;
             phaseRollupRemainingHrs += taskRemainingHrs;
-            phaseRollupRemainingCst += taskRemainingCst;
-            phaseRollupPercentComplete += taskPercent;
-            phaseChildCount++;
+	            phaseRollupRemainingCst += taskRemainingCst;
+	            phaseRollupPercentComplete += taskPercent;
+	            phaseChildCount++;
+	          });
 
-            const taskItem: TransformWBSItem = {
-              id: `wbs-task-${taskId}`,
-              wbsCode: taskWbs,
-              name: task.name || task.taskName || `Task ${tIdx + 1}`,
-              type: 'task',
-              itemType: 'task',
-              startDate: task.baselineStartDate || task.startDate,
-              endDate: task.baselineEndDate || task.endDate,
-              daysRequired: (task.duration !== undefined ? task.duration : (task.daysRequired !== undefined ? task.daysRequired : 1)),
-              percentComplete: taskPercent,
-              baselineHours: taskBaselineHrs,
-              actualHours: taskActualHrs,
-              remainingHours: taskRemainingHrs,
-              baselineCost: taskBaselineCst,
-              actualCost: taskActualCst,
-              remainingCost: taskRemainingCst,
-              assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
-              assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
-              is_milestone: task.is_milestone || task.isMilestone || false,
-              isCritical: task.is_critical || task.isCritical || false,
-              predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
-                ? task.predecessors
-                : depsBySuccessor.get(String(taskId)) || [],
-              totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
-            };
-            phaseItem.children?.push(taskItem);
-          });
+            const phaseTaskNodes = buildNestedTaskTree(phaseTasks, phaseWbs);
+            phaseTaskNodes.forEach((node) => phaseItem.children?.push(node));
 
           if (phaseChildCount > 0) {
             // Always use child rollup for consistency (bottom-up aggregation)
@@ -1500,12 +1549,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         );
         const directPhaseTasks = Array.from(new Map(directPhaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
 
-        directPhaseTasks.forEach((task: any, tIdx: number) => {
-          const taskId = task.id || task.taskId;
-          const taskWbs = `${phaseWbs}.${tIdx + 1}`;
-          const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
-          const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
-          const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
+	        directPhaseTasks.forEach((task: any) => {
+	          const taskId = task.id || task.taskId;
+	          const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
+	          const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
+	          const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
           const taskActualCst = safeNum(task.actualCost ?? task.actual_cost);
           const taskRemainingHrs = safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours);
           const taskRemainingCst = safeNum(task.remainingCost ?? task.remaining_cost);
@@ -1516,37 +1564,13 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           phaseRollupBaselineCst += taskBaselineCst;
           phaseRollupActualCst += taskActualCst;
           phaseRollupRemainingHrs += taskRemainingHrs;
-          phaseRollupRemainingCst += taskRemainingCst;
-          phaseRollupPercentComplete += taskPercent;
-          phaseChildCount++;
+	          phaseRollupRemainingCst += taskRemainingCst;
+	          phaseRollupPercentComplete += taskPercent;
+	          phaseChildCount++;
+	        });
 
-          const taskItem: TransformWBSItem = {
-            id: `wbs-task-${taskId}`,
-            wbsCode: taskWbs,
-            name: task.name || task.taskName || `Task ${tIdx + 1}`,
-            type: 'task',
-            itemType: 'task',
-            startDate: task.baselineStartDate || task.startDate,
-            endDate: task.baselineEndDate || task.endDate,
-            daysRequired: (task.duration !== undefined ? task.duration : (task.daysRequired !== undefined ? task.daysRequired : 1)),
-            percentComplete: taskPercent,
-            baselineHours: taskBaselineHrs,
-            actualHours: taskActualHrs,
-            remainingHours: taskRemainingHrs,
-            baselineCost: taskBaselineCst,
-            actualCost: taskActualCst,
-            remainingCost: taskRemainingCst,
-            assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
-            assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
-            is_milestone: task.is_milestone || task.isMilestone || false,
-            isCritical: task.is_critical || task.isCritical || false,
-            predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
-              ? task.predecessors
-              : depsBySuccessor.get(String(taskId)) || [],
-            totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
-          };
-          phaseItem.children?.push(taskItem);
-        });
+          const directPhaseTaskNodes = buildNestedTaskTree(directPhaseTasks, phaseWbs);
+          directPhaseTaskNodes.forEach((node) => phaseItem.children?.push(node));
 
         if (phaseChildCount > 0) {
           // Always use child rollup for consistency (bottom-up aggregation)
@@ -1582,12 +1606,11 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       const directProjectTasks = Array.from(
         new Map(directProjectTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values()
       );
-      directProjectTasks.forEach((task: any, tIdx: number) => {
-        const taskId = task.id || task.taskId;
-        const taskWbs = `${projectWbs}.${projectUnits.length + directPhases.length + tIdx + 1}`;
+	      directProjectTasks.forEach((task: any) => {
+	        const taskId = task.id || task.taskId;
 
-        const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
-        const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
+	        const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
+	        const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
         const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
         const taskActualCst = safeNum(task.actualCost ?? task.actual_cost);
         const taskPercent = safeNum(task.percentComplete ?? task.percent_complete);
@@ -1600,37 +1623,17 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projRollupBaselineCst += taskBaselineCst;
         projRollupActualCst += taskActualCst;
         projRollupRemainingHrs += taskRemainingHrs;
-        projRollupRemainingCst += taskRemainingCst;
-        projRollupPercentComplete += taskPercent;
-        projChildCount++;
+	        projRollupRemainingCst += taskRemainingCst;
+	        projRollupPercentComplete += taskPercent;
+	        projChildCount++;
+	      });
 
-        const taskItem: TransformWBSItem = {
-          id: `wbs-task-${taskId}`,
-          wbsCode: taskWbs,
-          name: task.name || task.taskName || `Task ${tIdx + 1}`,
-          type: 'task',
-          itemType: 'task',
-          startDate: task.baselineStartDate || task.startDate,
-          endDate: task.baselineEndDate || task.endDate,
-          percentComplete: taskPercent,
-          baselineHours: taskBaselineHrs,
-          actualHours: taskActualHrs,
-          remainingHours: taskRemainingHrs,
-          baselineCost: taskBaselineCst,
-          actualCost: taskActualCst,
-          remainingCost: taskRemainingCst,
-          assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
-          assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
-          is_milestone: task.is_milestone || task.isMilestone || false,
-          isCritical: task.is_critical || task.isCritical || false,
-          predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
-            ? task.predecessors
-            : depsBySuccessor.get(String(taskId)) || [],
-          totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
-        };
-
-        projectItem.children?.push(taskItem);
-      });
+        const directProjectTaskNodes = buildNestedTaskTree(
+          directProjectTasks,
+          projectWbs,
+          projectUnits.length + directPhases.length
+        );
+        directProjectTaskNodes.forEach((node) => projectItem.children?.push(node));
 
       // Always use child rollup for consistency (bottom-up aggregation)
       if (projChildCount > 0) {
