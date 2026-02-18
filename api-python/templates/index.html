@@ -376,12 +376,12 @@
             const level = Number(task.outline_level || 0);
             const minLevel = Number.isFinite(currentMinOutlineLevel) ? currentMinOutlineLevel : 0;
             const maxLevel = Number.isFinite(currentMaxOutlineLevel) ? currentMaxOutlineLevel : minLevel;
-            const maxDepth = Math.max(0, maxLevel - minLevel);
-            const rel = Math.max(0, level - minLevel);
-            if (rel <= 0) return 'project';
-            if (rel === 1) return 'unit';
-            if (rel === 2) return 'phase';
-            if (maxDepth >= 4 && rel === maxDepth) return 'sub_task';
+            const hasLevelOne = minLevel <= 1 && maxLevel >= 1;
+            const anchor = hasLevelOne ? 2 : Math.max(1, minLevel + 1);
+            if (level <= 1) return 'project';
+            if (level === anchor) return 'unit';
+            if (level === anchor + 1) return 'phase';
+            if (maxLevel >= (anchor + 3) && level === maxLevel) return 'sub_task';
             return 'task';
         };
 

@@ -340,25 +340,28 @@ class ProjectParser:
         outline_levels = [int(t.get('outline_level') or 0) for t in all_tasks]
         max_outline = max(outline_levels) if outline_levels else 0
         min_outline = min(outline_levels) if outline_levels else 0
-        max_depth = max(0, max_outline - min_outline)
+        # Hierarchy anchor:
+        # level 1 = project plan/root, mapping starts at level 2
+        # level 2 = unit, level 3 = phase, level 4+ = task, deepest may be sub_task.
+        has_level_one = any((int(t.get('outline_level') or 0) == 1) for t in all_tasks)
+        hierarchy_anchor = 2 if has_level_one else max(1, min_outline + 1)
 
         for node in all_tasks:
             level = int(node.get('outline_level') or 0)
-            rel_from_top = max(0, level - min_outline)
-            if rel_from_top <= 0:
+            if level <= 1:
                 node['hierarchy_type'] = 'project'
-            elif rel_from_top == 1:
+            elif level == hierarchy_anchor:
                 node['hierarchy_type'] = 'unit'
-            elif rel_from_top == 2:
+            elif level == hierarchy_anchor + 1:
                 node['hierarchy_type'] = 'phase'
-            elif max_depth >= 4 and rel_from_top == max_depth:
+            elif max_outline >= (hierarchy_anchor + 3) and level == max_outline:
                 node['hierarchy_type'] = 'sub_task'
             else:
                 node['hierarchy_type'] = 'task'
 
         # Ensure top root level remains project summary where available.
         for node in all_tasks:
-            if int(node.get('outline_level') or 0) == min_outline and (node.get('is_summary') or node.get('parent_id') is None):
+            if int(node.get('outline_level') or 0) <= 1 and (node.get('is_summary') or node.get('parent_id') is None):
                 node['hierarchy_type'] = 'project'
 
         # Add "folder" path based on parent chain for easier downstream conversion/debugging.

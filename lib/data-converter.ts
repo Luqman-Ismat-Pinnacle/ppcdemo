@@ -509,14 +509,14 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   type NodeType = 'project' | 'phase' | 'unit' | 'task' | 'sub_task';
   const minLevel = raw.reduce((min: number, r: any) => Math.min(min, Number(r.outline_level) || 1), Number.POSITIVE_INFINITY);
   const maxLevel = raw.reduce((max: number, r: any) => Math.max(max, Number(r.outline_level) || 1), 0);
-  const maxDepth = Math.max(0, maxLevel - minLevel);
+  const hasLevelOne = raw.some((r: any) => (Number(r.outline_level) || 0) === 1);
+  const hierarchyAnchor = hasLevelOne ? 2 : Math.max(1, minLevel + 1);
 
   const inferNodeType = (level: number): NodeType => {
-    const rel = Math.max(0, level - minLevel);
-    if (rel <= 0) return 'project';
-    if (rel === 1) return 'unit';
-    if (rel === 2) return 'phase';
-    if (maxDepth >= 4 && rel === maxDepth) return 'sub_task';
+    if (level <= 1) return 'project';
+    if (level === hierarchyAnchor) return 'unit';
+    if (level === hierarchyAnchor + 1) return 'phase';
+    if (maxLevel >= (hierarchyAnchor + 3) && level === maxLevel) return 'sub_task';
     return 'task';
   };
 
