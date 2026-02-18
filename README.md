@@ -92,6 +92,15 @@ More detail: see `azure-functions-workday-sync/README.md`.
 | `AUTH0_ISSUER_BASE_URL` | Auth0 tenant URL |
 | `AUTH0_CLIENT_ID` | Auth0 client ID |
 | `AUTH0_CLIENT_SECRET` | Auth0 client secret |
+| `AUTH0_CONNECTION` | Optional: force a specific Auth0 connection at login (e.g. Azure AD enterprise connection name) |
+| `AUTH0_AUDIENCE` | Optional: Auth0 API audience if roles/claims are added there |
+| `AUTH0_ROLE_SCOPE` | Optional: extra scope to request role claims (space-safe single scope token) |
+
+Optional client-side role mapping controls (for OAuth-first role resolution):
+
+- `NEXT_PUBLIC_AUTH_ROLE_SOURCE` = `oauth-first` (default), `oauth-only`, or `employee-only`
+- `NEXT_PUBLIC_AUTH_ROLE_CLAIM` = exact custom claim key to read first
+- `NEXT_PUBLIC_AUTH_ROLE_CLAIMS` = comma-separated claim keys fallback list (defaults include `roles`, `role`, and common namespaced variants)
 
 For Azure Postgres instead of Supabase you would also set (or use in your adapter):
 

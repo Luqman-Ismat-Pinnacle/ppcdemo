@@ -35,6 +35,15 @@ interface UserContextValue {
 const UserContext = createContext<UserContextValue | null>(null);
 
 const AUTH_DISABLED = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true';
+const ROLE_CLAIMS = (
+  process.env.NEXT_PUBLIC_AUTH_ROLE_CLAIMS
+  || 'roles,role,https://pinnacle/roles,https://pinnacle/role,https://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const ROLE_CLAIM_SINGLE = process.env.NEXT_PUBLIC_AUTH_ROLE_CLAIM || '';
+const ROLE_SOURCE = (process.env.NEXT_PUBLIC_AUTH_ROLE_SOURCE || 'oauth-first').toLowerCase();
 
 function getInitials(name: string): string {
   if (!name) return '?';
@@ -47,6 +56,26 @@ const DEMO_USER: UserInfo = {
   role: 'Admin',
   initials: 'DU',
 };
+
+function normalizeRoleValue(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (Array.isArray(value)) {
+    const first = value.find((item) => typeof item === 'string' && item.trim());
+    return typeof first === 'string' ? first.trim() : null;
+  }
+  return null;
+}
+
+function extractRoleFromOAuth(auth0User: Record<string, unknown>): string | null {
+  const orderedKeys = ROLE_CLAIM_SINGLE ? [ROLE_CLAIM_SINGLE, ...ROLE_CLAIMS] : ROLE_CLAIMS;
+  for (const key of orderedKeys) {
+    if (!(key in auth0User)) continue;
+    const role = normalizeRoleValue(auth0User[key]);
+    if (role) return role;
+  }
+  return null;
+}
 
 /**
  * Fetching Profile screen — shown after Auth0 login while matching employee
@@ -91,6 +120,34 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (AUTH_DISABLED || !auth0User || fetched) return;
 
     const matchEmployee = async () => {
+      const auth0UserRecord = auth0User as unknown as Record<string, unknown>;
+      const oauthRole = extractRoleFromOAuth(auth0UserRecord);
+      if (oauthRole && ROLE_SOURCE !== 'employee-only') {
+        setEnrichedUser({
+          name: auth0User.name || 'User',
+          email: auth0User.email || '',
+          role: oauthRole,
+          initials: getInitials(auth0User.name || 'User'),
+          employeeId: (auth0UserRecord.employee_id as string) || null,
+          department: (auth0UserRecord.department as string) || '',
+          managementLevel: (auth0UserRecord.management_level as string) || '',
+          jobTitle: (auth0UserRecord.job_title as string) || '',
+        });
+        setFetched(true);
+        return;
+      }
+
+      if (ROLE_SOURCE === 'oauth-only') {
+        setEnrichedUser({
+          name: auth0User.name || 'User',
+          email: auth0User.email || '',
+          role: 'User',
+          initials: getInitials(auth0User.name || 'User'),
+        });
+        setFetched(true);
+        return;
+      }
+
       setFetchingProfile(true);
       try {
         const res = await fetch('/api/auth/employee-match', {
