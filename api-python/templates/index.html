@@ -263,6 +263,8 @@
 
         let currentData = null;
         let currentTasks = [];
+        let currentMinOutlineLevel = 0;
+        let currentMaxOutlineLevel = 0;
 
         const resetUI = () => {
             progress.classList.add('hidden');
@@ -275,6 +277,8 @@
             dependencyStatus.textContent = '';
             currentData = null;
             currentTasks = [];
+            currentMinOutlineLevel = 0;
+            currentMaxOutlineLevel = 0;
         };
 
         const handleFile = async (file) => {
@@ -308,6 +312,13 @@
             const tasks = data.tasks || [];
             const depSummary = data.summary?.dependencies || {};
             const summary = data.summary || {};
+            currentMinOutlineLevel = Number(summary.min_outline_level ?? 0);
+            currentMaxOutlineLevel = Number(summary.max_outline_level ?? 0);
+            if (!Number.isFinite(currentMinOutlineLevel) || !Number.isFinite(currentMaxOutlineLevel) || currentMaxOutlineLevel < currentMinOutlineLevel) {
+                const levels = tasks.map((t) => Number(t.outline_level || 0)).filter((v) => Number.isFinite(v));
+                currentMinOutlineLevel = levels.length ? Math.min(...levels) : 0;
+                currentMaxOutlineLevel = levels.length ? Math.max(...levels) : 0;
+            }
             const unitCount = summary.units ?? tasks.filter((t) => Number(t.outline_level || 0) === 2).length;
             const phaseCount = summary.phases ?? tasks.filter((t) => Number(t.outline_level || 0) === 3).length;
             const leafCount = (summary.tasks ?? 0) + (summary.sub_tasks ?? 0) || tasks.filter((t) => {
@@ -363,10 +374,15 @@
             const explicit = String(task.hierarchy_type || task.hierarchyType || '').toLowerCase();
             if (explicit) return explicit;
             const level = Number(task.outline_level || 0);
-            if (level === 2) return 'unit';
-            if (level === 3) return 'phase';
-            if (level >= 4) return 'task';
-            return 'project';
+            const minLevel = Number.isFinite(currentMinOutlineLevel) ? currentMinOutlineLevel : 0;
+            const maxLevel = Number.isFinite(currentMaxOutlineLevel) ? currentMaxOutlineLevel : minLevel;
+            const maxDepth = Math.max(0, maxLevel - minLevel);
+            const rel = Math.max(0, level - minLevel);
+            if (rel <= 0) return 'project';
+            if (rel === 1) return 'unit';
+            if (rel === 2) return 'phase';
+            if (maxDepth >= 4 && rel === maxDepth) return 'sub_task';
+            return 'task';
         };
 
         const applyWbsSearchFilter = () => {

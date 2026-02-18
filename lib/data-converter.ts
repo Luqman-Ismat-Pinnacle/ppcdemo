@@ -493,7 +493,6 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }));
 
   // Reconstruct missing parent links from outline levels when parent_id is absent.
-  // Some MPXJ reads expose outline_level consistently but can omit parent pointers.
   const outlineStack: string[] = [];
   raw.forEach((r: any) => {
     const level = Math.max(1, Number(r.outline_level) || 1);
@@ -505,65 +504,33 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     outlineStack.length = level;
   });
 
-  // Hierarchy detection (dynamic bottom-up):
-  // max outline level => sub_task, then task, phase, unit, and upper levels as project.
+  // Hierarchy detection (top-down using min/max outline):
+  // rel 0=project, rel 1=unit, rel 2=phase, rel 3+=task, and deepest level becomes sub_task when depth allows.
   type NodeType = 'project' | 'phase' | 'unit' | 'task' | 'sub_task';
+  const minLevel = raw.reduce((min: number, r: any) => Math.min(min, Number(r.outline_level) || 1), Number.POSITIVE_INFINITY);
+  const maxLevel = raw.reduce((max: number, r: any) => Math.max(max, Number(r.outline_level) || 1), 0);
+  const maxDepth = Math.max(0, maxLevel - minLevel);
+
+  const inferNodeType = (level: number): NodeType => {
+    const rel = Math.max(0, level - minLevel);
+    if (rel <= 0) return 'project';
+    if (rel === 1) return 'unit';
+    if (rel === 2) return 'phase';
+    if (maxDepth >= 4 && rel === maxDepth) return 'sub_task';
+    return 'task';
+  };
+
+  const normalizeNodeType = (value: unknown): NodeType | null => {
+    const v = String(value || '').toLowerCase();
+    if (v === 'project' || v === 'unit' || v === 'phase' || v === 'task' || v === 'sub_task') return v;
+    return null;
+  };
+
   const typeById = new Map<string, NodeType>();
-  const minLevel = raw.reduce((min: number, r: any) => Math.min(min, Number(r.outline_level) || 0), Number.POSITIVE_INFINITY);
-  const maxLevel = raw.reduce((max: number, r: any) => Math.max(max, Number(r.outline_level) || 0), 0);
-
   raw.forEach((r: any) => {
-    const level = Number(r.outline_level) || 1;
-    const id = String(r.id);
-    const explicitType = String(r.hierarchy_type ?? r.hierarchyType ?? '').toLowerCase();
-
-    if (explicitType === 'project') {
-      typeById.set(id, 'project');
-      return;
-    }
-    if (explicitType === 'unit') {
-      typeById.set(id, 'unit');
-      return;
-    }
-    if (explicitType === 'phase') {
-      typeById.set(id, 'phase');
-      return;
-    }
-    if (explicitType === 'task') {
-      typeById.set(id, 'task');
-      return;
-    }
-    if (explicitType === 'sub_task') {
-      typeById.set(id, 'sub_task');
-      return;
-    }
-
-    const distanceFromBottom = maxLevel - level;
-    if (distanceFromBottom <= 0) {
-      typeById.set(id, 'sub_task');
-      return;
-    }
-    if (distanceFromBottom === 1) {
-      typeById.set(id, 'task');
-      return;
-    }
-    if (distanceFromBottom === 2) {
-      typeById.set(id, 'phase');
-      return;
-    }
-    if (distanceFromBottom === 3) {
-      typeById.set(id, 'unit');
-      return;
-    }
-    typeById.set(id, 'project');
-  });
-
-  // Force absolute top level summary rows to project classification.
-  raw.forEach((r: any) => {
-    const level = Number(r.outline_level) || 0;
-    if (level === minLevel && (r.is_summary || !r.parent_id)) {
-      typeById.set(String(r.id), 'project');
-    }
+    const explicit = normalizeNodeType(r.hierarchy_type ?? r.hierarchyType);
+    const nodeType = explicit ?? inferNodeType(Number(r.outline_level) || minLevel);
+    typeById.set(String(r.id), nodeType);
   });
 
   const phases: any[] = [];
@@ -599,6 +566,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       isCritical: r.isCritical || false,
       totalSlack: r.totalSlack ?? 0,
       comments: r.comments || '',
+      folder: String(r.folder ?? r.folderPath ?? '').trim(),
       parent_id: r.parent_id != null ? String(r.parent_id) : null,
       is_summary: r.is_summary || false,
       projectId: projectIdOverride || '',
@@ -674,72 +642,75 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   units.forEach((u: any) => unitById.set(String(u.id), u));
   const phaseById = new Map<string, any>();
   phases.forEach((p: any) => phaseById.set(String(p.id), p));
+  const taskById = new Map<string, any>();
+  tasks.forEach((t: any) => taskById.set(String(t.id), t));
 
-  const findAncestorByType = (startParentId: string | null, targetType: NodeType): string | null => {
+  const normalizeName = (value: unknown): string =>
+    String(value || '').trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
+
+  const unitsByName = new Map<string, any[]>();
+  units.forEach((u: any) => {
+    const key = normalizeName(u.name);
+    if (!key) return;
+    if (!unitsByName.has(key)) unitsByName.set(key, []);
+    unitsByName.get(key)!.push(u);
+  });
+  const phasesByName = new Map<string, any[]>();
+  phases.forEach((p: any) => {
+    const key = normalizeName(p.name);
+    if (!key) return;
+    if (!phasesByName.has(key)) phasesByName.set(key, []);
+    phasesByName.get(key)!.push(p);
+  });
+
+  const getFolderSegments = (row: any): string[] => {
+    const folder = String(row.folder || '').trim();
+    if (!folder) return [];
+    return folder.split('/').map((s) => normalizeName(s)).filter(Boolean);
+  };
+
+  const findAncestorByType = (startParentId: string | null, targetTypes: NodeType[]): string | null => {
     let cursor = startParentId ? String(startParentId) : '';
     const seen = new Set<string>();
     while (cursor && !seen.has(cursor)) {
       seen.add(cursor);
       const t = typeById.get(cursor);
-      if (t === targetType) return cursor;
+      if (t && targetTypes.includes(t)) return cursor;
       const parent = rawById.get(cursor)?.parent_id;
       cursor = parent != null ? String(parent) : '';
     }
     return null;
   };
 
-  // Pass 1: Resolve phase -> unit by nearest unit ancestor in chain.
+  const matchFromFolder = (segments: string[], mapByName: Map<string, any[]>): any | null => {
+    for (let i = segments.length - 1; i >= 0; i -= 1) {
+      const candidates = mapByName.get(segments[i]);
+      if (candidates && candidates.length > 0) return candidates[0];
+    }
+    return null;
+  };
+
+  // 1:1 association pass using parent chain first, then folder path fallback.
   phases.forEach((phase: any) => {
-    const unitAncestorId = findAncestorByType(phase.parent_id ?? null, 'unit');
+    const unitAncestorId = findAncestorByType(phase.parent_id ?? null, ['unit']);
     if (unitAncestorId && unitById.has(unitAncestorId)) {
       phase.unitId = unitAncestorId;
       phase.unit_id = unitAncestorId;
+      return;
+    }
+    const fromFolder = matchFromFolder(getFolderSegments(phase), unitsByName);
+    if (fromFolder) {
+      phase.unitId = fromFolder.id;
+      phase.unit_id = fromFolder.id;
     }
   });
 
-  // Fallback: if parser did not expose any explicit unit rows, create a synthetic
-  // project unit so hierarchy does not collapse to project->task and phases remain usable.
-  if (units.length === 0) {
-    const syntheticUnitId = `UNT-${(projectIdOverride || 'AUTO').replace(/[^A-Za-z0-9]/g, '').slice(0, 24) || 'AUTO'}-001`;
-    units.push({
-      id: syntheticUnitId,
-      unitId: syntheticUnitId,
-      name: 'Project Unit',
-      description: 'Auto-generated from MPP import',
-      projectId: projectIdOverride || '',
-      project_id: projectIdOverride || '',
-      employeeId: null,
-      active: true,
-      baselineStartDate: null,
-      baselineEndDate: null,
-      actualStartDate: null,
-      actualEndDate: null,
-      percentComplete: 0,
-      comments: '',
-      baselineHours: 0,
-      actualHours: 0,
-      baselineCost: 0,
-      actualCost: 0,
-      predecessorId: null,
-      predecessorRelationship: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    phases.forEach((phase: any) => {
-      if (!phase.unitId && !phase.unit_id) {
-        phase.unitId = syntheticUnitId;
-        phase.unit_id = syntheticUnitId;
-      }
-    });
-  }
-
-  // Pass 2: Resolve task phaseId and unitId from nearest phase/unit ancestors.
   tasks.forEach((task: any) => {
-    const phaseAncestorId = findAncestorByType(task.parent_id ?? null, 'phase');
-    const unitAncestorId = findAncestorByType(task.parent_id ?? null, 'unit');
+    const phaseAncestorId = findAncestorByType(task.parent_id ?? null, ['phase']);
+    const unitAncestorId = findAncestorByType(task.parent_id ?? null, ['unit']);
+    const taskAncestorId = findAncestorByType(task.parent_id ?? null, ['task', 'sub_task']);
 
-    if (phaseAncestorId) {
+    if (phaseAncestorId && phaseById.has(phaseAncestorId)) {
       task.phaseId = phaseAncestorId;
       task.phase_id = phaseAncestorId;
       const phase = phaseById.get(phaseAncestorId);
@@ -747,23 +718,33 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       if (phaseUnit) {
         task.unitId = phaseUnit;
         task.unit_id = phaseUnit;
-      } else if (unitAncestorId) {
-        task.unitId = unitAncestorId;
-        task.unit_id = unitAncestorId;
       }
-    } else if (unitAncestorId) {
-      task.unitId = unitAncestorId;
-      task.unit_id = unitAncestorId;
-      task.phaseId = '';
-      task.phase_id = '';
+    } else {
+      const folderPhase = matchFromFolder(getFolderSegments(task), phasesByName);
+      if (folderPhase) {
+        task.phaseId = folderPhase.id;
+        task.phase_id = folderPhase.id;
+        const phaseUnit = folderPhase.unitId ?? folderPhase.unit_id ?? '';
+        if (phaseUnit) {
+          task.unitId = phaseUnit;
+          task.unit_id = phaseUnit;
+        }
+      }
     }
 
-    const parentTask = tasks.find((t: any) => t.id === task.parent_id);
-    if (parentTask) {
-      task.parentTaskId = task.parent_id;
-    } else {
-      task.parentTaskId = null;
+    if (!task.unitId && unitAncestorId && unitById.has(unitAncestorId)) {
+      task.unitId = unitAncestorId;
+      task.unit_id = unitAncestorId;
     }
+    if (!task.unitId) {
+      const folderUnit = matchFromFolder(getFolderSegments(task), unitsByName);
+      if (folderUnit) {
+        task.unitId = folderUnit.id;
+        task.unit_id = folderUnit.id;
+      }
+    }
+
+    task.parentTaskId = taskAncestorId && taskById.has(taskAncestorId) ? taskAncestorId : null;
   });
 
   // Pass 3: Normalize predecessor links to task IDs present in this import.

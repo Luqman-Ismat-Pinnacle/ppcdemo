@@ -334,26 +334,27 @@ class ProjectParser:
             }
             all_tasks.append(node)
 
-        # Dynamic hierarchy typing:
-        # Start from deepest outline as "sub_task", then walk up:
-        # sub_task -> task -> phase -> unit -> project (remaining upper levels)
+        # Dynamic hierarchy typing (top-down):
+        # top/root -> project, then unit, then phase, then task, and deepest level
+        # becomes sub_task when depth allows.
         outline_levels = [int(t.get('outline_level') or 0) for t in all_tasks]
         max_outline = max(outline_levels) if outline_levels else 0
         min_outline = min(outline_levels) if outline_levels else 0
+        max_depth = max(0, max_outline - min_outline)
 
         for node in all_tasks:
             level = int(node.get('outline_level') or 0)
-            distance_from_bottom = max_outline - level
-            if distance_from_bottom <= 0:
-                node['hierarchy_type'] = 'sub_task'
-            elif distance_from_bottom == 1:
-                node['hierarchy_type'] = 'task'
-            elif distance_from_bottom == 2:
-                node['hierarchy_type'] = 'phase'
-            elif distance_from_bottom == 3:
-                node['hierarchy_type'] = 'unit'
-            else:
+            rel_from_top = max(0, level - min_outline)
+            if rel_from_top <= 0:
                 node['hierarchy_type'] = 'project'
+            elif rel_from_top == 1:
+                node['hierarchy_type'] = 'unit'
+            elif rel_from_top == 2:
+                node['hierarchy_type'] = 'phase'
+            elif max_depth >= 4 and rel_from_top == max_depth:
+                node['hierarchy_type'] = 'sub_task'
+            else:
+                node['hierarchy_type'] = 'task'
 
         # Ensure top root level remains project summary where available.
         for node in all_tasks:
