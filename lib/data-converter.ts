@@ -505,20 +505,20 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     outlineStack.length = level;
   });
 
-  // Hierarchy detection (fixed mapping requested):
-  // - outline level 2 => Unit
-  // - outline level 3 => Phase
-  // - outline level 4+ => Task
-  // - outline level 1 (or less) => Project/root summary (ignored here)
-  type NodeType = 'phase' | 'unit' | 'task';
+  // Hierarchy detection (dynamic bottom-up):
+  // max outline level => sub_task, then task, phase, unit, and upper levels as project.
+  type NodeType = 'project' | 'phase' | 'unit' | 'task' | 'sub_task';
   const typeById = new Map<string, NodeType>();
+  const minLevel = raw.reduce((min: number, r: any) => Math.min(min, Number(r.outline_level) || 0), Number.POSITIVE_INFINITY);
+  const maxLevel = raw.reduce((max: number, r: any) => Math.max(max, Number(r.outline_level) || 0), 0);
 
   raw.forEach((r: any) => {
     const level = Number(r.outline_level) || 1;
     const id = String(r.id);
     const explicitType = String(r.hierarchy_type ?? r.hierarchyType ?? '').toLowerCase();
 
-    if (level <= 1) {
+    if (explicitType === 'project') {
+      typeById.set(id, 'project');
       return;
     }
     if (explicitType === 'unit') {
@@ -533,15 +533,37 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       typeById.set(id, 'task');
       return;
     }
-    if (level === 2) {
-      typeById.set(id, 'unit');
+    if (explicitType === 'sub_task') {
+      typeById.set(id, 'sub_task');
       return;
     }
-    if (level === 3) {
+
+    const distanceFromBottom = maxLevel - level;
+    if (distanceFromBottom <= 0) {
+      typeById.set(id, 'sub_task');
+      return;
+    }
+    if (distanceFromBottom === 1) {
+      typeById.set(id, 'task');
+      return;
+    }
+    if (distanceFromBottom === 2) {
       typeById.set(id, 'phase');
       return;
     }
-    typeById.set(id, 'task');
+    if (distanceFromBottom === 3) {
+      typeById.set(id, 'unit');
+      return;
+    }
+    typeById.set(id, 'project');
+  });
+
+  // Force absolute top level summary rows to project classification.
+  raw.forEach((r: any) => {
+    const level = Number(r.outline_level) || 0;
+    if (level === minLevel && (r.is_summary || !r.parent_id)) {
+      typeById.set(String(r.id), 'project');
+    }
   });
 
   const phases: any[] = [];
@@ -551,12 +573,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   raw.forEach((r: any) => rawById.set(String(r.id), r));
 
   raw.forEach((r: any) => {
-    const level = Number(r.outline_level) || 1;
-    if (level <= 1) {
+    const nodeType = typeById.get(String(r.id)) ?? 'task';
+    if (nodeType === 'project') {
       return;
     }
     const id = String(r.id);
-    const nodeType = typeById.get(id) ?? 'task';
     const baseTask = {
       id,
       name: r.name,
@@ -621,7 +642,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
         taskId: id,
         taskName: r.name,
         taskDescription: r.comments || '',
-        isSubTask: (r.outline_level ?? 0) > 4,
+        isSubTask: nodeType === 'sub_task' || (r.outline_level ?? 0) >= maxLevel,
         parentTaskId: null,
         phaseId: '',
         unitId: '',

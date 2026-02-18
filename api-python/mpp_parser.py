@@ -200,13 +200,6 @@ class ProjectParser:
             uid = self._task_id(task, fallback=f"row-{idx + 1}")
             name = str(task.getName() or "")
             level = int(task.getOutlineLevel() or 0)
-            hierarchy_type = 'project'
-            if level == 2:
-                hierarchy_type = 'unit'
-            elif level == 3:
-                hierarchy_type = 'phase'
-            elif level >= 4:
-                hierarchy_type = 'task'
             
             # Determine hierarchy info
             is_summary = bool(task.getSummary())
@@ -319,7 +312,7 @@ class ProjectParser:
                 'id': uid,
                 'name': name,
                 'outline_level': level,
-                'hierarchy_type': hierarchy_type,
+                'hierarchy_type': 'project',
                 'is_summary': is_summary,
                 'parent_id': parent_id,
                 'startDate': self._to_iso(task.getStart()),
@@ -341,11 +334,76 @@ class ProjectParser:
             }
             all_tasks.append(node)
 
+        # Dynamic hierarchy typing:
+        # Start from deepest outline as "sub_task", then walk up:
+        # sub_task -> task -> phase -> unit -> project (remaining upper levels)
+        outline_levels = [int(t.get('outline_level') or 0) for t in all_tasks]
+        max_outline = max(outline_levels) if outline_levels else 0
+        min_outline = min(outline_levels) if outline_levels else 0
+
+        for node in all_tasks:
+            level = int(node.get('outline_level') or 0)
+            distance_from_bottom = max_outline - level
+            if distance_from_bottom <= 0:
+                node['hierarchy_type'] = 'sub_task'
+            elif distance_from_bottom == 1:
+                node['hierarchy_type'] = 'task'
+            elif distance_from_bottom == 2:
+                node['hierarchy_type'] = 'phase'
+            elif distance_from_bottom == 3:
+                node['hierarchy_type'] = 'unit'
+            else:
+                node['hierarchy_type'] = 'project'
+
+        # Ensure top root level remains project summary where available.
+        for node in all_tasks:
+            if int(node.get('outline_level') or 0) == min_outline and (node.get('is_summary') or node.get('parent_id') is None):
+                node['hierarchy_type'] = 'project'
+
+        # Add "folder" path based on parent chain for easier downstream conversion/debugging.
+        by_id = {str(t.get('id')): t for t in all_tasks}
+        folder_cache = {}
+
+        def build_folder(task_id):
+            task_id = str(task_id or '')
+            if not task_id:
+                return ''
+            if task_id in folder_cache:
+                return folder_cache[task_id]
+
+            task_node = by_id.get(task_id)
+            if not task_node:
+                folder_cache[task_id] = ''
+                return ''
+
+            parent_id = task_node.get('parent_id')
+            if not parent_id:
+                folder_cache[task_id] = ''
+                return ''
+
+            parent_node = by_id.get(str(parent_id))
+            if not parent_node:
+                folder_cache[task_id] = ''
+                return ''
+
+            parent_folder = build_folder(str(parent_id))
+            parent_name = str(parent_node.get('name') or str(parent_id)).strip()
+            if parent_folder:
+                folder_cache[task_id] = f"{parent_folder} / {parent_name}"
+            else:
+                folder_cache[task_id] = parent_name
+            return folder_cache[task_id]
+
+        for node in all_tasks:
+            node['folder'] = build_folder(str(node.get('id') or ''))
+
         total_pred_links = sum(len(t.get('predecessors') or []) for t in all_tasks)
         total_succ_links = sum(len(t.get('successors') or []) for t in all_tasks)
+        project_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'project')
         unit_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'unit')
         phase_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'phase')
         task_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'task')
+        sub_task_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'sub_task')
         tasks_with_predecessors = sum(1 for t in all_tasks if (t.get('predecessors') or []))
         tasks_with_successors = sum(1 for t in all_tasks if (t.get('successors') or []))
         leaf_tasks = [t for t in all_tasks if not bool(t.get('is_summary'))]
@@ -364,9 +422,13 @@ class ProjectParser:
             'tasks': all_tasks, # Returning a single source of truth list
             'summary': {
                 'total_rows': len(all_tasks),
+                'min_outline_level': min_outline,
+                'max_outline_level': max_outline,
+                'projects': project_count,
                 'units': unit_count,
                 'phases': phase_count,
                 'tasks': task_count,
+                'sub_tasks': sub_task_count,
                 'dependencies': {
                     'totalPredecessorLinks': total_pred_links,
                     'totalSuccessorLinks': total_succ_links,

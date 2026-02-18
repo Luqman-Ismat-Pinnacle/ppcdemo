@@ -310,7 +310,10 @@
             const summary = data.summary || {};
             const unitCount = summary.units ?? tasks.filter((t) => Number(t.outline_level || 0) === 2).length;
             const phaseCount = summary.phases ?? tasks.filter((t) => Number(t.outline_level || 0) === 3).length;
-            const leafCount = summary.tasks ?? tasks.filter((t) => Number(t.outline_level || 0) >= 4).length;
+            const leafCount = (summary.tasks ?? 0) + (summary.sub_tasks ?? 0) || tasks.filter((t) => {
+                const type = String(t.hierarchy_type || t.hierarchyType || '').toLowerCase();
+                return type === 'task' || type === 'sub_task';
+            }).length;
 
             statProjectName.textContent = data.project?.name || 'Project';
             statProjectName.title = data.project?.name || '';
