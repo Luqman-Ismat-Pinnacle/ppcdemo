@@ -857,7 +857,7 @@ export default function DocumentsPage() {
       pushLog('info', '[Supabase] Syncing converted hierarchy data...');
 
       // Use existing Workday project ID - no need to create new project
-      const existingProjectId = file.workdayProjectId;
+      const existingProjectId = projectId;
       if (!existingProjectId) {
         throw new Error('No Workday project selected - cannot create hierarchy without project');
       }
@@ -1164,7 +1164,17 @@ export default function DocumentsPage() {
     const file = uploadedFiles.find(f => f.id === fileId);
     if (!file) return;
 
-    const projectId = file.workdayProjectId;
+    const projectId = (() => {
+      if (file.workdayProjectId) return file.workdayProjectId;
+      const docs = data?.projectDocuments || [];
+      const match = docs.find((d: any) => {
+        const byId = (d.id || d.documentId) === file.id;
+        const byPath = file.storagePath && (d.storagePath === file.storagePath || d.storage_path === file.storagePath);
+        const byName = (d.fileName || d.file_name || d.name) === file.fileName;
+        return byId || byPath || byName;
+      });
+      return match ? (match.projectId || match.project_id || '') : '';
+    })();
 
     // 1. Delete the file from Azure Blob Storage
     if (file.storagePath) {
@@ -1223,8 +1233,8 @@ export default function DocumentsPage() {
           addLog('warning', `[Database] Dependencies cleanup: ${e.message}`);
         }
 
-        // Delete tasks, units, phases (order matters for FKs)
-        for (const key of ['tasks', 'units', 'phases']) {
+        // Delete logs + tasks + units + phases (order matters for FKs)
+        for (const key of ['projectLog', 'tasks', 'units', 'phases']) {
           try {
             const res = await fetch('/api/data/sync', {
               method: 'POST',
@@ -1264,7 +1274,7 @@ export default function DocumentsPage() {
     setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
     await refreshData();
     addLog('success', '[Complete] File and associated data deleted');
-  }, [uploadedFiles, addLog, refreshData, filteredData]);
+  }, [uploadedFiles, addLog, refreshData, filteredData, data]);
 
   const handleDownloadFile = useCallback(async (file: UploadedFile) => {
     if (!file.storagePath) {

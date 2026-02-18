@@ -70,7 +70,7 @@ const nullLike = new Set(['', '-', 'null', 'undefined', 'n/a']);
 
 function cleanRecord(record: Record<string, unknown>, tableName: string): Record<string, unknown> {
   const cleaned: Record<string, unknown> = {};
-  cleaned.id = record.id || '';
+  cleaned.id = record.id ?? '';
 
   for (const [key, value] of Object.entries(record)) {
     if (key === 'id') continue;

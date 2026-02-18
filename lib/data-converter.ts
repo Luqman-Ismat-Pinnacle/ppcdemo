@@ -704,6 +704,48 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
   });
 
+  // If parser classification yields no unit rows, keep hierarchy intact by creating
+  // a synthetic unit so phases/tasks still persist under the selected project.
+  if (units.length === 0) {
+    const syntheticUnitId = `UNT-${(projectIdOverride || 'AUTO').replace(/[^A-Za-z0-9]/g, '').slice(0, 24) || 'AUTO'}-001`;
+    const syntheticUnit = {
+      id: syntheticUnitId,
+      unitId: syntheticUnitId,
+      name: 'Project Unit',
+      description: 'Auto-generated from MPP import',
+      projectId: projectIdOverride || '',
+      project_id: projectIdOverride || '',
+      employeeId: null,
+      active: true,
+      baselineStartDate: null,
+      baselineEndDate: null,
+      actualStartDate: null,
+      actualEndDate: null,
+      percentComplete: 0,
+      comments: '',
+      baselineHours: 0,
+      actualHours: 0,
+      baselineCost: 0,
+      actualCost: 0,
+      predecessorId: null,
+      predecessorRelationship: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    units.push(syntheticUnit);
+    unitById.set(String(syntheticUnit.id), syntheticUnit);
+    const key = normalizeName(syntheticUnit.name);
+    if (!unitsByName.has(key)) unitsByName.set(key, []);
+    unitsByName.get(key)!.push(syntheticUnit);
+
+    phases.forEach((phase: any) => {
+      if (!phase.unitId && !phase.unit_id) {
+        phase.unitId = syntheticUnitId;
+        phase.unit_id = syntheticUnitId;
+      }
+    });
+  }
+
   tasks.forEach((task: any) => {
     const phaseAncestorId = findAncestorByType(task.parent_id ?? null, ['phase']);
     const unitAncestorId = findAncestorByType(task.parent_id ?? null, ['unit']);
