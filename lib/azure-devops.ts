@@ -133,13 +133,19 @@ export async function createOrUpdateWorkItem(
     const endpoint = `/_apis/wit/workitems/${workItemId}?api-version=7.1`;
     return adoRequest(config, endpoint, {
       method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json-patch+json',
+      },
       body: JSON.stringify(patchDocument)
     });
   } else {
     // Create new work item
-    const endpoint = `/_apis/wit/workitems/${workItemType}?api-version=7.1`;
+    const endpoint = `/_apis/wit/workitems/$${workItemType}?api-version=7.1`;
     return adoRequest(config, endpoint, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json-patch+json',
+      },
       body: JSON.stringify(patchDocument)
     });
   }
@@ -186,12 +192,14 @@ export async function getIterations(
  */
 export async function getSprintWorkItems(
   config: AzureDevOpsConfig,
-  iterationId: string
+  iterationPath: string
 ): Promise<any> {
   // Query work items assigned to this iteration
-  const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType] 
+  const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType],
+                [System.IterationPath], [System.AssignedTo], [System.Tags],
+                [Microsoft.VSTS.Scheduling.OriginalEstimate], [Microsoft.VSTS.Scheduling.CompletedWork], [Microsoft.VSTS.Scheduling.RemainingWork]
                 FROM WorkItems 
-                WHERE [System.IterationPath] = @currentIteration('${config.team}')
+                WHERE [System.IterationPath] = '${iterationPath.replace(/'/g, "''")}'
                 ORDER BY [System.ChangedDate] DESC`;
   
   return queryWorkItems(config, wiql);

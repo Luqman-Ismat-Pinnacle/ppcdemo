@@ -13,7 +13,7 @@
  * @module app/project-management/qc-log/page
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import PageLoader from '@/components/ui/PageLoader';
@@ -25,12 +25,56 @@ import {
   sortByState,
 } from '@/lib/sort-utils';
 import type { EChartsOption } from 'echarts';
+import {
+  fetchAzureQcWorkItems,
+  getAdoAssignedName,
+  mapAdoStateToLocal,
+  syncAzureWorkItem,
+  type AzureWorkItemDto,
+} from '@/lib/azure-devops-client';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 type ViewType = 'dashboard' | 'orders' | 'nonconformance' | 'capa';
+
+function mapAdoWorkItemToQcTask(item: AzureWorkItemDto): QCTask {
+  const fields = item.fields || {};
+  const title = String(fields['System.Title'] || `QC Work Item ${item.id}`);
+  const state = String(fields['System.State'] || 'New');
+  const tags = String(fields['System.Tags'] || '');
+  const assigned = getAdoAssignedName(fields['System.AssignedTo']);
+  const completedWork = Number(fields['Microsoft.VSTS.Scheduling.CompletedWork'] || 0);
+  const originalEstimate = Number(fields['Microsoft.VSTS.Scheduling.OriginalEstimate'] || 0);
+  const varianceHours = Math.max(0, completedWork - originalEstimate);
+
+  return {
+    id: `ado-qc-${item.id}`,
+    qcTaskId: `QCT-ADO-${item.id}`,
+    parentTaskId: `ADO-${item.id}`,
+    qcResourceId: assigned,
+    employeeId: assigned,
+    qcHours: completedWork,
+    qcScore: Math.max(0, Math.min(100, Math.round(100 - varianceHours * 5))),
+    qcCount: 1,
+    qcUOM: 'Task',
+    qcType: tags.toLowerCase().includes('review') ? 'Peer Review' : 'Quality Review',
+    qcStatus: mapAdoStateToLocal(state, tags) === 'Closed' ? 'Complete' : 'In Progress',
+    qcCriticalErrors: tags.toLowerCase().includes('critical') ? 1 : 0,
+    qcNonCriticalErrors: tags.toLowerCase().includes('minor') ? 1 : 0,
+    qcComments: title,
+    qcStartDate: new Date().toISOString(),
+    qcEndDate: mapAdoStateToLocal(state, tags) === 'Closed' ? new Date().toISOString() : null,
+    baselineStartDate: null,
+    baselineEndDate: null,
+    actualStartDate: null,
+    actualEndDate: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    adoWorkItemId: item.id,
+  } as QCTask;
+}
 
 // ============================================================================
 // SECTION CARD COMPONENT
@@ -103,14 +147,14 @@ function QualityCommandCenter({ stats }: { stats: any }) {
       {/* Status Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
         {[
-          { label: 'Total Orders', value: stats.totalOrders, color: '#3B82F6' },
+          { label: 'Total Orders', value: stats.totalOrders, color: 'var(--pinnacle-lime)' },
           { label: 'Completed', value: stats.completed, color: '#10B981' },
           { label: 'In Progress', value: stats.inProgress, color: '#F59E0B' },
           { label: 'Pending', value: stats.pending, color: '#6B7280' },
           { label: 'Critical Errors', value: stats.criticalNC, color: '#EF4444' },
           { label: 'Non-Critical', value: stats.minorNC, color: '#F59E0B' },
-          { label: 'Avg Score', value: stats.avgScore.toFixed(1), color: '#40E0D0' },
-          { label: 'Total Hours', value: stats.totalHours.toFixed(0), color: '#06B6D4' },
+          { label: 'Avg Score', value: stats.avgScore.toFixed(1), color: 'var(--pinnacle-teal)' },
+          { label: 'Total Hours', value: stats.totalHours.toFixed(0), color: 'var(--pinnacle-lime)' },
         ].map((item, idx) => (
           <div key={idx} style={{
             background: `${item.color}10`,
@@ -149,7 +193,7 @@ function QualityTrendChart({ qcTasks }: { qcTasks: any[] }) {
     const scoreRanges = [
       { range: '0-59', count: 0, color: '#EF4444' },
       { range: '60-79', count: 0, color: '#F59E0B' },
-      { range: '80-89', count: 0, color: '#3B82F6' },
+      { range: '80-89', count: 0, color: 'var(--pinnacle-lime)' },
       { range: '90-100', count: 0, color: '#10B981' },
     ];
     
@@ -227,7 +271,7 @@ function DefectDistributionChart({ qcTasks }: { qcTasks: any[] }) {
         data: [
           { value: critical || 1, name: 'Critical', itemStyle: { color: '#EF4444' } },
           { value: major || 2, name: 'Major', itemStyle: { color: '#F59E0B' } },
-          { value: minor || 3, name: 'Minor', itemStyle: { color: '#3B82F6' } },
+          { value: minor || 3, name: 'Minor', itemStyle: { color: 'var(--pinnacle-lime)' } },
           { value: observation || 1, name: 'Observation', itemStyle: { color: '#6B7280' } },
         ]
       }]
@@ -309,7 +353,11 @@ export default function QCLogPage() {
   const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [qcSort, setQcSort] = useState<SortState | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+  const [adoConnected, setAdoConnected] = useState(false);
+  const [adoLoading, setAdoLoading] = useState(false);
+  const [adoError, setAdoError] = useState<string | null>(null);
+  const [lastAdoSync, setLastAdoSync] = useState<string | null>(null);
+  const [adoQcTasks, setAdoQcTasks] = useState<QCTask[]>([]);
 
   // Get task name helper
   const getTaskName = useCallback((taskId: string): string => {
@@ -317,16 +365,44 @@ export default function QCLogPage() {
     return task?.taskName || taskId;
   }, [data.tasks]);
 
+  const refreshAdoQc = useCallback(async (signal?: AbortSignal) => {
+    setAdoLoading(true);
+    setAdoError(null);
+    try {
+      const workItems = await fetchAzureQcWorkItems(signal);
+      setAdoQcTasks(workItems.map(mapAdoWorkItemToQcTask));
+      setAdoConnected(true);
+      setLastAdoSync(new Date().toISOString());
+    } catch (error) {
+      setAdoConnected(false);
+      setAdoQcTasks([]);
+      setAdoError(error instanceof Error ? error.message : 'Unable to reach Azure DevOps');
+    } finally {
+      setAdoLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    refreshAdoQc(controller.signal);
+    return () => controller.abort();
+  }, [refreshAdoQc]);
+
+  const qcTasksSource = useMemo(() => {
+    if (adoConnected && adoQcTasks.length > 0) return adoQcTasks;
+    return filteredData.qctasks || [];
+  }, [adoConnected, adoQcTasks, filteredData.qctasks]);
+
   // Filter and sort QC tasks
   const filteredQCTasks = useMemo(() => {
-    return (filteredData.qctasks || []).filter((qc) => {
+    return qcTasksSource.filter((qc) => {
       if (statusFilter !== 'all' && qc.qcStatus !== statusFilter) return false;
       const taskName = getTaskName(qc.parentTaskId);
       if (searchTerm && !qc.qcTaskId.toLowerCase().includes(searchTerm.toLowerCase()) && 
           !taskName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     });
-  }, [filteredData.qctasks, statusFilter, searchTerm, getTaskName]);
+  }, [qcTasksSource, statusFilter, searchTerm, getTaskName]);
 
   const sortedQCTasks = useMemo(() => {
     return sortByState(filteredQCTasks, qcSort, (qc, key) => {
@@ -343,8 +419,8 @@ export default function QCLogPage() {
   }, [filteredQCTasks, qcSort, getTaskName]);
 
   const statuses = useMemo(() => {
-    return [...new Set((data.qctasks || []).map((qc) => qc.qcStatus))];
-  }, [data.qctasks]);
+    return [...new Set(qcTasksSource.map((qc) => qc.qcStatus))];
+  }, [qcTasksSource]);
 
   // Calculate comprehensive stats from real data
   const stats = useMemo(() => {
@@ -382,7 +458,7 @@ export default function QCLogPage() {
     switch (severity) {
       case 'Critical': return '#EF4444';
       case 'Major': return '#F59E0B';
-      case 'Minor': return '#3B82F6';
+      case 'Minor': return 'var(--pinnacle-lime)';
       default: return '#6B7280';
     }
   };
@@ -393,7 +469,7 @@ export default function QCLogPage() {
     setEditValue(String(currentValue ?? ''));
   };
 
-  const saveEdit = (qcTask: QCTask) => {
+  const saveEdit = async (qcTask: QCTask) => {
     if (!editingCell) return;
     const { field } = editingCell;
     const oldValue = String((qcTask as any)[field] ?? '');
@@ -411,6 +487,19 @@ export default function QCLogPage() {
     });
     updateData({ qctasks: updatedQCTasks });
     setEditingCell(null);
+
+    const adoWorkItemId = (qcTask as any).adoWorkItemId;
+    if (adoConnected && adoWorkItemId) {
+      await syncAzureWorkItem({
+        workItem: { ...qcTask, adoWorkItemId },
+        workItemType: 'Task',
+        changes: {
+          [field]: newValue,
+          comments: field === 'qcComments' ? newValue : undefined,
+          status: field === 'qcStatus' ? newValue : undefined,
+        },
+      });
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent, qcTask: QCTask) => {
@@ -446,25 +535,65 @@ export default function QCLogPage() {
             </button>
           ))}
         </div>
-        <a
-          href={azureQcUrl}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            padding: '0.45rem 0.85rem',
-            borderRadius: '8px',
-            border: '1px solid rgba(59,130,246,0.45)',
-            background: 'rgba(59,130,246,0.12)',
-            color: '#60A5FA',
-            fontSize: '0.75rem',
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '6px 10px',
+            borderRadius: '999px',
+            border: `1px solid ${adoConnected ? 'rgba(16,185,129,0.45)' : 'rgba(245,158,11,0.45)'}`,
+            background: adoConnected ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+            color: adoConnected ? 'var(--pinnacle-lime)' : '#F59E0B',
+            fontSize: '0.72rem',
             fontWeight: 700,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Open Azure QC
-        </a>
+          }}>
+            <span>{adoConnected ? 'Azure Connected' : 'Local Fallback'}</span>
+            {adoLoading && <span style={{ opacity: 0.8 }}>Syncing...</span>}
+          </div>
+          <button
+            type="button"
+            onClick={() => refreshAdoQc()}
+            disabled={adoLoading}
+            style={{
+              padding: '0.45rem 0.85rem',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--bg-tertiary)',
+              color: 'var(--text-secondary)',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: adoLoading ? 'not-allowed' : 'pointer',
+              opacity: adoLoading ? 0.7 : 1,
+            }}
+          >
+            Refresh Azure
+          </button>
+          <a
+            href={azureQcUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              padding: '0.45rem 0.85rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(16,185,129,0.45)',
+              background: 'rgba(16,185,129,0.12)',
+              color: 'var(--pinnacle-lime)',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Open Azure QC
+          </a>
+        </div>
       </div>
+      {(adoError || lastAdoSync) && (
+        <div style={{ marginTop: '0.2rem', fontSize: '0.72rem', color: adoError ? '#EF4444' : 'var(--text-muted)' }}>
+          {adoError ? `Azure sync warning: ${adoError}` : `Last Azure sync: ${new Date(lastAdoSync || '').toLocaleString()}`}
+        </div>
+      )}
 
       {/* Command Center */}
       <QualityCommandCenter stats={stats} />
@@ -547,7 +676,7 @@ export default function QCLogPage() {
               {statuses.map((status) => (<option key={status} value={status}>{status}</option>))}
             </select>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
-              {filteredQCTasks.length} of {(data.qctasks || []).length} orders
+              {filteredQCTasks.length} of {qcTasksSource.length} orders
             </span>
           </div>
 
