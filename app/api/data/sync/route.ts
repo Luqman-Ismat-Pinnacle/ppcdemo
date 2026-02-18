@@ -36,6 +36,7 @@ interface SyncRequestBody {
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+let parserSchemaEnsured = false;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -95,29 +96,18 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
 
   // tasks table: strip columns that don't exist in the DB schema
   if (tableName === 'tasks') {
-    // Normalize converter aliases to actual tasks table columns.
-    if (formatted.parent_task_id == null && formatted.parent_id != null) {
-      formatted.parent_task_id = formatted.parent_id;
+    // Keep parser payload fields and normalize aliases where needed.
+    delete formatted.employee_id;
+    delete formatted.predecessor_name;
+    if (formatted.description == null && formatted.task_description != null) {
+      formatted.description = formatted.task_description;
     }
     if (formatted.projected_remaining_hours == null && formatted.projected_hours != null) {
       formatted.projected_remaining_hours = formatted.projected_hours;
     }
-    if (formatted.description == null && formatted.task_description != null) {
-      formatted.description = formatted.task_description;
+    if (formatted.parent_task_id == null && formatted.parent_id != null) {
+      formatted.parent_task_id = formatted.parent_id;
     }
-
-    delete formatted.employee_id;
-    delete formatted.predecessors;       // array of objects — lives in task_dependencies table
-    delete formatted.successors;         // array of objects — not a tasks table column
-    delete formatted.predecessor_name;   // not a DB column
-    delete formatted.task_name;          // tasks table uses 'name' not 'task_name'
-    delete formatted.task_description;   // tasks table uses 'description' or 'notes'
-    delete formatted.parent_id;          // mapped above to parent_task_id
-    delete formatted.projected_hours;    // mapped above to projected_remaining_hours
-    delete formatted.folder;             // parser helper only
-    delete formatted.unit_id;            // tasks table has no unit FK column
-    delete formatted.total_slack;        // not in schema (use total_float if needed)
-    delete formatted.is_summary;         // parser helper only
   }
 
   // task_dependencies: strip columns not in schema
@@ -131,41 +121,17 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
     if (formatted.is_active == null && formatted.active != null) {
       formatted.is_active = formatted.active;
     }
-
-    delete formatted.parent_id;
-    delete formatted.is_summary;
-    delete formatted.total_slack;
-    delete formatted.successors;
-    delete formatted.predecessors;
-    delete formatted.projected_hours;
-    delete formatted.task_name;
-    delete formatted.task_description;
-    delete formatted.active;
-    delete formatted.end_date;
-    delete formatted.is_critical;
-    delete formatted.folder;
   }
 
   if (tableName === 'phases') {
     if (formatted.description == null && formatted.comments != null) {
       formatted.description = formatted.comments;
     }
-
-    delete formatted.parent_id;
-    delete formatted.is_summary;
-    delete formatted.total_slack;
-    delete formatted.successors;
-    delete formatted.predecessors;
-    delete formatted.projected_hours;
-    delete formatted.comments;
-    delete formatted.unit_id;
-    delete formatted.folder;
-    delete formatted.is_critical;
   }
 
-  // Strip any remaining array/object values that can't be stored in flat columns
+  // Strip nested objects not represented as JSON columns.
   for (const [key, value] of Object.entries(formatted)) {
-    if (Array.isArray(value)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
       delete formatted[key];
     }
   }
@@ -311,6 +277,73 @@ async function pgUpdate(tableName: string, id: string, updates: Record<string, u
   }
 }
 
+async function ensureMppParserSchemaColumns(): Promise<void> {
+  if (parserSchemaEnsured) return;
+
+  // Units parser payload columns
+  await pgQuery(`
+    ALTER TABLE units
+    ADD COLUMN IF NOT EXISTS parent_id VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS hierarchy_type VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS outline_level INTEGER,
+    ADD COLUMN IF NOT EXISTS is_summary BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS total_slack INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS predecessors JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS successors JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS projected_hours NUMERIC(10, 2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS task_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS task_description TEXT,
+    ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS end_date DATE,
+    ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS folder TEXT
+  `);
+
+  // Phases parser payload columns
+  await pgQuery(`
+    ALTER TABLE phases
+    ADD COLUMN IF NOT EXISTS unit_id VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS parent_id VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS hierarchy_type VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS outline_level INTEGER,
+    ADD COLUMN IF NOT EXISTS is_summary BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS total_slack INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS predecessors JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS successors JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS projected_hours NUMERIC(10, 2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS comments TEXT,
+    ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS folder TEXT
+  `);
+
+  // Tasks parser payload columns
+  await pgQuery(`
+    ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS unit_id VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS parent_id VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS hierarchy_type VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS outline_level INTEGER,
+    ADD COLUMN IF NOT EXISTS is_summary BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS total_slack INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS predecessors JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS successors JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS projected_hours NUMERIC(10, 2) DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS task_name VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS task_description TEXT,
+    ADD COLUMN IF NOT EXISTS folder TEXT
+  `);
+
+  // Indexes for hierarchy lookups and parser level rendering
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_units_outline_level ON units(outline_level)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_phases_outline_level ON phases(outline_level)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_tasks_outline_level ON tasks(outline_level)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_phases_unit_id ON phases(unit_id)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_tasks_unit_id ON tasks(unit_id)`);
+
+  parserSchemaEnsured = true;
+}
+
 // ============================================================================
 // SUPABASE FALLBACK
 // ============================================================================
@@ -386,6 +419,10 @@ export async function POST(req: NextRequest) {
     const tableName = DATA_KEY_TO_TABLE[dataKey];
     if (!tableName) {
       return NextResponse.json({ success: false, error: `Unknown data key: ${dataKey}` }, { status: 400 });
+    }
+
+    if (usePostgres && (tableName === 'units' || tableName === 'phases' || tableName === 'tasks')) {
+      await ensureMppParserSchemaColumns();
     }
 
     // ---- Operation: deleteByProjectId ----
