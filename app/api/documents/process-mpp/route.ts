@@ -1,261 +1,397 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { convertProjectPlanJSON } from '@/lib/data-converter';
 import { toSupabaseFormat } from '@/lib/supabase';
+import { downloadFile } from '@/lib/azure-storage';
+import { withClient } from '@/lib/postgres';
 
-const PYTHON_SERVICE_URL = process.env.MPP_PARSER_URL || 'https://ppcdemo-production.up.railway.app';
+type ProcessLogType = 'info' | 'success' | 'warning';
 
-export async function POST(req: NextRequest) {
+interface ProcessLog {
+  type: ProcessLogType;
+  message: string;
+}
+
+const DEFAULT_MPP_PARSER_URL = 'https://ppcdemo-production.up.railway.app';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readString(formData: FormData, field: string): string {
+  const value = formData.get(field);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function requireString(formData: FormData, field: string): string {
+  const value = readString(formData, field);
+  if (!value) throw new Error(`Missing required field: ${field}`);
+  return value;
+}
+
+async function callParser(parserUrl: string, fileName: string, fileBuffer: Buffer): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
   try {
-    const formData = await req.formData();
-    const headers = new Headers();
-    // Forward headers if needed, but fetch usually handles this
-    
-    // Check if we have a file directly or a document ID
-    // If document ID, we need to read from storage (or simulate)
-    // If file, we forward it to Python
-    
-    // For now, assume the frontend sends 'documentId' and 'projectId'
-    // but the python service needs the actual file content.
-    // If we only have documentId, we need to fetch it from Supabase Storage first.
-    
-    // HOWEVER, the previous implementation likely sent the file directly from the browser
-    // or read it from the local upload folder if running locally.
-    
-    // Given the context: "app/api/documents: No such file or directory", this entire route was missing.
-    // Let's implement a robust version.
-    
-    const documentId = formData.get('documentId') as string;
-    const projectId = formData.get('projectId') as string;
-    const portfolioId = formData.get('portfolioId') as string;
-    const customerId = formData.get('customerId') as string;
-    const siteId = formData.get('siteId') as string;
-    
-    if (!documentId || !projectId) {
-      return NextResponse.json({ success: false, error: 'Missing documentId or projectId' }, { status: 400 });
-    }
+    const parserFormData = new FormData();
+    parserFormData.append('file', new Blob([fileBuffer as any], { type: 'application/octet-stream' }), fileName);
 
-    if (!portfolioId || !customerId || !siteId) {
-      return NextResponse.json({ success: false, error: 'Missing portfolioId, customerId, or siteId' }, { status: 400 });
-    }
-
-    // 1. Get the document metadata from Supabase to find the path
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    const { data: doc, error: docError } = await supabase
-      .from('project_documents')
-      .select('*')
-      .eq('id', documentId)
-      .single();
-
-    if (docError || !doc) {
-      return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
-    }
-    
-    // 2. Download the file from Supabase Storage
-    const { data: fileData, error: downloadError } = await supabase
-      .storage
-      .from('documents')
-      .download(doc.file_path); // Assuming file_path stores the storage path
-      
-    if (downloadError) {
-       // Fallback for local dev if file is in public/uploads?
-       // But assuming Supabase storage
-       console.error('Download error:', downloadError);
-       return NextResponse.json({ success: false, error: 'Failed to download file content' }, { status: 500 });
-    }
-
-    // 3. Send file to Python service
-    const pythonFormData = new FormData();
-    pythonFormData.append('file', fileData, doc.file_name);
-    
-    const pythonRes = await fetch(`${PYTHON_SERVICE_URL}/parse`, {
+    const response = await fetch(`${parserUrl.replace(/\/$/, '')}/parse`, {
       method: 'POST',
-      body: pythonFormData,
-    });
-    
-    if (!pythonRes.ok) {
-        const errText = await pythonRes.text();
-        return NextResponse.json({ success: false, error: `Parser failed: ${errText}` }, { status: 500 });
-    }
-    
-    const mppData = await pythonRes.json();
-    if (!mppData.success) {
-        return NextResponse.json({ success: false, error: mppData.error }, { status: 500 });
-    }
-    
-    console.log('MPP Parsed successfully, converting...');
-    
-    // 4. Convert Data to Schema Format with hierarchy context
-    // We pass projectId and hierarchy IDs to link everything correctly
-    const convertedData = convertProjectPlanJSON(mppData, projectId);
-    
-    // Apply hierarchy context to all imported items
-    if (convertedData.phases) {
-      convertedData.phases.forEach((phase: any) => {
-        phase.projectId = projectId;
-        phase.portfolioId = portfolioId;
-        phase.customerId = customerId;
-        phase.siteId = siteId;
-      });
-    }
-    
-    if (convertedData.units) {
-      convertedData.units.forEach((unit: any) => {
-        unit.projectId = projectId;
-        unit.portfolioId = portfolioId;
-        unit.customerId = customerId;
-        unit.siteId = siteId;
-      });
-    }
-    
-    if (convertedData.tasks) {
-      convertedData.tasks.forEach((task: any) => {
-        task.projectId = projectId;
-        task.portfolioId = portfolioId;
-        task.customerId = customerId;
-        task.siteId = siteId;
-      });
-    }
-    
-    // 5. Save using Data Sync API (reusing logic)
-    // We can call the sync logic directly or via internal API
-    // Direct database calls are better for reliability here
-    
-    // Save Units (convert to snake_case)
-    if (convertedData.units && convertedData.units.length > 0) {
-        const unitsForDb = convertedData.units.map((u: Record<string, unknown>) => toSupabaseFormat(u));
-        const { error } = await supabase.from('units').upsert(unitsForDb, { onConflict: 'id' });
-        if (error) console.error('Error saving units:', error);
-    }
-    
-    // Save Phases (convert to snake_case)
-    if (convertedData.phases && convertedData.phases.length > 0) {
-        const phasesForDb = convertedData.phases.map((p: Record<string, unknown>) => toSupabaseFormat(p));
-        const { error } = await supabase.from('phases').upsert(phasesForDb, { onConflict: 'id' });
-        if (error) console.error('Error saving phases:', error);
-    }
-    
-    // Save Tasks (convert to snake_case so remaining_hours etc. are written correctly)
-    const tasksForDb = (convertedData.tasks || []).map((t: Record<string, unknown>) => {
-      const row = toSupabaseFormat(t);
-      delete (row as any).employee_id; // tasks table has assigned_resource_id only
-      return row;
-    });
-    if (tasksForDb.length > 0) {
-        const { error } = await supabase.from('tasks').upsert(tasksForDb, { onConflict: 'id' });
-        if (error) console.error('Error saving tasks:', error);
-    }
-
-    // 6. Match hours entries to MPP tasks/units
-    // Fetch unassigned hours for this project
-    const { data: projectHours } = await supabase
-      .from('hour_entries')
-      .select('*')
-      .eq('project_id', projectId);
-
-    const unassignedHours = (projectHours || []).filter((h: any) => !h.task_id);
-    
-    // Build lookup maps for matching
-    const tasksByName = new Map<string, any>();
-    const unitsByName = new Map<string, any>();
-    
-    // Normalize function for name matching
-    const normalizeName = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/[\s_\-.,;:()]+/g, ' ');
-    
-    // Index tasks by (phase_name, task_name)
-    (convertedData.tasks || []).forEach((task: any) => {
-      const phaseName = task.phaseName || '';
-      const taskName = task.name || task.taskName || '';
-      const key = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
-      if (!tasksByName.has(key)) tasksByName.set(key, task);
-      // Also index by task name alone for looser matching
-      const nameOnlyKey = normalizeName(taskName);
-      if (nameOnlyKey && !tasksByName.has(nameOnlyKey)) tasksByName.set(nameOnlyKey, task);
-    });
-    
-    // Index units by name
-    (convertedData.units || []).forEach((unit: any) => {
-      const unitName = unit.name || '';
-      const key = normalizeName(unitName);
-      if (key && !unitsByName.has(key)) unitsByName.set(key, unit);
+      body: parserFormData,
+      signal: controller.signal,
     });
 
-    // Match hours entries
-    let tasksMatched = 0;
-    let unitsMatched = 0;
-    const hoursToUpdate: { id: string; task_id: string }[] = [];
-    
-    unassignedHours.forEach((h: any) => {
-      const workdayPhase = normalizeName(h.workday_phase || '');
-      const workdayTask = normalizeName(h.workday_task || '');
-      
-      // Try task match first (phase + task name)
-      const phaseTaskKey = `${workdayPhase}|${workdayTask}`;
-      let matchedTask = tasksByName.get(phaseTaskKey);
-      
-      // If no match, try task name only
-      if (!matchedTask && workdayTask) {
-        matchedTask = tasksByName.get(workdayTask);
-      }
-      
-      if (matchedTask) {
-        hoursToUpdate.push({ id: h.id, task_id: matchedTask.id || matchedTask.taskId });
-        tasksMatched++;
-        return;
-      }
-      
-      // Try unit match (workday_phase often maps to unit name)
-      if (workdayPhase) {
-        const matchedUnit = unitsByName.get(workdayPhase);
-        if (matchedUnit) {
-          // For units, we still assign to task_id field but note in logs
-          // Alternatively, if there's a unit_id field, use that
-          hoursToUpdate.push({ id: h.id, task_id: matchedUnit.id || matchedUnit.unitId });
-          unitsMatched++;
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Parser failed: ${text || `HTTP ${response.status}`}`);
+    }
+
+    const payload = await response.json();
+    if (!isRecord(payload) || payload.success !== true) {
+      throw new Error('Parser returned invalid payload');
+    }
+    return payload;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+const JSONB_COLUMNS = new Set(['predecessors', 'successors']);
+
+function serializeJsonb(value: unknown): string {
+  if (value === null || value === undefined) return '[]';
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return JSON.stringify(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return '[]';
+    }
+  }
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === 'object') return JSON.stringify(value);
+  return '[]';
+}
+
+async function getTableColumns(client: any, tableName: 'units' | 'phases' | 'tasks' | 'task_dependencies') {
+  const result = await client.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  return new Set(result.rows.map((r: any) => String(r.column_name)));
+}
+
+function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  Object.entries(row).forEach(([key, value]) => {
+    if (value === undefined) return;
+    cleaned[key] = value;
+  });
+  return cleaned;
+}
+
+function ensureRowId(row: Record<string, unknown>, tableName: string): void {
+  if (row.id !== undefined && row.id !== null && String(row.id).trim() !== '') return;
+  const fallback =
+    tableName === 'tasks' ? row.task_id ?? (row as any).taskId
+    : tableName === 'units' ? row.unit_id ?? (row as any).unitId
+    : tableName === 'phases' ? row.phase_id ?? (row as any).phaseId
+    : null;
+  if (fallback != null) row.id = String(fallback);
+}
+
+async function upsertRows(
+  client: any,
+  tableName: 'units' | 'phases' | 'tasks' | 'task_dependencies',
+  rows: Record<string, unknown>[]
+): Promise<number> {
+  if (!rows.length) return 0;
+
+  const tableColumns = await getTableColumns(client, tableName);
+  const formattedRows = rows
+    .map((row) => sanitizeRow(toSupabaseFormat(row) as Record<string, unknown>))
+    .map((row) => {
+      ensureRowId(row, tableName);
+      const filtered: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (tableColumns.has(key)) {
+          filtered[key] = value;
         }
       }
-    });
-    
-    // Update matched hours
-    if (hoursToUpdate.length > 0) {
-      for (const update of hoursToUpdate) {
-        await supabase.from('hour_entries').update({ task_id: update.task_id }).eq('id', update.id);
-      }
-    }
-    
-    // Build result logs
-    const logs = [
-      { type: 'info', message: `Parsed ${mppData.summary?.total_tasks || mppData.tasks?.length || 0} items from MPP` },
-      { type: 'success', message: `Imported: ${convertedData.units?.length || 0} units, ${convertedData.phases?.length || 0} phases, ${convertedData.tasks?.length || 0} tasks` },
-    ];
-    
-    if (unassignedHours.length > 0) {
-      logs.push({ type: 'info', message: `Found ${unassignedHours.length} unassigned hours entries for this project` });
-      if (tasksMatched > 0) {
-        logs.push({ type: 'success', message: `Matched ${tasksMatched} hours entries to tasks` });
-      }
-      if (unitsMatched > 0) {
-        logs.push({ type: 'success', message: `Matched ${unitsMatched} hours entries to units` });
-      }
-      const stillUnmatched = unassignedHours.length - tasksMatched - unitsMatched;
-      if (stillUnmatched > 0) {
-        logs.push({ type: 'warning', message: `${stillUnmatched} hours entries could not be matched` });
-      }
-    }
-    
-    return NextResponse.json({ 
-        success: true, 
-        message: 'Imported successfully',
-        tasks: convertedData.tasks || [],
-        logs
+      return filtered;
+    })
+    .filter((row) => row.id !== undefined && row.id !== null && String(row.id).trim() !== '');
+
+  if (!formattedRows.length) return 0;
+
+  const columns = Array.from(
+    formattedRows.reduce((set, row) => {
+      Object.keys(row).forEach((k) => set.add(k));
+      return set;
+    }, new Set<string>())
+  );
+
+  if (!columns.includes('id')) columns.unshift('id');
+
+  const BATCH_SIZE = 200;
+  let upserted = 0;
+
+  for (let offset = 0; offset < formattedRows.length; offset += BATCH_SIZE) {
+    const batch = formattedRows.slice(offset, offset + BATCH_SIZE);
+    const values: unknown[] = [];
+    const tuples: string[] = [];
+
+    batch.forEach((row, rowIdx) => {
+      const placeholders: string[] = [];
+      columns.forEach((col, colIdx) => {
+        const paramNum = rowIdx * columns.length + colIdx + 1;
+        const raw = row[col] ?? null;
+        if (JSONB_COLUMNS.has(col)) {
+          values.push(raw === null ? null : serializeJsonb(raw));
+          placeholders.push(`$${paramNum}::jsonb`);
+        } else {
+          values.push(raw);
+          placeholders.push(`$${paramNum}`);
+        }
+      });
+      tuples.push(`(${placeholders.join(', ')})`);
     });
 
-  } catch (error: any) {
-    console.error('Process error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const updateSet = columns
+      .filter((c) => c !== 'id')
+      .map((c) => `${c} = EXCLUDED.${c}`)
+      .join(', ');
+
+    const sql = updateSet
+      ? `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES ${tuples.join(', ')} ON CONFLICT (id) DO UPDATE SET ${updateSet}`
+      : `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES ${tuples.join(', ')} ON CONFLICT (id) DO NOTHING`;
+
+    await client.query(sql, values);
+    upserted += batch.length;
+  }
+
+  return upserted;
+}
+
+function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const taskIds = new Set(tasks.map((t) => String(t.id || t.taskId || '').trim()).filter(Boolean));
+
+  const add = (pred: string, succ: string, rel: string, lag: number) => {
+    if (!pred || !succ || pred === succ) return;
+    if (!taskIds.has(pred) || !taskIds.has(succ)) return;
+    const relationship = ['FS', 'SS', 'FF', 'SF'].includes((rel || '').toUpperCase()) ? rel.toUpperCase() : 'FS';
+    const lagDays = Number(lag) || 0;
+    const key = `${pred}|${succ}|${relationship}|${lagDays}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+      id: `dep-${pred}-${succ}-${relationship}-${lagDays}`,
+      predecessorTaskId: pred,
+      successorTaskId: succ,
+      relationshipType: relationship,
+      lagDays,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  tasks.forEach((task: any) => {
+    const succId = String(task.id || task.taskId || '').trim();
+    const preds = Array.isArray(task.predecessors) ? task.predecessors : [];
+    preds.forEach((p: any) => {
+      add(
+        String(p.predecessorTaskId || p.predecessor_task_id || '').trim(),
+        succId,
+        String(p.relationship || p.relationshipType || p.relationship_type || 'FS'),
+        Number(p.lagDays || p.lag_days || p.lag || 0)
+      );
+    });
+
+    const succs = Array.isArray(task.successors) ? task.successors : [];
+    succs.forEach((s: any) => {
+      add(
+        succId,
+        String(s.successorTaskId || s.successor_task_id || '').trim(),
+        String(s.relationship || s.relationshipType || s.relationship_type || 'FS'),
+        Number(s.lagDays || s.lag_days || s.lag || 0)
+      );
+    });
+  });
+
+  return rows;
+}
+
+export async function POST(req: NextRequest) {
+  const diagnostics: string[] = [];
+  const logDiag = (msg: string) => diagnostics.push(`${new Date().toISOString()} ${msg}`);
+  try {
+    const parserUrl =
+      process.env.MPP_PARSER_URL ||
+      process.env.NEXT_PUBLIC_MPP_PARSER_URL ||
+      DEFAULT_MPP_PARSER_URL;
+
+    const formData = await req.formData();
+    const documentId = requireString(formData, 'documentId');
+    const projectId = requireString(formData, 'projectId');
+    const portfolioId = readString(formData, 'portfolioId');
+    const customerId = readString(formData, 'customerId');
+    const siteId = readString(formData, 'siteId');
+    const storagePathParam = readString(formData, 'storagePath');
+    logDiag(`[Input] documentId=${documentId} projectId=${projectId}`);
+
+    const docResult = await withClient((client) =>
+      client.query('SELECT id, file_name, storage_path FROM project_documents WHERE id = $1 LIMIT 1', [documentId])
+    );
+
+    let doc = docResult?.rows?.[0] as { id: string; file_name: string; storage_path: string } | undefined;
+    if (!doc && storagePathParam) {
+      const byPathResult = await withClient((client) =>
+        client.query('SELECT id, file_name, storage_path FROM project_documents WHERE storage_path = $1 LIMIT 1', [storagePathParam])
+      );
+      doc = byPathResult?.rows?.[0] as { id: string; file_name: string; storage_path: string } | undefined;
+      if (doc) logDiag(`[Document] found by storage_path (id=${doc.id})`);
+    }
+    if (!doc) {
+      return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
+    }
+    logDiag(`[Document] file=${doc.file_name} path=${doc.storage_path}`);
+
+    const { data: fileBuffer, error: downloadError } = await downloadFile(doc.storage_path);
+    if (downloadError || !fileBuffer) {
+      return NextResponse.json({ success: false, error: `Failed to download file: ${downloadError || 'unknown'}` }, { status: 500 });
+    }
+    logDiag(`[Storage] Downloaded file bytes=${(fileBuffer as Buffer).length || 0}`);
+
+    const parsed = await callParser(parserUrl, doc.file_name, fileBuffer as Buffer);
+    logDiag(`[Parser] success=true tasks=${Array.isArray((parsed as any).tasks) ? (parsed as any).tasks.length : 0}`);
+    let converted: Partial<Record<string, unknown>>;
+    try {
+      converted = convertProjectPlanJSON(parsed, projectId);
+    } catch (conversionError) {
+      logDiag(`[Convert] FAILED ${(conversionError as Error)?.message || String(conversionError)}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Conversion failed: ${(conversionError as Error)?.message || String(conversionError)}`,
+          diagnostics,
+          parserSample: Array.isArray((parsed as any).tasks) ? (parsed as any).tasks.slice(0, 3) : [],
+        },
+        { status: 500 }
+      );
+    }
+
+    const units = (converted.units || []) as any[];
+    const phases = (converted.phases || []) as any[];
+    const tasks = (converted.tasks || []) as any[];
+    logDiag(`[Convert] units=${units.length} phases=${phases.length} tasks=${tasks.length}`);
+    if ((Array.isArray((parsed as any).tasks) ? (parsed as any).tasks.length : 0) > 0 && units.length === 0 && phases.length === 0 && tasks.length === 0) {
+      logDiag('[Convert] WARNING parsed tasks exist but conversion produced no rows');
+    }
+
+    const now = new Date().toISOString();
+    units.forEach((row) => {
+      row.projectId = projectId;
+      row.project_id = projectId;
+      if (portfolioId) row.portfolioId = portfolioId;
+      if (customerId) row.customerId = customerId;
+      if (siteId) row.siteId = siteId;
+      row.updatedAt = now;
+      row.createdAt = row.createdAt || now;
+    });
+    phases.forEach((row) => {
+      row.projectId = projectId;
+      row.project_id = projectId;
+      if (portfolioId) row.portfolioId = portfolioId;
+      if (customerId) row.customerId = customerId;
+      if (siteId) row.siteId = siteId;
+      row.updatedAt = now;
+      row.createdAt = row.createdAt || now;
+    });
+    tasks.forEach((row) => {
+      row.projectId = projectId;
+      row.project_id = projectId;
+      row.taskId = row.taskId || row.id || row.task_id;
+      if (portfolioId) row.portfolioId = portfolioId;
+      if (customerId) row.customerId = customerId;
+      if (siteId) row.siteId = siteId;
+      row.updatedAt = now;
+      row.createdAt = row.createdAt || now;
+    });
+
+    const dependencyRows = buildDependencyRows(tasks);
+
+    const summary = await withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        logDiag('[DB] BEGIN transaction');
+        await client.query('UPDATE projects SET has_schedule = true, updated_at = NOW() WHERE id = $1', [projectId]);
+
+        // Full replace per project (atomic)
+        await client.query(
+          `DELETE FROM task_dependencies
+           WHERE successor_task_id IN (SELECT id FROM tasks WHERE project_id = $1)
+              OR predecessor_task_id IN (SELECT id FROM tasks WHERE project_id = $1)`,
+          [projectId]
+        );
+        await client.query('DELETE FROM tasks WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM units WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM phases WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM project_log WHERE project_id = $1', [projectId]);
+
+        const unitsSaved = await upsertRows(client, 'units', units as Record<string, unknown>[]);
+        logDiag(`[DB] units upserted=${unitsSaved}`);
+        const phasesSaved = await upsertRows(client, 'phases', phases as Record<string, unknown>[]);
+        logDiag(`[DB] phases upserted=${phasesSaved}`);
+        const tasksSaved = await upsertRows(client, 'tasks', tasks as Record<string, unknown>[]);
+        logDiag(`[DB] tasks upserted=${tasksSaved}`);
+        const depsSaved = await upsertRows(client, 'task_dependencies', dependencyRows);
+        logDiag(`[DB] dependencies upserted=${depsSaved}`);
+
+        await client.query(
+          "UPDATE project_documents SET is_current_version = false WHERE project_id = $1 AND document_type = 'MPP'",
+          [projectId]
+        );
+        await client.query(
+          'UPDATE project_documents SET project_id = $1, is_current_version = true, updated_at = NOW() WHERE id = $2',
+          [projectId, documentId]
+        );
+
+        await client.query('COMMIT');
+        logDiag('[DB] COMMIT');
+        return { unitsSaved, phasesSaved, tasksSaved, depsSaved };
+      } catch (error) {
+        await client.query('ROLLBACK');
+        logDiag(`[DB] ROLLBACK ${(error as Error)?.message || String(error)}`);
+        throw error;
+      }
+    });
+
+    const totalParsed = Number((parsed as any)?.summary?.total_rows || (parsed as any)?.summary?.total_tasks || (parsed as any)?.tasks?.length || 0);
+    const logs: ProcessLog[] = [
+      { type: 'info', message: `Parsed ${totalParsed} rows from MPP parser` },
+      { type: 'success', message: `Synced ${summary.unitsSaved} units, ${summary.phasesSaved} phases, ${summary.tasksSaved} tasks` },
+      { type: 'success', message: `Synced ${summary.depsSaved} task dependencies` },
+      { type: 'success', message: 'Replaced existing project schedule data atomically' },
+    ];
+
+    return NextResponse.json({
+      success: true,
+      logs,
+      diagnostics,
+      summary,
+      taskCount: tasks.length,
+      tasks,
+    });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    console.error('[process-mpp] error:', message);
+    return NextResponse.json({ success: false, error: message, diagnostics }, { status: 500 });
   }
 }
