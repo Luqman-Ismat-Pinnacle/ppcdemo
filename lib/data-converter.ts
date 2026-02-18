@@ -462,10 +462,10 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   // Build hierarchy: level 1 = unit; level 2+ with children = phase; leaf = task. (Project -> Unit -> Phase -> Task)
   const raw = (data.tasks as any[])
     .filter((t: any) => readOutlineLevel(t as Record<string, unknown>) !== 0)
-    .map((t: any) => ({
-      id: t.id,
+    .map((t: any, idx: number) => ({
+      id: String(t.id ?? t.taskId ?? t.task_id ?? t.uid ?? t.unique_id ?? `mpp-${idx + 1}`),
       outline_level: readOutlineLevel(t as Record<string, unknown>),
-      parent_id: t.parent_id ?? t.parentId ?? null,
+      parent_id: t.parent_id ?? t.parentId ?? t.parent_uid ?? t.parentUid ?? null,
       name: t.name || '',
       startDate: t.startDate || null,
       endDate: t.endDate || null,
@@ -523,7 +523,40 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     hasDeeperLevels &&
     rootLevelRows.length > 0 &&
     rootLevelRows.every((r: any) => Boolean(r.is_summary || hasChildren.has(String(r.id))));
-  const unitLevel = rootLooksLikeProjectSummary ? minLevel + 1 : minLevel;
+  const childrenByParent = new Map<string, any[]>();
+  raw.forEach((r: any) => {
+    const pid = r.parent_id != null ? String(r.parent_id) : '';
+    if (!pid) return;
+    if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
+    childrenByParent.get(pid)!.push(r);
+  });
+
+  const isSummaryRow = (r: any): boolean => Boolean(r?.is_summary || hasChildren.has(String(r?.id)));
+  const roots = raw
+    .filter((r: any) => {
+      const pid = r.parent_id != null ? String(r.parent_id) : '';
+      return !pid || !byId.has(pid);
+    })
+    .sort((a: any, b: any) => (Number(a.outline_level) || 1) - (Number(b.outline_level) || 1));
+
+  const detectUnitLevelFromBranch = (): number | null => {
+    let cursor: any | null = roots[0] || null;
+    while (cursor) {
+      const summaryChildren = (childrenByParent.get(String(cursor.id)) || []).filter((c: any) => isSummaryRow(c));
+      if (summaryChildren.length === 1) {
+        cursor = summaryChildren[0];
+        continue;
+      }
+      if (summaryChildren.length > 1) {
+        return Number(summaryChildren[0].outline_level) || null;
+      }
+      return null;
+    }
+    return null;
+  };
+
+  const detectedUnitLevel = detectUnitLevelFromBranch();
+  const unitLevel = detectedUnitLevel ?? (rootLooksLikeProjectSummary ? minLevel + 1 : minLevel);
 
   type NodeType = 'phase' | 'unit' | 'task';
   const typeById = new Map<string, NodeType>();

@@ -243,6 +243,7 @@ export default function WBSGanttV2Page() {
   const [visibleColumnIds, setVisibleColumnIds] = useState<Set<string>>(new Set(defaultVisibleColumns));
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [searchAllQuery, setSearchAllQuery] = useState('');
   const [headerFilterColumnId, setHeaderFilterColumnId] = useState<string | null>(null);
   const [headerMenu, setHeaderMenu] = useState<{ columnId: string; x: number; y: number } | null>(null);
   const [barTip, setBarTip] = useState<{ row: FlatWbsRow; x: number; y: number } | null>(null);
@@ -551,7 +552,28 @@ export default function WBSGanttV2Page() {
   const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'eff', 'pct', 'tf']), []);
 
   const baseFilteredRows = useMemo(() => {
+    const globalQuery = searchAllQuery.trim().toLowerCase();
     return flatRows.filter((row) => {
+      if (globalQuery) {
+        const haystack = [
+          row.wbsCode,
+          row.name,
+          row.type,
+          row.assignedResource || row.resourceName,
+          formatDate(row.startDate),
+          formatDate(row.endDate),
+          formatInt(row.daysRequired),
+          formatInt(row.baselineHours),
+          formatInt(row.actualHours),
+          formatInt(row.remainingHours),
+          formatCurrency(row.baselineCost),
+          formatCurrency(row.actualCost),
+          formatCurrency(row.remainingCost),
+          formatPct(row.percentComplete),
+          row.predecessorIds.join(','),
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(globalQuery)) return false;
+      }
       for (const def of visibleDefs) {
         const query = (columnFilters[def.id] || '').trim().toLowerCase();
         if (!query) continue;
@@ -560,7 +582,12 @@ export default function WBSGanttV2Page() {
       }
       return true;
     });
-  }, [flatRows, visibleDefs, columnFilters]);
+  }, [flatRows, visibleDefs, columnFilters, searchAllQuery]);
+
+  useEffect(() => {
+    if (!searchAllQuery.trim()) return;
+    expandAll();
+  }, [searchAllQuery, expandAll]);
 
   const cpmByTaskId = useMemo(() => {
     if (!runCpm) return new Map<string, { totalFloat: number; isCritical: boolean }>();
@@ -1148,6 +1175,24 @@ export default function WBSGanttV2Page() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            value={searchAllQuery}
+            onChange={(e) => setSearchAllQuery(e.target.value)}
+            placeholder="Search all..."
+            style={{
+              width: 220,
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 6,
+              color: 'var(--text-primary)',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              padding: '6px 8px',
+              outline: 'none',
+            }}
+          />
+
           <div style={{ display: 'flex', gap: 2, background: 'var(--bg-tertiary)', borderRadius: 6, padding: 2 }}>
             {(['day', 'month', 'quarter', 'year'] as TimelineInterval[]).map((iv) => (
               <button
