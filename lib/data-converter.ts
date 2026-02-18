@@ -671,6 +671,43 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
   });
 
+  // Fallback: if parser did not expose any explicit unit rows, create a synthetic
+  // project unit so hierarchy does not collapse to project->task and phases remain usable.
+  if (units.length === 0) {
+    const syntheticUnitId = `UNT-${(projectIdOverride || 'AUTO').replace(/[^A-Za-z0-9]/g, '').slice(0, 24) || 'AUTO'}-001`;
+    units.push({
+      id: syntheticUnitId,
+      unitId: syntheticUnitId,
+      name: 'Project Unit',
+      description: 'Auto-generated from MPP import',
+      projectId: projectIdOverride || '',
+      project_id: projectIdOverride || '',
+      employeeId: null,
+      active: true,
+      baselineStartDate: null,
+      baselineEndDate: null,
+      actualStartDate: null,
+      actualEndDate: null,
+      percentComplete: 0,
+      comments: '',
+      baselineHours: 0,
+      actualHours: 0,
+      baselineCost: 0,
+      actualCost: 0,
+      predecessorId: null,
+      predecessorRelationship: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    phases.forEach((phase: any) => {
+      if (!phase.unitId && !phase.unit_id) {
+        phase.unitId = syntheticUnitId;
+        phase.unit_id = syntheticUnitId;
+      }
+    });
+  }
+
   // Pass 2: Resolve task phaseId and unitId relationships
   tasks.forEach((task: any) => {
     if (task.parent_id) {

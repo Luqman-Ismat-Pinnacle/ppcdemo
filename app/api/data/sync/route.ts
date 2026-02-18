@@ -109,6 +109,26 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
     delete formatted.task_id;
   }
 
+  if (tableName === 'units') {
+    delete formatted.parent_id;
+    delete formatted.is_summary;
+    delete formatted.total_slack;
+    delete formatted.successors;
+    delete formatted.predecessors;
+    delete formatted.projected_hours;
+    delete formatted.task_name;
+    delete formatted.task_description;
+  }
+
+  if (tableName === 'phases') {
+    delete formatted.parent_id;
+    delete formatted.is_summary;
+    delete formatted.total_slack;
+    delete formatted.successors;
+    delete formatted.predecessors;
+    delete formatted.projected_hours;
+  }
+
   // Strip any remaining array/object values that can't be stored in flat columns
   for (const [key, value] of Object.entries(formatted)) {
     if (Array.isArray(value)) {

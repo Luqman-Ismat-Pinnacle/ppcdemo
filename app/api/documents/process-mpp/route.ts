@@ -90,6 +90,62 @@ function normalizeName(input: string): string {
     .replace(/[\s_\-.,;:()]+/g, ' ');
 }
 
+const UPSERT_ALLOWED_COLUMNS: Record<'units' | 'phases' | 'tasks', Set<string>> = {
+  units: new Set([
+    'id', 'unit_id', 'site_id', 'project_id', 'employee_id', 'name', 'description',
+    'baseline_start_date', 'baseline_end_date', 'actual_start_date', 'actual_end_date',
+    'start_date', 'end_date', 'percent_complete',
+    'baseline_hours', 'actual_hours', 'remaining_hours',
+    'baseline_cost', 'actual_cost', 'remaining_cost',
+    'comments', 'is_active', 'created_at', 'updated_at',
+    'portfolio_id', 'customer_id',
+  ]),
+  phases: new Set([
+    'id', 'phase_id', 'project_id', 'unit_id', 'employee_id', 'name', 'methodology', 'sequence',
+    'start_date', 'end_date', 'baseline_start_date', 'baseline_end_date', 'actual_start_date', 'actual_end_date',
+    'percent_complete',
+    'baseline_hours', 'actual_hours', 'remaining_hours',
+    'baseline_cost', 'actual_cost', 'remaining_cost',
+    'comments', 'is_active', 'created_at', 'updated_at',
+    'portfolio_id', 'customer_id', 'site_id',
+  ]),
+  tasks: new Set([
+    'id', 'task_id', 'project_id', 'phase_id', 'unit_id', 'site_id', 'customer_id', 'portfolio_id',
+    'sub_project_id', 'resource_id', 'employee_id',
+    'assigned_resource_id', 'assigned_resource_name', 'assigned_resource_type', 'assigned_resource',
+    'task_name', 'task_description', 'name', 'description',
+    'is_sub_task', 'parent_task_id',
+    'status', 'priority',
+    'start_date', 'end_date', 'planned_start_date', 'planned_end_date',
+    'baseline_start_date', 'baseline_end_date', 'actual_start_date', 'actual_end_date',
+    'days_required', 'percent_complete',
+    'baseline_hours', 'actual_hours', 'remaining_hours', 'projected_remaining_hours', 'projected_hours',
+    'baseline_cost', 'actual_cost', 'remaining_cost',
+    'baseline_qty', 'actual_qty', 'completed_qty',
+    'baseline_count', 'actual_count', 'completed_count',
+    'baseline_metric', 'baseline_uom', 'uom',
+    'is_critical', 'is_milestone',
+    'predecessor_id', 'predecessor_relationship',
+    'total_slack', 'total_float',
+    'comments', 'notes',
+    'created_at', 'updated_at', 'is_active',
+  ]),
+};
+
+function sanitizeUpsertRow(
+  tableName: 'units' | 'phases' | 'tasks',
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const allowed = UPSERT_ALLOWED_COLUMNS[tableName];
+  const sanitized: Record<string, unknown> = {};
+  Object.entries(row).forEach(([key, value]) => {
+    if (allowed.has(key) && value !== undefined) {
+      sanitized[key] = value;
+    }
+  });
+  return sanitized;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const parserUrl =
@@ -161,7 +217,8 @@ export async function POST(req: NextRequest) {
           let count = 0;
 
           for (const sourceRow of rows) {
-            const row = { ...toSupabaseFormat(sourceRow) } as Record<string, unknown>;
+            const row = sanitizeUpsertRow(tableName, { ...toSupabaseFormat(sourceRow) } as Record<string, unknown>);
+            if (!row.id) continue;
             if (tableName === 'tasks') {
               delete row.employee_id;
             }

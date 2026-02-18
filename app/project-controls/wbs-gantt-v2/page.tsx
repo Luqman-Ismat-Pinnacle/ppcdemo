@@ -914,6 +914,7 @@ export default function WBSGanttV2Page() {
   }, [visibleDefs, leftPanel.ref]);
 
   const onVisibleRegionChanged = useCallback((range: Rectangle, _tx?: number, ty?: number) => {
+    if (!range || typeof range.y !== 'number') return;
     // Use the grid's real pixel scroll offset when available to prevent
     // row overlap/missing rows after deep expand/collapse operations.
     const byScroll = typeof ty === 'number' && Number.isFinite(ty)
@@ -921,13 +922,6 @@ export default function WBSGanttV2Page() {
       : Math.max(0, range.y * ROW_HEIGHT);
     setVerticalOffset((prev) => (Math.abs(prev - byScroll) > 0.5 ? byScroll : prev));
   }, []);
-
-  useEffect(() => {
-    // Keep virtual timeline offset in bounds as row counts change from expand/collapse.
-    const viewportRows = Math.max(1, Math.floor(Math.max(0, rightPanelHeight - HEADER_HEIGHT) / ROW_HEIGHT));
-    const maxOffset = Math.max(0, (filteredRows.length - viewportRows) * ROW_HEIGHT);
-    setVerticalOffset((prev) => (prev > maxOffset ? maxOffset : prev));
-  }, [filteredRows.length, rightPanelHeight]);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
     if (!r.startDate || !r.endDate) return false;
@@ -962,6 +956,13 @@ export default function WBSGanttV2Page() {
 
   const rightPanelWidth = Math.max(0, rightPanel.size.width);
   const rightPanelHeight = Math.max(0, rightPanel.size.height);
+
+  useEffect(() => {
+    // Keep virtual timeline offset in bounds as row counts change from expand/collapse.
+    const viewportRows = Math.max(1, Math.floor(Math.max(0, rightPanelHeight - HEADER_HEIGHT) / ROW_HEIGHT));
+    const maxOffset = Math.max(0, (filteredRows.length - viewportRows) * ROW_HEIGHT);
+    setVerticalOffset((prev) => (prev > maxOffset ? maxOffset : prev));
+  }, [filteredRows.length, rightPanelHeight]);
 
   const totalDays = Math.max(1, Math.ceil((timelineRange.max.getTime() - timelineRange.min.getTime()) / DAY_MS));
   const timelineInnerWidth = Math.max(rightPanelWidth, Math.round(totalDays * pxPerDay) + 140);
