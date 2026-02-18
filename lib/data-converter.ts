@@ -504,83 +504,43 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     outlineStack.length = level;
   });
 
-  const byId = new Map<string, (typeof raw)[0]>();
-  raw.forEach((r: any) => byId.set(String(r.id), r));
-
-  // Hierarchy detection:
-  // In many MPP files, level 1 is the project summary row and real units start at level 2.
-  // Infer the "unit level" dynamically so units are not dropped.
-  const hasChildren = new Set<string>();
-  raw.forEach((r: any) => {
-    const pid = r.parent_id != null ? String(r.parent_id) : null;
-    if (pid) hasChildren.add(pid);
-  });
-
-  const minLevel = raw.reduce((min: number, r: any) => Math.min(min, Number(r.outline_level) || 1), Number.POSITIVE_INFINITY);
-  const hasDeeperLevels = raw.some((r: any) => (Number(r.outline_level) || 1) > minLevel);
-  const rootLevelRows = raw.filter((r: any) => (Number(r.outline_level) || 1) === minLevel);
-  const rootLooksLikeProjectSummary =
-    hasDeeperLevels &&
-    rootLevelRows.length > 0 &&
-    rootLevelRows.every((r: any) => Boolean(r.is_summary || hasChildren.has(String(r.id))));
-  const childrenByParent = new Map<string, any[]>();
-  raw.forEach((r: any) => {
-    const pid = r.parent_id != null ? String(r.parent_id) : '';
-    if (!pid) return;
-    if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
-    childrenByParent.get(pid)!.push(r);
-  });
-
-  const isSummaryRow = (r: any): boolean => Boolean(r?.is_summary || hasChildren.has(String(r?.id)));
-  const roots = raw
-    .filter((r: any) => {
-      const pid = r.parent_id != null ? String(r.parent_id) : '';
-      return !pid || !byId.has(pid);
-    })
-    .sort((a: any, b: any) => (Number(a.outline_level) || 1) - (Number(b.outline_level) || 1));
-
-  const detectUnitLevelFromBranch = (): number | null => {
-    let cursor: any | null = roots[0] || null;
-    while (cursor) {
-      const summaryChildren = (childrenByParent.get(String(cursor.id)) || []).filter((c: any) => isSummaryRow(c));
-      if (summaryChildren.length === 1) {
-        cursor = summaryChildren[0];
-        continue;
-      }
-      if (summaryChildren.length > 1) {
-        return Number(summaryChildren[0].outline_level) || null;
-      }
-      return null;
-    }
-    return null;
-  };
-
-  const detectedUnitLevel = detectUnitLevelFromBranch();
-  const unitLevel = detectedUnitLevel ?? (rootLooksLikeProjectSummary ? minLevel + 1 : minLevel);
-
+  // Hierarchy detection (fixed mapping requested):
+  // - outline level 2 => Unit
+  // - outline level 3 => Phase
+  // - outline level 4+ => Task
+  // - outline level 1 (or less) => Project/root summary (ignored here)
   type NodeType = 'phase' | 'unit' | 'task';
   const typeById = new Map<string, NodeType>();
 
   raw.forEach((r: any) => {
     const level = Number(r.outline_level) || 1;
     const id = String(r.id);
+    const explicitType = String(r.hierarchy_type ?? r.hierarchyType ?? '').toLowerCase();
 
-    // Ignore synthetic project summary root rows from hierarchy typing.
-    if (rootLooksLikeProjectSummary && level === minLevel) {
+    if (level <= 1) {
       return;
     }
-
-    if (level === unitLevel) {
+    if (explicitType === 'unit') {
       typeById.set(id, 'unit');
       return;
     }
-    // Levels below unit: treat summary rows as phases. This is more robust than relying
-    // solely on parent/child links, which can be incomplete in some MPP files.
-    if (r.is_summary || hasChildren.has(id)) {
+    if (explicitType === 'phase') {
       typeById.set(id, 'phase');
-    } else {
-      typeById.set(id, 'task');
+      return;
     }
+    if (explicitType === 'task') {
+      typeById.set(id, 'task');
+      return;
+    }
+    if (level === 2) {
+      typeById.set(id, 'unit');
+      return;
+    }
+    if (level === 3) {
+      typeById.set(id, 'phase');
+      return;
+    }
+    typeById.set(id, 'task');
   });
 
   const phases: any[] = [];
@@ -589,7 +549,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
 
   raw.forEach((r: any) => {
     const level = Number(r.outline_level) || 1;
-    if (rootLooksLikeProjectSummary && level === minLevel) {
+    if (level <= 1) {
       return;
     }
     const id = String(r.id);

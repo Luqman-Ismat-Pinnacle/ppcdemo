@@ -200,6 +200,13 @@ class ProjectParser:
             uid = self._task_id(task, fallback=f"row-{idx + 1}")
             name = str(task.getName() or "")
             level = int(task.getOutlineLevel() or 0)
+            hierarchy_type = 'project'
+            if level == 2:
+                hierarchy_type = 'unit'
+            elif level == 3:
+                hierarchy_type = 'phase'
+            elif level >= 4:
+                hierarchy_type = 'task'
             
             # Determine hierarchy info
             is_summary = bool(task.getSummary())
@@ -312,6 +319,7 @@ class ProjectParser:
                 'id': uid,
                 'name': name,
                 'outline_level': level,
+                'hierarchy_type': hierarchy_type,
                 'is_summary': is_summary,
                 'parent_id': parent_id,
                 'startDate': self._to_iso(task.getStart()),
@@ -335,6 +343,9 @@ class ProjectParser:
 
         total_pred_links = sum(len(t.get('predecessors') or []) for t in all_tasks)
         total_succ_links = sum(len(t.get('successors') or []) for t in all_tasks)
+        unit_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'unit')
+        phase_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'phase')
+        task_count = sum(1 for t in all_tasks if t.get('hierarchy_type') == 'task')
         tasks_with_predecessors = sum(1 for t in all_tasks if (t.get('predecessors') or []))
         tasks_with_successors = sum(1 for t in all_tasks if (t.get('successors') or []))
         leaf_tasks = [t for t in all_tasks if not bool(t.get('is_summary'))]
@@ -353,6 +364,9 @@ class ProjectParser:
             'tasks': all_tasks, # Returning a single source of truth list
             'summary': {
                 'total_rows': len(all_tasks),
+                'units': unit_count,
+                'phases': phase_count,
+                'tasks': task_count,
                 'dependencies': {
                     'totalPredecessorLinks': total_pred_links,
                     'totalSuccessorLinks': total_succ_links,
