@@ -197,15 +197,25 @@
 
                     <!-- Right: WBS Cascading Table -->
                     <div class="min-h-0 flex flex-col bg-slate-900">
-                        <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
+                        <div class="bg-slate-800 px-4 py-3 border-b border-slate-700 flex justify-between items-center gap-3">
                             <h3 class="text-sm font-semibold text-white">WBS Hierarchy + Dependency Pickup</h3>
-                            <span class="text-xs text-slate-400">Predecessor / Successor</span>
+                            <div class="flex items-center gap-2">
+                                <input
+                                    id="wbsSearchInput"
+                                    type="text"
+                                    placeholder="Search all rows..."
+                                    class="w-56 rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+                                />
+                                <span class="text-xs text-slate-400">Predecessor / Successor</span>
+                            </div>
                         </div>
                         <div class="pane-scroll flex-1 bg-slate-900/50">
                             <table class="min-w-full text-left text-sm whitespace-nowrap">
                                 <thead class="bg-slate-800/80 sticky top-0 z-10 backdrop-blur-sm">
                                     <tr>
                                         <th class="px-3 py-2 text-slate-400 font-medium">ID</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium">Level</th>
+                                        <th class="px-3 py-2 text-slate-400 font-medium">Type</th>
                                         <th class="px-3 py-2 text-slate-400 font-medium w-full">Task Name</th>
                                         <th class="px-3 py-2 text-slate-400 font-medium text-right">%</th>
                                         <th class="px-3 py-2 text-slate-400 font-medium text-right">Dur (h)</th>
@@ -235,6 +245,7 @@
         const resultContainer = document.getElementById('resultContainer');
         const jsonOutput = document.getElementById('jsonOutput');
         const wbsTableBody = document.getElementById('wbsTableBody');
+        const wbsSearchInput = document.getElementById('wbsSearchInput');
 
         // Stat Elements
         const statProjectName = document.getElementById('statProjectName');
@@ -251,6 +262,7 @@
         const downloadBtn = document.getElementById('downloadBtn');
 
         let currentData = null;
+        let currentTasks = [];
 
         const resetUI = () => {
             progress.classList.add('hidden');
@@ -258,9 +270,11 @@
             resultContainer.classList.add('hidden');
             jsonOutput.innerHTML = '';
             wbsTableBody.innerHTML = '';
+            if (wbsSearchInput) wbsSearchInput.value = '';
             dependencyStatus.classList.add('hidden');
             dependencyStatus.textContent = '';
             currentData = null;
+            currentTasks = [];
         };
 
         const handleFile = async (file) => {
@@ -293,29 +307,10 @@
             // 1. Calculate Stats
             const tasks = data.tasks || [];
             const depSummary = data.summary?.dependencies || {};
-            let phaseCount = 0;
-            let unitCount = 0;
-            let leafCount = 0;
-
-            // Heuristic for stats based on outline level or summary status
-            // Assuming Root is Level 0 or 1.
-            // Phases = Level 1 (if no root) or Level 2 (if root exists)
-            // But simplify: Summaries = Phases/Units. Leaves = Tasks.
-
-            // Refined Logic based on V13:
-            // Just count by type:
-            tasks.forEach(t => {
-                if (t.is_summary) {
-                    // It's a container.
-                    // If high level (1 or 2 depending on structure), maybe phase.
-                    // Let's just blindly count summaries as "Phases/Units" combined if simple count is hard.
-                    // Or, simple level check:
-                    if (t.outline_level <= 2) phaseCount++;
-                    else unitCount++;
-                } else {
-                    leafCount++;
-                }
-            });
+            const summary = data.summary || {};
+            const unitCount = summary.units ?? tasks.filter((t) => Number(t.outline_level || 0) === 2).length;
+            const phaseCount = summary.phases ?? tasks.filter((t) => Number(t.outline_level || 0) === 3).length;
+            const leafCount = summary.tasks ?? tasks.filter((t) => Number(t.outline_level || 0) >= 4).length;
 
             statProjectName.textContent = data.project?.name || 'Project';
             statProjectName.title = data.project?.name || '';
@@ -357,13 +352,52 @@
             jsonOutput.innerHTML = syntaxHighlight(data);
 
             // 3. Render WBS Table
-            renderWbsTable(tasks);
+            currentTasks = tasks;
+            applyWbsSearchFilter();
+        };
+
+        const resolveHierarchyType = (task) => {
+            const explicit = String(task.hierarchy_type || task.hierarchyType || '').toLowerCase();
+            if (explicit) return explicit;
+            const level = Number(task.outline_level || 0);
+            if (level === 2) return 'unit';
+            if (level === 3) return 'phase';
+            if (level >= 4) return 'task';
+            return 'project';
+        };
+
+        const applyWbsSearchFilter = () => {
+            const query = (wbsSearchInput?.value || '').trim().toLowerCase();
+            if (!query) {
+                renderWbsTable(currentTasks);
+                return;
+            }
+
+            const filtered = currentTasks.filter((t) => {
+                const preds = Array.isArray(t.predecessors) ? t.predecessors : [];
+                const succs = Array.isArray(t.successors) ? t.successors : [];
+                const haystack = [
+                    t.id || '',
+                    t.name || '',
+                    resolveHierarchyType(t),
+                    String(t.outline_level || ''),
+                    t.startDate || '',
+                    t.endDate || '',
+                    String(t.percentComplete || ''),
+                    String(t.projectedHours || ''),
+                    ...preds.map((p) => `${p.predecessorTaskId || ''} ${p.relationship || ''}`),
+                    ...succs.map((s) => `${s.successorTaskId || ''} ${s.relationship || ''}`),
+                ].join(' ').toLowerCase();
+                return haystack.includes(query);
+            });
+            renderWbsTable(filtered);
         };
 
         const renderWbsTable = (tasks) => {
             wbsTableBody.innerHTML = tasks.map(t => {
                 // Formatting
                 const level = t.outline_level || 1;
+                const hierarchyType = resolveHierarchyType(t);
                 const indent = (level - 1) * 20; // 20px per level
                 const isSummary = t.is_summary;
                 const rowClass = isSummary ? 'bg-slate-800/30 font-semibold text-slate-200' : 'text-slate-400 hover:bg-slate-800/50';
@@ -397,6 +431,12 @@
                 return `
                     <tr class="${rowClass} border-b border-slate-800 transition-colors">
                         <td class="px-3 py-2 text-xs font-mono text-slate-500">${t.id}</td>
+                        <td class="px-3 py-2 text-xs font-mono text-slate-400">${level}</td>
+                        <td class="px-3 py-2 text-xs">
+                            <span class="inline-flex rounded px-2 py-0.5 text-xs font-semibold ${hierarchyType === 'unit' ? 'bg-emerald-500/20 text-emerald-200' : hierarchyType === 'phase' ? 'bg-indigo-500/20 text-indigo-200' : hierarchyType === 'task' ? 'bg-cyan-500/20 text-cyan-200' : 'bg-slate-700 text-slate-300'}">
+                                ${hierarchyType}
+                            </span>
+                        </td>
                         <td class="px-3 py-2">
                             <div style="${nameStyle}" class="flex items-center">
                                 ${icon}
@@ -436,6 +476,9 @@
         dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('border-indigo-500', 'bg-slate-700/50'); });
         dropzone.addEventListener('drop', (e) => { e.preventDefault(); dropzone.classList.remove('border-indigo-500', 'bg-slate-700/50'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
         fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+        if (wbsSearchInput) {
+            wbsSearchInput.addEventListener('input', applyWbsSearchFilter);
+        }
 
         copyBtn.addEventListener('click', () => {
             if (!currentData) return;
