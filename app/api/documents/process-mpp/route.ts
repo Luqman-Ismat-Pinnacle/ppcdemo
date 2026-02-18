@@ -5,26 +5,13 @@ import { downloadFile } from '@/lib/azure-storage';
 import { withClient } from '@/lib/postgres';
 
 type ProcessLogType = 'info' | 'success' | 'warning';
-const DEFAULT_MPP_PARSER_URL = 'https://ppcdemo-production.up.railway.app';
 
 interface ProcessLog {
   type: ProcessLogType;
   message: string;
 }
 
-interface ParserSuccessPayload {
-  success: true;
-  summary?: { total_tasks?: number };
-  tasks?: unknown[];
-}
-
-interface ParsedInput {
-  documentId: string;
-  projectId: string;
-  portfolioId: string;
-  customerId: string;
-  siteId: string;
-}
+const DEFAULT_MPP_PARSER_URL = 'https://ppcdemo-production.up.railway.app';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -34,32 +21,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function readRequiredString(formData: FormData, field: string): string {
+function readString(formData: FormData, field: string): string {
   const value = formData.get(field);
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(`Missing required field: ${field}`);
-  }
-  return value.trim();
+  return typeof value === 'string' ? value.trim() : '';
 }
 
-function parseFormData(formData: FormData): ParsedInput {
-  return {
-    documentId: readRequiredString(formData, 'documentId'),
-    projectId: readRequiredString(formData, 'projectId'),
-    portfolioId: readRequiredString(formData, 'portfolioId'),
-    customerId: readRequiredString(formData, 'customerId'),
-    siteId: readRequiredString(formData, 'siteId'),
-  };
+function requireString(formData: FormData, field: string): string {
+  const value = readString(formData, field);
+  if (!value) throw new Error(`Missing required field: ${field}`);
+  return value;
 }
 
-async function callParser(parserUrl: string, fileName: string, fileBuffer: Buffer): Promise<ParserSuccessPayload> {
+async function callParser(parserUrl: string, fileName: string, fileBuffer: Buffer): Promise<Record<string, unknown>> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
 
   try {
-    const fileBlob = new Blob([fileBuffer], { type: 'application/octet-stream' });
     const parserFormData = new FormData();
-    parserFormData.append('file', fileBlob, fileName);
+    parserFormData.append('file', new Blob([fileBuffer as any], { type: 'application/octet-stream' }), fileName);
 
     const response = await fetch(`${parserUrl.replace(/\/$/, '')}/parse`, {
       method: 'POST',
@@ -68,82 +47,150 @@ async function callParser(parserUrl: string, fileName: string, fileBuffer: Buffe
     });
 
     if (!response.ok) {
-      const parserError = await response.text();
-      throw new Error(`Parser failed: ${parserError || `HTTP ${response.status}`}`);
+      const text = await response.text();
+      throw new Error(`Parser failed: ${text || `HTTP ${response.status}`}`);
     }
 
-    const payload = (await response.json()) as unknown;
+    const payload = await response.json();
     if (!isRecord(payload) || payload.success !== true) {
-      throw new Error('Parser returned an invalid payload');
+      throw new Error('Parser returned invalid payload');
     }
-
-    return payload as ParserSuccessPayload;
+    return payload;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
-function normalizeName(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[\s_\-.,;:()]+/g, ' ');
+async function getTableColumns(client: any, tableName: 'units' | 'phases' | 'tasks' | 'task_dependencies') {
+  const result = await client.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  return new Set(result.rows.map((r: any) => String(r.column_name)));
 }
 
-const UPSERT_ALLOWED_COLUMNS: Record<'units' | 'phases' | 'tasks', Set<string>> = {
-  units: new Set([
-    'id', 'unit_id', 'site_id', 'project_id', 'employee_id', 'name', 'description',
-    'baseline_start_date', 'baseline_end_date', 'actual_start_date', 'actual_end_date',
-    'start_date', 'end_date', 'percent_complete',
-    'baseline_hours', 'actual_hours', 'remaining_hours',
-    'baseline_cost', 'actual_cost', 'remaining_cost',
-    'comments', 'is_active', 'created_at', 'updated_at',
-    'portfolio_id', 'customer_id',
-  ]),
-  phases: new Set([
-    'id', 'phase_id', 'project_id', 'unit_id', 'employee_id', 'name', 'methodology', 'sequence',
-    'start_date', 'end_date', 'baseline_start_date', 'baseline_end_date', 'actual_start_date', 'actual_end_date',
-    'percent_complete',
-    'baseline_hours', 'actual_hours', 'remaining_hours',
-    'baseline_cost', 'actual_cost', 'remaining_cost',
-    'comments', 'is_active', 'created_at', 'updated_at',
-    'portfolio_id', 'customer_id', 'site_id',
-  ]),
-  tasks: new Set([
-    'id', 'task_id', 'project_id', 'phase_id', 'unit_id', 'site_id', 'customer_id', 'portfolio_id',
-    'sub_project_id', 'resource_id', 'employee_id',
-    'assigned_resource_id', 'assigned_resource_name', 'assigned_resource_type', 'assigned_resource',
-    'task_name', 'task_description', 'name', 'description',
-    'is_sub_task', 'parent_task_id',
-    'status', 'priority',
-    'start_date', 'end_date', 'planned_start_date', 'planned_end_date',
-    'baseline_start_date', 'baseline_end_date', 'actual_start_date', 'actual_end_date',
-    'days_required', 'percent_complete',
-    'baseline_hours', 'actual_hours', 'remaining_hours', 'projected_remaining_hours', 'projected_hours',
-    'baseline_cost', 'actual_cost', 'remaining_cost',
-    'baseline_qty', 'actual_qty', 'completed_qty',
-    'baseline_count', 'actual_count', 'completed_count',
-    'baseline_metric', 'baseline_uom', 'uom',
-    'is_critical', 'is_milestone',
-    'predecessor_id', 'predecessor_relationship',
-    'total_slack', 'total_float',
-    'comments', 'notes',
-    'created_at', 'updated_at', 'is_active',
-  ]),
-};
-
-function sanitizeUpsertRow(
-  tableName: 'units' | 'phases' | 'tasks',
-  row: Record<string, unknown>,
-): Record<string, unknown> {
-  const allowed = UPSERT_ALLOWED_COLUMNS[tableName];
-  const sanitized: Record<string, unknown> = {};
+function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
   Object.entries(row).forEach(([key, value]) => {
-    if (allowed.has(key) && value !== undefined) {
-      sanitized[key] = value;
-    }
+    if (value === undefined) return;
+    cleaned[key] = value;
   });
-  return sanitized;
+  return cleaned;
+}
+
+async function upsertRows(
+  client: any,
+  tableName: 'units' | 'phases' | 'tasks' | 'task_dependencies',
+  rows: Record<string, unknown>[]
+): Promise<number> {
+  if (!rows.length) return 0;
+
+  const tableColumns = await getTableColumns(client, tableName);
+  const formattedRows = rows
+    .map((row) => sanitizeRow(toSupabaseFormat(row) as Record<string, unknown>))
+    .map((row) => {
+      const filtered: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (tableColumns.has(key)) {
+          filtered[key] = value;
+        }
+      }
+      return filtered;
+    })
+    .filter((row) => row.id !== undefined && row.id !== null && String(row.id).trim() !== '');
+
+  if (!formattedRows.length) return 0;
+
+  const columns = Array.from(
+    formattedRows.reduce((set, row) => {
+      Object.keys(row).forEach((k) => set.add(k));
+      return set;
+    }, new Set<string>())
+  );
+
+  if (!columns.includes('id')) columns.unshift('id');
+
+  const BATCH_SIZE = 200;
+  let upserted = 0;
+
+  for (let offset = 0; offset < formattedRows.length; offset += BATCH_SIZE) {
+    const batch = formattedRows.slice(offset, offset + BATCH_SIZE);
+    const values: unknown[] = [];
+    const tuples: string[] = [];
+
+    batch.forEach((row, rowIdx) => {
+      const placeholders: string[] = [];
+      columns.forEach((col, colIdx) => {
+        values.push(row[col] ?? null);
+        placeholders.push(`$${rowIdx * columns.length + colIdx + 1}`);
+      });
+      tuples.push(`(${placeholders.join(', ')})`);
+    });
+
+    const updateSet = columns
+      .filter((c) => c !== 'id')
+      .map((c) => `${c} = EXCLUDED.${c}`)
+      .join(', ');
+
+    const sql = updateSet
+      ? `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES ${tuples.join(', ')} ON CONFLICT (id) DO UPDATE SET ${updateSet}`
+      : `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES ${tuples.join(', ')} ON CONFLICT (id) DO NOTHING`;
+
+    await client.query(sql, values);
+    upserted += batch.length;
+  }
+
+  return upserted;
+}
+
+function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  const taskIds = new Set(tasks.map((t) => String(t.id || t.taskId || '').trim()).filter(Boolean));
+
+  const add = (pred: string, succ: string, rel: string, lag: number) => {
+    if (!pred || !succ || pred === succ) return;
+    if (!taskIds.has(pred) || !taskIds.has(succ)) return;
+    const relationship = ['FS', 'SS', 'FF', 'SF'].includes((rel || '').toUpperCase()) ? rel.toUpperCase() : 'FS';
+    const lagDays = Number(lag) || 0;
+    const key = `${pred}|${succ}|${relationship}|${lagDays}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push({
+      id: `dep-${pred}-${succ}-${relationship}-${lagDays}`,
+      predecessorTaskId: pred,
+      successorTaskId: succ,
+      relationshipType: relationship,
+      lagDays,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  tasks.forEach((task: any) => {
+    const succId = String(task.id || task.taskId || '').trim();
+    const preds = Array.isArray(task.predecessors) ? task.predecessors : [];
+    preds.forEach((p: any) => {
+      add(
+        String(p.predecessorTaskId || p.predecessor_task_id || '').trim(),
+        succId,
+        String(p.relationship || p.relationshipType || p.relationship_type || 'FS'),
+        Number(p.lagDays || p.lag_days || p.lag || 0)
+      );
+    });
+
+    const succs = Array.isArray(task.successors) ? task.successors : [];
+    succs.forEach((s: any) => {
+      add(
+        succId,
+        String(s.successorTaskId || s.successor_task_id || '').trim(),
+        String(s.relationship || s.relationshipType || s.relationship_type || 'FS'),
+        Number(s.lagDays || s.lag_days || s.lag || 0)
+      );
+    });
+  });
+
+  return rows;
 }
 
 export async function POST(req: NextRequest) {
@@ -154,183 +201,121 @@ export async function POST(req: NextRequest) {
       DEFAULT_MPP_PARSER_URL;
 
     const formData = await req.formData();
-    let input: ParsedInput;
-    try {
-      input = parseFormData(formData);
-    } catch (validationError) {
-      return NextResponse.json(
-        { success: false, error: getErrorMessage(validationError) },
-        { status: 400 }
-      );
-    }
+    const documentId = requireString(formData, 'documentId');
+    const projectId = requireString(formData, 'projectId');
+    const portfolioId = readString(formData, 'portfolioId');
+    const customerId = readString(formData, 'customerId');
+    const siteId = readString(formData, 'siteId');
 
-    const documentResult = await withClient(async (client) => {
-      return client.query(
-        'SELECT id, file_name, storage_path FROM project_documents WHERE id = $1 LIMIT 1',
-        [input.documentId]
-      );
-    });
+    const docResult = await withClient((client) =>
+      client.query('SELECT id, file_name, storage_path FROM project_documents WHERE id = $1 LIMIT 1', [documentId])
+    );
 
-    if (!documentResult.rows[0]) {
+    const doc = docResult.rows[0] as { id: string; file_name: string; storage_path: string } | undefined;
+    if (!doc) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
 
-    const doc = documentResult.rows[0] as { file_name: string; storage_path: string };
     const { data: fileBuffer, error: downloadError } = await downloadFile(doc.storage_path);
-
     if (downloadError || !fileBuffer) {
-      return NextResponse.json(
-        { success: false, error: `Failed to download file content: ${downloadError || 'unknown error'}` },
-        { status: 500 }
-      );
+      return NextResponse.json({ success: false, error: `Failed to download file: ${downloadError || 'unknown'}` }, { status: 500 });
     }
 
-    const parsedMpp = await callParser(parserUrl, doc.file_name, fileBuffer);
-    const convertedData = convertProjectPlanJSON(parsedMpp, input.projectId);
+    const parsed = await callParser(parserUrl, doc.file_name, fileBuffer as Buffer);
+    const converted = convertProjectPlanJSON(parsed, projectId);
 
-    (convertedData.phases || []).forEach((phase: Record<string, unknown>) => {
-      phase.projectId = input.projectId;
-      phase.portfolioId = input.portfolioId;
-      phase.customerId = input.customerId;
-      phase.siteId = input.siteId;
+    const units = (converted.units || []) as any[];
+    const phases = (converted.phases || []) as any[];
+    const tasks = (converted.tasks || []) as any[];
+
+    const now = new Date().toISOString();
+    units.forEach((row) => {
+      row.projectId = projectId;
+      row.project_id = projectId;
+      if (portfolioId) row.portfolioId = portfolioId;
+      if (customerId) row.customerId = customerId;
+      if (siteId) row.siteId = siteId;
+      row.updatedAt = now;
+      row.createdAt = row.createdAt || now;
+    });
+    phases.forEach((row) => {
+      row.projectId = projectId;
+      row.project_id = projectId;
+      if (portfolioId) row.portfolioId = portfolioId;
+      if (customerId) row.customerId = customerId;
+      if (siteId) row.siteId = siteId;
+      row.updatedAt = now;
+      row.createdAt = row.createdAt || now;
+    });
+    tasks.forEach((row) => {
+      row.projectId = projectId;
+      row.project_id = projectId;
+      if (portfolioId) row.portfolioId = portfolioId;
+      if (customerId) row.customerId = customerId;
+      if (siteId) row.siteId = siteId;
+      row.updatedAt = now;
+      row.createdAt = row.createdAt || now;
     });
 
-    (convertedData.units || []).forEach((unit: Record<string, unknown>) => {
-      unit.projectId = input.projectId;
-      unit.portfolioId = input.portfolioId;
-      unit.customerId = input.customerId;
-      unit.siteId = input.siteId;
-    });
+    const dependencyRows = buildDependencyRows(tasks);
 
-    (convertedData.tasks || []).forEach((task: Record<string, unknown>) => {
-      task.projectId = input.projectId;
-      task.portfolioId = input.portfolioId;
-      task.customerId = input.customerId;
-      task.siteId = input.siteId;
-    });
-
-    const transactionSummary = await withClient(async (client) => {
+    const summary = await withClient(async (client) => {
       await client.query('BEGIN');
       try {
-        const upsertRows = async (tableName: 'units' | 'phases' | 'tasks', rows: Array<Record<string, unknown>>) => {
-          if (!rows.length) return 0;
-          let count = 0;
+        await client.query('UPDATE projects SET has_schedule = true, updated_at = NOW() WHERE id = $1', [projectId]);
 
-          for (const sourceRow of rows) {
-            const row = sanitizeUpsertRow(tableName, { ...toSupabaseFormat(sourceRow) } as Record<string, unknown>);
-            if (!row.id) continue;
-            if (tableName === 'tasks') {
-              delete row.employee_id;
-            }
+        // Full replace per project (atomic)
+        await client.query(
+          `DELETE FROM task_dependencies
+           WHERE successor_task_id IN (SELECT id FROM tasks WHERE project_id = $1)
+              OR predecessor_task_id IN (SELECT id FROM tasks WHERE project_id = $1)`,
+          [projectId]
+        );
+        await client.query('DELETE FROM tasks WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM units WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM phases WHERE project_id = $1', [projectId]);
+        await client.query('DELETE FROM project_log WHERE project_id = $1', [projectId]);
 
-            const cols = Object.keys(row);
-            if (!cols.length) continue;
+        const unitsSaved = await upsertRows(client, 'units', units as Record<string, unknown>[]);
+        const phasesSaved = await upsertRows(client, 'phases', phases as Record<string, unknown>[]);
+        const tasksSaved = await upsertRows(client, 'tasks', tasks as Record<string, unknown>[]);
+        const depsSaved = await upsertRows(client, 'task_dependencies', dependencyRows);
 
-            const vals = Object.values(row);
-            const placeholders = cols.map((_, idx) => `$${idx + 1}`).join(', ');
-            const updateSet = cols
-              .filter((col) => col !== 'id')
-              .map((col) => `${col} = EXCLUDED.${col}`)
-              .join(', ');
-
-            const sql = updateSet
-              ? `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT (id) DO UPDATE SET ${updateSet}`
-              : `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT (id) DO NOTHING`;
-
-            await client.query(sql, vals);
-            count += 1;
-          }
-
-          return count;
-        };
-
-        const unitsSaved = await upsertRows('units', (convertedData.units || []) as Array<Record<string, unknown>>);
-        const phasesSaved = await upsertRows('phases', (convertedData.phases || []) as Array<Record<string, unknown>>);
-        const tasksSaved = await upsertRows('tasks', (convertedData.tasks || []) as Array<Record<string, unknown>>);
-
-        const hoursResult = await client.query(
-          'SELECT id, task_id, workday_phase, workday_task FROM hour_entries WHERE project_id = $1',
-          [input.projectId]
+        await client.query(
+          "UPDATE project_documents SET is_current_version = false WHERE project_id = $1 AND document_type = 'MPP'",
+          [projectId]
+        );
+        await client.query(
+          'UPDATE project_documents SET project_id = $1, is_current_version = true, updated_at = NOW() WHERE id = $2',
+          [projectId, documentId]
         );
 
-        const unassignedHours = hoursResult.rows.filter((hour) => !hour.task_id);
-        const tasksByName = new Map<string, { id?: string; taskId?: string; name?: string; phaseName?: string }>();
-
-        ((convertedData.tasks || []) as Array<Record<string, unknown>>).forEach((task) => {
-          const phaseName = String(task.phaseName || '');
-          const taskName = String(task.name || task.taskName || '');
-          const key = `${normalizeName(phaseName)}|${normalizeName(taskName)}`;
-          tasksByName.set(key, task as { id?: string; taskId?: string; name?: string; phaseName?: string });
-
-          const nameOnlyKey = normalizeName(taskName);
-          if (nameOnlyKey && !tasksByName.has(nameOnlyKey)) {
-            tasksByName.set(nameOnlyKey, task as { id?: string; taskId?: string; name?: string; phaseName?: string });
-          }
-        });
-
-        let tasksMatched = 0;
-        for (const hour of unassignedHours) {
-          const workdayPhase = normalizeName(String(hour.workday_phase || ''));
-          const workdayTask = normalizeName(String(hour.workday_task || ''));
-
-          const phaseTaskKey = `${workdayPhase}|${workdayTask}`;
-          const matchedTask = tasksByName.get(phaseTaskKey) || (workdayTask ? tasksByName.get(workdayTask) : undefined);
-          const taskId = matchedTask?.id || matchedTask?.taskId;
-
-          if (taskId) {
-            await client.query('UPDATE hour_entries SET task_id = $1 WHERE id = $2', [taskId, hour.id]);
-            tasksMatched += 1;
-          }
-        }
-
         await client.query('COMMIT');
-
-        return {
-          unitsSaved,
-          phasesSaved,
-          tasksSaved,
-          unassignedHours: unassignedHours.length,
-          tasksMatched,
-        };
+        return { unitsSaved, phasesSaved, tasksSaved, depsSaved };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
       }
     });
 
-    const totalParsed = parsedMpp.summary?.total_tasks || parsedMpp.tasks?.length || 0;
-    const stillUnmatched = transactionSummary.unassignedHours - transactionSummary.tasksMatched;
-
+    const totalParsed = Number((parsed as any)?.summary?.total_rows || (parsed as any)?.summary?.total_tasks || (parsed as any)?.tasks?.length || 0);
     const logs: ProcessLog[] = [
-      { type: 'info', message: `Parsed ${totalParsed} items from MPP` },
-      {
-        type: 'success',
-        message: `Imported: ${transactionSummary.unitsSaved} units, ${transactionSummary.phasesSaved} phases, ${transactionSummary.tasksSaved} tasks`,
-      },
-      {
-        type: 'info',
-        message: `Found ${transactionSummary.unassignedHours} unassigned hour entries for this project`,
-      },
+      { type: 'info', message: `Parsed ${totalParsed} rows from MPP parser` },
+      { type: 'success', message: `Synced ${summary.unitsSaved} units, ${summary.phasesSaved} phases, ${summary.tasksSaved} tasks` },
+      { type: 'success', message: `Synced ${summary.depsSaved} task dependencies` },
+      { type: 'success', message: 'Replaced existing project schedule data atomically' },
     ];
-
-    if (transactionSummary.tasksMatched > 0) {
-      logs.push({ type: 'success', message: `Matched ${transactionSummary.tasksMatched} hour entries to tasks` });
-    }
-
-    if (stillUnmatched > 0) {
-      logs.push({ type: 'warning', message: `${stillUnmatched} hour entries could not be matched` });
-    }
 
     return NextResponse.json({
       success: true,
-      message: 'Imported successfully',
-      tasks: convertedData.tasks || [],
       logs,
-      summary: transactionSummary,
+      summary,
+      taskCount: tasks.length,
+      tasks,
     });
   } catch (error: unknown) {
     const message = getErrorMessage(error);
-    console.error('Process error:', message);
+    console.error('[process-mpp] error:', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

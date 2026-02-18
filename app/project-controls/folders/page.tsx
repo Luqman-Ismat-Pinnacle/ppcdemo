@@ -10,8 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import PageLoader from '@/components/ui/PageLoader';
 import { useLogs } from '@/lib/logs-context';
-import { convertMppParserOutput } from '@/lib/data-converter';
-import { runProjectHealthAutoCheck, type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
+import { type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 
 // Health check recommendations based on check name
@@ -614,44 +613,15 @@ export default function DocumentsPage() {
     }
   }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects, data?.projectDocuments, refreshData]);
 
-  // Persist process/upload logs to project_log (parser logs)
-  const saveLogsToProjectLog = useCallback(async (entries: ProcessingLog[], projectId: string) => {
-    if (entries.length === 0) return;
-    try {
-      const logRecords = entries.map((e, i) => ({
-        id: `LOG_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 9)}`,
-        projectId: projectId || null,
-        entryDate: e.timestamp.toISOString(),
-        entryType: e.type,
-        message: e.message,
-        createdBy: 'Project Upload',
-      }));
-      const res = await fetch('/api/data/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataKey: 'projectLog', records: logRecords }),
-      });
-      const result = await res.json();
-      if (!res.ok || !result.success) {
-        console.error('[project_log] Save failed:', result.error);
-      }
-    } catch (err) {
-      console.error('[project_log] Save error:', err);
-    }
-  }, []);
-
-  // Process file with MPXJ Python service and sync to database
+  // Process file via server-side transactional import (single atomic upsert path)
   const handleProcess = useCallback(async (fileId: string) => {
     const file = uploadedFiles.find(f => f.id === fileId);
-    if (!file || !file.storagePath) return;
+    if (!file) return;
 
     setIsProcessing(true);
     setProcessingFileId(fileId);
-    setProcessingStage({ step: 1, label: 'Downloading from storage...', fileName: file.fileName });
-
-    setUploadedFiles(prev => prev.map(f =>
-      f.id === fileId ? { ...f, status: 'processing' as const } : f
-    ));
+    setProcessingStage({ step: 1, label: 'Preparing import...', fileName: file.fileName });
+    setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'processing' as const } : f));
 
     const logEntries: ProcessingLog[] = [];
     const pushLog = (type: ProcessingLog['type'], message: string) => {
@@ -661,102 +631,6 @@ export default function DocumentsPage() {
     };
 
     try {
-      // If project was not under an active portfolio and user chose one, reassign before processing
-      if (file.workdayProjectId && selectedProjectMissingPortfolio && assignPortfolioId) {
-        const proj = (data?.projects || []).find((p: any) => (p.id || p.projectId) === file.workdayProjectId);
-        if (proj) {
-          pushLog('info', `Reassigning project to portfolio before processing...`);
-          try {
-            const projectId = proj.id || proj.projectId;
-            const resProj = await fetch('/api/data/sync', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                dataKey: 'projects',
-                operation: 'update',
-                records: [{ id: projectId, portfolioId: assignPortfolioId }],
-              }),
-            });
-            const resultProj = await resProj.json();
-            if (!resultProj.success) throw new Error(resultProj.error || 'Project update failed');
-            const customerId = proj.customerId ?? proj.customer_id;
-            if (customerId) {
-              const resCust = await fetch('/api/data/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  dataKey: 'customers',
-                  operation: 'update',
-                  records: [{ id: customerId, portfolioId: assignPortfolioId }],
-                }),
-              });
-              const resultCust = await resCust.json();
-              if (!resultCust.success) pushLog('warning', `Customer portfolio update failed: ${resultCust.error || ''}`);
-            }
-            await refreshData();
-            pushLog('success', 'Project reassigned to portfolio');
-          } catch (err: any) {
-            pushLog('warning', `Portfolio reassignment failed: ${err.message}`);
-          }
-        }
-      }
-
-      // Step 1: Download file from Azure Blob Storage
-      pushLog('info', `[Storage] Downloading ${file.fileName}...`);
-
-      const { data: fileData, error: downloadError } = await storageApi.download(file.storagePath!);
-
-      if (downloadError || !fileData) {
-        throw new Error(`Download failed: ${downloadError?.message || 'Unknown error'}`);
-      }
-
-      pushLog('success', '[Storage] File downloaded');
-
-      // Step 2: Send to MPXJ Python parser
-      setProcessingStage({ step: 2, label: 'Parsing MPP file with MPXJ...', fileName: file.fileName });
-      pushLog('info', '[MPXJ] Parsing MPP file...');
-
-      const formData = new FormData();
-      formData.append('file', fileData, file.fileName);
-
-      // Call the Python MPP parser service
-      let MPP_PARSER_URL = process.env.NEXT_PUBLIC_MPP_PARSER_URL || 'https://ppcdemo-production.up.railway.app';
-
-      // Ensure protocol is present
-      if (MPP_PARSER_URL !== 'http://localhost:5001' && !MPP_PARSER_URL.startsWith('http')) {
-        MPP_PARSER_URL = `https://${MPP_PARSER_URL}`;
-      }
-
-      console.log('Hitting MPP Parser at:', `${MPP_PARSER_URL}/parse`);
-      pushLog('info', `[Network] Service URL: ${MPP_PARSER_URL}/parse`);
-
-      const parseResponse = await fetch(`${MPP_PARSER_URL}/parse`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!parseResponse.ok) {
-        const errorText = await parseResponse.text();
-        throw new Error(`MPXJ parse failed: ${errorText}`);
-      }
-
-      const parseResult = await parseResponse.json();
-
-      if (!parseResult.success) {
-        throw new Error(parseResult.error || 'Parse failed');
-      }
-
-      pushLog('success', `[MPXJ] Parsed: ${parseResult.summary?.total_rows || parseResult.summary?.total_tasks || 0} tasks`);
-      console.log('[DEBUG] MPP Parser result:', {
-        success: parseResult.success,
-        tasks: parseResult.tasks?.length,
-        sampleTask: parseResult.tasks?.[0],
-        outlineLevels: parseResult.tasks?.map((t: any) => t.outline_level)
-      });
-
-      // Convert flat MPP data to proper hierarchy using our converter
-      setProcessingStage({ step: 3, label: 'Converting data hierarchy...', fileName: file.fileName });
-      // Re-runs must resolve back to an existing project_id; never create random fallback IDs.
       const projectId = (() => {
         if (file.workdayProjectId) return file.workdayProjectId;
         const docs = data?.projectDocuments || [];
@@ -768,396 +642,60 @@ export default function DocumentsPage() {
         });
         return match ? (match.projectId || match.project_id || '') : '';
       })();
+
       if (!projectId) {
         throw new Error('File is not linked to a project. Link it to a project before running MPXJ.');
       }
 
-      pushLog('info', `[Hierarchy] Converting MPP data with outline levels to phases/units/tasks...`);
+      const project = (data?.projects || []).find((p: any) => String(p.id || p.projectId) === String(projectId));
+      const portfolioId = String(project?.portfolioId ?? project?.portfolio_id ?? assignPortfolioId ?? '');
+      const customerId = String(project?.customerId ?? project?.customer_id ?? '');
+      const siteId = String(project?.siteId ?? project?.site_id ?? '');
 
-      // Use our converter to properly categorize by outline_level
-      console.log('[DEBUG] About to call convertMppParserOutput with', parseResult.tasks?.length, 'tasks');
-      const convertedData = convertMppParserOutput(parseResult, projectId);
-      console.log('[DEBUG] Converter returned:', {
-        phases: convertedData.phases?.length,
-        units: convertedData.units?.length,
-        tasks: convertedData.tasks?.length
+      setProcessingStage({ step: 2, label: 'Running parser and DB upsert...', fileName: file.fileName });
+      setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'syncing' as const } : f));
+      pushLog('info', '[Import] Starting transactional parser -> converter -> database upsert...');
+
+      const formData = new FormData();
+      formData.append('documentId', file.id);
+      formData.append('projectId', String(projectId));
+      if (portfolioId) formData.append('portfolioId', portfolioId);
+      if (customerId) formData.append('customerId', customerId);
+      if (siteId) formData.append('siteId', siteId);
+
+      const response = await fetch('/api/documents/process-mpp', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'MPP import failed');
+      }
+
+      const routeLogs = Array.isArray(result.logs) ? result.logs : [];
+      routeLogs.forEach((log: any) => {
+        pushLog((log?.type as ProcessingLog['type']) || 'info', String(log?.message || ''));
       });
 
-      // Apply hierarchy context from upload selection
-      // Phases and units get hierarchy through project relationship, not direct columns
-      if (convertedData.phases) {
-        convertedData.phases.forEach((phase: any) => {
-          // No hierarchy columns on phases - they get it through project
-        });
-      }
+      setProcessingStage({ step: 3, label: 'Refreshing UI data...', fileName: file.fileName });
+      setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'complete' as const } : f));
+      pushLog('success', '[Complete] MPP import committed to database');
 
-      if (convertedData.units) {
-        convertedData.units.forEach((unit: any) => {
-          // No hierarchy columns on units - they get it through project/site relationship
-        });
-      }
-
-      if (convertedData.tasks) {
-        convertedData.tasks.forEach((task: any) => {
-          // Tasks don't have hierarchy columns - they get it through project/phase/unit relationships
-        });
-      }
-
-      pushLog('success', `[Hierarchy] Converted to ${convertedData.phases?.length || 0} phases, ${convertedData.units?.length || 0} units, ${convertedData.tasks?.length || 0} tasks`);
-
-      // Auto project health check
-      setProcessingStage({ step: 4, label: 'Running health checks...', fileName: file.fileName });
-      const healthResult = runProjectHealthAutoCheck(convertedData);
-      pushLog(healthResult.issues.length > 0 ? 'warning' : 'success', `[Health] Score: ${healthResult.score}% (${healthResult.passed}/${healthResult.totalChecks})${healthResult.issues.length > 0 ? ` · Issues: ${healthResult.issues.join('; ')}` : ''}`);
-
-      // Parser log: names from MPP so we can verify converter output vs Workday
-      const phasesList = (convertedData.phases || []).map((p: any) => `"${p.id}: ${(p.name || '').slice(0, 50)}"`).join(', ');
-      const unitsList = (convertedData.units || []).map((u: any) => `"${u.id}: ${(u.name || '').slice(0, 40)} (project: ${u.projectId || u.project_id || '-'})"`).join(', ');
-      const taskSample = (convertedData.tasks || []).slice(0, 8).map((t: any) => `"${t.id}: ${(t.name || t.taskName || '').slice(0, 30)}"`).join(', ');
-      pushLog('info', `[MPP Parser] Phases from file: ${phasesList || 'none'}`);
-      pushLog('info', `[MPP Parser] Units from file: ${unitsList || 'none'}`);
-      pushLog('info', `[MPP Parser] Tasks from file: ${(convertedData.tasks?.length || 0)} total; sample: ${taskSample || 'none'}`);
-
-      // Step 5: Sync to database
-      setProcessingStage({ step: 5, label: 'Syncing to database...', fileName: file.fileName });
-      setUploadedFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'syncing' as const } : f
-      ));
-
-      const projectName = parseResult.project?.name || file.fileName.replace('.mpp', '');
-
-      pushLog('info', `[Hierarchy] Project ID: ${projectId} - ALL phases and tasks will be linked to this project`);
-
-      // Create project
-      if (!file.workdayProjectId) {
-        const projectResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'projects',
-            records: [{
-              id: projectId,
-              projectId: projectId,
-              name: projectName,
-              startDate: parseResult.project?.start_date || null,
-              endDate: parseResult.project?.finish_date || null,
-              isActive: true,
-            }]
-          }),
-        });
-        const projectResult = await projectResponse.json();
-        if (!projectResponse.ok || !projectResult.success) {
-          pushLog('warning', `[Supabase] Project: ${projectResult.error || 'Failed'}`);
-        } else {
-          pushLog('success', `[Supabase] Project created: ${projectId}`);
-        }
-      }
-
-      // Sync converted data to Supabase using our proper hierarchy
-      pushLog('info', '[Supabase] Syncing converted hierarchy data...');
-
-      // Use existing Workday project ID - no need to create new project
-      const existingProjectId = projectId;
-      if (!existingProjectId) {
-        throw new Error('No Workday project selected - cannot create hierarchy without project');
-      }
-
-      pushLog('info', `[Supabase] Using existing project: ${existingProjectId}`);
-
-      // Always apply the file: same structure = update numbers; new structure = replace schedule.
-      // (No duplicate skip so updated project plans with revised dates/hours/costs are applied.)
-
-      // Update the existing project: has_schedule = true (direct update to avoid name constraint)
-      pushLog('info', '[Supabase] Enabling schedule visibility for project...');
-      try {
-        const projectUpdateResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'projects',
-            operation: 'update',
-            records: [{
-              id: existingProjectId,
-              has_schedule: true,
-              updated_at: new Date().toISOString()
-            }]
-          }),
-        });
-        const projectUpdateResult = await projectUpdateResponse.json();
-        if (!projectUpdateResponse.ok || !projectUpdateResult.success) {
-          pushLog('warning', `[Supabase] Project update: ${projectUpdateResult.error || 'Failed'}`);
-        } else {
-          pushLog('success', `[Supabase] Project updated: has_schedule=true`);
-        }
-      } catch (updateErr: any) {
-        pushLog('warning', `[Supabase] Project update error: ${updateErr.message}`);
-      }
-
-      // Remove existing phases/units/tasks for this project so only MPP hierarchy remains (no Workday extras)
-      pushLog('info', '[Supabase] Removing existing phases/units/tasks for this project...');
-      for (const key of ['tasks', 'units', 'phases']) {
-        try {
-          const delRes = await fetch('/api/data/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dataKey: key, operation: 'deleteByProjectId', projectId: existingProjectId, records: [] }),
-          });
-          const delResult = await delRes.json();
-          if (!delRes.ok || !delResult.success) {
-            pushLog('warning', `[Supabase] Delete existing ${key}: ${delResult.error || 'Failed'}`);
-          } else {
-            pushLog('success', `[Supabase] Cleared existing ${key} for project`);
-          }
-        } catch (e: any) {
-          pushLog('warning', `[Supabase] Delete ${key} error: ${e.message}`);
-        }
-      }
-
-      // Update all phases, units, and tasks with the existing project ID
-      // Remove empty projectId to prevent conflict with project_id during sync
-      if (convertedData.phases) {
-        convertedData.phases.forEach((phase: any) => {
-          delete phase.projectId; // Remove camelCase version to avoid conflict
-          phase.project_id = existingProjectId;
-        });
-      }
-      if (convertedData.units) {
-        convertedData.units.forEach((unit: any) => {
-          delete unit.projectId; // Remove camelCase version to avoid conflict
-          unit.project_id = existingProjectId;
-        });
-      }
-      if (convertedData.tasks) {
-        convertedData.tasks.forEach((task: any) => {
-          delete task.projectId; // Remove camelCase version to avoid conflict
-          task.project_id = existingProjectId;
-        });
-      }
-
-      // Sync phases
-      if (convertedData.phases && convertedData.phases.length > 0) {
-        const phaseResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'phases',
-            records: convertedData.phases,
-          }),
-        });
-        const phaseResult = await phaseResponse.json();
-        if (!phaseResponse.ok || !phaseResult.success) {
-          pushLog('warning', `[Supabase] Phases: ${phaseResult.error || 'Failed'}`);
-        } else {
-          pushLog('success', `[Supabase] Phases synced: ${convertedData.phases.length}`);
-        }
-      }
-
-      // Sync units
-      if (convertedData.units && convertedData.units.length > 0) {
-        const unitResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'units',
-            records: convertedData.units,
-          }),
-        });
-        const unitResult = await unitResponse.json();
-        if (!unitResponse.ok || !unitResult.success) {
-          pushLog('warning', `[Supabase] Units: ${unitResult.error || 'Failed'}`);
-        } else {
-          pushLog('success', `[Supabase] Units synced: ${convertedData.units.length}`);
-        }
-      }
-
-      // Sync tasks
-      if (convertedData.tasks && convertedData.tasks.length > 0) {
-        const taskResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'tasks',
-            records: convertedData.tasks,
-          }),
-        });
-        const taskResult = await taskResponse.json();
-        if (!taskResponse.ok || !taskResult.success) {
-          pushLog('warning', `[Supabase] Tasks: ${taskResult.error || 'Failed'}`);
-        } else {
-          pushLog('success', `[Supabase] Tasks synced: ${convertedData.tasks.length}`);
-        }
-      }
-
-      // Sync task dependencies (predecessors) to task_dependencies table
-      // Only include deps where BOTH predecessor and successor exist in the tasks table (FK constraint)
-      const taskIdSet = new Set((convertedData.tasks || []).map((t: any) => String(t.id || t.taskId)));
-      const depRecords: any[] = [];
-      const depKeySet = new Set<string>();
-      const addDependency = (predecessorTaskId: string, successorTaskId: string, relationshipType: string, lagDays: number, idHint?: string) => {
-        const predId = String(predecessorTaskId || '');
-        const succId = String(successorTaskId || '');
-        if (!predId || !succId || predId === succId) return;
-        if (!taskIdSet.has(predId) || !taskIdSet.has(succId)) return;
-        const rel = relationshipType || 'FS';
-        const lag = Number(lagDays) || 0;
-        const dedupeKey = `${predId}__${succId}__${rel}__${lag}`;
-        if (depKeySet.has(dedupeKey)) return;
-        depKeySet.add(dedupeKey);
-        depRecords.push({
-          id: idHint || `${succId}-${predId}-${rel}-${lag}`,
-          predecessorTaskId: predId,
-          successorTaskId: succId,
-          relationshipType: rel,
-          lagDays: lag,
-        });
-      };
-      (convertedData.tasks || []).forEach((task: any) => {
-        const preds = task.predecessors || [];
-        preds.forEach((pred: any) => {
-          addDependency(
-            String(pred.predecessorTaskId || pred.predecessor_task_id || ''),
-            String(task.id || task.taskId || ''),
-            String(pred.relationship || pred.relationshipType || pred.relationship_type || 'FS'),
-            Number(pred.lagDays || pred.lag_days || pred.lag || 0),
-            pred.id || undefined,
-          );
-        });
-
-        const succs = task.successors || [];
-        succs.forEach((succ: any) => {
-          addDependency(
-            String(task.id || task.taskId || ''),
-            String(succ.successorTaskId || succ.successor_task_id || ''),
-            String(succ.relationship || succ.relationshipType || succ.relationship_type || 'FS'),
-            Number(succ.lagDays || succ.lag_days || succ.lag || 0),
-            succ.id || undefined,
-          );
-        });
-      });
-      if (depRecords.length > 0) {
-        // Clear existing dependencies for this project's tasks first
-        try {
-          const taskIds = (convertedData.tasks || []).map((t: any) => t.id || t.taskId);
-          await fetch('/api/data/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dataKey: 'taskDependencies', operation: 'deleteByTaskIds', taskIds, records: [] }),
-          });
-        } catch { /* best effort */ }
-
-        const depResponse = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataKey: 'taskDependencies', records: depRecords }),
-        });
-        const depResult = await depResponse.json();
-        if (!depResponse.ok || !depResult.success) {
-          pushLog('warning', `[Supabase] Dependencies: ${depResult.error || 'Failed'}`);
-        } else {
-          pushLog('success', `[Supabase] Dependencies synced: ${depRecords.length}`);
-        }
-      }
-
-      // Mark this file as the current version for the project in the Documents folder
-      try {
-        const setCurrentRes = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'projectDocuments',
-            operation: 'setCurrentMpp',
-            projectId: existingProjectId,
-            storagePath: file.storagePath,
-          }),
-        });
-        const setCurrentResult = await setCurrentRes.json();
-        if (setCurrentRes.ok && setCurrentResult.success) {
-          pushLog('success', '[Documents] File marked as current version for this project.');
-        } else {
-          pushLog('warning', `[Documents] Could not set current version: ${setCurrentResult.error || 'Unknown'}`);
-        }
-      } catch (e: any) {
-        pushLog('warning', `[Documents] Set current version failed: ${e.message}`);
-      }
-
-      // Save health score and health_check_json to project_documents (by storage_path)
-      try {
-        // Save the FULL health result including results array for the health report
-        const healthRes = await fetch('/api/data/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dataKey: 'projectDocuments',
-            operation: 'updateDocumentHealth',
-            storagePath: file.storagePath,
-            healthScore: healthResult.score,
-            healthCheckJson: {
-              score: healthResult.score,
-              passed: healthResult.passed,
-              failed: healthResult.totalChecks - healthResult.passed,
-              totalChecks: healthResult.totalChecks,
-              issues: healthResult.issues || [],
-              results: healthResult.results || [], // Include full results array for health report
-            },
-          }),
-        });
-        const healthResultJson = await healthRes.json();
-        if (healthRes.ok && healthResultJson.success) {
-          pushLog('success', '[Documents] Health score and full results saved to project_documents.');
-        } else {
-          pushLog('warning', `[Documents] Health save failed: ${healthResultJson.error || 'Unknown'}`);
-        }
-      } catch (healthErr: any) {
-        pushLog('warning', `[Documents] Health save failed: ${healthErr.message}`);
-      }
-
-      // Persist process logs to project_log
-      await saveLogsToProjectLog(logEntries, existingProjectId);
-
-      // Step 6: Auto-run Match Hours
-      setProcessingStage({ step: 6, label: 'Matching hours to tasks...', fileName: file.fileName });
-      pushLog('info', '[Matching] Auto-running hours-to-tasks matching...');
-      try {
-        const matchResponse = await fetch('/api/data/match', { method: 'POST' });
-        const matchResult = await matchResponse.json();
-        if (!matchResponse.ok || !matchResult.success) {
-          pushLog('warning', `[Matching] ${matchResult.error || 'Matching failed — can be re-run manually'}`);
-        } else {
-          pushLog('success', `[Matching] Matched: ${matchResult.tasksMatched} to tasks, ${matchResult.unitsMatched} to units, ${matchResult.stillUnmatched} unmatched`);
-          if (matchResult.aggregated) {
-            pushLog('success', `[Aggregation] Updated ${matchResult.aggregated} tasks with actual hours/cost`);
-          }
-        }
-      } catch (matchErr: any) {
-        pushLog('warning', `[Matching] Auto-match failed: ${matchErr.message}`);
-      }
-
-      // Complete the process
-      setProcessingStage({ step: 7, label: 'Complete!', fileName: file.fileName });
-      pushLog('success', '[Complete] MPP file processed, hierarchy imported, and hours matched');
-      setUploadedFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'complete' as const, healthCheck: healthResult } : f
-      ));
-
-      // Save logs to System Health dropdown
       const logLines = logEntries.map(e => `[${e.timestamp.toLocaleTimeString()}] ${e.type.toUpperCase()}: ${e.message}`);
       addEngineLog('ProjectPlan', logLines, { executionTimeMs: Date.now() - Date.parse(logEntries[0]?.timestamp.toISOString() || new Date().toISOString()) });
 
       await refreshData();
       await loadStoredFiles();
-
     } catch (err: any) {
       pushLog('error', `[Process] Error: ${err.message}`);
-      setUploadedFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, status: 'error' as const } : f
-      ));
+      setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as const } : f));
     } finally {
       setIsProcessing(false);
       setProcessingFileId(null);
-      // Clear the processing stage after a brief delay so user sees "Complete!"
       setTimeout(() => setProcessingStage(null), 2000);
     }
-  }, [uploadedFiles, addLog, refreshData, loadStoredFiles, saveLogsToProjectLog, data, selectedProjectMissingPortfolio, assignPortfolioId]);
+  }, [uploadedFiles, addLog, refreshData, loadStoredFiles, data, addEngineLog, assignPortfolioId]);
 
   // Delete file — clears blob, project_documents record, and all associated data
   const handleDelete = useCallback(async (fileId: string) => {
