@@ -194,6 +194,8 @@ function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
 }
 
 export async function POST(req: NextRequest) {
+  const diagnostics: string[] = [];
+  const logDiag = (msg: string) => diagnostics.push(`${new Date().toISOString()} ${msg}`);
   try {
     const parserUrl =
       process.env.MPP_PARSER_URL ||
@@ -206,6 +208,7 @@ export async function POST(req: NextRequest) {
     const portfolioId = readString(formData, 'portfolioId');
     const customerId = readString(formData, 'customerId');
     const siteId = readString(formData, 'siteId');
+    logDiag(`[Input] documentId=${documentId} projectId=${projectId}`);
 
     const docResult = await withClient((client) =>
       client.query('SELECT id, file_name, storage_path FROM project_documents WHERE id = $1 LIMIT 1', [documentId])
@@ -215,18 +218,39 @@ export async function POST(req: NextRequest) {
     if (!doc) {
       return NextResponse.json({ success: false, error: 'Document not found' }, { status: 404 });
     }
+    logDiag(`[Document] file=${doc.file_name} path=${doc.storage_path}`);
 
     const { data: fileBuffer, error: downloadError } = await downloadFile(doc.storage_path);
     if (downloadError || !fileBuffer) {
       return NextResponse.json({ success: false, error: `Failed to download file: ${downloadError || 'unknown'}` }, { status: 500 });
     }
+    logDiag(`[Storage] Downloaded file bytes=${(fileBuffer as Buffer).length || 0}`);
 
     const parsed = await callParser(parserUrl, doc.file_name, fileBuffer as Buffer);
-    const converted = convertProjectPlanJSON(parsed, projectId);
+    logDiag(`[Parser] success=true tasks=${Array.isArray((parsed as any).tasks) ? (parsed as any).tasks.length : 0}`);
+    let converted: Partial<Record<string, unknown>>;
+    try {
+      converted = convertProjectPlanJSON(parsed, projectId);
+    } catch (conversionError) {
+      logDiag(`[Convert] FAILED ${(conversionError as Error)?.message || String(conversionError)}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Conversion failed: ${(conversionError as Error)?.message || String(conversionError)}`,
+          diagnostics,
+          parserSample: Array.isArray((parsed as any).tasks) ? (parsed as any).tasks.slice(0, 3) : [],
+        },
+        { status: 500 }
+      );
+    }
 
     const units = (converted.units || []) as any[];
     const phases = (converted.phases || []) as any[];
     const tasks = (converted.tasks || []) as any[];
+    logDiag(`[Convert] units=${units.length} phases=${phases.length} tasks=${tasks.length}`);
+    if ((Array.isArray((parsed as any).tasks) ? (parsed as any).tasks.length : 0) > 0 && units.length === 0 && phases.length === 0 && tasks.length === 0) {
+      logDiag('[Convert] WARNING parsed tasks exist but conversion produced no rows');
+    }
 
     const now = new Date().toISOString();
     units.forEach((row) => {
@@ -250,6 +274,7 @@ export async function POST(req: NextRequest) {
     tasks.forEach((row) => {
       row.projectId = projectId;
       row.project_id = projectId;
+      row.taskId = row.taskId || row.id || row.task_id;
       if (portfolioId) row.portfolioId = portfolioId;
       if (customerId) row.customerId = customerId;
       if (siteId) row.siteId = siteId;
@@ -262,6 +287,7 @@ export async function POST(req: NextRequest) {
     const summary = await withClient(async (client) => {
       await client.query('BEGIN');
       try {
+        logDiag('[DB] BEGIN transaction');
         await client.query('UPDATE projects SET has_schedule = true, updated_at = NOW() WHERE id = $1', [projectId]);
 
         // Full replace per project (atomic)
@@ -277,9 +303,13 @@ export async function POST(req: NextRequest) {
         await client.query('DELETE FROM project_log WHERE project_id = $1', [projectId]);
 
         const unitsSaved = await upsertRows(client, 'units', units as Record<string, unknown>[]);
+        logDiag(`[DB] units upserted=${unitsSaved}`);
         const phasesSaved = await upsertRows(client, 'phases', phases as Record<string, unknown>[]);
+        logDiag(`[DB] phases upserted=${phasesSaved}`);
         const tasksSaved = await upsertRows(client, 'tasks', tasks as Record<string, unknown>[]);
+        logDiag(`[DB] tasks upserted=${tasksSaved}`);
         const depsSaved = await upsertRows(client, 'task_dependencies', dependencyRows);
+        logDiag(`[DB] dependencies upserted=${depsSaved}`);
 
         await client.query(
           "UPDATE project_documents SET is_current_version = false WHERE project_id = $1 AND document_type = 'MPP'",
@@ -291,9 +321,11 @@ export async function POST(req: NextRequest) {
         );
 
         await client.query('COMMIT');
+        logDiag('[DB] COMMIT');
         return { unitsSaved, phasesSaved, tasksSaved, depsSaved };
       } catch (error) {
         await client.query('ROLLBACK');
+        logDiag(`[DB] ROLLBACK ${(error as Error)?.message || String(error)}`);
         throw error;
       }
     });
@@ -309,6 +341,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       logs,
+      diagnostics,
       summary,
       taskCount: tasks.length,
       tasks,
@@ -316,6 +349,6 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     console.error('[process-mpp] error:', message);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message, diagnostics }, { status: 500 });
   }
 }

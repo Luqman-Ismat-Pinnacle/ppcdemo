@@ -163,6 +163,7 @@ export default function DocumentsPage() {
   const [availableWorkdayProjects, setAvailableWorkdayProjects] = useState<DropdownOption[]>([]);
   const [loadingWorkdayProjects, setLoadingWorkdayProjects] = useState(false);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
+  const [processDiagnostics, setProcessDiagnostics] = useState<Record<string, string[]>>({});
   const [expandedHealthFileId, setExpandedHealthFileId] = useState<string | null>(null);
   const [storageConfigured, setStorageConfigured] = useState(true);
   const [hasLoadedFiles, setHasLoadedFiles] = useState(false);
@@ -205,6 +206,15 @@ export default function DocumentsPage() {
       type,
       message,
     }]);
+  }, []);
+
+  const appendDiagnostic = useCallback((fileId: string, message: string) => {
+    if (!fileId || !message) return;
+    setProcessDiagnostics((prev) => {
+      const existing = prev[fileId] || [];
+      const next = [...existing, message];
+      return { ...prev, [fileId]: next.slice(-30) };
+    });
   }, []);
 
   // Load existing files from Azure Blob Storage on mount
@@ -624,10 +634,12 @@ export default function DocumentsPage() {
     setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'processing' as const } : f));
 
     const logEntries: ProcessingLog[] = [];
+    setProcessDiagnostics((prev) => ({ ...prev, [fileId]: [] }));
     const pushLog = (type: ProcessingLog['type'], message: string) => {
       const entry: ProcessingLog = { id: `${Date.now()}-${Math.random()}`, timestamp: new Date(), type, message };
       logEntries.push(entry);
       addLog(type, message);
+      appendDiagnostic(fileId, `[${type.toUpperCase()}] ${message}`);
     };
 
     try {
@@ -668,9 +680,13 @@ export default function DocumentsPage() {
         body: formData,
       });
       const result = await response.json();
+      if (Array.isArray(result?.diagnostics)) {
+        result.diagnostics.forEach((d: string) => appendDiagnostic(fileId, d));
+      }
 
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'MPP import failed');
+        const details = Array.isArray(result?.diagnostics) ? result.diagnostics.slice(-4).join(' | ') : '';
+        throw new Error(details ? `${result.error || 'MPP import failed'} :: ${details}` : (result.error || 'MPP import failed'));
       }
 
       const routeLogs = Array.isArray(result.logs) ? result.logs : [];
@@ -689,13 +705,16 @@ export default function DocumentsPage() {
       await loadStoredFiles();
     } catch (err: any) {
       pushLog('error', `[Process] Error: ${err.message}`);
+      if (err?.stack) {
+        appendDiagnostic(fileId, `[STACK] ${String(err.stack).split('\n').slice(0, 3).join(' | ')}`);
+      }
       setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as const } : f));
     } finally {
       setIsProcessing(false);
       setProcessingFileId(null);
       setTimeout(() => setProcessingStage(null), 2000);
     }
-  }, [uploadedFiles, addLog, refreshData, loadStoredFiles, data, addEngineLog, assignPortfolioId]);
+  }, [uploadedFiles, addLog, refreshData, loadStoredFiles, data, addEngineLog, assignPortfolioId, appendDiagnostic]);
 
   // Delete file — clears blob, project_documents record, and all associated data
   const handleDelete = useCallback(async (fileId: string) => {
@@ -1413,6 +1432,26 @@ export default function DocumentsPage() {
                                         transition: 'width 0.5s ease',
                                       }} />
                                     </div>
+                                    {!!(processDiagnostics[file.id] || []).length && (
+                                      <div style={{ marginTop: '0.75rem', padding: '0.55rem', borderRadius: '6px', background: 'rgba(0,0,0,0.22)', border: '1px solid var(--border-color)', maxHeight: '150px', overflowY: 'auto' }}>
+                                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Status Trace</div>
+                                        {(processDiagnostics[file.id] || []).slice(-8).map((entry, idx) => (
+                                          <div key={`${file.id}-diag-${idx}`} style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', lineHeight: 1.35, marginBottom: '0.2rem' }}>
+                                            {entry}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {!processingStage && file.status === 'error' && !!(processDiagnostics[file.id] || []).length && (
+                                  <div style={{ gridColumn: '1 / -1', marginBottom: '0.5rem', background: 'rgba(127,29,29,0.25)', border: '1px solid rgba(248,113,113,0.45)', borderRadius: 'var(--radius-md)', padding: '0.75rem' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#FCA5A5', marginBottom: '0.45rem' }}>Import Error Trace</div>
+                                    {(processDiagnostics[file.id] || []).slice(-10).map((entry, idx) => (
+                                      <div key={`${file.id}-err-${idx}`} style={{ fontSize: '0.68rem', color: '#FECACA', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', lineHeight: 1.35, marginBottom: '0.2rem' }}>
+                                        {entry}
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
                                 {/* Health card */}
