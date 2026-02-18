@@ -376,8 +376,7 @@
             const level = Number(task.outline_level || 0);
             const minLevel = Number.isFinite(currentMinOutlineLevel) ? currentMinOutlineLevel : 0;
             const maxLevel = Number.isFinite(currentMaxOutlineLevel) ? currentMaxOutlineLevel : minLevel;
-            const hasLevelOne = minLevel <= 1 && maxLevel >= 1;
-            const anchor = hasLevelOne ? 2 : Math.max(1, minLevel + 1);
+            const anchor = 2;
             if (level <= 1) return 'project';
             if (level === anchor) return 'unit';
             if (level === anchor + 1) return 'phase';

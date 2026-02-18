@@ -341,10 +341,9 @@ class ProjectParser:
         max_outline = max(outline_levels) if outline_levels else 0
         min_outline = min(outline_levels) if outline_levels else 0
         # Hierarchy anchor:
-        # level 1 = project plan/root, mapping starts at level 2
+        # level 1 = project plan/root, mapping always starts at level 2
         # level 2 = unit, level 3 = phase, level 4+ = task, deepest may be sub_task.
-        has_level_one = any((int(t.get('outline_level') or 0) == 1) for t in all_tasks)
-        hierarchy_anchor = 2 if has_level_one else max(1, min_outline + 1)
+        hierarchy_anchor = 2
 
         for node in all_tasks:
             level = int(node.get('outline_level') or 0)
