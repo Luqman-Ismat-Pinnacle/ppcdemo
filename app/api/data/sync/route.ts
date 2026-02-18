@@ -95,11 +95,29 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
 
   // tasks table: strip columns that don't exist in the DB schema
   if (tableName === 'tasks') {
+    // Normalize converter aliases to actual tasks table columns.
+    if (formatted.parent_task_id == null && formatted.parent_id != null) {
+      formatted.parent_task_id = formatted.parent_id;
+    }
+    if (formatted.projected_remaining_hours == null && formatted.projected_hours != null) {
+      formatted.projected_remaining_hours = formatted.projected_hours;
+    }
+    if (formatted.description == null && formatted.task_description != null) {
+      formatted.description = formatted.task_description;
+    }
+
     delete formatted.employee_id;
     delete formatted.predecessors;       // array of objects — lives in task_dependencies table
+    delete formatted.successors;         // array of objects — not a tasks table column
     delete formatted.predecessor_name;   // not a DB column
     delete formatted.task_name;          // tasks table uses 'name' not 'task_name'
     delete formatted.task_description;   // tasks table uses 'description' or 'notes'
+    delete formatted.parent_id;          // mapped above to parent_task_id
+    delete formatted.projected_hours;    // mapped above to projected_remaining_hours
+    delete formatted.folder;             // parser helper only
+    delete formatted.unit_id;            // tasks table has no unit FK column
+    delete formatted.total_slack;        // not in schema (use total_float if needed)
+    delete formatted.is_summary;         // parser helper only
   }
 
   // task_dependencies: strip columns not in schema
@@ -110,6 +128,10 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
   }
 
   if (tableName === 'units') {
+    if (formatted.is_active == null && formatted.active != null) {
+      formatted.is_active = formatted.active;
+    }
+
     delete formatted.parent_id;
     delete formatted.is_summary;
     delete formatted.total_slack;
@@ -118,15 +140,27 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
     delete formatted.projected_hours;
     delete formatted.task_name;
     delete formatted.task_description;
+    delete formatted.active;
+    delete formatted.end_date;
+    delete formatted.is_critical;
+    delete formatted.folder;
   }
 
   if (tableName === 'phases') {
+    if (formatted.description == null && formatted.comments != null) {
+      formatted.description = formatted.comments;
+    }
+
     delete formatted.parent_id;
     delete formatted.is_summary;
     delete formatted.total_slack;
     delete formatted.successors;
     delete formatted.predecessors;
     delete formatted.projected_hours;
+    delete formatted.comments;
+    delete formatted.unit_id;
+    delete formatted.folder;
+    delete formatted.is_critical;
   }
 
   // Strip any remaining array/object values that can't be stored in flat columns
