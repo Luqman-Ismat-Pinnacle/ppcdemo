@@ -61,6 +61,23 @@ async function callParser(parserUrl: string, fileName: string, fileBuffer: Buffe
   }
 }
 
+const JSONB_COLUMNS = new Set(['predecessors', 'successors']);
+
+function serializeJsonb(value: unknown): string {
+  if (value === null || value === undefined) return '[]';
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return JSON.stringify(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return '[]';
+    }
+  }
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === 'object') return JSON.stringify(value);
+  return '[]';
+}
+
 async function getTableColumns(client: any, tableName: 'units' | 'phases' | 'tasks' | 'task_dependencies') {
   const result = await client.query(
     `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
@@ -132,8 +149,15 @@ async function upsertRows(
     batch.forEach((row, rowIdx) => {
       const placeholders: string[] = [];
       columns.forEach((col, colIdx) => {
-        values.push(row[col] ?? null);
-        placeholders.push(`$${rowIdx * columns.length + colIdx + 1}`);
+        const paramNum = rowIdx * columns.length + colIdx + 1;
+        const raw = row[col] ?? null;
+        if (JSONB_COLUMNS.has(col)) {
+          values.push(raw === null ? null : serializeJsonb(raw));
+          placeholders.push(`$${paramNum}::jsonb`);
+        } else {
+          values.push(raw);
+          placeholders.push(`$${paramNum}`);
+        }
       });
       tuples.push(`(${placeholders.join(', ')})`);
     });
