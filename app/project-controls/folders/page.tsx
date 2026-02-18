@@ -154,6 +154,7 @@ export default function DocumentsPage() {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingFileId, setProcessingFileId] = useState<string | null>(null);
   const [processingStage, setProcessingStage] = useState<{
     step: number;
     label: string;
@@ -166,6 +167,7 @@ export default function DocumentsPage() {
   const [expandedHealthFileId, setExpandedHealthFileId] = useState<string | null>(null);
   const [storageConfigured, setStorageConfigured] = useState(true);
   const [hasLoadedFiles, setHasLoadedFiles] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
 
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
@@ -644,6 +646,7 @@ export default function DocumentsPage() {
     if (!file || !file.storagePath) return;
 
     setIsProcessing(true);
+    setProcessingFileId(fileId);
     setProcessingStage({ step: 1, label: 'Downloading from storage...', fileName: file.fileName });
 
     setUploadedFiles(prev => prev.map(f =>
@@ -1150,6 +1153,7 @@ export default function DocumentsPage() {
       ));
     } finally {
       setIsProcessing(false);
+      setProcessingFileId(null);
       // Clear the processing stage after a brief delay so user sees "Complete!"
       setTimeout(() => setProcessingStage(null), 2000);
     }
@@ -1261,6 +1265,46 @@ export default function DocumentsPage() {
     await refreshData();
     addLog('success', '[Complete] File and associated data deleted');
   }, [uploadedFiles, addLog, refreshData, filteredData]);
+
+  const handleDownloadFile = useCallback(async (file: UploadedFile) => {
+    if (!file.storagePath) {
+      addLog('warning', `[Download] Missing storage path for ${file.fileName}`);
+      return;
+    }
+    try {
+      addLog('info', `[Download] Downloading ${file.fileName}...`);
+      const { data: blob, error } = await storageApi.download(file.storagePath);
+      if (error || !blob) throw new Error(error?.message || 'Download failed');
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      addLog('success', `[Download] Downloaded ${file.fileName}`);
+    } catch (err: any) {
+      addLog('error', `[Download] ${err.message}`);
+    }
+  }, [addLog]);
+
+  const visibleFiles = useMemo(() => {
+    const q = fileSearchQuery.trim().toLowerCase();
+    if (!q) return uploadedFiles;
+    return uploadedFiles.filter((file) => {
+      const healthScore = file.healthCheck?.score != null ? String(file.healthCheck.score) : '';
+      const haystack = [
+        file.fileName,
+        file.workdayProjectId || '',
+        file.storagePath || '',
+        file.status,
+        `v${file.version || 1}`,
+        healthScore,
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [uploadedFiles, fileSearchQuery]);
 
   // Match hours entries to tasks and aggregate actual cost (via server-side API)
   const [isMatching, setIsMatching] = useState(false);
@@ -1468,7 +1512,7 @@ export default function DocumentsPage() {
         </div>
 
         {/* Processing Progress Overlay */}
-        {processingStage && (
+        {processingStage && !processingFileId && (
           <div className="chart-card grid-full" style={{ border: '1px solid var(--pinnacle-teal)', borderColor: processingStage.step === 7 ? '#10B981' : 'var(--pinnacle-teal)' }}>
             <div style={{ padding: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
@@ -1550,18 +1594,35 @@ export default function DocumentsPage() {
         {/* Uploaded Files */}
         <div className="chart-card grid-full">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="chart-card-title">Files ({uploadedFiles.length})</h3>
-            <button
-              onClick={loadStoredFiles}
-              style={{ padding: '0.25rem 0.75rem', backgroundColor: 'var(--bg-tertiary)', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--text-secondary)' }}
-            >
-              Refresh
-            </button>
+            <h3 className="chart-card-title">Files ({visibleFiles.length})</h3>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={fileSearchQuery}
+                onChange={(e) => setFileSearchQuery(e.target.value)}
+                placeholder="Search files..."
+                style={{
+                  padding: '0.3rem 0.55rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  fontSize: '0.75rem',
+                  color: 'var(--text-primary)',
+                  minWidth: '220px',
+                }}
+              />
+              <button
+                onClick={loadStoredFiles}
+                style={{ padding: '0.25rem 0.75rem', backgroundColor: 'var(--bg-tertiary)', border: 'none', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--text-secondary)' }}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
           <div className="chart-card-body" style={{ padding: '1rem' }}>
-            {uploadedFiles.length === 0 ? (
+            {visibleFiles.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                No files in storage. Upload an MPP file above.
+                {uploadedFiles.length === 0 ? 'No files in storage. Upload an MPP file above.' : 'No files match your search.'}
               </div>
             ) : (
               <table className="data-table" style={{ fontSize: '0.875rem' }}>
@@ -1578,7 +1639,7 @@ export default function DocumentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {uploadedFiles.map((file) => {
+                  {visibleFiles.map((file) => {
                     const isCurrentVersion = file.isCurrentVersion ?? filteredData?.projectDocuments?.some(
                       (d: any) =>
                         (d.storagePath === file.storagePath || d.storage_path === file.storagePath) &&
@@ -1703,6 +1764,21 @@ export default function DocumentsPage() {
                           <td onClick={(e) => e.stopPropagation()}>
                             <div style={{ display: 'flex', gap: '0.5rem' }}>
                               <button
+                                onClick={() => handleDownloadFile(file)}
+                                disabled={!file.storagePath || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
+                                style={{
+                                  padding: '0.25rem 0.75rem',
+                                  backgroundColor: 'var(--bg-tertiary)',
+                                  color: 'var(--text-secondary)',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  cursor: !file.storagePath || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing' ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                Download
+                              </button>
+                              <button
                                 onClick={() => handleProcess(file.id)}
                                 disabled={isProcessing || file.status === 'uploading' || file.status === 'processing' || file.status === 'syncing'}
                                 style={{
@@ -1744,6 +1820,53 @@ export default function DocumentsPage() {
                           <tr>
                             <td colSpan={8} style={{ padding: 0, background: 'var(--bg-tertiary)', verticalAlign: 'top' }}>
                               <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '1fr auto', gap: '1.5rem', alignItems: 'start' }}>
+                                {processingStage && processingFileId === file.id && (
+                                  <div style={{ gridColumn: '1 / -1', marginBottom: '0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.9rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                      <div style={{ width: '14px', height: '14px', border: '2px solid var(--pinnacle-teal)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{processingStage.label}</strong>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.75rem' }}>
+                                      {[
+                                        { step: 1, label: 'Download' },
+                                        { step: 2, label: 'Parse' },
+                                        { step: 3, label: 'Convert' },
+                                        { step: 4, label: 'Health Check' },
+                                        { step: 5, label: 'Sync' },
+                                        { step: 6, label: 'Match Hours' },
+                                        { step: 7, label: 'Done' },
+                                      ].map(({ step, label }) => (
+                                        <div key={step} style={{ flex: 1, textAlign: 'center' }}>
+                                          <div style={{
+                                            height: '4px',
+                                            borderRadius: '2px',
+                                            backgroundColor: step < processingStage.step ? '#10B981'
+                                              : step === processingStage.step ? 'var(--pinnacle-teal)'
+                                                : 'var(--bg-tertiary)',
+                                            transition: 'background-color 0.3s ease',
+                                          }} />
+                                          <div style={{
+                                            fontSize: '0.62rem',
+                                            color: step <= processingStage.step ? 'var(--text-secondary)' : 'var(--text-muted)',
+                                            marginTop: '4px',
+                                            fontWeight: step === processingStage.step ? 600 : 400,
+                                          }}>
+                                            {label}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--bg-tertiary)', overflow: 'hidden' }}>
+                                      <div style={{
+                                        height: '100%',
+                                        width: `${(processingStage.step / 7) * 100}%`,
+                                        borderRadius: '3px',
+                                        backgroundColor: processingStage.step === 7 ? '#10B981' : 'var(--pinnacle-teal)',
+                                        transition: 'width 0.5s ease',
+                                      }} />
+                                    </div>
+                                  </div>
+                                )}
                                 {/* Health card */}
                                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden', minWidth: 0 }}>
                                   <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
