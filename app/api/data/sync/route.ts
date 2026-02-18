@@ -129,6 +129,11 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
     }
   }
 
+  // project_documents: simplified schema has no document_id (use id only)
+  if (tableName === 'project_documents') {
+    delete formatted.document_id;
+  }
+
   // Strip nested objects not represented as JSON columns.
   for (const [key, value] of Object.entries(formatted)) {
     if (value && typeof value === 'object' && !Array.isArray(value)) {

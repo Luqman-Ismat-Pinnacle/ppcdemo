@@ -920,25 +920,21 @@ CREATE TABLE IF NOT EXISTS change_impacts (
 CREATE INDEX IF NOT EXISTS idx_change_impacts_change_request_id ON change_impacts(change_request_id);
 CREATE INDEX IF NOT EXISTS idx_change_impacts_project_id ON change_impacts(project_id);
 
--- PROJECT DOCUMENTS
+-- PROJECT DOCUMENTS (simplified for project plans / MPP)
+-- Minimal columns: id, project link, file identity, storage, versioning, health.
 CREATE TABLE IF NOT EXISTS project_documents (
   id VARCHAR(50) PRIMARY KEY,
-  document_id VARCHAR(50),
   project_id VARCHAR(50),
-  customer_id VARCHAR(50),
-  site_id VARCHAR(50),
-  name VARCHAR(255) NOT NULL,
+  name VARCHAR(255),
   file_name VARCHAR(255) NOT NULL,
-  file_type VARCHAR(50) NOT NULL,
-  file_size BIGINT NOT NULL,
-  document_type VARCHAR(50) NOT NULL CHECK (document_type IN (
+  storage_path VARCHAR(500) NOT NULL,
+  file_type VARCHAR(50) NOT NULL DEFAULT 'mpp',
+  document_type VARCHAR(50) NOT NULL DEFAULT 'MPP' CHECK (document_type IN (
     'DRD', 'QMP', 'SOP', 'Workflow', 'MPP', 'Excel', 'PDF', 'Word', 'Other'
   )),
-  storage_path VARCHAR(500) NOT NULL,
+  file_size BIGINT NOT NULL DEFAULT 0,
   storage_bucket VARCHAR(100) DEFAULT 'projectdoc',
-  uploaded_by VARCHAR(255),
   uploaded_at TIMESTAMP DEFAULT NOW(),
-  description TEXT,
   version INTEGER DEFAULT 1,
   is_active BOOLEAN DEFAULT true,
   is_current_version BOOLEAN DEFAULT false,
@@ -949,13 +945,10 @@ CREATE TABLE IF NOT EXISTS project_documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_project_documents_current ON project_documents(project_id, is_current_version) WHERE is_current_version = true;
-
 CREATE INDEX IF NOT EXISTS idx_project_documents_project ON project_documents(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_documents_customer ON project_documents(customer_id);
-CREATE INDEX IF NOT EXISTS idx_project_documents_site ON project_documents(site_id);
 CREATE INDEX IF NOT EXISTS idx_project_documents_type ON project_documents(document_type);
 CREATE INDEX IF NOT EXISTS idx_project_documents_uploaded_at ON project_documents(uploaded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_project_documents_is_active ON project_documents(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_project_documents_storage_path ON project_documents(storage_path);
 CREATE INDEX IF NOT EXISTS idx_project_documents_project_type ON project_documents(project_id, document_type);
 
 -- PROJECT MAPPINGS (MPP project id to Workday project id for actuals)
@@ -1082,7 +1075,6 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project_phase ON tasks (project_id, phase_i
 CREATE INDEX IF NOT EXISTS idx_units_site_name ON units (site_id, name);
 CREATE INDEX IF NOT EXISTS idx_hour_entries_unmatched ON hour_entries (project_id, date DESC) WHERE task_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_hour_entries_task_date ON hour_entries (task_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_project_documents_storage_path ON project_documents (storage_path);
 
 -- ============================================================================
 -- AUTO-GENERATE ID TRIGGERS
