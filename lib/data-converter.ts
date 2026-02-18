@@ -359,6 +359,12 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     return v === 'SS' || v === 'FF' || v === 'SF' ? v : 'FS';
   };
 
+  const readOutlineLevel = (task: Record<string, unknown>): number => {
+    const raw = task.outline_level ?? task.outlineLevel;
+    const level = Number(raw);
+    return Number.isFinite(level) ? level : 1;
+  };
+
   const parseLinkString = (raw: string) => {
     const text = String(raw || '').trim();
     if (!text) return null;
@@ -455,11 +461,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
 
   // Build hierarchy: level 1 = unit; level 2+ with children = phase; leaf = task. (Project -> Unit -> Phase -> Task)
   const raw = (data.tasks as any[])
-    .filter((t: any) => (t.outline_level ?? 0) !== 0)
+    .filter((t: any) => readOutlineLevel(t as Record<string, unknown>) !== 0)
     .map((t: any) => ({
       id: t.id,
-      outline_level: t.outline_level ?? 1,
-      parent_id: t.parent_id ?? null,
+      outline_level: readOutlineLevel(t as Record<string, unknown>),
+      parent_id: t.parent_id ?? t.parentId ?? null,
       name: t.name || '',
       startDate: t.startDate || null,
       endDate: t.endDate || null,
@@ -479,8 +485,8 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       isCritical: t.isCritical || false,
       totalSlack: Math.round(t.totalSlack || 0),
       comments: t.comments || '',
-      is_summary: t.is_summary || false,
-      assignedResource: t.assignedResource || '',
+      is_summary: t.is_summary || t.isSummary || false,
+      assignedResource: t.assignedResource || t.assigned_resource || '',
       predecessors: normalizePredecessors(t),
       successors: normalizeSuccessors(t),
     }));
@@ -832,7 +838,11 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
   }
 
   // Handle MPP Parser format (flat tasks array with outline_level)
-  if (Array.isArray(data.tasks) && data.tasks.length > 0 && data.tasks[0]?.outline_level !== undefined) {
+  if (
+    Array.isArray(data.tasks) &&
+    data.tasks.length > 0 &&
+    data.tasks.some((task: any) => task?.outline_level !== undefined || task?.outlineLevel !== undefined)
+  ) {
     return convertMppParserOutput(data, projectIdOverride);
   }
 

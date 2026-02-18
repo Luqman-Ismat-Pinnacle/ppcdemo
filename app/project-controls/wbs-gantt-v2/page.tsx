@@ -913,14 +913,11 @@ export default function WBSGanttV2Page() {
     setHeaderMenu((prev) => (prev?.columnId === next.columnId ? prev : next));
   }, [visibleDefs, leftPanel.ref]);
 
-  const onVisibleRegionChanged = useCallback((range: Rectangle, _tx?: number, ty?: number) => {
+  const onVisibleRegionChanged = useCallback((range: Rectangle) => {
     if (!range || typeof range.y !== 'number') return;
-    // Use the grid's real pixel scroll offset when available to prevent
-    // row overlap/missing rows after deep expand/collapse operations.
-    const byScroll = typeof ty === 'number' && Number.isFinite(ty)
-      ? Math.max(0, ty)
-      : Math.max(0, range.y * ROW_HEIGHT);
-    setVerticalOffset((prev) => (Math.abs(prev - byScroll) > 0.5 ? byScroll : prev));
+    // Keep row-to-row lockstep between grid and timeline.
+    const byRange = Math.max(0, Math.round(range.y) * ROW_HEIGHT);
+    setVerticalOffset((prev) => (Math.abs(prev - byRange) > 0.5 ? byRange : prev));
   }, []);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
@@ -1300,7 +1297,7 @@ export default function WBSGanttV2Page() {
               drawCell={drawCell}
               drawHeader={drawHeader}
               smoothScrollX
-              smoothScrollY
+              smoothScrollY={false}
               width={leftPanel.size.width}
               height={leftPanel.size.height}
               theme={gridTheme}
