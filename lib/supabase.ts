@@ -13,11 +13,17 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { logger } from './logger';
 
+type MockSupabaseResponse = { data: null; error: { message: string } };
+type MockThenResolver = (value: MockSupabaseResponse) => unknown;
+type MockChain = {
+  then: (resolve: MockThenResolver) => Promise<unknown>;
+} & Record<string, (...args: unknown[]) => MockChain>;
+
 /**
  * Create a mock Supabase client for when env vars are not configured
  */
 function createMockSupabaseClient(): SupabaseClient {
-  const mockResponse = { data: null, error: { message: 'Database not configured' } };
+  const mockResponse: MockSupabaseResponse = { data: null, error: { message: 'Database not configured' } };
   const mockAuth = {
     getSession: async () => ({ data: { session: null }, error: null }),
     signInWithPassword: async () => mockResponse,
@@ -28,22 +34,45 @@ function createMockSupabaseClient(): SupabaseClient {
   /** Chainable query builder — every method returns `chain` so calls like
    *  .select().eq().eq().gte().order().limit() all work without crashing.
    *  When the chain is awaited (or `.then()` is called) it resolves with mockResponse. */
-  const createChain = (): any => {
-    const chain: any = new Proxy({} as any, {
-      get(_target, prop) {
-        if (prop === 'then') return (resolve: any) => resolve(mockResponse);
-        return (..._args: any[]) => chain;
+  const createChain = (): MockChain => {
+    const chain = new Proxy({} as MockChain, {
+      get(_target, prop: string | symbol) {
+        if (prop === 'then') {
+          return (resolve: MockThenResolver) => Promise.resolve(resolve(mockResponse));
+        }
+        if (typeof prop === 'symbol') {
+          return undefined;
+        }
+        return (...args: unknown[]) => {
+          void args;
+          return chain;
+        };
       },
     });
-    return chain;
+    return chain as MockChain;
   };
 
   const mockFrom = () => ({
-    select: (..._a: any[]) => createChain(),
-    insert: (..._a: any[]) => createChain(),
-    update: (..._a: any[]) => createChain(),
-    upsert: (..._a: any[]) => createChain(),
-    delete: (..._a: any[]) => createChain(),
+    select: (...args: unknown[]) => {
+      void args;
+      return createChain();
+    },
+    insert: (...args: unknown[]) => {
+      void args;
+      return createChain();
+    },
+    update: (...args: unknown[]) => {
+      void args;
+      return createChain();
+    },
+    upsert: (...args: unknown[]) => {
+      void args;
+      return createChain();
+    },
+    delete: (...args: unknown[]) => {
+      void args;
+      return createChain();
+    },
   });
 
   return {
@@ -308,13 +337,14 @@ export async function upsertRecords<T extends object>(
     .select();
 
   if (error) {
+    const errorMeta = error as unknown as Record<string, unknown>;
     const errorPayload = {
       message: error.message,
       detail: error.details,
       hint: error.hint,
       code: error.code,
-      table: (error as any).table,
-      constraint: (error as any).constraint,
+      table: errorMeta.table,
+      constraint: errorMeta.constraint,
     };
     logger.error(`Error upserting into ${table}`, errorPayload);
     const errorMessage = error.message || error.details || JSON.stringify(error, Object.getOwnPropertyNames(error)) || 'Unknown error';
@@ -523,8 +553,8 @@ export async function checkConnectionStatus(): Promise<ConnectionCheckResult> {
             client.release();
           }
         }
-      } catch (pgErr: any) {
-        result.error = `PostgreSQL: ${pgErr.message}`;
+      } catch (pgErr: unknown) {
+        result.error = `PostgreSQL: ${pgErr instanceof Error ? pgErr.message : 'Unknown error'}`;
         result.status = 'degraded';
       }
     } else if (isSupabaseEnvConfigured) {

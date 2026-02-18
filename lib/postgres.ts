@@ -7,7 +7,7 @@
  * @module lib/postgres
  */
 
-import { Pool } from 'pg';
+import { Pool, type QueryResult } from 'pg';
 
 const DATABASE_URL = process.env.DATABASE_URL
   || process.env.AZURE_POSTGRES_CONNECTION_STRING
@@ -49,7 +49,7 @@ export function isPostgresConfigured(): boolean {
 /**
  * Execute a query using the pool
  */
-export async function query(text: string, params?: any[]) {
+export async function query(text: string, params?: unknown[]): Promise<QueryResult> {
   const p = getPool();
   if (!p) throw new Error('PostgreSQL not configured');
   return p.query(text, params);

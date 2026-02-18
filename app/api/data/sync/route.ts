@@ -454,8 +454,14 @@ export async function POST(req: NextRequest) {
       if (usePostgres) {
         const rec = cleanedRecords[0];
         const id = rec.id;
+        if (typeof id !== 'string' && typeof id !== 'number') {
+          return NextResponse.json(
+            { success: false, count: 0, error: 'Invalid update payload: id is required' },
+            { status: 400 },
+          );
+        }
         delete rec.id;
-        const result = await pgUpdate(tableName, id, rec);
+        const result = await pgUpdate(tableName, String(id), rec);
         if (!result.success) return NextResponse.json({ success: false, count: 0, error: result.error }, { status: 500 });
         return NextResponse.json({ success: true, count: 1 });
       }

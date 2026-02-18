@@ -501,25 +501,41 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   const byId = new Map<string, (typeof raw)[0]>();
   raw.forEach((r: any) => byId.set(String(r.id), r));
 
-  // Hierarchy: Unit = level 1; Phase = level 2+ with children; Task = leaf (no children).
+  // Hierarchy detection:
+  // In many MPP files, level 1 is the project summary row and real units start at level 2.
+  // Infer the "unit level" dynamically so units are not dropped.
   const hasChildren = new Set<string>();
   raw.forEach((r: any) => {
     const pid = r.parent_id != null ? String(r.parent_id) : null;
     if (pid) hasChildren.add(pid);
   });
 
+  const minLevel = raw.reduce((min: number, r: any) => Math.min(min, Number(r.outline_level) || 1), Number.POSITIVE_INFINITY);
+  const hasDeeperLevels = raw.some((r: any) => (Number(r.outline_level) || 1) > minLevel);
+  const rootLevelRows = raw.filter((r: any) => (Number(r.outline_level) || 1) === minLevel);
+  const rootLooksLikeProjectSummary =
+    hasDeeperLevels &&
+    rootLevelRows.length > 0 &&
+    rootLevelRows.every((r: any) => Boolean(r.is_summary || hasChildren.has(String(r.id))));
+  const unitLevel = rootLooksLikeProjectSummary ? minLevel + 1 : minLevel;
+
   type NodeType = 'phase' | 'unit' | 'task';
   const typeById = new Map<string, NodeType>();
 
   raw.forEach((r: any) => {
-    const level = r.outline_level ?? 1;
+    const level = Number(r.outline_level) || 1;
     const id = String(r.id);
 
-    if (level === 1) {
+    // Ignore synthetic project summary root rows from hierarchy typing.
+    if (rootLooksLikeProjectSummary && level === minLevel) {
+      return;
+    }
+
+    if (level === unitLevel) {
       typeById.set(id, 'unit');
       return;
     }
-    // Level 2+: treat summary rows as phases. This is more robust than relying
+    // Levels below unit: treat summary rows as phases. This is more robust than relying
     // solely on parent/child links, which can be incomplete in some MPP files.
     if (r.is_summary || hasChildren.has(id)) {
       typeById.set(id, 'phase');
@@ -533,6 +549,10 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   const tasks: any[] = [];
 
   raw.forEach((r: any) => {
+    const level = Number(r.outline_level) || 1;
+    if (rootLooksLikeProjectSummary && level === minLevel) {
+      return;
+    }
     const id = String(r.id);
     const nodeType = typeById.get(id) ?? 'task';
     const baseTask = {

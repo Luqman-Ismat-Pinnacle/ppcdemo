@@ -343,6 +343,7 @@ function buildHierarchyMaps(data: {
   const unitToProject = new Map<string, string>();
   const siteToCustomer = new Map<string, string>();
   const phaseToProject = new Map<string, string>();
+  const taskPhaseToProject = new Map<string, string>();
 
   // Build customer maps (supports both hierarchy_nodes parent_id and legacy portfolio_id). Use String keys for consistent lookup.
   customers.forEach((customer: any) => {
@@ -423,6 +424,16 @@ function buildHierarchyMaps(data: {
     }
   });
 
+  // Build fallback phase->project lookup from tasks so phases without a direct
+  // project link still attach to the correct project (common in parser outputs).
+  (data.tasks || []).forEach((task: any) => {
+    const phaseId = normalizeId(task.phaseId ?? task.phase_id);
+    const projectId = normalizeId(task.projectId ?? task.project_id);
+    if (phaseId && projectId) {
+      taskPhaseToProject.set(phaseId, projectId);
+    }
+  });
+
   // Build phase maps: phases belong to unit (unit_id) or directly to project (legacy)
   (data.phases || []).forEach((phase: any) => {
     const phaseId = normalizeId(phase.id ?? phase.phaseId);
@@ -432,7 +443,11 @@ function buildHierarchyMaps(data: {
       if (!phasesByUnit.has(key)) phasesByUnit.set(key, []);
       phasesByUnit.get(key)!.push(phase);
     }
-    const projectId = phase.projectId ?? phase.project_id ?? (unitId != null && unitId !== '' ? unitToProject.get(String(unitId)) : undefined);
+    const projectId =
+      phase.projectId ??
+      phase.project_id ??
+      (unitId != null && unitId !== '' ? unitToProject.get(String(unitId)) : undefined) ??
+      (phaseId ? taskPhaseToProject.get(phaseId) : undefined);
     if (phaseId && projectId != null && projectId !== '') phaseToProject.set(phaseId, String(projectId));
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
@@ -1269,6 +1284,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       // Hierarchy: Project -> Unit -> Phase -> Task
       const projectUnitsRaw = maps.unitsByProject.get(String(projectId)) || [];
       const projectUnits = Array.from(new Map(projectUnitsRaw.map((u: any) => [String(u.id ?? u.unitId), u])).values());
+      const projectUnitIds = new Set(projectUnits.map((u: any) => String(u.id ?? u.unitId)));
       const addedPhaseIds = new Set<string>();
 
       projectUnits.forEach((unit: any, uIdx: number) => {
@@ -1435,9 +1451,15 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         projectItem.children?.push(unitItem);
       });
 
-      // Phases with no unit (direct under project)
+      // Phases with no unit OR with a stale/missing unit reference should render
+      // directly under project, otherwise they get dropped and tasks appear flat.
       const directPhasesRaw = (maps.phasesByProject.get(String(projectId)) || []).filter(
-        (ph: any) => !(ph.unitId ?? ph.unit_id)
+        (ph: any) => {
+          const rawUnitId = ph.unitId ?? ph.unit_id;
+          if (rawUnitId == null || rawUnitId === '') return true;
+          const unitId = String(rawUnitId);
+          return !projectUnitIds.has(unitId);
+        }
       );
       const directPhases = Array.from(new Map(directPhasesRaw.map((ph: any) => [String(ph.id ?? ph.phaseId), ph])).values());
 

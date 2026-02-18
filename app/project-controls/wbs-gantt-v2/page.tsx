@@ -53,8 +53,8 @@ type ColumnDef = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ROW_HEIGHT = 42;
-const HEADER_HEIGHT = 44;
+const ROW_HEIGHT = 54;
+const HEADER_HEIGHT = 56;
 
 const TYPE_COLOR: Record<string, string> = {
   portfolio: '#8b5cf6',
@@ -298,12 +298,12 @@ export default function WBSGanttV2Page() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 10,
       cellVerticalPadding: 7,
-      headerFontStyle: '700 11px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '800 14px var(--font-montserrat, sans-serif)',
       headerIconSize: 16,
-      baseFontStyle: '600 11px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '600 11px var(--font-mono, monospace)',
+      baseFontStyle: '700 14px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '700 13px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '11px',
+      editorFontSize: '14px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -780,19 +780,19 @@ export default function WBSGanttV2Page() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '600 9px var(--font-montserrat, sans-serif)';
+      ctx.font = '700 11px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
-      const badgeY = rect.y + Math.floor((rect.height - 14) / 2);
+      const badgeY = rect.y + Math.floor((rect.height - 18) / 2);
       ctx.fillStyle = `${badgeColor}33`;
-      ctx.fillRect(badgeX, badgeY, badgeW, 14);
+      ctx.fillRect(badgeX, badgeY, badgeW, 18);
       ctx.strokeStyle = `${badgeColor}99`;
-      ctx.strokeRect(badgeX, badgeY, badgeW, 14);
+      ctx.strokeRect(badgeX, badgeY, badgeW, 18);
       ctx.fillStyle = badgeColor;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(label, badgeX + 4, badgeY + 7);
+      ctx.fillText(label, badgeX + 4, badgeY + 9);
       return;
     }
 
@@ -844,7 +844,7 @@ export default function WBSGanttV2Page() {
       return;
     }
 
-    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '700' : '600'} 11px var(--font-montserrat, sans-serif)`;
+    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '800' : '700'} 14px var(--font-montserrat, sans-serif)`;
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';
@@ -913,10 +913,21 @@ export default function WBSGanttV2Page() {
     setHeaderMenu((prev) => (prev?.columnId === next.columnId ? prev : next));
   }, [visibleDefs, leftPanel.ref]);
 
-  const onVisibleRegionChanged = useCallback((range: Rectangle) => {
-    const byRange = Math.max(0, range.y * ROW_HEIGHT);
-    setVerticalOffset((prev) => (Math.abs(prev - byRange) > 0.5 ? byRange : prev));
+  const onVisibleRegionChanged = useCallback((range: Rectangle, _tx?: number, ty?: number) => {
+    // Use the grid's real pixel scroll offset when available to prevent
+    // row overlap/missing rows after deep expand/collapse operations.
+    const byScroll = typeof ty === 'number' && Number.isFinite(ty)
+      ? Math.max(0, ty)
+      : Math.max(0, range.y * ROW_HEIGHT);
+    setVerticalOffset((prev) => (Math.abs(prev - byScroll) > 0.5 ? byScroll : prev));
   }, []);
+
+  useEffect(() => {
+    // Keep virtual timeline offset in bounds as row counts change from expand/collapse.
+    const viewportRows = Math.max(1, Math.floor(Math.max(0, rightPanelHeight - HEADER_HEIGHT) / ROW_HEIGHT));
+    const maxOffset = Math.max(0, (filteredRows.length - viewportRows) * ROW_HEIGHT);
+    setVerticalOffset((prev) => (prev > maxOffset ? maxOffset : prev));
+  }, [filteredRows.length, rightPanelHeight]);
 
   const rowsWithDates = useMemo(() => filteredRows.filter((r) => {
     if (!r.startDate || !r.endDate) return false;
@@ -1132,7 +1143,7 @@ export default function WBSGanttV2Page() {
     <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem' }}>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>WBS Gantt V2</h1>
+          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>WBS Gantt V2</h1>
           <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.74rem' }}>
             Original theme + hierarchy + dependencies + resizable split
           </div>
@@ -1341,10 +1352,11 @@ export default function WBSGanttV2Page() {
                         {showLabel && (
                           <Text
                             x={x + 3}
-                            y={timelineInterval === 'day' ? 16 : 10}
+                            y={timelineInterval === 'day' ? 18 : 12}
                             text={tickLabel(tick)}
                             fill={isMajor ? timelineColors.text : timelineColors.quarter}
-                            fontSize={timelineInterval === 'day' ? 9 : 10}
+                            fontSize={timelineInterval === 'day' ? 12 : 13}
+                            fontStyle={isMajor ? 'bold' : 'normal'}
                           />
                         )}
                       </React.Fragment>
@@ -1367,7 +1379,7 @@ export default function WBSGanttV2Page() {
                     return (
                       <React.Fragment>
                         <Line points={[x, 0, x, rightPanelHeight]} stroke="#ef4444" strokeWidth={1.2} dash={[6, 4]} />
-                        <Text x={x + 4} y={26} text="Today" fill="#ef4444" fontSize={10} />
+                        <Text x={x + 4} y={30} text="Today" fill="#ef4444" fontSize={12} fontStyle="bold" />
                       </React.Fragment>
                     );
                   })()}
@@ -1536,26 +1548,26 @@ export default function WBSGanttV2Page() {
             pointerEvents: 'none',
             backdropFilter: 'blur(20px)',
             color: '#d0d0d0',
-            fontSize: '0.72rem',
+            fontSize: '0.84rem',
             lineHeight: 1.45,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#fff', flex: 1, marginRight: 8 }}>{barTip.row.name}</div>
+            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#fff', flex: 1, marginRight: 8 }}>{barTip.row.name}</div>
             <span style={{ fontSize: '0.52rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: `${TYPE_COLOR[barTip.row.type] || '#666'}33`, color: TYPE_COLOR[barTip.row.type] || '#999', whiteSpace: 'nowrap' }}>
               {barTip.row.type.replace('_', ' ')}
             </span>
           </div>
-          <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: 8 }}>WBS {barTip.row.wbsCode}</div>
+          <div style={{ fontSize: '0.72rem', color: '#777', marginBottom: 8 }}>WBS {barTip.row.wbsCode}</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
             <span>{barTip.row.startDate ? new Date(barTip.row.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
             <span style={{ color: '#555' }}>→</span>
             <span>{barTip.row.endDate ? new Date(barTip.row.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
           </div>
-          <div style={{ fontSize: '0.62rem', color: '#777', marginBottom: 8 }}>{barTip.row.daysRequired} working days</div>
+          <div style={{ fontSize: '0.72rem', color: '#777', marginBottom: 8 }}>{barTip.row.daysRequired} working days</div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', marginBottom: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', marginBottom: 6 }}>
             <span style={{ color: '#8d96a6' }}>Baseline</span>
             <span>{barTip.row.baselineStart ? new Date(barTip.row.baselineStart).toLocaleDateString() : '-'} → {barTip.row.baselineEnd ? new Date(barTip.row.baselineEnd).toLocaleDateString() : '-'}</span>
           </div>
@@ -1567,7 +1579,7 @@ export default function WBSGanttV2Page() {
             <span style={{ fontWeight: 700, color: getProgressColor(barTip.row.percentComplete || 0, barTip.row.isCritical), fontSize: '0.78rem', minWidth: 36, textAlign: 'right' }}>{Math.round(barTip.row.percentComplete || 0)}%</span>
           </div>
           <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 12px', fontSize: '0.65rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: '0.74rem' }}>
             <div><span style={{ color: '#777' }}>BL Hours: </span>{barTip.row.baselineHours.toLocaleString()}</div>
             <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: uiColors.teal }}>{barTip.row.actualHours.toLocaleString()}</span></div>
             <div><span style={{ color: '#777' }}>BL Cost: </span>{formatCurrency(barTip.row.baselineCost)}</div>

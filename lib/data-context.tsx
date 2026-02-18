@@ -16,8 +16,8 @@
  * @module lib/data-context
  */
 
-import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode, useCallback } from 'react';
-import type { SampleData, HierarchyFilter, DateFilter } from '@/types/data';
+import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode, useCallback, useRef } from 'react';
+import type { SampleData, HierarchyFilter, DateFilter, Snapshot } from '@/types/data';
 import { transformData } from '@/lib/data-transforms';
 import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
@@ -27,6 +27,8 @@ import { filterActiveEmployees, filterActiveProjects } from '@/lib/active-filter
 
 const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
 const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
+const TAB_SYNC_CHANNEL_NAME = 'ppc:data-sync:v1';
+const TAB_SYNC_STORAGE_EVENT_KEY = 'ppc:data-sync:event:v1';
 let memoryBootstrapCache: { savedAt: number; data: SampleData } | null = null;
 
 // ============================================================================
@@ -68,7 +70,7 @@ function createEmptyData(): SampleData {
     milestonesTable: [],
     deliverables: [],
     deliverablesTracker: [],
-    laborBreakdown: { weeks: [], byWorker: [], byPhase: [], byTask: [], byChargeType: [] },
+    laborBreakdown: { weeks: [], byWorker: [], byPhase: [], byTask: [] },
     laborChartData: { months: [], byEmployee: {} },
     qcTransactionByGate: [],
     qcTransactionByProject: [],
@@ -112,8 +114,6 @@ function createEmptyData(): SampleData {
     catchUpLog: [],
     projectHealth: [],
     projectLog: [],
-    projectMappings: [],
-    taskMappings: [],
     epics: [],
     features: [],
     userStories: [],
@@ -212,6 +212,13 @@ interface DataProviderProps {
   children: ReactNode;
 }
 
+interface TabSyncEvent {
+  type: 'data-updated';
+  sourceTabId: string;
+  reason: string;
+  at: number;
+}
+
 /**
  * Data Provider component that wraps the application.
  * Automatically fetches data from Supabase on initialization.
@@ -244,6 +251,38 @@ export function DataProvider({ children }: DataProviderProps) {
     return true;
   });
   const [metricsHistory, setMetricsHistory] = useState<MetricsHistory[]>([]);
+  const tabIdRef = useRef<string>('');
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
+  const isRemoteRefreshInFlightRef = useRef(false);
+
+  const getTabId = useCallback(() => {
+    if (!tabIdRef.current) {
+      tabIdRef.current = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    return tabIdRef.current;
+  }, []);
+
+  const broadcastDataUpdated = useCallback((reason: string) => {
+    if (typeof window === 'undefined') return;
+    const event: TabSyncEvent = {
+      type: 'data-updated',
+      sourceTabId: getTabId(),
+      reason,
+      at: Date.now(),
+    };
+    try {
+      syncChannelRef.current?.postMessage(event);
+    } catch (error) {
+      logger.warn('BroadcastChannel sync failed', error);
+    }
+    try {
+      localStorage.setItem(TAB_SYNC_STORAGE_EVENT_KEY, JSON.stringify(event));
+    } catch {
+      // ignore localStorage quota/security errors
+    }
+  }, [getTabId]);
 
   const applyLoadedData = useCallback((dbData: Record<string, unknown>) => {
     const mergedData: Partial<SampleData> = {};
@@ -430,6 +469,7 @@ export function DataProvider({ children }: DataProviderProps) {
       const transformedData = transformData(merged);
       return { ...merged, ...transformedData };
     });
+    broadcastDataUpdated('context-update');
   };
 
   /**
@@ -437,12 +477,13 @@ export function DataProvider({ children }: DataProviderProps) {
    */
   const resetData = () => {
     setData(createEmptyData());
+    broadcastDataUpdated('context-reset');
   };
 
   /**
    * Refresh data from database
    */
-  const refreshData = async (): Promise<Partial<SampleData> | undefined> => {
+  const refreshData = useCallback(async (): Promise<Partial<SampleData> | undefined> => {
     setIsLoading(true);
     try {
       const controller = new AbortController();
@@ -496,7 +537,55 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const localTabId = getTabId();
+
+    const handleRemoteSync = async (event: TabSyncEvent) => {
+      if (event.type !== 'data-updated') return;
+      if (event.sourceTabId === localTabId) return;
+      if (isRemoteRefreshInFlightRef.current) return;
+
+      isRemoteRefreshInFlightRef.current = true;
+      try {
+        await refreshData();
+      } finally {
+        isRemoteRefreshInFlightRef.current = false;
+      }
+    };
+
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel(TAB_SYNC_CHANNEL_NAME);
+      syncChannelRef.current = channel;
+      channel.onmessage = (messageEvent: MessageEvent<TabSyncEvent>) => {
+        const payload = messageEvent.data;
+        void handleRemoteSync(payload);
+      };
+    }
+
+    const onStorage = (storageEvent: StorageEvent) => {
+      if (storageEvent.key !== TAB_SYNC_STORAGE_EVENT_KEY || !storageEvent.newValue) return;
+      try {
+        const payload = JSON.parse(storageEvent.newValue) as TabSyncEvent;
+        void handleRemoteSync(payload);
+      } catch {
+        // Ignore malformed payloads.
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      if (syncChannelRef.current) {
+        syncChannelRef.current.close();
+        syncChannelRef.current = null;
+      }
+    };
+  }, [getTabId, refreshData]);
 
   /**
    * Save a visual snapshot to database and update local state
@@ -517,6 +606,7 @@ export function DataProvider({ children }: DataProviderProps) {
           ...prev,
           visualSnapshots: [snapshot, ...prev.visualSnapshots].slice(0, 1000) // Keep last 1000
         }));
+        broadcastDataUpdated('visual-snapshot');
         return true;
       }
       return false;
@@ -530,7 +620,9 @@ export function DataProvider({ children }: DataProviderProps) {
     try {
       const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `snap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       const snapshotDate = new Date().toISOString().split('T')[0];
-      const record = {
+      const record: Snapshot = {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         id,
         snapshotId: id,
         versionName: payload.versionName || `Snapshot ${snapshotDate}`,
@@ -552,7 +644,7 @@ export function DataProvider({ children }: DataProviderProps) {
           byPhase: payload.byPhase ?? [],
           byPortfolio: payload.byPortfolio ?? [],
           byTask: payload.byTask ?? [],
-        },
+        } as unknown as Snapshot['snapshotData'],
       };
       const response = await fetch('/api/data/sync', {
         method: 'POST',
@@ -565,6 +657,7 @@ export function DataProvider({ children }: DataProviderProps) {
           ...prev,
           snapshots: [record, ...(prev.snapshots || [])],
         }));
+        broadcastDataUpdated('snapshot-create');
         return { success: true, id };
       }
       return { success: false, error: (result as any).error || 'Save failed' };
@@ -572,7 +665,7 @@ export function DataProvider({ children }: DataProviderProps) {
       logger.error('Error creating snapshot', err);
       return { success: false, error: err?.message || 'Failed to create snapshot' };
     }
-  }, []);
+  }, [broadcastDataUpdated]);
 
   /**
    * Memoized filtered data computation.
@@ -639,16 +732,35 @@ export function DataProvider({ children }: DataProviderProps) {
       filtered.projects = plannedOnly.length > 0 ? plannedOnly : originalProjects;
     }
     const plannedProjectIds = new Set((filtered.projects || []).map((p: any) => p.id || p.projectId));
+    const phaseProjectFallback = new Map<string, string>();
+    (filtered.tasks || []).forEach((t: any) => {
+      const phaseId = String(t.phaseId ?? t.phase_id ?? '').trim();
+      const projectId = String(t.projectId ?? t.project_id ?? '').trim();
+      if (phaseId && projectId && !phaseProjectFallback.has(phaseId)) {
+        phaseProjectFallback.set(phaseId, projectId);
+      }
+    });
     if (filtered.units) {
       filtered.units = (filtered.units as any[]).filter((u: any) => plannedProjectIds.has(u.projectId ?? u.project_id));
     }
     if (filtered.phases) {
-      filtered.phases = (filtered.phases as any[]).filter((ph: any) => plannedProjectIds.has(ph.projectId ?? ph.project_id));
+      filtered.phases = (filtered.phases as any[]).filter((ph: any) => {
+        const directProjectId = ph.projectId ?? ph.project_id;
+        if (directProjectId && plannedProjectIds.has(directProjectId)) return true;
+        const phaseId = String(ph.id ?? ph.phaseId ?? ph.phase_id ?? '').trim();
+        if (!phaseId) return false;
+        const fallbackProjectId = phaseProjectFallback.get(phaseId);
+        return Boolean(fallbackProjectId && plannedProjectIds.has(fallbackProjectId));
+      });
     }
     if (filtered.tasks) {
       filtered.tasks = (filtered.tasks as any[]).filter((t: any) => {
         const pid = t.projectId ?? t.project_id;
-        return !pid || plannedProjectIds.has(pid);
+        if (pid) return plannedProjectIds.has(pid);
+        const phaseId = String(t.phaseId ?? t.phase_id ?? '').trim();
+        if (!phaseId) return true;
+        const fallbackProjectId = phaseProjectFallback.get(phaseId);
+        return !fallbackProjectId || plannedProjectIds.has(fallbackProjectId);
       });
     }
     if (filtered.hours) {

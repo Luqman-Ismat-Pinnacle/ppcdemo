@@ -15,6 +15,8 @@ import { fromSupabaseFormat } from './supabase';
 // Supabase fallback (only used if DATABASE_URL is not set)
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+type DbRow = Record<string, unknown>;
+type PgErrorLike = { code?: string; message?: string };
 
 type DatabaseType = 'postgresql' | 'supabase' | 'mock';
 
@@ -60,7 +62,7 @@ function convertRowToCamelCase<T>(row: Record<string, unknown>): T {
   return result as T;
 }
 
-function convertArrayToCamelCase<T>(arr: any[]): T[] {
+function convertArrayToCamelCase<T>(arr: DbRow[]): T[] {
   if (!Array.isArray(arr)) return [];
   return arr.map(item => convertRowToCamelCase<T>(item));
 }
@@ -85,14 +87,15 @@ export async function fetchAllData() {
 async function fetchFromPostgreSQL() {
   return withClient(async (client) => {
     // Helper to safely query a table (returns empty array if table doesn't exist)
-    const safeQuery = async (sql: string): Promise<any[]> => {
+    const safeQuery = async (sql: string): Promise<DbRow[]> => {
       try {
         const result = await client.query(sql);
-        return result.rows;
-      } catch (err: any) {
+        return result.rows as DbRow[];
+      } catch (err: unknown) {
+        const pgErr = err as PgErrorLike;
         // Table doesn't exist - return empty array
-        if (err.code === '42P01') return [];
-        console.error(`[Database] Query error: ${sql.substring(0, 80)}...`, err.message);
+        if (pgErr.code === '42P01') return [];
+        console.error(`[Database] Query error: ${sql.substring(0, 80)}...`, pgErr.message || 'Unknown error');
         return [];
       }
     };
@@ -201,8 +204,22 @@ async function fetchFromPostgreSQL() {
 const PAGE_SIZE = 1000;
 const MAX_HOUR_ENTRIES = 100000;
 
-async function fetchAllHourEntries(supabaseClient: any): Promise<any[]> {
-  const all: any[] = [];
+type SupabaseQueryResult = Promise<{ data: unknown[] | null; error: unknown }>;
+type SupabaseRangeBuilder = {
+  range: (from: number, to: number) => SupabaseQueryResult;
+};
+type SupabaseOrderBuilder = {
+  order: (column: string) => SupabaseRangeBuilder;
+};
+type SupabaseSelectBuilder = {
+  select: (columns: string) => SupabaseOrderBuilder;
+};
+type SupabaseClientLike = {
+  from: (table: string) => SupabaseSelectBuilder;
+};
+
+async function fetchAllHourEntries(supabaseClient: SupabaseClientLike): Promise<DbRow[]> {
+  const all: DbRow[] = [];
   let offset = 0;
   while (true) {
     const { data, error } = await supabaseClient
@@ -214,7 +231,7 @@ async function fetchAllHourEntries(supabaseClient: any): Promise<any[]> {
       console.error('[Database] hour_entries pagination error:', error);
       break;
     }
-    const page = data || [];
+    const page = (data || []) as DbRow[];
     all.push(...page);
     if (page.length < PAGE_SIZE || all.length >= MAX_HOUR_ENTRIES) break;
     offset += PAGE_SIZE;
@@ -223,7 +240,7 @@ async function fetchAllHourEntries(supabaseClient: any): Promise<any[]> {
   return all;
 }
 
-function convertArrayFromSupabase<T>(arr: any[]): T[] {
+function convertArrayFromSupabase<T>(arr: DbRow[]): T[] {
   if (!Array.isArray(arr)) return [];
   return arr.map(item => fromSupabaseFormat<T>(item));
 }
@@ -232,7 +249,7 @@ async function fetchFromSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
   const supabaseClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
 
-  const hourEntriesPromise = fetchAllHourEntries(supabaseClient);
+  const hourEntriesPromise = fetchAllHourEntries(supabaseClient as unknown as SupabaseClientLike);
 
   const [
     portfolios, customers, sites, units, projects, subprojects,
@@ -280,8 +297,8 @@ async function fetchFromSupabase() {
     customers: convertArrayFromSupabase(customers.data || []),
     sites: convertArrayFromSupabase(sites.data || []),
     units: convertArrayFromSupabase(units.data || []),
-    projects: convertArrayFromSupabase((projects.data || []) as any[]),
-    subprojects: convertArrayFromSupabase((subprojects.data || []) as any[]),
+    projects: convertArrayFromSupabase((projects.data || []) as DbRow[]),
+    subprojects: convertArrayFromSupabase((subprojects.data || []) as DbRow[]),
     phases: convertArrayFromSupabase(phases.data || []),
     tasks: convertArrayFromSupabase(tasks.data || []),
     qctasks: convertArrayFromSupabase(qcTasks.data || []),
@@ -321,8 +338,8 @@ export async function saveData(table: string, data: Record<string, unknown>[]) {
       const { error } = await supabaseClient.from(table).insert(data);
       if (error) return { success: false, error: error.message };
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }
   return { success: false, error: 'No database configured' };
@@ -338,11 +355,11 @@ async function saveToPostgreSQL(table: string, data: Record<string, unknown>[]) 
     const placeholders = data.map((_, rowIdx) =>
       `(${columns.map((_, colIdx) => `$${rowIdx * columns.length + colIdx + 1}`).join(', ')})`
     ).join(', ');
-    const values = data.flatMap(row => columns.map(col => (row as any)[col]));
+    const values = data.flatMap(row => columns.map(col => row[col]));
     const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${placeholders} ON CONFLICT (id) DO NOTHING`;
     await pool.query(sql, values);
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
