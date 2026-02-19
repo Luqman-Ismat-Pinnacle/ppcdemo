@@ -14,7 +14,6 @@
 
 import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import ChartCard from '@/components/charts/ChartCard';
 import TableCompareExport from '@/components/ui/TableCompareExport';
@@ -35,21 +34,8 @@ function formatPercent(value: unknown): string {
   return `${Number(n.toFixed(2))}%`;
 }
 
-function getMilestoneRiskFlag(m: any): 'High' | 'Medium' | 'Low' | 'None' {
-  const status = String(m.status || '').toLowerCase();
-  const varianceDays = Number(m.varianceDays || 0);
-  const progress = Number(m.percentComplete || 0);
-  const planned = m.plannedCompletion ? new Date(m.plannedCompletion) : null;
-  const actual = m.actualCompletion ? new Date(m.actualCompletion) : null;
-
-  if (status.includes('risk') || varianceDays > 7) return 'High';
-  if (varianceDays > 0 || (planned && !actual && planned.getTime() < Date.now())) return 'Medium';
-  if (progress < 100) return 'Low';
-  return 'None';
-}
-
 export default function MilestonesPage() {
-  const { filteredData, isLoading } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [scoreboardSort, setScoreboardSort] = useState<SortState | null>(null);
   const [milestonesSort, setMilestonesSort] = useState<SortState | null>(null);
@@ -131,24 +117,30 @@ export default function MilestonesPage() {
           return item.percentComplete;
         case 'varianceDays':
           return item.varianceDays;
-        case 'riskFlag':
-          return getMilestoneRiskFlag(item);
         default:
           return null;
       }
     });
   }, [filteredMilestones, milestonesSort]);
 
-  if (isLoading) return <PageLoader />;
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading milestones...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page">
-      <div style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: 10, border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
-        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--pinnacle-teal)', marginBottom: '0.3rem' }}>
-          Milestone Risk Logic
-        </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-          Risk is flagged from milestone status and schedule variance: <strong>High</strong> when status is At Risk or variance &gt; 7 days, <strong>Medium</strong> when late/past planned date, <strong>Low</strong> when not complete but on plan, otherwise <strong>None</strong>.
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Portfolio Milestone Tracker</h1>
+          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            Status, progress, and variance at a glance
+          </p>
         </div>
       </div>
 
@@ -258,7 +250,6 @@ export default function MilestonesPage() {
                     { key: 'actualCompletion', label: 'Actual' },
                     { key: 'progress', label: 'Progress', style: { minWidth: '120px' } },
                     { key: 'varianceDays', label: 'Var Days', align: 'number' },
-                    { key: 'riskFlag', label: 'Risk Flag' },
                   ].map(({ key, label, align, style }) => {
                     const indicator = formatSortIndicator(milestonesSort, key);
                     return (
@@ -339,13 +330,6 @@ export default function MilestonesPage() {
                     </td>
                     <td className={`number ${m.varianceDays < 0 ? 'status-good' : m.varianceDays > 0 ? 'status-bad' : ''}`}>
                       {m.varianceDays > 0 ? '+' : ''}{m.varianceDays}
-                    </td>
-                    <td>
-                      {(() => {
-                        const risk = getMilestoneRiskFlag(m);
-                        const tone = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : risk === 'Low' ? 'secondary' : 'success';
-                        return <span className={`badge badge-${tone}`}>{risk}</span>;
-                      })()}
                     </td>
                   </tr>
                 ))}

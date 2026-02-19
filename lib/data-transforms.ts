@@ -57,7 +57,6 @@ interface TransformWBSItem {
   predecessors?: any[];
   children?: TransformWBSItem[];
   taskId?: string;
-  parentTaskId?: string | null;
   phaseId?: string;
   projectId?: string;
   claimPct?: number;
@@ -73,37 +72,6 @@ interface TransformWBSItem {
   totalSlack?: number;
   freeSlack?: number;
 }
-
-/**
- * Safely convert any value to a finite number.
- * Returns 0 for null, undefined, NaN, Infinity, non-numeric strings.
- */
-const safeNum = (v: any): number => {
-  if (v == null) return 0;
-  const n = typeof v === 'number' ? v : Number(v);
-  return isFinite(n) ? n : 0;
-};
-
-const normalizeId = (value: unknown): string => String(value ?? '').trim();
-
-const hasTruthyPlanFlag = (value: unknown): boolean => {
-  return value === true || value === 1 || String(value ?? '').toLowerCase() === 'true' || String(value ?? '') === '1';
-};
-
-const getPlannedProjectIdSet = (data: Partial<SampleData>): Set<string> => {
-  const planned = new Set<string>();
-  (data.projects || []).forEach((project: any) => {
-    const id = normalizeId(project?.id ?? project?.projectId);
-    if (!id) return;
-    const hasSchedule = hasTruthyPlanFlag(project?.has_schedule ?? project?.hasSchedule);
-    if (hasSchedule) planned.add(id);
-  });
-  ((data as any).projectDocuments || []).forEach((doc: any) => {
-    const id = normalizeId(doc?.projectId ?? doc?.project_id);
-    if (id) planned.add(id);
-  });
-  return planned;
-};
 
 // Snapshot helpers for trend charts
 type SnapshotRow = Snapshot;
@@ -340,11 +308,6 @@ function buildHierarchyMaps(data: {
   const tasksByPhase = new Map<string, any[]>();
   const tasksByProject = new Map<string, any[]>();
   const employeesById = new Map<string, any>();
-  const plannedProjectIds = getPlannedProjectIdSet(data);
-  const unitToProject = new Map<string, string>();
-  const siteToCustomer = new Map<string, string>();
-  const phaseToProject = new Map<string, string>();
-  const taskPhaseToProject = new Map<string, string>();
 
   // Build customer maps (supports both hierarchy_nodes parent_id and legacy portfolio_id). Use String keys for consistent lookup.
   customers.forEach((customer: any) => {
@@ -359,10 +322,6 @@ function buildHierarchyMaps(data: {
   // Build site maps (supports both hierarchy_nodes parent_id and legacy customer_id). Use String keys for consistent lookup.
   sites.forEach((site: any) => {
     const customerId = site.parent_id ?? site.customerId ?? site.customer_id;
-    const siteId = normalizeId(site.id ?? site.siteId);
-    if (siteId && customerId != null && customerId !== '') {
-      siteToCustomer.set(siteId, String(customerId));
-    }
     if (customerId != null && customerId !== '') {
       const key = String(customerId);
       if (!sitesByCustomer.has(key)) sitesByCustomer.set(key, []);
@@ -373,10 +332,6 @@ function buildHierarchyMaps(data: {
   // Build unit maps: units belong to project (hierarchy is Project -> Unit -> Phase -> Task)
   units.forEach((unit: any) => {
     const projectId = unit.projectId ?? unit.project_id;
-    const unitId = normalizeId(unit.id ?? unit.unitId);
-    if (unitId && projectId != null && projectId !== '') {
-      unitToProject.set(unitId, String(projectId));
-    }
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
       if (!unitsByProject.has(key)) unitsByProject.set(key, []);
@@ -386,25 +341,18 @@ function buildHierarchyMaps(data: {
     // Legacy support (Site -> Unit)
     const siteId = unit.parent_id || unit.siteId || unit.site_id;
     if (siteId) {
-      const siteKey = String(siteId);
-      if (!unitsBySite.has(siteKey)) {
-        unitsBySite.set(siteKey, []);
+      if (!unitsBySite.has(siteId)) {
+        unitsBySite.set(siteId, []);
       }
-      unitsBySite.get(siteKey)!.push(unit);
+      unitsBySite.get(siteId)!.push(unit);
     }
   });
 
-  // Build project maps - only include projects with an uploaded plan (schedule flag or project document).
-  (data.projects || []).forEach((project: any) => {
-    const projectId = normalizeId(project.id ?? project.projectId);
-    if (!projectId || !plannedProjectIds.has(projectId)) return;
+  // Build project maps - only include projects with MPP uploaded (has_schedule = true). Use String keys for consistent lookup.
+  (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true).forEach((project: any) => {
     const unitId = project.unitId ?? project.unit_id;
     const siteId = project.siteId ?? project.site_id;
-    const customerIdRaw = project.customerId ?? project.customer_id;
-    const customerId =
-      customerIdRaw != null && customerIdRaw !== ''
-        ? String(customerIdRaw)
-        : (siteId != null && siteId !== '' ? siteToCustomer.get(String(siteId)) || '' : '');
+    const customerId = project.customerId ?? project.customer_id;
 
     if (unitId != null && unitId !== '') {
       const key = String(unitId);
@@ -425,31 +373,15 @@ function buildHierarchyMaps(data: {
     }
   });
 
-  // Build fallback phase->project lookup from tasks so phases without a direct
-  // project link still attach to the correct project (common in parser outputs).
-  (data.tasks || []).forEach((task: any) => {
-    const phaseId = normalizeId(task.phaseId ?? task.phase_id);
-    const projectId = normalizeId(task.projectId ?? task.project_id);
-    if (phaseId && projectId) {
-      taskPhaseToProject.set(phaseId, projectId);
-    }
-  });
-
   // Build phase maps: phases belong to unit (unit_id) or directly to project (legacy)
   (data.phases || []).forEach((phase: any) => {
-    const phaseId = normalizeId(phase.id ?? phase.phaseId);
     const unitId = phase.unitId ?? phase.unit_id;
     if (unitId != null && unitId !== '') {
       const key = String(unitId);
       if (!phasesByUnit.has(key)) phasesByUnit.set(key, []);
       phasesByUnit.get(key)!.push(phase);
     }
-    const projectId =
-      phase.projectId ??
-      phase.project_id ??
-      (unitId != null && unitId !== '' ? unitToProject.get(String(unitId)) : undefined) ??
-      (phaseId ? taskPhaseToProject.get(phaseId) : undefined);
-    if (phaseId && projectId != null && projectId !== '') phaseToProject.set(phaseId, String(projectId));
+    const projectId = phase.projectId ?? phase.project_id;
     if (projectId != null && projectId !== '') {
       const key = String(projectId);
       if (!phasesByProject.has(key)) phasesByProject.set(key, []);
@@ -466,16 +398,8 @@ function buildHierarchyMaps(data: {
       tasksByPhase.get(key)!.push(task);
     }
 
-    // Always index by project as a fallback. Some imports can carry a phaseId
-    // that doesn't resolve to any current phase row, and WBS still needs to
-    // surface those tasks under the project node instead of dropping them.
-    const unitId = task.unitId ?? task.unit_id;
-    const projectId =
-      task.projectId ??
-      task.project_id ??
-      (phaseId != null && phaseId !== '' ? phaseToProject.get(String(phaseId)) : undefined) ??
-      (unitId != null && unitId !== '' ? unitToProject.get(String(unitId)) : undefined);
-    if (projectId != null && projectId !== '') {
+    const projectId = task.projectId ?? task.project_id;
+    if (projectId != null && projectId !== '' && !phaseId) {
       const key = String(projectId);
       if (!tasksByProject.has(key)) tasksByProject.set(key, []);
       tasksByProject.get(key)!.push(task);
@@ -935,10 +859,10 @@ const deriveMilestonePercent = (
 const applyTaskProgress = (task: any, context: TaskProgressContext) => {
   const taskId = normalizeTaskId(task);
   if (!taskId) return task;
-  const baselineHours = safeNum(task.baselineHours ?? task.budgetHours);
-  const baselineQty = safeNum(task.baselineQty);
-  const completedQty = safeNum(task.completedQty) + safeNum(context.quantityTotals.completed.get(taskId));
-  const actualHours = safeNum(context.actualHoursMap.get(taskId) ?? task.actualHours);
+  const baselineHours = Number(task.baselineHours ?? task.budgetHours ?? 0);
+  const baselineQty = Number(task.baselineQty ?? 0);
+  const completedQty = Number(task.completedQty ?? 0) + (context.quantityTotals.completed.get(taskId) || 0);
+  const actualHours = context.actualHoursMap.get(taskId) ?? Number(task.actualHours ?? 0);
   const method = resolveProgressMethod(task.progressMethod || task.progress_method, task.isMilestone);
   const hoursPercent = baselineHours > 0 ? (actualHours / baselineHours) * 100 : 0;
   let percentComplete = 0;
@@ -982,12 +906,9 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     milestoneMap: buildMilestoneMap(milestoneList),
     actualHoursMap: buildTaskActualHoursMap(rawData.hours || []),
   };
-  const taskActualHoursMap = buildTaskActualHoursMap(rawData.hours || []);
   const taskActualCostFromHours = buildTaskActualCostMap(rawData.hours || []);
   const costAggregations = buildCostAggregations(rawData.costTransactions || []);
 
-  // WBS actuals: use only hour_entries (and cost transactions). When Data Management hours are empty,
-  // do not show stale task-row actual_hours/actual_cost so WBS shows 0 for labor actuals.
   const tasks = (rawData.tasks || []).map((task: any) => {
     const taskId = task.id || task.taskId;
     const delta = taskDeltas.get(taskId) || ZERO_DELTA;
@@ -995,10 +916,10 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const baseCost = task.baselineCost ?? 0;
     const adjustedBaselineHours = baseHours + delta.hours;
     const adjustedBaselineCost = baseCost + delta.cost;
-    const actualHours = taskActualHoursMap.get(taskId) ?? 0;
+    const actualHours = task.actualHours || 0;
     const taskCost = costAggregations.byTask.get(taskId) || { actual: 0, forecast: 0 };
     const laborActualFromHours = taskActualCostFromHours.get(taskId) || 0;
-    const actualCost = laborActualFromHours + taskCost.actual;
+    const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
     // Use MPP parser remainingHours only - no calculation fallback
@@ -1015,7 +936,6 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
       baselineStartDate: shiftDateByDays(task.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(task.baselineEndDate, delta.endDays),
       remainingHours,
-      actualHours,
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,
@@ -1030,10 +950,10 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
     const baseCost = task.baselineCost ?? 0;
     const adjustedBaselineHours = baseHours + delta.hours;
     const adjustedBaselineCost = baseCost + delta.cost;
-    const actualHours = taskActualHoursMap.get(taskId) ?? 0;
+    const actualHours = task.actualHours || 0;
     const taskCost = costAggregations.byTask.get(taskId) || { actual: 0, forecast: 0 };
     const laborActualFromHours = taskActualCostFromHours.get(taskId) || 0;
-    const actualCost = laborActualFromHours + taskCost.actual;
+    const actualCost = (task.actualCost ?? task.actual_cost ?? 0) + taskCost.actual + laborActualFromHours;
     const nonLaborForecast = taskCost.forecast;
 
     // Use MPP parser remainingHours only - no calculation fallback
@@ -1050,7 +970,6 @@ const applyChangeControlAdjustments = (rawData: Partial<SampleData>) => {
       baselineStartDate: shiftDateByDays(task.baselineStartDate, delta.startDays),
       baselineEndDate: shiftDateByDays(task.baselineEndDate, delta.endDays),
       remainingHours: subRemainingHours,
-      actualHours,
       actualCost,
       nonLaborActualCost: taskCost.actual,
       nonLaborForecastCost: nonLaborForecast,
@@ -1147,7 +1066,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     phaseCount: data.phases?.length || 0,
     unitCount: data.units?.length || 0,
     taskCount: tasks.length,
-    taskDepsCount: ((data as any).taskDependencies || []).length,
     taskActualCostSum: Math.round(taskActualCostSum * 100) / 100,
     taskActualHoursSum: Math.round(taskActualHoursSum * 100) / 100,
     taskRemainingHoursSum: Math.round(taskRemainingHoursSum * 100) / 100,
@@ -1160,52 +1078,10 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
     const customers = data.customers || [];
     const sites = data.sites || [];
     const units = data.units || [];
-    // Only include projects with an uploaded plan (schedule flag or project document).
-    const plannedProjectIds = getPlannedProjectIdSet(data);
-    const projects = (data.projects || []).filter((p: any) => {
-      const projectId = normalizeId(p?.id ?? p?.projectId);
-      return projectId ? plannedProjectIds.has(projectId) : false;
-    });
+    // Only include projects with MPP uploaded (has_schedule = true)
+    const projects = (data.projects || []).filter((p: any) => p.has_schedule === true || p.hasSchedule === true);
     const tasks = data.tasks || [];
     const employees = data.employees || [];
-
-    // Build a map of task dependencies from the DB (successor_task_id → array of predecessor links)
-    const taskDeps = (data as any).taskDependencies || [];
-    const depsBySuccessor = new Map<string, any[]>();
-    taskDeps.forEach((d: any) => {
-      const succId = String(d.successorTaskId || d.successor_task_id || '');
-      const predId = String(d.predecessorTaskId || d.predecessor_task_id || '');
-      if (!succId || !predId) return;
-      const dep = {
-        id: d.id,
-        taskId: succId,
-        predecessorTaskId: predId,
-        relationship: d.relationshipType || d.relationship_type || 'FS',
-        lagDays: d.lagDays || d.lag_days || 0,
-      };
-      if (!depsBySuccessor.has(succId)) depsBySuccessor.set(succId, []);
-      depsBySuccessor.get(succId)!.push(dep);
-    });
-
-    // Also build a quick predecessor lookup from the tasks' own predecessor_id column (legacy single-predecessor)
-    // This ensures arrows even if task_dependencies table hasn't been populated yet
-    tasks.forEach((task: any) => {
-      const taskId = String(task.id || task.taskId || '').trim();
-      const rawPred = String(task.predecessorId || task.predecessor_id || '').trim();
-      if (!taskId || !rawPred || depsBySuccessor.has(taskId)) return;
-      const predecessors = rawPred
-        .split(/[;,]+/)
-        .map((id: string) => id.trim())
-        .filter(Boolean);
-      if (!predecessors.length) return;
-      depsBySuccessor.set(taskId, predecessors.map((predId, idx) => ({
-        id: `${taskId}-pred-${idx + 1}`,
-        taskId,
-        predecessorTaskId: predId,
-        relationship: task.predecessorRelationship || task.predecessor_relationship || 'FS',
-        lagDays: 0,
-      })));
-    });
 
     // Extract work items if available (new consolidated structure)
     const workItems = data.workItems || [];
@@ -1244,79 +1120,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       if (!employeeId) return null;
       const owner = maps.employeesById.get(employeeId);
       return owner?.name || null;
-    };
-
-    const isSubTaskRow = (task: any): boolean => {
-      const explicit = String(task.hierarchy_type ?? task.hierarchyType ?? '').toLowerCase();
-      if (explicit === 'sub_task') return true;
-      return Boolean(task.isSubTask || task.is_sub_task);
-    };
-
-    const toTaskNode = (task: any, taskWbs: string, fallbackName: string): TransformWBSItem => {
-      const taskId = task.id || task.taskId;
-      const isSubTask = isSubTaskRow(task);
-      return {
-        id: `${isSubTask ? 'wbs-sub_task' : 'wbs-task'}-${taskId}`,
-        wbsCode: taskWbs,
-        name: task.name || task.taskName || fallbackName,
-        type: isSubTask ? 'sub_task' : 'task',
-        itemType: isSubTask ? 'sub_task' : 'task',
-        startDate: task.baselineStartDate || task.startDate,
-        endDate: task.baselineEndDate || task.endDate,
-        daysRequired: (task.duration !== undefined ? task.duration : (task.daysRequired !== undefined ? task.daysRequired : 1)),
-        percentComplete: safeNum(task.percentComplete ?? task.percent_complete),
-        baselineHours: safeNum(task.baselineHours ?? task.budgetHours),
-        actualHours: safeNum(task.actualHours ?? task.actual_hours),
-        remainingHours: safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours),
-        baselineCost: safeNum(task.baselineCost ?? task.baseline_cost),
-        actualCost: safeNum(task.actualCost ?? task.actual_cost),
-        remainingCost: safeNum(task.remainingCost ?? task.remaining_cost),
-        assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
-        assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
-        is_milestone: task.is_milestone || task.isMilestone || false,
-        isCritical: task.is_critical || task.isCritical || false,
-        predecessors: Array.isArray(task.predecessors) && task.predecessors.length > 0
-          ? task.predecessors
-          : depsBySuccessor.get(String(taskId)) || [],
-        totalSlack: task.totalSlack ?? task.total_slack ?? task.totalFloat ?? task.total_float ?? undefined,
-        parentTaskId: task.parentTaskId ?? task.parent_task_id ?? null,
-      };
-    };
-
-    const buildNestedTaskTree = (taskRows: any[], parentWbs: string, startIndex = 0): TransformWBSItem[] => {
-      const deduped = Array.from(new Map(taskRows.map((t: any) => [String(t.id ?? t.taskId), t])).values());
-      const taskIdSet = new Set(deduped.map((t: any) => String(t.id ?? t.taskId)));
-      const childrenByParent = new Map<string, any[]>();
-      const roots: any[] = [];
-
-      deduped.forEach((task: any) => {
-        const parentIdRaw = task.parentTaskId ?? task.parent_task_id;
-        const parentId = parentIdRaw != null ? String(parentIdRaw) : '';
-        if (parentId && taskIdSet.has(parentId)) {
-          if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
-          childrenByParent.get(parentId)!.push(task);
-          return;
-        }
-        roots.push(task);
-      });
-
-      const buildRecursive = (task: any, rowWbs: string, ancestry: Set<string>): TransformWBSItem => {
-        const taskId = String(task.id ?? task.taskId);
-        const node = toTaskNode(task, rowWbs, 'Task');
-        if (ancestry.has(taskId)) return node;
-        const nextAncestry = new Set(ancestry);
-        nextAncestry.add(taskId);
-        const children = childrenByParent.get(taskId) || [];
-        if (children.length > 0) {
-          node.children = children.map((child, idx) => buildRecursive(child, `${rowWbs}.${idx + 1}`, nextAncestry));
-        }
-        return node;
-      };
-
-      return roots.map((task: any, idx: number) => {
-        const rowWbs = `${parentWbs}.${startIndex + idx + 1}`;
-        return buildRecursive(task, rowWbs, new Set<string>());
-      });
     };
 
     // Unified helper to build a project node with all its children and rollup logic
@@ -1358,7 +1161,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       // Hierarchy: Project -> Unit -> Phase -> Task
       const projectUnitsRaw = maps.unitsByProject.get(String(projectId)) || [];
       const projectUnits = Array.from(new Map(projectUnitsRaw.map((u: any) => [String(u.id ?? u.unitId), u])).values());
-      const projectUnitIds = new Set(projectUnits.map((u: any) => String(u.id ?? u.unitId)));
       const addedPhaseIds = new Set<string>();
 
       projectUnits.forEach((unit: any, uIdx: number) => {
@@ -1419,58 +1221,74 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             startDate: phase.startDate || phase.baselineStartDate,
             endDate: phase.endDate || phase.baselineEndDate,
             percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
-            baselineHours: Number(phase.baselineHours ?? phase.baseline_hours) || 0,
-            actualHours: Number(phase.actualHours ?? phase.actual_hours) || 0,
-            remainingHours: phase.remainingHours ?? phase.remaining_hours ?? 0,
-            baselineCost: Number(phase.baselineCost ?? phase.baseline_cost) || 0,
-            actualCost: Number(phase.actualCost ?? phase.actual_cost) || 0,
-            remainingCost: phase.remainingCost ?? phase.remaining_cost ?? 0,
+            baselineHours: phase.baselineHours || 0,
+            actualHours: phase.actualHours || 0,
             children: []
           };
 
           const phaseTasksRaw = maps.tasksByPhase.get(phaseId) || [];
           const phaseTasks = Array.from(new Map(phaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
 
-	          phaseTasks.forEach((task: any) => {
-	            const taskId = task.id || task.taskId;
-	            const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
-	            const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
-	            const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
-            const taskActualCst = safeNum(task.actualCost ?? task.actual_cost);
-            const taskRemainingHrs = safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours);
-            const taskRemainingCst = safeNum(task.remainingCost ?? task.remaining_cost);
-            const taskPercent = safeNum(task.percentComplete ?? task.percent_complete);
+          phaseTasks.forEach((task: any, tIdx: number) => {
+            const taskId = task.id || task.taskId;
+            const taskWbs = `${phaseWbs}.${tIdx + 1}`;
+            const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
+            const taskActualHrs = task.actualHours || task.actual_hours || 0;
+            const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
+            const taskActualCst = task.actualCost || task.actual_cost || 0;
+            const taskRemainingHrs = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null;
+            const taskRemainingCst = task.remainingCost ?? task.remaining_cost ?? null;
+            const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
             phaseRollupBaselineHrs += taskBaselineHrs;
             phaseRollupActualHrs += taskActualHrs;
             phaseRollupBaselineCst += taskBaselineCst;
             phaseRollupActualCst += taskActualCst;
-            phaseRollupRemainingHrs += taskRemainingHrs;
-	            phaseRollupRemainingCst += taskRemainingCst;
-	            phaseRollupPercentComplete += taskPercent;
-	            phaseChildCount++;
-	          });
+            if (taskRemainingHrs != null) phaseRollupRemainingHrs += Number(taskRemainingHrs) || 0;
+            if (taskRemainingCst != null) phaseRollupRemainingCst += Number(taskRemainingCst) || 0;
+            phaseRollupPercentComplete += taskPercent;
+            phaseChildCount++;
 
-            const phaseTaskNodes = buildNestedTaskTree(phaseTasks, phaseWbs);
-            phaseTaskNodes.forEach((node) => phaseItem.children?.push(node));
+            const taskItem: TransformWBSItem = {
+              id: `wbs-task-${taskId}`,
+              wbsCode: taskWbs,
+              name: task.name || task.taskName || `Task ${tIdx + 1}`,
+              type: 'task',
+              itemType: 'task',
+              startDate: task.baselineStartDate || task.startDate,
+              endDate: task.baselineEndDate || task.endDate,
+              daysRequired: (task.duration !== undefined ? task.duration : (task.daysRequired !== undefined ? task.daysRequired : 1)),
+              percentComplete: taskPercent,
+              baselineHours: taskBaselineHrs,
+              actualHours: taskActualHrs,
+              remainingHours: taskRemainingHrs,
+              baselineCost: taskBaselineCst,
+              actualCost: taskActualCst,
+              remainingCost: taskRemainingCst,
+              assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+              assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
+              is_milestone: task.is_milestone || task.isMilestone || false,
+              isCritical: task.is_critical || task.isCritical || false
+            };
+            phaseItem.children?.push(taskItem);
+          });
 
           if (phaseChildCount > 0) {
-            // Always use child rollup for consistency (bottom-up aggregation)
-            phaseItem.baselineHours = phaseRollupBaselineHrs;
-            phaseItem.actualHours = phaseRollupActualHrs;
-            phaseItem.baselineCost = phaseRollupBaselineCst;
-            phaseItem.actualCost = phaseRollupActualCst;
+            phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
+            phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
+            phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
+            phaseItem.actualCost = phaseRollupActualCst; // Always use rolled up value
             phaseItem.remainingHours = phaseRollupRemainingHrs || undefined;
             phaseItem.remainingCost = phaseRollupRemainingCst || undefined;
-            phaseItem.percentComplete = Math.round(phaseRollupPercentComplete / phaseChildCount);
+            phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
           }
 
-          unitRollupBaselineHrs += Number(phaseItem.baselineHours) || 0;
-          unitRollupActualHrs += Number(phaseItem.actualHours) || 0;
-          unitRollupBaselineCst += Number(phaseItem.baselineCost) || 0;
-          unitRollupActualCst += Number(phaseItem.actualCost) || 0;
-          unitRollupRemainingHrs += Number(phaseItem.remainingHours) || 0;
-          unitRollupRemainingCst += Number(phaseItem.remainingCost) || 0;
+          unitRollupBaselineHrs += phaseItem.baselineHours || 0;
+          unitRollupActualHrs += phaseItem.actualHours || 0;
+          unitRollupBaselineCst += phaseItem.baselineCost || 0;
+          unitRollupActualCst += phaseItem.actualCost || 0;
+          unitRollupRemainingHrs += phaseItem.remainingHours || 0;
+          unitRollupRemainingCst += phaseItem.remainingCost || 0;
           unitRollupPercentComplete += phaseItem.percentComplete || 0;
           unitChildCount++;
 
@@ -1478,37 +1296,30 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         });
 
         if (unitChildCount > 0) {
-          // Always use child rollup for consistency (bottom-up aggregation)
-          unitItem.baselineHours = unitRollupBaselineHrs;
-          unitItem.actualHours = unitRollupActualHrs;
-          unitItem.baselineCost = unitRollupBaselineCst;
-          unitItem.actualCost = unitRollupActualCst;
+          unitItem.baselineHours = unitItem.baselineHours || unitRollupBaselineHrs;
+          unitItem.actualHours = unitItem.actualHours || unitRollupActualHrs;
+          unitItem.baselineCost = unitItem.baselineCost || unitRollupBaselineCst;
+          unitItem.actualCost = unitRollupActualCst; // Always use rolled up value
           unitItem.remainingHours = unitRollupRemainingHrs || undefined;
           unitItem.remainingCost = unitRollupRemainingCst || undefined;
-          unitItem.percentComplete = Math.round(unitRollupPercentComplete / unitChildCount);
+          unitItem.percentComplete = unitItem.percentComplete || Math.round(unitRollupPercentComplete / unitChildCount);
         }
 
-        projRollupBaselineHrs += Number(unitItem.baselineHours) || 0;
-        projRollupActualHrs += Number(unitItem.actualHours) || 0;
-        projRollupBaselineCst += Number(unitItem.baselineCost) || 0;
-        projRollupActualCst += Number(unitItem.actualCost) || 0;
-        projRollupRemainingHrs += Number(unitItem.remainingHours) || 0;
-        projRollupRemainingCst += Number(unitItem.remainingCost) || 0;
+        projRollupBaselineHrs += unitItem.baselineHours || 0;
+        projRollupActualHrs += unitItem.actualHours || 0;
+        projRollupBaselineCst += unitItem.baselineCost || 0;
+        projRollupActualCst += unitItem.actualCost || 0;
+        projRollupRemainingHrs += unitItem.remainingHours || 0;
+        projRollupRemainingCst += unitItem.remainingCost || 0;
         projRollupPercentComplete += unitItem.percentComplete || 0;
         projChildCount++;
 
         projectItem.children?.push(unitItem);
       });
 
-      // Phases with no unit OR with a stale/missing unit reference should render
-      // directly under project, otherwise they get dropped and tasks appear flat.
+      // Phases with no unit (direct under project)
       const directPhasesRaw = (maps.phasesByProject.get(String(projectId)) || []).filter(
-        (ph: any) => {
-          const rawUnitId = ph.unitId ?? ph.unit_id;
-          if (rawUnitId == null || rawUnitId === '') return true;
-          const unitId = String(rawUnitId);
-          return !projectUnitIds.has(unitId);
-        }
+        (ph: any) => !(ph.unitId ?? ph.unit_id)
       );
       const directPhases = Array.from(new Map(directPhasesRaw.map((ph: any) => [String(ph.id ?? ph.phaseId), ph])).values());
 
@@ -1535,12 +1346,8 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           startDate: phase.startDate || phase.baselineStartDate,
           endDate: phase.endDate || phase.baselineEndDate,
           percentComplete: phase.percentComplete ?? phase.percent_complete ?? 0,
-          baselineHours: Number(phase.baselineHours ?? phase.baseline_hours) || 0,
-          actualHours: Number(phase.actualHours ?? phase.actual_hours) || 0,
-          remainingHours: phase.remainingHours ?? phase.remaining_hours ?? 0,
-          baselineCost: Number(phase.baselineCost ?? phase.baseline_cost) || 0,
-          actualCost: Number(phase.actualCost ?? phase.actual_cost) || 0,
-          remainingCost: phase.remainingCost ?? phase.remaining_cost ?? 0,
+          baselineHours: phase.baselineHours || 0,
+          actualHours: phase.actualHours || 0,
           children: []
         };
 
@@ -1549,46 +1356,66 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         );
         const directPhaseTasks = Array.from(new Map(directPhaseTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values());
 
-	        directPhaseTasks.forEach((task: any) => {
-	          const taskId = task.id || task.taskId;
-	          const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
-	          const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
-	          const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
-          const taskActualCst = safeNum(task.actualCost ?? task.actual_cost);
-          const taskRemainingHrs = safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours);
-          const taskRemainingCst = safeNum(task.remainingCost ?? task.remaining_cost);
-          const taskPercent = safeNum(task.percentComplete ?? task.percent_complete);
+        directPhaseTasks.forEach((task: any, tIdx: number) => {
+          const taskId = task.id || task.taskId;
+          const taskWbs = `${phaseWbs}.${tIdx + 1}`;
+          const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
+          const taskActualHrs = task.actualHours || task.actual_hours || 0;
+          const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
+          const taskActualCst = task.actualCost || task.actual_cost || 0;
+          const taskRemainingHrs = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null;
+          const taskRemainingCst = task.remainingCost ?? task.remaining_cost ?? null;
+          const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
           phaseRollupBaselineHrs += taskBaselineHrs;
           phaseRollupActualHrs += taskActualHrs;
           phaseRollupBaselineCst += taskBaselineCst;
           phaseRollupActualCst += taskActualCst;
-          phaseRollupRemainingHrs += taskRemainingHrs;
-	          phaseRollupRemainingCst += taskRemainingCst;
-	          phaseRollupPercentComplete += taskPercent;
-	          phaseChildCount++;
-	        });
+          if (taskRemainingHrs != null) phaseRollupRemainingHrs += Number(taskRemainingHrs) || 0;
+          if (taskRemainingCst != null) phaseRollupRemainingCst += Number(taskRemainingCst) || 0;
+          phaseRollupPercentComplete += taskPercent;
+          phaseChildCount++;
 
-          const directPhaseTaskNodes = buildNestedTaskTree(directPhaseTasks, phaseWbs);
-          directPhaseTaskNodes.forEach((node) => phaseItem.children?.push(node));
+          const taskItem: TransformWBSItem = {
+            id: `wbs-task-${taskId}`,
+            wbsCode: taskWbs,
+            name: task.name || task.taskName || `Task ${tIdx + 1}`,
+            type: 'task',
+            itemType: 'task',
+            startDate: task.baselineStartDate || task.startDate,
+            endDate: task.baselineEndDate || task.endDate,
+            daysRequired: (task.duration !== undefined ? task.duration : (task.daysRequired !== undefined ? task.daysRequired : 1)),
+            percentComplete: taskPercent,
+            baselineHours: taskBaselineHrs,
+            actualHours: taskActualHrs,
+            remainingHours: taskRemainingHrs,
+            baselineCost: taskBaselineCst,
+            actualCost: taskActualCst,
+            remainingCost: taskRemainingCst,
+            assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+            assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
+            is_milestone: task.is_milestone || task.isMilestone || false,
+            isCritical: task.is_critical || task.isCritical || false
+          };
+          phaseItem.children?.push(taskItem);
+        });
 
         if (phaseChildCount > 0) {
-          // Always use child rollup for consistency (bottom-up aggregation)
-          phaseItem.baselineHours = phaseRollupBaselineHrs;
-          phaseItem.actualHours = phaseRollupActualHrs;
-          phaseItem.baselineCost = phaseRollupBaselineCst;
-          phaseItem.actualCost = phaseRollupActualCst;
+          phaseItem.baselineHours = phaseItem.baselineHours || phaseRollupBaselineHrs;
+          phaseItem.actualHours = phaseItem.actualHours || phaseRollupActualHrs;
+          phaseItem.baselineCost = phaseItem.baselineCost || phaseRollupBaselineCst;
+          phaseItem.actualCost = phaseRollupActualCst; // Always use rolled up value
           phaseItem.remainingHours = phaseRollupRemainingHrs || undefined;
           phaseItem.remainingCost = phaseRollupRemainingCst || undefined;
-          phaseItem.percentComplete = Math.round(phaseRollupPercentComplete / phaseChildCount);
+          phaseItem.percentComplete = phaseItem.percentComplete || Math.round(phaseRollupPercentComplete / phaseChildCount);
         }
 
-        projRollupBaselineHrs += Number(phaseItem.baselineHours) || 0;
-        projRollupActualHrs += Number(phaseItem.actualHours) || 0;
-        projRollupBaselineCst += Number(phaseItem.baselineCost) || 0;
-        projRollupActualCst += Number(phaseItem.actualCost) || 0;
-        projRollupRemainingHrs += Number(phaseItem.remainingHours) || 0;
-        projRollupRemainingCst += Number(phaseItem.remainingCost) || 0;
+        projRollupBaselineHrs += phaseItem.baselineHours || 0;
+        projRollupActualHrs += phaseItem.actualHours || 0;
+        projRollupBaselineCst += phaseItem.baselineCost || 0;
+        projRollupActualCst += phaseItem.actualCost || 0;
+        projRollupRemainingHrs += phaseItem.remainingHours || 0;
+        projRollupRemainingCst += phaseItem.remainingCost || 0;
         projRollupPercentComplete += phaseItem.percentComplete || 0;
         projChildCount++;
 
@@ -1606,44 +1433,61 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
       const directProjectTasks = Array.from(
         new Map(directProjectTasksRaw.map((t: any) => [String(t.id ?? t.taskId), t])).values()
       );
-	      directProjectTasks.forEach((task: any) => {
-	        const taskId = task.id || task.taskId;
+      directProjectTasks.forEach((task: any, tIdx: number) => {
+        const taskId = task.id || task.taskId;
+        const taskWbs = `${projectWbs}.${projectUnits.length + directPhases.length + tIdx + 1}`;
 
-	        const taskBaselineHrs = safeNum(task.baselineHours ?? task.budgetHours);
-	        const taskActualHrs = safeNum(task.actualHours ?? task.actual_hours);
-        const taskBaselineCst = safeNum(task.baselineCost ?? task.baseline_cost);
-        const taskActualCst = safeNum(task.actualCost ?? task.actual_cost);
-        const taskPercent = safeNum(task.percentComplete ?? task.percent_complete);
-        const taskRemainingHrs = safeNum(task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours);
-        const taskRemainingCst = safeNum(task.remainingCost ?? task.remaining_cost);
+        const taskBaselineHrs = task.baselineHours || task.budgetHours || 0;
+        const taskActualHrs = task.actualHours || task.actual_hours || 0;
+        const taskBaselineCst = task.baselineCost || task.baseline_cost || 0;
+        const taskActualCst = task.actualCost || task.actual_cost || 0;
+        const taskPercent = task.percentComplete ?? task.percent_complete ?? 0;
 
         // Aggregate to Project
         projRollupBaselineHrs += taskBaselineHrs;
         projRollupActualHrs += taskActualHrs;
         projRollupBaselineCst += taskBaselineCst;
         projRollupActualCst += taskActualCst;
-        projRollupRemainingHrs += taskRemainingHrs;
-	        projRollupRemainingCst += taskRemainingCst;
-	        projRollupPercentComplete += taskPercent;
-	        projChildCount++;
-	      });
+        const taskRemainingHrs = task.remainingHours ?? task.projectedRemainingHours ?? task.remaining_hours ?? null;
+        const taskRemainingCst = task.remainingCost ?? task.remaining_cost ?? null;
+        if (taskRemainingHrs != null) projRollupRemainingHrs += Number(taskRemainingHrs) || 0;
+        if (taskRemainingCst != null) projRollupRemainingCst += Number(taskRemainingCst) || 0;
+        projRollupPercentComplete += taskPercent;
+        projChildCount++;
 
-        const directProjectTaskNodes = buildNestedTaskTree(
-          directProjectTasks,
-          projectWbs,
-          projectUnits.length + directPhases.length
-        );
-        directProjectTaskNodes.forEach((node) => projectItem.children?.push(node));
+        const taskItem: TransformWBSItem = {
+          id: `wbs-task-${taskId}`,
+          wbsCode: taskWbs,
+          name: task.name || task.taskName || `Task ${tIdx + 1}`,
+          type: 'task',
+          itemType: 'task',
+          startDate: task.baselineStartDate || task.startDate,
+          endDate: task.baselineEndDate || task.endDate,
+          percentComplete: taskPercent,
+          baselineHours: taskBaselineHrs,
+          actualHours: taskActualHrs,
+          remainingHours: taskRemainingHrs,
+          baselineCost: taskBaselineCst,
+          actualCost: taskActualCst,
+          remainingCost: taskRemainingCst,
+          assignedResourceId: task.assignedResourceId ?? (task as any).assigned_resource_id ?? task.employeeId ?? (task as any).employee_id ?? task.assigneeId ?? null,
+          assignedResource: (task as any).assignedResource ?? (task as any).assigned_resource ?? '',
+          is_milestone: task.is_milestone || task.isMilestone || false,
+          isCritical: task.is_critical || task.isCritical || false
+        };
 
-      // Always use child rollup for consistency (bottom-up aggregation)
+        projectItem.children?.push(taskItem);
+      });
+
+      // Project rollup completion
       if (projChildCount > 0) {
-        projectItem.baselineHours = projRollupBaselineHrs;
-        projectItem.actualHours = projRollupActualHrs;
-        projectItem.baselineCost = projRollupBaselineCst;
-        projectItem.actualCost = projRollupActualCst;
+        projectItem.baselineHours = projectItem.baselineHours || projRollupBaselineHrs;
+        projectItem.actualHours = projectItem.actualHours || projRollupActualHrs;
+        projectItem.baselineCost = projectItem.baselineCost || projRollupBaselineCst;
+        projectItem.actualCost = projRollupActualCst; // Always use rolled up value
         projectItem.remainingHours = projRollupRemainingHrs || undefined;
         projectItem.remainingCost = projRollupRemainingCst || undefined;
-        projectItem.percentComplete = Math.round(projRollupPercentComplete / projChildCount);
+        projectItem.percentComplete = projectItem.percentComplete || Math.round(projRollupPercentComplete / projChildCount);
       }
 
       return projectItem;
@@ -1694,13 +1538,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
         // (so shared sites like Fort McMurray show under the correct customer per project).
         // Fall back to site.customerId when no projects have siteId so sites still show.
         const customerIdStr = String(customerId);
-        const customerProjectsRaw = (
-          (maps.projectsByCustomer.get(customerId) || maps.projectsByCustomer.get(customerIdStr) || []) as any[]
-        ).filter((p: any) => {
-          const pPortfolioId = p.portfolioId ?? p.portfolio_id;
-          // Keep legacy rows with null portfolio under the customer, but enforce portfolio match when present.
-          return pPortfolioId == null || String(pPortfolioId) === portfolioIdStr;
-        });
+        const customerProjectsRaw = (maps.projectsByCustomer.get(customerId) || maps.projectsByCustomer.get(customerIdStr) || []) as any[];
         const projectsBySiteId = new Map<string, any[]>();
         const customerProjectsNoSite: any[] = [];
         customerProjectsRaw.forEach((p: any) => {
@@ -1778,13 +1616,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
             // Only include projects for this customer so same-named sites for different customers don't share rollup
             const siteProjectsRaw = (maps.projectsBySite.get(siteId) || maps.projectsBySite.get(String(siteId)) || []).filter(
-              (p: any) => {
-                const pCustomerId = p.customerId ?? p.customer_id;
-                const pPortfolioId = p.portfolioId ?? p.portfolio_id;
-                const customerMatch = String(pCustomerId ?? '') === customerIdStr;
-                const portfolioMatch = pPortfolioId == null || String(pPortfolioId) === portfolioIdStr;
-                return customerMatch && portfolioMatch;
-              }
+              (p: any) => (p.customerId ?? p.customer_id) === customerId
             );
             const siteProjects = Array.from(new Map(siteProjectsRaw.map((p: any) => [String(p.id ?? p.projectId), p])).values());
             siteProjects.forEach((project: any, prIdx: number) => {
@@ -1845,8 +1677,7 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
 
       // Projects directly under portfolio (dedupe by projectId)
       const portfolioProjectsFiltered = (projects || []).filter((p: any) => {
-        const pPortfolioId = p.portfolioId ?? p.portfolio_id;
-        if (String(pPortfolioId ?? '') !== portfolioIdStr) return false;
+        if ((p.portfolioId !== portfolioId && p.portfolio_id !== portfolioId)) return false;
         if (!p.customerId && !p.customer_id) return true;
         const pCustId = p.customerId || p.customer_id;
         return !allPortfolioCustomers.some((c: any) => (c.id || c.customerId) === pCustId);
@@ -1925,8 +1756,6 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
           let sumActualHrs = 0;
           let sumBaselineCst = 0;
           let sumActualCst = 0;
-          let sumRemainingHrs = 0;
-          let sumRemainingCst = 0;
           let sumPercentComplete = 0;
           let childCount = 0;
           item.children.forEach((c: any) => {
@@ -1938,23 +1767,18 @@ export function buildWBSData(data: Partial<SampleData>): { items: any[] } {
             sumActualHrs += Number(c.actualHours) || 0;
             sumBaselineCst += Number(c.baselineCost) || 0;
             sumActualCst += Number(c.actualCost) || 0;
-            sumRemainingHrs += Number(c.remainingHours) || 0;
-            sumRemainingCst += Number(c.remainingCost) || 0;
             const pct = c.percentComplete ?? c.percent_complete ?? 0;
             sumPercentComplete += pct;
             childCount++;
           });
           if (minStart) item.startDate = minStart;
           if (maxEnd) item.endDate = maxEnd;
-          // Always use child sums for parent nodes (bottom-up aggregation)
-          if (sumBaselineHrs > 0) item.baselineHours = sumBaselineHrs;
-          if (sumActualHrs > 0) item.actualHours = sumActualHrs;
-          if (sumBaselineCst > 0) item.baselineCost = sumBaselineCst;
-          if (sumActualCst > 0) item.actualCost = sumActualCst;
-          if (sumRemainingHrs > 0) item.remainingHours = sumRemainingHrs;
-          if (sumRemainingCst > 0) item.remainingCost = sumRemainingCst;
+          item.baselineHours = item.baselineHours ?? (sumBaselineHrs || undefined);
+          item.actualHours = item.actualHours ?? (sumActualHrs || undefined);
+          item.baselineCost = item.baselineCost ?? (sumBaselineCst || undefined);
+          item.actualCost = item.actualCost ?? (sumActualCst || undefined);
           if (childCount > 0) {
-            item.percentComplete = Math.round(sumPercentComplete / childCount);
+            item.percentComplete = item.percentComplete ?? item.percent_complete ?? Math.round(sumPercentComplete / childCount);
           }
         }
       });
@@ -2111,7 +1935,7 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     const hourDateNorm = normalizeDateString(h.date || h.entry_date);
     const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;
     const weekIdx = weekIndexMap.get(weekKey || '') ?? -1;
-    const hoursValue = safeNum(h.hours);
+    const hoursValue = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
 
     if (weekIdx < 0) return; // Skip invalid dates
 
@@ -2633,7 +2457,7 @@ const buildTaskActualHoursMap = (hours: any[]): Map<string, number> => {
   hours.forEach((h: any) => {
     const taskId = normalizeTaskId(h);
     if (!taskId) return;
-    const hoursValue = safeNum(h.hours);
+    const hoursValue = typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
     map.set(taskId, (map.get(taskId) || 0) + hoursValue);
   });
   return map;
@@ -2749,18 +2573,18 @@ export function buildTaskHoursEfficiency(data: Partial<SampleData>) {
     actualWorked: validTasks.map((t: any) => {
       const taskId = t.id || t.taskId;
       // Prefer actual hours from hour_entries, fallback to task's actualHours field
-      return safeNum(taskActualHours.get(taskId) ?? t.actualHours ?? t.actual_hours);
+      return taskActualHours.get(taskId) || t.actualHours || t.actual_hours || 0;
     }),
     estimatedAdded: validTasks.map((t: any) => {
       const taskId = t.id || t.taskId;
-      const baseline = safeNum(t.baselineHours ?? t.budgetHours ?? t.baseline_hours ?? t.budget_hours);
-      const actual = safeNum(taskActualHours.get(taskId) ?? t.actualHours ?? t.actual_hours);
+      const baseline = t.baselineHours || t.budgetHours || t.baseline_hours || t.budget_hours || 0;
+      const actual = taskActualHours.get(taskId) || t.actualHours || t.actual_hours || 0;
       return Math.max(0, baseline - actual);
     }),
     efficiency: validTasks.map((t: any) => {
       const taskId = t.id || t.taskId;
-      const baseline = safeNum(t.baselineHours ?? t.budgetHours ?? t.baseline_hours ?? t.budget_hours);
-      const actual = safeNum(taskActualHours.get(taskId) ?? t.actualHours ?? t.actual_hours);
+      const baseline = t.baselineHours || t.budgetHours || t.baseline_hours || t.budget_hours || 0;
+      const actual = taskActualHours.get(taskId) || t.actualHours || t.actual_hours || 0;
       return baseline > 0 ? Math.round((actual / baseline) * 100) : (actual > 0 ? 100 : 0);
     }),
     project: validTasks.map((t: any) => {

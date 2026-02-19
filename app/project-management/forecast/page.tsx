@@ -21,7 +21,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import {
@@ -1263,7 +1262,7 @@ function BurnRateTrend({ hours, projects }: { hours: any[]; projects: any[] }) {
 
 // ===== MAIN PAGE =====
 export default function ForecastPage() {
-  const { filteredData, data: fullData, isLoading } = useData();
+  const { filteredData, data: fullData, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [fteLimit, setFteLimit] = useState(10);
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
@@ -1362,10 +1361,28 @@ export default function ForecastPage() {
     return `$${v.toFixed(0)}`;
   };
 
-  if (isLoading) return <PageLoader />;
+  if (dataLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading forecast data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Forecasting & Scenario Analysis</h1>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+            PO vs Costs | FTE Constraints | Cascade Impact | Monte Carlo Scenarios
+          </p>
+        </div>
+      </div>
+
       {/* Empty State */}
       {!hasData && (
         <div style={{

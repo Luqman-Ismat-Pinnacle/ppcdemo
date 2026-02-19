@@ -13,22 +13,13 @@
  * @module app/project-management/sprint/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import PageLoader from '@/components/ui/PageLoader';
 import SprintBurndownChart from '@/components/charts/SprintBurndownChart';
 import VelocityChart from '@/components/charts/VelocityChart';
 import Link from 'next/link';
 import type { EChartsOption } from 'echarts';
-import {
-  fetchAzureIterations,
-  fetchAzureSprintWorkItems,
-  getAdoAssignedName,
-  mapAdoStateToLocal,
-  type AzureIterationDto,
-  type AzureWorkItemDto,
-} from '@/lib/azure-devops-client';
 
 // Import views
 import BoardsView from './boards-view';
@@ -101,63 +92,6 @@ function formatDateRange(start: string | null, end: string | null): string {
   return `${fmt(s)} - ${fmt(e)}`;
 }
 
-function mapIterationToViewModel(iter: AzureIterationDto): Iteration | null {
-  const id = iter.path || iter.identifier || iter.id || iter.name;
-  const name = iter.name;
-  const start = iter.attributes?.startDate || null;
-  const end = iter.attributes?.finishDate || null;
-  if (!id || !name || !start || !end) return null;
-
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const now = new Date();
-  let status: 'past' | 'current' | 'future' = 'future';
-  if (now > endDate) status = 'past';
-  else if (now >= startDate && now <= endDate) status = 'current';
-
-  return {
-    id,
-    name,
-    startDate: start,
-    endDate: end,
-    isCurrent: iter.attributes?.timeFrame === 'current' || status === 'current',
-    status,
-    workDays: getWorkDays(startDate, endDate),
-    daysRemaining: getDaysRemaining(endDate),
-    progress: getSprintProgress(startDate, endDate),
-  };
-}
-
-function mapAdoTaskToSprintTask(item: AzureWorkItemDto) {
-  const fields = item.fields || {};
-  const title = String(fields['System.Title'] || `Work Item ${item.id}`);
-  const state = String(fields['System.State'] || 'New');
-  const tags = String(fields['System.Tags'] || '');
-  const status = mapAdoStateToLocal(state, tags);
-  const baselineHours = Number(fields['Microsoft.VSTS.Scheduling.OriginalEstimate'] || 0);
-  const actualHours = Number(fields['Microsoft.VSTS.Scheduling.CompletedWork'] || 0);
-  const remainingHours = Number(fields['Microsoft.VSTS.Scheduling.RemainingWork'] || 0);
-  const assigned = getAdoAssignedName(fields['System.AssignedTo']);
-  const iterationPath = String(fields['System.IterationPath'] || '');
-
-  return {
-    id: `ado-${item.id}`,
-    taskId: `ADO-${item.id}`,
-    taskName: title,
-    name: title,
-    status,
-    baselineHours,
-    actualHours,
-    remainingHours,
-    percentComplete: baselineHours > 0 ? Math.round((actualHours / baselineHours) * 100) : 0,
-    projectedHours: baselineHours + remainingHours,
-    assignedTo: assigned,
-    assignedResource: assigned,
-    sprintId: iterationPath,
-    adoWorkItemId: item.id,
-  };
-}
-
 // ============================================================================
 // SPRINT COMMAND CENTER
 // ============================================================================
@@ -213,7 +147,7 @@ function SprintCommandCenter({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {[
           { label: 'Completed', value: stats.completed, color: '#10B981', icon: 'check' },
-          { label: 'In Progress', value: stats.inProgress, color: 'var(--pinnacle-lime)', icon: 'clock' },
+          { label: 'In Progress', value: stats.inProgress, color: '#3B82F6', icon: 'clock' },
           { label: 'Blocked', value: stats.blocked, color: '#EF4444', icon: 'alert' },
           { label: 'Remaining', value: stats.remaining, color: '#6B7280', icon: 'list' },
         ].map((item, idx) => (
@@ -256,7 +190,7 @@ function SprintCommandCenter({
       {/* Quick Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <div style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '10px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{sprint.daysRemaining}</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#40E0D0' }}>{sprint.daysRemaining}</div>
           <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Days Left</div>
         </div>
         <Link href="/insights/tasks" style={{
@@ -294,7 +228,7 @@ function IterationSelector({ iterations, selectedId, onSelect }: {
         borderRadius: '10px', cursor: 'pointer', minWidth: '280px',
       }}>
         <div style={{ width: '10px', height: '10px', borderRadius: '50%', 
-          background: selected?.status === 'current' ? 'var(--pinnacle-teal)' : selected?.status === 'future' ? '#6B7280' : '#9CA3AF' }} />
+          background: selected?.status === 'current' ? '#40E0D0' : selected?.status === 'future' ? '#6B7280' : '#9CA3AF' }} />
         <div style={{ flex: 1, textAlign: 'left' }}>
           <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{selected?.name || 'Select Sprint'}</div>
           {selected && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>{formatDateRange(selected.startDate, selected.endDate)}</div>}
@@ -317,15 +251,15 @@ function IterationSelector({ iterations, selectedId, onSelect }: {
               {iterations.map(iter => (
                 <button key={iter.id} onClick={() => { onSelect(iter.id); setIsOpen(false); }} style={{
                   display: 'flex', alignItems: 'center', gap: '12px', width: '100%', padding: '12px 16px',
-                  background: iter.id === selectedId ? 'rgba(16,185,129,0.12)' : 'transparent',
+                  background: iter.id === selectedId ? 'rgba(64,224,208,0.1)' : 'transparent',
                   border: 'none', borderBottom: '1px solid var(--border-color)', cursor: 'pointer', textAlign: 'left'
                 }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%',
-                    background: iter.status === 'current' ? 'var(--pinnacle-teal)' : iter.status === 'future' ? '#6B7280' : '#9CA3AF' }} />
+                    background: iter.status === 'current' ? '#40E0D0' : iter.status === 'future' ? '#6B7280' : '#9CA3AF' }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{iter.name}</span>
-                      {iter.isCurrent && <span style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'rgba(16,185,129,0.2)', color: 'var(--pinnacle-teal)', borderRadius: '8px', fontWeight: 600 }}>CURRENT</span>}
+                      {iter.isCurrent && <span style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'rgba(64,224,208,0.2)', color: '#40E0D0', borderRadius: '8px', fontWeight: 600 }}>CURRENT</span>}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                       {formatDateRange(iter.startDate, iter.endDate)}
@@ -336,7 +270,7 @@ function IterationSelector({ iterations, selectedId, onSelect }: {
                     <div style={{ width: '50px' }}>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '2px' }}>{iter.progress}%</div>
                       <div style={{ width: '100%', height: '4px', background: 'var(--bg-tertiary)', borderRadius: '2px' }}>
-                        <div style={{ width: `${iter.progress}%`, height: '100%', background: 'var(--pinnacle-teal)', borderRadius: '2px' }} />
+                        <div style={{ width: `${iter.progress}%`, height: '100%', background: '#40E0D0', borderRadius: '2px' }} />
                       </div>
                     </div>
                   )}
@@ -385,7 +319,7 @@ function CapacityPanel({ isOpen, onClose, sprint, teamMembers, onUpdateMember }:
       <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-color)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>{totalCapacity}h</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#40E0D0' }}>{totalCapacity}h</div>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Total Capacity</div>
           </div>
           <div style={{ textAlign: 'center' }}>
@@ -411,7 +345,7 @@ function CapacityPanel({ isOpen, onClose, sprint, teamMembers, onUpdateMember }:
                     <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{member.name}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{member.role}</div>
                   </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: utilization > 100 ? '#EF4444' : 'var(--pinnacle-teal)', background: utilization > 100 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.12)', padding: '4px 10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: utilization > 100 ? '#EF4444' : '#40E0D0', background: utilization > 100 ? 'rgba(239,68,68,0.1)' : 'rgba(64,224,208,0.1)', padding: '4px 10px', borderRadius: '12px' }}>
                     {member.capacity}h
                   </div>
                 </div>
@@ -462,7 +396,7 @@ function AnalyticsView({ sprint, stats, teamMembers }: { sprint: Iteration | nul
       label: { show: false },
       data: [
         { value: stats.completed, name: 'Completed', itemStyle: { color: '#10B981' } },
-        { value: stats.inProgress, name: 'In Progress', itemStyle: { color: 'var(--pinnacle-lime)' } },
+        { value: stats.inProgress, name: 'In Progress', itemStyle: { color: '#3B82F6' } },
         { value: stats.blocked, name: 'Blocked', itemStyle: { color: '#EF4444' } },
         { value: stats.remaining, name: 'Remaining', itemStyle: { color: '#6B7280' } },
       ].filter(d => d.value > 0),
@@ -477,7 +411,7 @@ function AnalyticsView({ sprint, stats, teamMembers }: { sprint: Iteration | nul
     xAxis: { type: 'value', max: Math.max(...teamMembers.map(m => m.capacity), 1), axisLabel: { color: 'var(--text-muted)', fontSize: 10 }, splitLine: { lineStyle: { color: 'var(--border-color)' } } },
     yAxis: { type: 'category', data: teamMembers.map(m => m.name), axisLabel: { color: 'var(--text-primary)', fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
     series: [
-      { name: 'Assigned', type: 'bar', stack: 'total', data: teamMembers.map(m => m.assigned), itemStyle: { color: 'var(--pinnacle-teal)' }, barWidth: 16 },
+      { name: 'Assigned', type: 'bar', stack: 'total', data: teamMembers.map(m => m.assigned), itemStyle: { color: '#3B82F6' }, barWidth: 16 },
       { name: 'Available', type: 'bar', stack: 'total', data: teamMembers.map(m => Math.max(0, m.capacity - m.assigned)), itemStyle: { color: 'var(--bg-tertiary)' }, barWidth: 16 },
     ],
   }), [teamMembers]);
@@ -510,7 +444,7 @@ function AnalyticsView({ sprint, stats, teamMembers }: { sprint: Iteration | nul
           <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
             {[
               { label: 'Completed', color: '#10B981', value: stats.completed },
-              { label: 'In Progress', color: 'var(--pinnacle-lime)', value: stats.inProgress },
+              { label: 'In Progress', color: '#3B82F6', value: stats.inProgress },
               { label: 'Blocked', color: '#EF4444', value: stats.blocked },
               { label: 'Remaining', color: '#6B7280', value: stats.remaining },
             ].map((item, idx) => (
@@ -591,85 +525,15 @@ const VIEW_CONFIG: Record<ViewType, { label: string; icon: JSX.Element }> = {
 // ============================================================================
 
 export default function SprintPlanningPage() {
-  const { filteredData, isLoading } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
   
   const [selectedView, setSelectedView] = useState<ViewType>('board');
   const [selectedIterationId, setSelectedIterationId] = useState<string | null>(null);
   const [showCapacity, setShowCapacity] = useState(false);
-  const [adoIterations, setAdoIterations] = useState<Iteration[]>([]);
-  const [adoTasks, setAdoTasks] = useState<any[]>([]);
-  const [adoConnected, setAdoConnected] = useState(false);
-  const [adoLoading, setAdoLoading] = useState(false);
-  const [adoError, setAdoError] = useState<string | null>(null);
-  const [lastAdoSync, setLastAdoSync] = useState<string | null>(null);
-
-  const refreshAdoData = useCallback(async (signal?: AbortSignal) => {
-    setAdoLoading(true);
-    setAdoError(null);
-    try {
-      const [past, current, future] = await Promise.all([
-        fetchAzureIterations('past', signal),
-        fetchAzureIterations('current', signal),
-        fetchAzureIterations('future', signal),
-      ]);
-
-      const merged = [...past, ...current, ...future];
-      const deduped = Array.from(
-        new Map(
-          merged.map((iter) => [
-            iter.path || iter.identifier || iter.id || iter.name || Math.random().toString(),
-            iter,
-          ]),
-        ).values(),
-      );
-
-      const mappedIterations = deduped
-        .map(mapIterationToViewModel)
-        .filter((iter): iter is Iteration => Boolean(iter))
-        .sort((a, b) => {
-          const aStart = a.startDate ? new Date(a.startDate).getTime() : 0;
-          const bStart = b.startDate ? new Date(b.startDate).getTime() : 0;
-          return aStart - bStart;
-        });
-
-      setAdoIterations(mappedIterations);
-      setAdoConnected(true);
-
-      const selectedPath =
-        mappedIterations.find((iter) => iter.isCurrent)?.id ||
-        mappedIterations[0]?.id;
-
-      if (selectedPath) {
-        const rawWorkItems = await fetchAzureSprintWorkItems(selectedPath, signal);
-        setAdoTasks(rawWorkItems.map(mapAdoTaskToSprintTask));
-      } else {
-        setAdoTasks([]);
-      }
-
-      setLastAdoSync(new Date().toISOString());
-    } catch (error) {
-      setAdoConnected(false);
-      setAdoTasks([]);
-      setAdoIterations([]);
-      setAdoError(error instanceof Error ? error.message : 'Unable to reach Azure DevOps');
-    } finally {
-      setAdoLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    refreshAdoData(controller.signal);
-    return () => controller.abort();
-  }, [refreshAdoData]);
 
   // Build iterations
   const iterations = useMemo((): Iteration[] => {
-    if (adoConnected && adoIterations.length > 0) {
-      return adoIterations;
-    }
-
     const defaultIterations: Iteration[] = [
       { id: 'sprint-1', name: 'Sprint 1', startDate: '2026-01-06', endDate: '2026-01-19', isCurrent: false, status: 'past', workDays: 10, daysRemaining: 0, progress: 100 },
       { id: 'sprint-2', name: 'Sprint 2', startDate: '2026-01-20', endDate: '2026-02-02', isCurrent: true, status: 'current', workDays: 10, daysRemaining: 5, progress: 50 },
@@ -703,21 +567,16 @@ export default function SprintPlanningPage() {
       });
     }
     return defaultIterations;
-  }, [adoConnected, adoIterations, data.sprints]);
+  }, [data.sprints]);
 
   const selectedIteration = useMemo(() => {
     if (selectedIterationId) return iterations.find(i => i.id === selectedIterationId) || null;
     return iterations.find(i => i.isCurrent) || iterations[0] || null;
   }, [iterations, selectedIterationId]);
 
-  const sourceTasks = useMemo(() => {
-    if (adoConnected && adoTasks.length > 0) return adoTasks;
-    return data.tasks || [];
-  }, [adoConnected, adoTasks, data.tasks]);
-
   // Sprint stats from tasks
   const sprintStats = useMemo(() => {
-    const tasks = sourceTasks;
+    const tasks = data.tasks || [];
     let completed = 0, inProgress = 0, blocked = 0, remaining = 0;
     
     tasks.forEach((t: any) => {
@@ -733,41 +592,38 @@ export default function SprintPlanningPage() {
     const health = Math.round((completed / total) * 100);
     
     return { completed, inProgress, blocked, remaining, total, health };
-  }, [sourceTasks]);
+  }, [data.tasks]);
 
   // Team members
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-
-  useEffect(() => {
-    if (!data.employees?.length) {
-      setTeamMembers([]);
-      return;
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => {
+    if (data.employees?.length) {
+      // Calculate assigned hours per employee from tasks
+      return data.employees.slice(0, 8).map((emp: any, idx: number) => {
+        const empId = emp.id || emp.employeeId;
+        const empName = emp.name || `Team Member ${idx + 1}`;
+        // Find tasks assigned to this employee and sum their hours
+        const assignedTasks = (data.tasks || []).filter((t: any) => 
+          (t.employeeId || t.employee_id) === empId ||
+          (t.assignedTo || '').toLowerCase().includes(empName.toLowerCase()) ||
+          (t.assignedResource || '').toLowerCase().includes(empName.toLowerCase())
+        );
+        const assignedHours = assignedTasks.reduce((sum: number, t: any) => 
+          sum + (t.baselineHours || t.actualHours || 0), 0);
+        
+        return {
+          id: empId || `${idx}`,
+          name: empName,
+          role: emp.jobTitle || emp.role || 'Developer',
+          hoursPerDay: 6,
+          daysOff: 0,
+          capacity: 60,
+          assigned: Math.min(60, Math.round(assignedHours)),
+        };
+      });
     }
-
-    const members = data.employees.slice(0, 8).map((emp: any, idx: number) => {
-      const empId = emp.id || emp.employeeId;
-      const empName = emp.name || `Team Member ${idx + 1}`;
-      const assignedTasks = sourceTasks.filter((t: any) =>
-        (t.employeeId || t.employee_id) === empId ||
-        (t.assignedTo || '').toLowerCase().includes(empName.toLowerCase()) ||
-        (t.assignedResource || '').toLowerCase().includes(empName.toLowerCase())
-      );
-      const assignedHours = assignedTasks.reduce((sum: number, t: any) =>
-        sum + (t.baselineHours || t.actualHours || 0), 0);
-
-      return {
-        id: empId || `${idx}`,
-        name: empName,
-        role: emp.jobTitle || emp.role || 'Developer',
-        hoursPerDay: 6,
-        daysOff: 0,
-        capacity: 60,
-        assigned: Math.min(60, Math.round(assignedHours)),
-      };
-    });
-
-    setTeamMembers(members);
-  }, [data.employees, sourceTasks]);
+    // If no employee data, return empty - no fake data
+    return [];
+  });
 
   const teamCapacity = useMemo(() => {
     const total = teamMembers.reduce((sum, m) => sum + m.capacity, 0);
@@ -784,7 +640,15 @@ export default function SprintPlanningPage() {
     }));
   }, [selectedIteration?.workDays]);
 
-  if (isLoading) return <PageLoader />;
+  if (dataLoading) {
+    return (
+      <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading sprint data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -792,42 +656,10 @@ export default function SprintPlanningPage() {
       <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Sprint Planning</h1>
             <IterationSelector iterations={iterations} selectedId={selectedIteration?.id || null} onSelect={setSelectedIterationId} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '6px 10px',
-              borderRadius: '999px',
-              border: `1px solid ${adoConnected ? 'rgba(16,185,129,0.45)' : 'rgba(245,158,11,0.45)'}`,
-              background: adoConnected ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-              color: adoConnected ? 'var(--pinnacle-lime)' : '#F59E0B',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-            }}>
-              <span>{adoConnected ? 'Azure Connected' : 'Local Fallback'}</span>
-              {adoLoading && <span style={{ opacity: 0.8 }}>Syncing...</span>}
-            </div>
-            <button
-              type="button"
-              onClick={() => refreshAdoData()}
-              disabled={adoLoading}
-              style={{
-                padding: '8px 12px',
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                color: 'var(--text-secondary)',
-                cursor: adoLoading ? 'not-allowed' : 'pointer',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                opacity: adoLoading ? 0.7 : 1,
-              }}
-            >
-              Refresh Azure
-            </button>
             <button onClick={() => setShowCapacity(true)} style={{
               display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
               background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)',
@@ -840,11 +672,6 @@ export default function SprintPlanningPage() {
             </button>
           </div>
         </div>
-        {(adoError || lastAdoSync) && (
-          <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: adoError ? '#EF4444' : 'var(--text-muted)' }}>
-            {adoError ? `Azure sync warning: ${adoError}` : `Last Azure sync: ${new Date(lastAdoSync || '').toLocaleString()}`}
-          </div>
-        )}
       </div>
 
       {/* Command Center */}

@@ -14,14 +14,13 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
 import ChartCard from '@/components/charts/ChartCard';
 import TableCompareExport from '@/components/ui/TableCompareExport';
 import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 
 export default function DocumentsPage() {
-  const { filteredData, isLoading } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const statusFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'status').map((f) => f.value), [pageFilters]);
@@ -91,17 +90,24 @@ export default function DocumentsPage() {
     return { projects: projectsWithHealth, avgHealth, atRisk, healthy, total: projects.length };
   }, [data.projects, data.projectHealth]);
 
-  if (isLoading) return <PageLoader />;
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading documents...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page">
-      <div style={{ marginBottom: '1rem', padding: '0.8rem 1rem', borderRadius: 10, border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
-        <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--pinnacle-teal)', marginBottom: '0.3rem' }}>
-          Document Source Mapping
-        </div>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-          DRD, QMP, SOP, and Workflow statuses are pulled from <code>deliverables</code>/<code>deliverablesTracker</code> records linked to each project.
-          Project context comes from the deliverable&apos;s project/customer fields (e.g., <code>projectId</code>, <code>projectNum</code>, <code>customer</code>), then shown in this matrix.
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Documents</h1>
+          <p style={{ marginTop: '4px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            Project health, deliverables, and documentation status
+          </p>
         </div>
       </div>
 

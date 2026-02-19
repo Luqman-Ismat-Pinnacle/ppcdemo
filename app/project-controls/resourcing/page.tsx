@@ -1,22 +1,23 @@
 'use client';
 
 /**
- * @fileoverview Resourcing Page — Comprehensive Resource Management.
- *
- * Redesigned with the org-chart Tree as the primary component.
- * - Single root (COO) with all portfolios, always fully expanded
- * - Utilization-coloured nodes matching the legend
- * - Interactive hover cards on employee nodes (click-through to details)
- * - Employee detail card: role-matched suggested tasks + cross-team demand
- * - Analytics tab: scorecards, utilization charts, leveling, employee table
+ * @fileoverview Resourcing Page - Comprehensive Resource Management
+ * 
+ * Features:
+ * - Portfolio-based org chart view with all portfolios visible by default
+ * - Project-based view showing employees per project
+ * - Collapsible unassigned tasks section sorted by criticality
+ * - Drag & drop task assignment to employee nodes
+ * - Drag & drop employee reassignment between projects
+ * - Analytics tab with utilization charts
+ * - Real-time data updates
  * 
  * @module app/project-controls/resourcing/page
  */
 
-import React, { useMemo, useState, useCallback, Suspense, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, Suspense, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import type { EChartsOption } from 'echarts';
 import {
@@ -27,1610 +28,1320 @@ import {
   type LevelingResult,
 } from '@/lib/resource-leveling-engine';
 
-// ═══════════════════════════════════════════════════════════════════
-// CONSTANTS
-// ═══════════════════════════════════════════════════════════════════
-
+// FTE Constants
 const HOURS_PER_DAY = 8;
 const DAYS_PER_WEEK = 5;
 const HOURS_PER_WEEK = HOURS_PER_DAY * DAYS_PER_WEEK;
-const HOURS_PER_YEAR = HOURS_PER_WEEK * 52;
+const WEEKS_PER_YEAR = 52;
+const HOURS_PER_YEAR = HOURS_PER_WEEK * WEEKS_PER_YEAR;
 
-const UTIL_COLORS = {
-  available: '#3B82F6',
-  optimal: '#10B981',
-  busy: '#F59E0B',
-  overloaded: '#EF4444',
-};
-
-const getUtilColor = (u: number) =>
-  u > 100 ? UTIL_COLORS.overloaded : u > 85 ? UTIL_COLORS.busy : u > 50 ? UTIL_COLORS.optimal : UTIL_COLORS.available;
-
-const fmt = (n: number, d = 0) =>
-  n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
-
-// ═══════════════════════════════════════════════════════════════════
-// LOADING FALLBACK
-// ═══════════════════════════════════════════════════════════════════
-
-function ResourcingPageLoading() {
-  return <PageLoader message="Loading Resourcing..." />;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// MAIN CONTENT
-// ═══════════════════════════════════════════════════════════════════
-
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
 function ResourcingPageContent() {
   const searchParams = useSearchParams();
-  const { filteredData, fullData, setData, refreshData, isLoading } = useData();
-
-  // ── State ─────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
-  const [heatmapView] = useState<'role'>('role');
+  const { filteredData, fullData, setData, isLoading: dataLoading } = useData();
+  
+  // UI State
+  const [activeTab, setActiveTab] = useState<'organization' | 'analytics'>('organization');
+  const [viewMode, setViewMode] = useState<'portfolio' | 'project'>('portfolio');
+  const [selectedPortfolio, setSelectedPortfolio] = useState<string>('all');
+  const [showUnassignedTasks, setShowUnassignedTasks] = useState(true);
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+  const [draggedTask, setDraggedTask] = useState<any>(null);
+  const [draggedEmployee, setDraggedEmployee] = useState<any>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
-  const [orgSearch, setOrgSearch] = useState('');
-  const [analyticsSearch, setAnalyticsSearch] = useState('');
-  const heatmapRoleFilter = 'all';
-  const [treeZoom, setTreeZoom] = useState(1);
-
-  // ── Data ──────────────────────────────────────────────────────
+  const chartRef = useRef<any>(null);
+  
+  // Data from context
   const data = useMemo(() => {
-    const f: any = filteredData || {};
-    const a: any = fullData || {};
-    const rawPortfolios = (f.portfolios?.length ? f.portfolios : a.portfolios) ?? [];
-    // Only show active portfolios on the Resourcing page. Data Management still
-    // sees all portfolios (even inactive) for admin purposes.
-    const activePortfolios = rawPortfolios.filter((p: any) => {
-      const inactiveFlag = p.isActive === false || p.is_active === false || p.active === false;
-      const status = (p.status || '').toString().toLowerCase();
-      const name = (p.name || '').toString().toLowerCase();
-      const hasInactiveWord =
-        status.includes('inactive') ||
-        status.includes('terminated') ||
-        status.includes('archived') ||
-        status.includes('closed') ||
-        status.includes('cancelled') ||
-        status.includes('canceled');
-      const nameInactive =
-        name.includes('inactive') ||
-        name.includes('terminated');
-      return !inactiveFlag && !hasInactiveWord && !nameInactive;
-    });
+    const filtered = filteredData || {};
+    const full = fullData || {};
     return {
-      tasks: (f.tasks?.length ? f.tasks : a.tasks) ?? [],
-      employees: (f.employees?.length ? f.employees : a.employees) ?? [],
-      projects: (f.projects?.length ? f.projects : a.projects) ?? [],
-      qctasks: (f.qctasks?.length ? f.qctasks : a.qctasks) ?? [],
-      portfolios: activePortfolios,
-      hours: (f.hours?.length ? f.hours : a.hours) ?? [],
+      tasks: (filtered.tasks?.length ? filtered.tasks : full.tasks) ?? [],
+      employees: (filtered.employees?.length ? filtered.employees : full.employees) ?? [],
+      projects: (filtered.projects?.length ? filtered.projects : full.projects) ?? [],
+      qctasks: (filtered.qctasks?.length ? filtered.qctasks : full.qctasks) ?? [],
+      portfolios: (filtered.portfolios?.length ? filtered.portfolios : full.portfolios) ?? [],
+      hours: (filtered.hours?.length ? filtered.hours : full.hours) ?? [],
     };
   }, [filteredData, fullData]);
-
+  
   const hasData = data.employees.length > 0 || data.projects.length > 0;
 
-  const getProjectName = useCallback((pid: string | null | undefined) => {
-    if (!pid) return 'Unknown';
-    const p = data.projects.find((p: any) => p.id === pid || p.projectId === pid);
-    return p?.name || p?.projectName || pid;
+  // Helper functions
+  const formatNumber = (num: number, decimals = 0) => 
+    num.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+
+  const getProjectName = useCallback((projectId: string | null | undefined) => {
+    if (!projectId) return 'Unknown';
+    const project = data.projects.find((p: any) => p.id === projectId || p.projectId === projectId);
+    return project?.name || project?.projectName || projectId;
   }, [data.projects]);
 
-  // ── Employee metrics ──────────────────────────────────────────
-  const employeeMetrics = useMemo(() =>
-    data.employees.map((emp: any) => {
-      const eid = emp.id || emp.employeeId;
-      const ename = (emp.name || '').toLowerCase();
-      const empTasks = data.tasks.filter((t: any) =>
-        (t.employeeId || t.employee_id) === eid ||
-        (t.assignedTo || '').toLowerCase().includes(ename)
+  // Get utilization color
+  const getUtilizationColor = (utilization: number) => {
+    if (utilization > 100) return '#EF4444'; // Red - overloaded
+    if (utilization > 85) return '#F59E0B';  // Orange - busy
+    if (utilization > 50) return '#10B981';  // Green - optimal
+    return '#3B82F6'; // Blue - available
+  };
+
+  // Calculate employee metrics
+  const employeeMetrics = useMemo(() => {
+    return data.employees.map((emp: any) => {
+      const empTasks = data.tasks.filter((t: any) => 
+        (t.employeeId || t.employee_id) === (emp.id || emp.employeeId) || 
+        (t.assignedTo || '').toLowerCase().includes((emp.name || '').toLowerCase())
       );
-      const allocatedHours = empTasks.reduce((s: number, t: any) => s + (Number(t.baselineHours) || 0), 0);
-      const actualHours = empTasks.reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
+      const allocatedHours = empTasks.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0);
+      const actualHours = empTasks.reduce((s: number, t: any) => s + (t.actualHours || 0), 0);
       const taskCount = empTasks.length;
-      const completedTasks = empTasks.filter((t: any) => (Number(t.percentComplete) || 0) >= 100).length;
+      const completedTasks = empTasks.filter((t: any) => (t.percentComplete || 0) >= 100).length;
+      
       const efficiency = allocatedHours > 0 ? Math.round((actualHours / allocatedHours) * 100) : 100;
-
+      
       // QC pass rate
-      const empQc = data.qctasks.filter((qc: any) =>
-        (qc.employeeId || qc.employee_id || qc.qcResourceId) === eid ||
-        (qc.qcResourceId || '').toLowerCase().includes(ename)
+      const empQcTasks = data.qctasks.filter((qc: any) => 
+        (qc.employeeId || qc.employee_id || qc.qcResourceId) === (emp.id || emp.employeeId) ||
+        (qc.qcResourceId || '').toLowerCase().includes((emp.name || '').toLowerCase())
       );
-      const qcPassRate = empQc.length > 0 ? Math.round(empQc.filter((q: any) => (q.qcStatus || '').toLowerCase() === 'pass' || (Number(q.qcScore) || 0) >= 80).length / empQc.length * 100) : null;
-
+      const totalQcTasks = empQcTasks.length;
+      const passedQcTasks = empQcTasks.filter((qc: any) => 
+        (qc.qcStatus || '').toLowerCase() === 'pass' || (qc.qcScore || 0) >= 80
+      ).length;
+      const qcPassRate = totalQcTasks > 0 ? Math.round((passedQcTasks / totalQcTasks) * 100) : null;
+      
+      // Utilization
+      const annualCapacity = HOURS_PER_YEAR;
       const workHours = allocatedHours > 0 ? allocatedHours : actualHours;
-      const utilization = Math.round((workHours / HOURS_PER_YEAR) * 100);
-      const availableHours = Math.max(0, HOURS_PER_YEAR - workHours);
-
+      const utilization = annualCapacity > 0 ? Math.round((workHours / annualCapacity) * 100) : 0;
+      const availableHours = Math.max(0, annualCapacity - workHours);
+      
+      // Get projects employee is assigned to
       const projectIds = [...new Set(empTasks.map((t: any) => t.projectId || t.project_id).filter(Boolean))];
       const projects = projectIds.map(pid => {
-        const p = data.projects.find((pp: any) => pp.id === pid || pp.projectId === pid);
-        return p ? { id: pid, name: p.name || p.projectName } : { id: pid, name: pid };
+        const proj = data.projects.find((p: any) => p.id === pid || p.projectId === pid);
+        return proj ? { id: pid, name: proj.name || proj.projectName } : { id: pid, name: pid };
       });
-
+      
+      // Status
       let status: 'available' | 'optimal' | 'busy' | 'overloaded' = 'available';
       if (utilization > 100) status = 'overloaded';
       else if (utilization > 85) status = 'busy';
       else if (utilization > 50) status = 'optimal';
-
+      
       return {
-        id: eid, name: emp.name || 'Unknown',
+        id: emp.id || emp.employeeId,
+        name: emp.name || 'Unknown',
         role: emp.jobTitle || emp.role || 'N/A',
-        manager: emp.manager || '', managementLevel: emp.managementLevel || '',
+        manager: emp.manager || '',
+        managementLevel: emp.managementLevel || '',
         portfolio: emp.portfolio || '',
-        allocatedHours, actualHours, taskCount, completedTasks, efficiency,
-        qcPassRate, totalQcTasks: empQc.length,
-        utilization, availableHours, status, tasks: empTasks, projects, projectIds,
+        allocatedHours,
+        actualHours,
+        taskCount,
+        completedTasks,
+        efficiency,
+        qcPassRate,
+        totalQcTasks,
+        utilization,
+        availableHours,
+        status,
+        tasks: empTasks,
+        projects,
+        projectIds,
       };
-    }),
-    [data.employees, data.tasks, data.qctasks, data.projects],
-  );
-
-  // ── Projects with employees ───────────────────────────────────
-  const projectsWithEmployees = useMemo(() =>
-    data.projects.map((proj: any) => {
-      const pid = proj.id || proj.projectId;
-      const ptasks = data.tasks.filter((t: any) => (t.projectId || t.project_id) === pid);
-      const emps = employeeMetrics.filter(e => e.projectIds.includes(pid));
-      const portId = proj.portfolioId || proj.portfolio_id;
-      const port = data.portfolios.find((p: any) => (p.id || p.portfolioId) === portId || p.name === portId);
-      return {
-        id: pid, name: proj.name || proj.projectName || pid,
-        portfolioId: portId, portfolioName: port?.name || portId || 'Unassigned',
-        taskCount: ptasks.length, employees: emps, employeeCount: emps.length,
-        totalHours: ptasks.reduce((s: number, t: any) => s + (Number(t.baselineHours) || 0), 0),
-      };
-    }),
-    [data.projects, data.tasks, employeeMetrics, data.portfolios],
-  );
-
-  // ── Unassigned tasks sorted by criticality ────────────────────
-  const getTaskCriticality = useCallback((task: any) => {
-    const isCrit = task.isCritical || task.critical || (Number(task.totalFloat ?? task.float ?? 999)) <= 0;
-    const isLinch = task.isLinchpin || task.linchpin || (task.successors?.length || 0) > 3;
-    const isHigh = (task.priority || '').toLowerCase() === 'high';
-    if (isCrit) return { label: 'Critical', color: '#EF4444', score: 4 };
-    if (isLinch) return { label: 'Linchpin', color: '#8B5CF6', score: 3 };
-    if (isHigh) return { label: 'High', color: '#F59E0B', score: 2 };
-    return { label: 'Normal', color: '#6B7280', score: 1 };
-  }, []);
-
-  const unassignedTasks = useMemo(() => {
-    const tasks = data.tasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
-    return tasks.sort((a: any, b: any) => getTaskCriticality(b).score - getTaskCriticality(a).score);
-  }, [data.tasks, getTaskCriticality]);
-
-  // ── Summary metrics ───────────────────────────────────────────
-  const summaryMetrics = useMemo(() => ({
-    totalEmployees: employeeMetrics.length,
-    totalProjects: data.projects.length,
-    totalPortfolios: data.portfolios.length,
-    totalCapacity: employeeMetrics.length * HOURS_PER_YEAR,
-    totalAllocated: employeeMetrics.reduce((s, e) => s + e.allocatedHours, 0),
-    avgUtilization: employeeMetrics.length > 0 ? Math.round(employeeMetrics.reduce((s, e) => s + e.utilization, 0) / employeeMetrics.length) : 0,
-    overloaded: employeeMetrics.filter(e => e.status === 'overloaded').length,
-    available: employeeMetrics.filter(e => e.status === 'available').length,
-    unassignedTasks: unassignedTasks.length,
-    criticalTasks: unassignedTasks.filter((t: any) => getTaskCriticality(t).label === 'Critical').length,
-  }), [employeeMetrics, data.projects, data.portfolios, unassignedTasks, getTaskCriticality]);
-
-  // ── Suggested tasks for an employee (role-matched only) ───────
-  const getSuggestedTasks = useCallback((emp: any) => {
-    const empRole = (emp.role || '').toLowerCase();
-    const empProjects = new Set(emp.projectIds || []);
-
-    return unassignedTasks
-      .filter((t: any) => {
-        // Only suggest tasks that match this employee's role
-        const taskResource = (t.resource || t.assignedResource || '').toLowerCase();
-        // Include if: no specific role required, OR role matches
-        return !taskResource || !empRole || taskResource.includes(empRole) || empRole.includes(taskResource);
-      })
-      .map((t: any) => {
-        const crit = getTaskCriticality(t);
-        let matchScore = crit.score * 10;
-        const tProjectId = t.projectId || t.project_id;
-
-        // Boost if task is on employee's existing project
-        if (empProjects.has(tProjectId)) matchScore += 20;
-
-        // Boost if task resource role explicitly matches
-        const taskResource = (t.resource || t.assignedResource || '').toLowerCase();
-        if (taskResource && empRole && (taskResource.includes(empRole) || empRole.includes(taskResource))) matchScore += 15;
-
-        // Boost if employee has availability
-        const taskHrs = Number(t.baselineHours) || 0;
-        if (taskHrs <= emp.availableHours) matchScore += 10;
-
-        return { ...t, matchScore, criticality: crit, projectName: getProjectName(tProjectId) };
-      })
-      .sort((a: any, b: any) => b.matchScore - a.matchScore)
-      .slice(0, 8);
-  }, [unassignedTasks, getTaskCriticality, getProjectName]);
-
-  // ── Other teams/projects needing this employee ────────────────
-  const getTeamsNeedingEmployee = useCallback((emp: any) => {
-    const empRole = (emp.role || '').toLowerCase();
-    const empProjects = new Set(emp.projectIds || []);
-
-    return projectsWithEmployees
-      .filter(p => !empProjects.has(p.id))
-      .map(proj => {
-        const projTasks = data.tasks.filter((t: any) => (t.projectId || t.project_id) === proj.id);
-        const unassignedOnProj = projTasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
-
-        const roleMatch = unassignedOnProj.filter((t: any) => {
-          const res = (t.resource || t.assignedResource || '').toLowerCase();
-          return res && empRole && (res.includes(empRole) || empRole.includes(res));
-        }).length;
-
-        const criticalCount = unassignedOnProj.filter((t: any) => getTaskCriticality(t).label === 'Critical').length;
-        const totalUnassigned = unassignedOnProj.length;
-        const demand = roleMatch * 3 + criticalCount * 5 + totalUnassigned;
-
-        // FIX: ensure numeric addition (database values may be strings)
-        const unassignedHours = unassignedOnProj.reduce((s: number, t: any) => s + (Number(t.baselineHours) || 0), 0);
-
-        return {
-          ...proj, roleMatch, criticalCount, totalUnassigned, demand, unassignedHours,
-        };
-      })
-      .filter(p => p.demand > 0)
-      .sort((a, b) => b.demand - a.demand)
-      .slice(0, 5);
-  }, [projectsWithEmployees, data.tasks, getTaskCriticality]);
-
-  // ── Handle task assignment — updates database + creates notification
-  const handleAssignTask = useCallback(async (task: any, emp: any) => {
-    const taskId = task.id || task.taskId;
-    const taskName = task.name || task.taskName || 'Unknown Task';
-    const projectName = task.projectName || '';
-
-    setAssignmentMessage(`Assigning "${taskName}" to ${emp.name}...`);
-
-    try {
-      // 1. Update the task assignment in the database
-      const assignRes = await fetch('/api/tasks/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId, employeeId: emp.id, employeeName: emp.name }),
-      });
-      const assignData = await assignRes.json();
-
-      if (!assignData.success) {
-        setAssignmentMessage(`Failed: ${assignData.error || 'Unknown error'}`);
-        setTimeout(() => setAssignmentMessage(null), 4000);
-        return;
-      }
-
-      // 2. Create a notification for the employee
-      await fetch('/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employeeId: emp.id,
-          role: emp.role,
-          type: 'task_assigned',
-          title: 'New Task Assigned',
-          message: `You have been assigned to "${taskName}"${projectName ? ` on project ${projectName}` : ''}.`,
-          relatedTaskId: taskId,
-          relatedProjectId: task.projectId || task.project_id || null,
-        }),
-      });
-
-      // 3. Update local data context to reflect the change immediately
-      if (typeof refreshData === 'function') {
-        refreshData();
-      }
-
-      setAssignmentMessage(`"${taskName}" assigned to ${emp.name}`);
-      setTimeout(() => setAssignmentMessage(null), 3000);
-    } catch (err) {
-      console.error('Assignment error:', err);
-      setAssignmentMessage('Assignment failed — check connection');
-      setTimeout(() => setAssignmentMessage(null), 4000);
-    }
-  }, [refreshData]);
-
-  // ── Build ECharts Tree ────────────────────────────────────────
-  const makeEmpNode = useCallback((emp: any) => ({
-    name: emp.name, id: emp.id, emp, utilization: emp.utilization,
-    itemStyle: { color: getUtilColor(emp.utilization), borderColor: getUtilColor(emp.utilization) },
-    label: { backgroundColor: `${getUtilColor(emp.utilization)}15` },
-  }), []);
-
-  /** Compute average utilization for a group of employee IDs */
-  const getGroupUtilization = useCallback((empIds: Set<string>) => {
-    const emps = employeeMetrics.filter(e => empIds.has(e.id));
-    if (emps.length === 0) return 0;
-    return Math.round(emps.reduce((s, e) => s + e.utilization, 0) / emps.length);
-  }, [employeeMetrics]);
-
-  const buildManagerTree = useMemo((): any[] => {
-    if (!employeeMetrics.length) return [];
-
-    // Build employee lookup by name (lowercase) for manager matching
-    const empByName = new Map<string, any>();
-    employeeMetrics.forEach(emp => {
-      empByName.set((emp.name || '').toLowerCase().trim(), emp);
     });
+  }, [data.employees, data.tasks, data.qctasks, data.projects]);
 
-    // Find children of a given manager
-    const getDirectReports = (managerName: string): any[] => {
-      const mnLower = managerName.toLowerCase().trim();
-      return employeeMetrics.filter(emp => {
-        const mgr = (emp.manager || '').toLowerCase().trim();
-        return mgr === mnLower && (emp.name || '').toLowerCase().trim() !== mnLower;
-      });
-    };
-
-    // Recursively build tree nodes
-    const visited = new Set<string>();
-    const buildNode = (emp: any): any => {
-      if (visited.has(emp.id)) return null;
-      visited.add(emp.id);
-
-      const reports = getDirectReports(emp.name);
-      const childNodes = reports.map(r => buildNode(r)).filter(Boolean);
-      const uc = getUtilColor(emp.utilization);
-
-      // Compute group utilization for managers
-      const groupUtil = childNodes.length > 0
-        ? Math.round([emp, ...reports].reduce((s, e) => s + e.utilization, 0) / (1 + reports.length))
-        : emp.utilization;
-
-      const node: any = {
-        name: emp.name,
-        id: emp.id,
-        emp,
-        utilization: emp.utilization,
-        isManager: childNodes.length > 0,
-        reportCount: childNodes.length,
-        groupUtilization: groupUtil,
-        itemStyle: { color: uc, borderColor: uc, borderWidth: childNodes.length > 0 ? 2.5 : 1.5 },
-        label: { backgroundColor: `${uc}15` },
-        children: childNodes.length > 0 ? childNodes : undefined,
+  // Get projects with their employees
+  const projectsWithEmployees = useMemo(() => {
+    return data.projects.map((proj: any) => {
+      const projectId = proj.id || proj.projectId;
+      const projectTasks = data.tasks.filter((t: any) => 
+        (t.projectId || t.project_id) === projectId
+      );
+      const assignedEmployees = employeeMetrics.filter(emp => 
+        emp.projectIds.includes(projectId)
+      );
+      const portfolioId = proj.portfolioId || proj.portfolio_id;
+      const portfolio = data.portfolios.find((p: any) => 
+        (p.id || p.portfolioId) === portfolioId || p.name === portfolioId
+      );
+      
+      return {
+        id: projectId,
+        name: proj.name || proj.projectName || projectId,
+        portfolioId,
+        portfolioName: portfolio?.name || portfolioId || 'Unassigned',
+        taskCount: projectTasks.length,
+        employees: assignedEmployees,
+        employeeCount: assignedEmployees.length,
+        totalHours: projectTasks.reduce((s: number, t: any) => s + (t.baselineHours || 0), 0),
       };
+    });
+  }, [data.projects, data.tasks, employeeMetrics, data.portfolios]);
+
+  // Unassigned tasks sorted by criticality
+  const unassignedTasks = useMemo(() => {
+    let tasks = data.tasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
+    
+    // Filter by selected portfolio if not "all"
+    if (selectedPortfolio !== 'all') {
+      const portfolioProjects = projectsWithEmployees
+        .filter(p => p.portfolioId === selectedPortfolio || p.portfolioName === selectedPortfolio)
+        .map(p => p.id);
+      tasks = tasks.filter((t: any) => portfolioProjects.includes(t.projectId || t.project_id));
+    }
+    
+    // Sort by criticality/importance
+    return tasks.sort((a: any, b: any) => {
+      // Priority: Critical > Linchpin > High > Normal
+      const getPriority = (task: any) => {
+        const isCritical = task.isCritical || task.critical || (task.totalFloat || task.float || 999) <= 0;
+        const isLinchpin = task.isLinchpin || task.linchpin || (task.successors?.length || 0) > 3;
+        const isHighPriority = (task.priority || '').toLowerCase() === 'high';
+        
+        if (isCritical) return 4;
+        if (isLinchpin) return 3;
+        if (isHighPriority) return 2;
+        return 1;
+      };
+      return getPriority(b) - getPriority(a);
+    });
+  }, [data.tasks, selectedPortfolio, projectsWithEmployees]);
+
+  // Get task criticality label
+  const getTaskCriticality = (task: any) => {
+    const isCritical = task.isCritical || task.critical || (task.totalFloat || task.float || 999) <= 0;
+    const isLinchpin = task.isLinchpin || task.linchpin || (task.successors?.length || 0) > 3;
+    const isHighPriority = (task.priority || '').toLowerCase() === 'high';
+    
+    if (isCritical) return { label: 'Critical', color: '#EF4444' };
+    if (isLinchpin) return { label: 'Linchpin', color: '#8B5CF6' };
+    if (isHighPriority) return { label: 'High', color: '#F59E0B' };
+    return { label: 'Normal', color: '#6B7280' };
+  };
+
+  // Helper: create employee node for ECharts tree
+  const makeEmpNode = (emp: any) => ({
+    name: emp.name,
+    id: emp.id,
+    emp,
+    utilization: emp.utilization,
+    itemStyle: { color: getUtilizationColor(emp.utilization), borderColor: getUtilizationColor(emp.utilization) },
+    label: { backgroundColor: `${getUtilizationColor(emp.utilization)}20` },
+  });
+
+  // Build tree for ECharts - Portfolio View (uses manager hierarchy from employees)
+  const buildPortfolioTree = useMemo((): any[] => {
+    if (viewMode !== 'portfolio') return [];
+    if (employeeMetrics.length === 0) return [];
+    
+    const employeeByName = new Map<string, any>();
+    employeeMetrics.forEach(emp => employeeByName.set(emp.name.toLowerCase(), emp));
+    
+    // Build manager -> reports map
+    const byManager = new Map<string, any[]>();
+    employeeMetrics.forEach(emp => {
+      const mgrName = (emp.manager || '').trim().toLowerCase();
+      if (mgrName) {
+        if (!byManager.has(mgrName)) byManager.set(mgrName, []);
+        byManager.get(mgrName)!.push(emp);
+      }
+    });
+    
+    // Identify root employees (managers not in employee list, or top-level management)
+    const rootEmps = employeeMetrics.filter(emp => {
+      const mgrName = (emp.manager || '').trim().toLowerCase();
+      const level = (emp.managementLevel || '').toLowerCase();
+      return (
+        !mgrName || 
+        !employeeByName.has(mgrName) ||
+        level.includes('senior manager') ||
+        level.includes('director') ||
+        level.includes('executive') ||
+        level.includes('vp')
+      );
+    });
+    
+    // Recursive tree builder
+    const buildBranch = (emp: any, depth: number): any => {
+      const reports = byManager.get(emp.name.toLowerCase()) || [];
+      const node = makeEmpNode(emp);
+      if (depth < 6 && reports.length > 0) {
+        (node as any).children = reports.map(r => buildBranch(r, depth + 1));
+      }
       return node;
     };
-
-    // Root employees: those whose manager field is empty, or whose manager name doesn't match any other employee
-    const roots = employeeMetrics.filter(emp => {
-      const mgr = (emp.manager || '').toLowerCase().trim();
-      return !mgr || !empByName.has(mgr) || mgr === (emp.name || '').toLowerCase().trim();
-    });
-
-    const rootNodes = roots.map(r => buildNode(r)).filter(Boolean);
-
-    // Catch any employees missed (circular references, etc.)
-    const missedEmps = employeeMetrics.filter(e => !visited.has(e.id));
-    if (missedEmps.length > 0) {
-      missedEmps.forEach(emp => {
-        const node = buildNode(emp);
-        if (node) rootNodes.push(node);
-      });
-    }
-
-    // Sort roots: managers first (by report count desc), then individuals
-    rootNodes.sort((a: any, b: any) => (b.reportCount || 0) - (a.reportCount || 0));
-
-    return rootNodes;
-  }, [employeeMetrics]);
-
-  const treeData = buildManagerTree;
-
-  // Count leaves for proportional height allocation
-  const countLeaves = (nodes: any[]): number =>
-    nodes.reduce((sum: number, n: any) => {
-      if (!n.children || n.children.length === 0) return sum + 1;
-      return sum + countLeaves(n.children);
-    }, 0);
-
-  const treeLeafCounts = useMemo(() =>
-    treeData.map(p => ({ name: p.name, leaves: countLeaves([p]) })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [treeData],
-  );
-
-  const totalLeaves = treeLeafCounts.reduce((s, p) => s + p.leaves, 0);
-  // For vertical TB layout — increase sibling spacing and adapt to zoom so labels don't overlap.
-  const spacingScale = Math.max(1, 1 / Math.max(treeZoom, 0.75));
-  const dynamicTreeWidth = Math.max(1500, Math.min(totalLeaves * 170 * spacingScale, 7600));
-  const dynamicTreeHeight = Math.max(920, Math.min(treeData.length * 260 + totalLeaves * 44 * spacingScale, 5200));
-
-  // ── Register global action bridge for tooltip clicks ──────────
-  useEffect(() => {
-    (window as any).__resourcingOpenEmployee = (empId: string) => {
-      const emp = employeeMetrics.find(e => e.id === empId);
-      if (emp) { setSelectedEmployee(emp); setShowEmployeeModal(true); }
-    };
-    return () => { delete (window as any).__resourcingOpenEmployee; };
-  }, [employeeMetrics]);
-
-  // ── ECharts tree option — single series (manager hierarchy) with utilization legend ──
-  const treeOption: EChartsOption = useMemo(() => {
-    if (treeData.length === 0) return { series: [] };
-
-    // Tooltip formatter
-    const tooltipFormatter = (params: any) => {
-      const d = params.data;
-      if (d.emp) {
-        const e = d.emp;
-        const uc = getUtilColor(e.utilization);
-        const managerLine = d.isManager
-          ? `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">Manager · ${d.reportCount} direct report${d.reportCount !== 1 ? 's' : ''}</div>`
-          : `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">${e.role}</div>`;
-        return `<div style="padding:14px 16px;min-width:240px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-            <div><div style="font-weight:700;font-size:14px;">${e.name}</div>${managerLine}</div>
-            <div style="width:40px;height:40px;border-radius:50%;border:2px solid ${uc};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${uc};background:${uc}15;">${e.utilization}%</div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:11px;margin-bottom:10px;">
-            <div style="color:#9ca3af;">Role</div><div style="font-weight:600;">${e.role}</div>
-            <div style="color:#9ca3af;">Tasks</div><div style="font-weight:600;">${e.taskCount}</div>
-            <div style="color:#9ca3af;">Allocated</div><div style="font-weight:600;">${fmt(e.allocatedHours)} hrs</div>
-            <div style="color:#9ca3af;">Available</div><div style="font-weight:600;color:#10B981;">${fmt(e.availableHours)} hrs</div>
-            <div style="color:#9ca3af;">Projects</div><div style="font-weight:600;">${e.projects?.length || 0}</div>
-            ${e.qcPassRate !== null ? `<div style="color:#9ca3af;">QC Rate</div><div style="font-weight:600;">${e.qcPassRate}%</div>` : ''}
-          </div>
-          <button onclick="window.__resourcingOpenEmployee('${e.id}')" style="width:100%;padding:8px;border:none;border-radius:6px;background:rgba(64,224,208,0.15);color:#40E0D0;font-weight:600;font-size:12px;cursor:pointer;transition:background 0.15s;">
-            View Details &amp; Assign Tasks →
-          </button>
-        </div>`;
+    
+    // If we have portfolios, group roots under portfolio nodes
+    if (data.portfolios.length > 0) {
+      const portfolioNodes: any[] = [];
+      const assignedRoots = new Set<string>();
+      
+      let portfolios = data.portfolios;
+      if (selectedPortfolio !== 'all') {
+        portfolios = portfolios.filter((p: any) => 
+          (p.id || p.portfolioId) === selectedPortfolio || p.name === selectedPortfolio
+        );
       }
-      return `<div style="padding:8px 12px;"><strong>${d.name}</strong></div>`;
-    };
-
-    // Label config for TB (top-to-bottom) layout
-    const labelWidth = Math.round(Math.max(100, 150 / Math.max(treeZoom, 0.75)));
-    const sharedLabel = {
-      position: 'bottom' as const,
-      verticalAlign: 'top' as const,
-      align: 'center' as const,
-      fontSize: 10.5,
-      color: '#f4f4f5',
-      width: labelWidth,
-      overflow: 'truncate' as const,
-      backgroundColor: 'rgba(17,24,39,0.78)',
-      borderColor: 'rgba(64,224,208,0.24)',
-      borderWidth: 1,
-      borderRadius: 5,
-      padding: [6, 9] as [number, number],
-      distance: 12,
-      formatter: (params: any) => {
-        const d = params.data;
-        const name = String(d.name || '').trim();
-        const trimmedName = name.length > 22 ? `${name.slice(0, 22)}…` : name;
-        if (d.isManager) {
-          return `{mgrName|${trimmedName}}\n{mgrSub|${d.reportCount} reports}\n{util|${d.utilization || 0}%}`;
+      
+      portfolios.forEach((portfolio: any) => {
+        const portfolioId = portfolio.id || portfolio.portfolioId;
+        const portfolioName = portfolio.name || portfolioId;
+        const portfolioManagerName = (portfolio.manager || '').trim().toLowerCase();
+        
+        // Find portfolio projects
+        const portfolioProjects = projectsWithEmployees.filter(p => 
+          p.portfolioId === portfolioId
+        );
+        
+        // Find employees that belong to this portfolio:
+        // 1. The portfolio manager themselves
+        // 2. Their reports
+        // 3. Anyone assigned to this portfolio's projects
+        const portfolioEmpIds = new Set<string>();
+        
+        // Add employees assigned to portfolio projects
+        portfolioProjects.forEach(proj => {
+          proj.employees.forEach((emp: any) => portfolioEmpIds.add(emp.id));
+        });
+        
+        // Find roots relevant to this portfolio
+        const portfolioRoots = rootEmps.filter(emp => {
+          const empNameLower = emp.name.toLowerCase();
+          // Direct match on portfolio manager
+          if (portfolioManagerName && (empNameLower === portfolioManagerName || empNameLower.includes(portfolioManagerName) || portfolioManagerName.includes(empNameLower))) {
+            return true;
+          }
+          // Employee assigned to one of the portfolio's projects
+          if (portfolioEmpIds.has(emp.id)) return true;
+          return false;
+        });
+        
+        portfolioRoots.forEach(r => assignedRoots.add(r.id));
+        
+        const children = portfolioRoots.length > 0 
+          ? portfolioRoots.map(r => buildBranch(r, 0))
+          : portfolioProjects.map(proj => ({
+              name: proj.name,
+              id: proj.id,
+              isProject: true,
+              employeeCount: proj.employeeCount,
+              totalHours: proj.totalHours,
+              children: proj.employees.map((emp: any) => makeEmpNode(emp)),
+            }));
+        
+        if (children.length > 0) {
+          portfolioNodes.push({
+            name: portfolioName,
+            id: portfolioId,
+            isPortfolio: true,
+            projectCount: portfolioProjects.length,
+            children,
+          });
         }
-        if (d.emp) {
-          const role = String(d.emp?.role || '').trim();
-          const trimmedRole = role.length > 18 ? `${role.slice(0, 18)}…` : role;
-          return `{empName|${trimmedName}}\n{empRole|${trimmedRole}}\n{util|${d.utilization || 0}%}`;
+      });
+      
+      // Add unassigned roots if showing all
+      if (selectedPortfolio === 'all') {
+        const unassignedRoots = rootEmps.filter(r => !assignedRoots.has(r.id));
+        if (unassignedRoots.length > 0) {
+          portfolioNodes.push({
+            name: 'Unassigned',
+            id: 'unassigned-portfolio',
+            isPortfolio: true,
+            children: unassignedRoots.map(r => buildBranch(r, 0)),
+          });
         }
-        return trimmedName;
-      },
-      rich: {
-        mgrName: { fontWeight: 'bold' as any, fontSize: 11.5, lineHeight: 18, color: '#40E0D0', align: 'center' as const },
-        mgrSub: { fontSize: 9, color: '#9ca3af', lineHeight: 13, align: 'center' as const },
-        empName: { fontSize: 10.2, fontWeight: 'bold' as any, color: '#f4f4f5', lineHeight: 16, align: 'center' as const },
-        empRole: { fontSize: 9, color: '#a1a1aa', lineHeight: 13, align: 'center' as const },
-        util: { fontSize: 9, color: '#9ca3af', lineHeight: 13, align: 'center' as const },
-      },
-    };
+      }
+      
+      return portfolioNodes;
+    }
+    
+    // No portfolios: just show a flat manager hierarchy
+    if (selectedPortfolio !== 'all') return [];
+    
+    // Group by manager for a cleaner tree
+    if (rootEmps.length > 0) {
+      return rootEmps.map(r => buildBranch(r, 0));
+    }
+    
+    // Last fallback: flat list of all employees
+    return employeeMetrics.map(emp => makeEmpNode(emp));
+  }, [employeeMetrics, viewMode, data.portfolios, selectedPortfolio, projectsWithEmployees]);
 
-    // Merge all root nodes under a virtual root for a single cohesive tree
-    const mergedRoot = treeData.length === 1
-      ? treeData[0]
-      : { name: 'Organization', children: treeData, isManager: false, utilization: 0, itemStyle: { color: '#40E0D0', borderColor: '#40E0D0' } };
+  // Build tree for ECharts - Project View
+  const buildProjectTree = useMemo((): any[] => {
+    if (viewMode !== 'project') return [];
+    if (projectsWithEmployees.length === 0 && employeeMetrics.length === 0) return [];
+    
+    let projects = projectsWithEmployees;
+    
+    if (selectedPortfolio !== 'all') {
+      projects = projects.filter(p => p.portfolioId === selectedPortfolio || p.portfolioName === selectedPortfolio);
+    }
+    
+    // Group by portfolio
+    const byPortfolio = new Map<string, any[]>();
+    projects.forEach(proj => {
+      const portfolioName = proj.portfolioName || 'Unassigned';
+      if (!byPortfolio.has(portfolioName)) {
+        byPortfolio.set(portfolioName, []);
+      }
+      byPortfolio.get(portfolioName)!.push(proj);
+    });
+    
+    const result = Array.from(byPortfolio.entries()).map(([portfolioName, projs]) => ({
+      name: portfolioName,
+      id: `portfolio-${portfolioName}`,
+      isPortfolio: true,
+      children: projs.map(proj => ({
+        name: proj.name,
+        id: proj.id,
+        isProject: true,
+        employeeCount: proj.employeeCount,
+        totalHours: proj.totalHours,
+        children: proj.employees.length > 0 
+          ? proj.employees.map((emp: any) => makeEmpNode(emp))
+          : [{ name: 'No employees assigned', id: `empty-${proj.id}`, isPlaceholder: true }],
+      })),
+    }));
+    
+    // If no portfolio grouping produced results, show projects directly
+    if (result.length === 0 && projects.length > 0) {
+      return projects.map(proj => ({
+        name: proj.name,
+        id: proj.id,
+        isProject: true,
+        employeeCount: proj.employeeCount,
+        totalHours: proj.totalHours,
+        children: proj.employees.length > 0 
+          ? proj.employees.map((emp: any) => makeEmpNode(emp))
+          : [{ name: 'No employees assigned', id: `empty-${proj.id}`, isPlaceholder: true }],
+      }));
+    }
+    
+    return result;
+  }, [projectsWithEmployees, viewMode, selectedPortfolio, employeeMetrics]);
 
+  // Combined tree data based on view mode
+  const treeData = useMemo(() => {
+    const data = viewMode === 'portfolio' ? buildPortfolioTree : buildProjectTree;
+    return data;
+  }, [viewMode, buildPortfolioTree, buildProjectTree]);
+
+  // ECharts tree option
+  const treeOption: EChartsOption = useMemo(() => {
     return {
       backgroundColor: 'transparent',
       tooltip: {
         trigger: 'item',
-        enterable: true,
-        hideDelay: 400,
-        backgroundColor: 'rgba(22,27,34,0.97)',
-        borderColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
-        padding: 0,
+        backgroundColor: 'rgba(22,27,34,0.95)',
+        borderColor: 'var(--border-color)',
         textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-width:320px;',
-        formatter: tooltipFormatter,
-      },
-      toolbox: {
-        show: true,
-        orient: 'vertical' as const,
-        right: 12,
-        bottom: 12,
-        feature: {
-          dataZoom: { show: true, title: { zoom: 'Zoom', back: 'Reset Zoom' } },
-          restore: { show: true, title: 'Restore' },
+        formatter: (params: any) => {
+          const d = params.data;
+          
+          if (d.isPortfolio) {
+            return `<div style="min-width:150px;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${d.name}</div>
+              <div style="font-size:11px;color:#9ca3af;">Portfolio</div>
+              ${d.projectCount ? `<div style="margin-top:4px;font-size:11px;">${d.projectCount} projects</div>` : ''}
+            </div>`;
+          }
+          
+          if (d.isProject) {
+            return `<div style="min-width:150px;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${d.name}</div>
+              <div style="font-size:11px;color:#9ca3af;">Project</div>
+              <div style="margin-top:4px;font-size:11px;">${d.employeeCount || 0} employees assigned</div>
+              ${d.totalHours ? `<div style="font-size:11px;">${formatNumber(d.totalHours)} total hours</div>` : ''}
+            </div>`;
+          }
+          
+          if (d.isManager) {
+            return `<div style="min-width:150px;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${d.name}</div>
+              <div style="font-size:11px;color:#9ca3af;">Manager</div>
+              <div style="margin-top:4px;font-size:11px;">${d.children?.length || 0} direct reports</div>
+            </div>`;
+          }
+          
+          if (d.emp) {
+            const emp = d.emp;
+            return `<div style="min-width:200px;font-family:inherit;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:2px;">${emp.name}</div>
+              <div style="font-size:11px;color:#9ca3af;margin-bottom:8px;">${emp.role || ''}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;">
+                <div>Utilization:</div><div style="color:${getUtilizationColor(emp.utilization)};font-weight:600;">${emp.utilization}%</div>
+                <div>Tasks:</div><div>${emp.taskCount}</div>
+                <div>Allocated:</div><div>${formatNumber(emp.allocatedHours)} hrs</div>
+                <div>Available:</div><div style="color:#10B981;">${formatNumber(emp.availableHours)} hrs</div>
+                ${emp.qcPassRate !== null ? `<div>QC Rate:</div><div>${emp.qcPassRate}%</div>` : ''}
+                <div>Projects:</div><div>${emp.projects?.length || 0}</div>
+              </div>
+              <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333;font-size:10px;color:#6B7280;">
+                Click to view details | Drag tasks here to assign
+              </div>
+            </div>`;
+          }
+          
+          return `<strong>${d.name}</strong>`;
         },
-        iconStyle: { borderColor: '#a1a1aa' },
-        emphasis: { iconStyle: { borderColor: '#40E0D0' } },
       },
-      // Utilization-level legend instead of portfolio names
-      legend: {
-        top: '1%',
-        left: 'center',
-        orient: 'horizontal' as const,
-        selectedMode: false,
-        data: [
-          { name: 'Available (< 50%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.available } },
-          { name: 'Optimal (50-85%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.optimal } },
-          { name: 'Busy (85-100%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.busy } },
-          { name: 'Overloaded (> 100%)', icon: 'roundRect', itemStyle: { color: UTIL_COLORS.overloaded } },
-        ],
-        textStyle: { color: '#a1a1aa', fontSize: 11 },
-        itemGap: 24,
-        itemWidth: 14,
-        itemHeight: 10,
-      },
-      series: [{
-        type: 'tree',
-        name: 'Organization',
-        data: [mergedRoot],
-        top: '8%',
-        left: '4%',
-        bottom: '14%',
-        right: '4%',
-        orient: 'TB',
-        layout: 'orthogonal',
-        edgeShape: 'polyline',
-        edgeForkPosition: '50%',
-        nodePadding: Math.round(38 / Math.max(treeZoom, 0.8)),
-        layerPadding: Math.round(120 / Math.max(treeZoom, 0.8)),
-        initialTreeDepth: -1,
-        expandAndCollapse: true,
-        animationDuration: 400,
-        animationDurationUpdate: 650,
-        roam: true,
-        symbolSize: (_value: any, params: any) => {
-          const d = params?.data;
-          if (d?.isManager && (d?.reportCount || 0) > 3) return 22;
-          if (d?.isManager) return 18;
-          return 12;
+      series: [
+        {
+          type: 'tree',
+          data: treeData,
+          top: '5%',
+          left: '10%',
+          bottom: '5%',
+          right: '10%',
+          symbolSize: 14,
+          orient: 'TB',
+          layout: 'orthogonal',
+          initialTreeDepth: 4,
+          expandAndCollapse: true,
+          animationDurationUpdate: 500,
+          roam: true,
+          label: {
+            position: 'bottom',
+            verticalAlign: 'middle',
+            align: 'center',
+            fontSize: 10,
+            color: 'var(--text-primary)',
+            borderRadius: 4,
+            padding: [4, 6],
+            formatter: (params: any) => {
+              const d = params.data;
+              if (d.isPortfolio) return `{bold|${d.name}}`;
+              if (d.isProject) return `{project|${d.name.substring(0, 18)}${d.name.length > 18 ? '...' : ''}}`;
+              if (d.isPlaceholder) return `{muted|${d.name}}`;
+              if (d.emp) {
+                const shortName = d.name.split(' ').map((n: string, i: number) => i === 0 ? n : n[0] + '.').join(' ');
+                return `${shortName}\n${d.utilization || 0}%`;
+              }
+              return d.name;
+            },
+            rich: {
+              bold: { fontWeight: 'bold' as any, fontSize: 12 },
+              project: { fontSize: 10, color: '#60A5FA' },
+              muted: { fontSize: 9, color: '#6B7280', fontStyle: 'italic' as any },
+            },
+          },
+          leaves: {
+            label: {
+              position: 'bottom',
+              verticalAlign: 'middle',
+              align: 'center',
+            },
+          },
+          lineStyle: {
+            color: 'var(--border-color)',
+            width: 1.5,
+            curveness: 0.5,
+          },
+          emphasis: {
+            focus: 'descendant',
+            itemStyle: {
+              borderWidth: 3,
+              shadowBlur: 10,
+              shadowColor: 'rgba(64, 224, 208, 0.5)',
+            },
+          },
         },
-        itemStyle: { color: UTIL_COLORS.available, borderColor: UTIL_COLORS.available, borderWidth: 1.5 },
-        label: sharedLabel,
-        leaves: { label: { position: 'bottom' as const, verticalAlign: 'top' as const, align: 'center' as const } },
-        lineStyle: { color: '#3f3f4670', width: 1.5, curveness: 0.3 },
-        emphasis: {
-          focus: 'descendant',
-          itemStyle: { borderWidth: 3, shadowBlur: 12, shadowColor: 'rgba(64,224,208,0.5)' },
-        },
-      }],
+      ],
     };
-  }, [treeData, treeLeafCounts, treeZoom]);
+  }, [treeData]);
 
-  const handleTreeChartReady = useCallback((chart: any) => {
-    const syncZoom = () => {
-      const option = chart.getOption?.();
-      const zoom = Number((option?.series?.[0] as any)?.zoom ?? 1);
-      if (!Number.isFinite(zoom)) return;
-      setTreeZoom(prev => Math.abs(prev - zoom) > 0.02 ? zoom : prev);
-    };
-    chart.off('graphRoam');
-    chart.on('graphRoam', syncZoom);
-    syncZoom();
+  // Handle tree node click
+  const handleTreeClick = useCallback((params: any) => {
+    if (params.data?.emp) {
+      setSelectedEmployee(params.data.emp);
+      setShowEmployeeModal(true);
+    }
   }, []);
 
-  // ── Analytics charts ──────────────────────────────────────────
-  const sortedEmployeesByUtil = useMemo(() =>
-    [...employeeMetrics].sort((a, b) => b.utilization - a.utilization),
-    [employeeMetrics]);
+  // Drag handlers for tasks
+  const handleTaskDragStart = useCallback((e: React.DragEvent, task: any) => {
+    setDraggedTask(task);
+    setDraggedEmployee(null);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'task', id: task.id || task.taskId }));
+  }, []);
 
-  const capacityChartOption: EChartsOption = useMemo(() => {
-    const cd = sortedEmployeesByUtil.map(e => ({ id: e.id, name: e.name, utilization: e.utilization, role: e.role, taskCount: e.taskCount, allocatedHours: e.allocatedHours, availableHours: e.availableHours }));
-    const chartHeight = Math.max(420, cd.length * 28);
+  const handleEmployeeDragStart = useCallback((e: React.DragEvent, employee: any) => {
+    setDraggedEmployee(employee);
+    setDraggedTask(null);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'employee', id: employee.id }));
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedTask(null);
+    setDraggedEmployee(null);
+    setDropTargetId(null);
+  }, []);
+
+  // Handle task assignment
+  const handleAssignTask = useCallback((task: any, employee: any) => {
+    console.log('Assigning task', task.name || task.taskName, 'to', employee.name);
+    
+    // Show success message
+    setAssignmentMessage(`Task "${task.name || task.taskName}" assigned to ${employee.name}`);
+    setTimeout(() => setAssignmentMessage(null), 3000);
+    
+    // Clear drag state
+    setDraggedTask(null);
+    setDropTargetId(null);
+    
+    // TODO: Update data context and persist to database
+    // This would update the task's assignedTo field and refresh the data
+  }, []);
+
+  // Handle employee project reassignment
+  const handleReassignToProject = useCallback((employee: any, projectId: string) => {
+    const project = projectsWithEmployees.find(p => p.id === projectId);
+    if (project) {
+      console.log('Reassigning', employee.name, 'to project', project.name);
+      setAssignmentMessage(`${employee.name} assigned to project "${project.name}"`);
+      setTimeout(() => setAssignmentMessage(null), 3000);
+    }
+    setDraggedEmployee(null);
+    setDropTargetId(null);
+  }, [projectsWithEmployees]);
+
+  // Summary metrics
+  const summaryMetrics = useMemo(() => {
+    const totalCapacity = employeeMetrics.length * HOURS_PER_YEAR;
+    const totalAllocated = employeeMetrics.reduce((s, e) => s + e.allocatedHours, 0);
+    const avgUtilization = employeeMetrics.length > 0 
+      ? Math.round(employeeMetrics.reduce((s, e) => s + e.utilization, 0) / employeeMetrics.length) 
+      : 0;
+    const overloaded = employeeMetrics.filter(e => e.status === 'overloaded').length;
+    const available = employeeMetrics.filter(e => e.status === 'available').length;
+    
     return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis', axisPointer: { type: 'shadow' },
-        backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
-        textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.45);max-width:320px;',
-        formatter: (params: any) => {
-          const idx = params[0]?.dataIndex;
-          if (idx == null) return '';
-          const e = cd[idx];
-          const uc = getUtilColor(e.utilization);
-          return `<strong>${e.name}</strong><br/><span style="color:#9ca3af">${e.role}</span><br/>Utilization: <strong style="color:${uc}">${e.utilization}%</strong><br/>Tasks: ${e.taskCount} · Allocated: ${fmt(e.allocatedHours)} hrs<br/>Available: <span style="color:#10B981">${fmt(e.availableHours)} hrs</span><br/><span style="color:#40E0D0;font-size:10px">Click to view details & assign tasks</span>`;
-        },
-      },
-      grid: { left: 120, right: 40, top: 30, bottom: 30 },
-      yAxis: { type: 'category', data: cd.map(d => d.name), axisLabel: { color: '#a1a1aa', fontSize: 10 }, axisLine: { lineStyle: { color: '#3f3f46' } }, inverse: true },
-      xAxis: { type: 'value', max: 150, axisLabel: { color: '#a1a1aa', fontSize: 9, formatter: '{value}%' }, splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } } },
-      series: [{ type: 'bar', data: cd.map(d => ({ value: d.utilization, _empId: d.id, itemStyle: { color: getUtilColor(d.utilization), borderRadius: [0, 4, 4, 0] } })), barWidth: '65%', markLine: { silent: true, symbol: 'none', data: [{ xAxis: 100, lineStyle: { color: '#EF4444', type: 'dashed', width: 2 }, label: { formatter: 'Capacity', color: '#EF4444', fontSize: 9 } }] } }],
-      _chartHeight: chartHeight,
+      totalEmployees: employeeMetrics.length,
+      totalProjects: data.projects.length,
+      totalPortfolios: data.portfolios.length,
+      totalCapacity,
+      totalAllocated,
+      avgUtilization,
+      overloaded,
+      available,
+      unassignedTasks: unassignedTasks.length,
+      criticalTasks: unassignedTasks.filter((t: any) => getTaskCriticality(t).label === 'Critical').length,
     };
-  }, [sortedEmployeesByUtil]);
+  }, [employeeMetrics, data.projects, data.portfolios, unassignedTasks]);
 
-  const utilizationPieOption: EChartsOption = useMemo(() => {
-    const dist = { available: employeeMetrics.filter(e => e.status === 'available').length, optimal: employeeMetrics.filter(e => e.status === 'optimal').length, busy: employeeMetrics.filter(e => e.status === 'busy').length, overloaded: employeeMetrics.filter(e => e.status === 'overloaded').length };
+  // Capacity chart for analytics
+  const capacityChartOption: EChartsOption = useMemo(() => {
+    const chartData = employeeMetrics
+      .sort((a, b) => b.utilization - a.utilization)
+      .slice(0, 20)
+      .map(emp => ({
+        name: emp.name.split(' ')[0],
+        utilization: emp.utilization,
+        status: emp.status,
+      }));
+    
     return {
       backgroundColor: 'transparent',
-      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: '#3f3f46', textStyle: { color: '#fff' } },
-      legend: { bottom: 0, textStyle: { color: '#a1a1aa', fontSize: 10 } },
+      tooltip: { 
+        trigger: 'axis', 
+        axisPointer: { type: 'shadow' },
+        backgroundColor: 'rgba(22,27,34,0.95)', 
+        borderColor: 'var(--border-color)', 
+        textStyle: { color: '#fff', fontSize: 11 },
+      },
+      grid: { left: 60, right: 20, top: 20, bottom: 60 },
+      xAxis: { 
+        type: 'category', 
+        data: chartData.map(d => d.name),
+        axisLabel: { color: 'var(--text-muted)', fontSize: 9, rotate: 45 },
+        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+      },
+      yAxis: { 
+        type: 'value', 
+        max: 150,
+        axisLabel: { color: 'var(--text-muted)', fontSize: 9, formatter: '{value}%' },
+        splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } },
+      },
       series: [{
-        type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], avoidLabelOverlap: false, itemStyle: { borderRadius: 6, borderColor: '#161b22', borderWidth: 2 }, label: { show: false }, emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } }, labelLine: { show: false }, data: [
-          { value: dist.available, name: 'Available', itemStyle: { color: UTIL_COLORS.available } },
-          { value: dist.optimal, name: 'Optimal', itemStyle: { color: UTIL_COLORS.optimal } },
-          { value: dist.busy, name: 'Busy', itemStyle: { color: UTIL_COLORS.busy } },
-          { value: dist.overloaded, name: 'Overloaded', itemStyle: { color: UTIL_COLORS.overloaded } },
-        ]
+        type: 'bar',
+        data: chartData.map(d => ({
+          value: d.utilization,
+          itemStyle: { color: getUtilizationColor(d.utilization) },
+        })),
+        barWidth: '60%',
+        markLine: { silent: true, symbol: 'none', data: [{ yAxis: 100, lineStyle: { color: '#EF4444', type: 'dashed', width: 2 } }] },
       }],
     };
   }, [employeeMetrics]);
 
-  const roleCapacityDemand = useMemo(() => {
-    const roleMap = new Map<string, { role: string; capacityHours: number; demandHours: number; actualHours: number; remainingHours: number; people: number }>();
-
-    data.employees.forEach((emp: any) => {
-      const role = emp.jobTitle || emp.role || 'Unassigned';
-      const current = roleMap.get(role) || { role, capacityHours: 0, demandHours: 0, actualHours: 0, remainingHours: 0, people: 0 };
-      current.capacityHours += HOURS_PER_YEAR;
-      current.people += 1;
-      roleMap.set(role, current);
-    });
-
-    data.tasks.forEach((t: any) => {
-      const roleRaw = (t.resource || t.assignedResource || '').trim();
-      const role = roleRaw || 'Unassigned';
-      const current = roleMap.get(role) || { role, capacityHours: 0, demandHours: 0, actualHours: 0, remainingHours: 0, people: 0 };
-      const baseline = Number(t.baselineHours || t.baseline_hours) || 0;
-      const actual = Number(t.actualHours || t.actual_hours) || 0;
-      const remaining = Number(t.remainingHours || t.remaining_hours);
-      current.demandHours += baseline;
-      current.actualHours += actual;
-      current.remainingHours += Number.isFinite(remaining) ? Math.max(0, remaining) : Math.max(0, baseline - actual);
-      roleMap.set(role, current);
-    });
-
-    return [...roleMap.values()]
-      .map((r) => ({
-        ...r,
-        gapHours: r.capacityHours - r.demandHours,
-        demandPct: r.capacityHours > 0 ? Math.max(0, Math.min(999, Math.round((r.demandHours / r.capacityHours) * 100))) : 0,
-        fteRequired: Math.round((r.demandHours / HOURS_PER_YEAR) * 100) / 100,
-      }))
-      .sort((a, b) => b.demandHours - a.demandHours);
-  }, [data.employees, data.tasks]);
-
-  const capacityVsDemandOption: EChartsOption = useMemo(() => {
-    const topRoles = roleCapacityDemand.slice(0, 12);
+  // Utilization distribution pie chart
+  const utilizationPieOption: EChartsOption = useMemo(() => {
+    const distribution = {
+      available: employeeMetrics.filter(e => e.status === 'available').length,
+      optimal: employeeMetrics.filter(e => e.status === 'optimal').length,
+      busy: employeeMetrics.filter(e => e.status === 'busy').length,
+      overloaded: employeeMetrics.filter(e => e.status === 'overloaded').length,
+    };
+    
     return {
       backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        backgroundColor: 'rgba(22,27,34,0.97)',
-        borderColor: '#3f3f46',
-        textStyle: { color: '#fff', fontSize: 11 },
-      },
-      legend: { top: 0, textStyle: { color: '#a1a1aa', fontSize: 10 } },
-      grid: { left: 50, right: 24, top: 34, bottom: 70 },
-      xAxis: {
-        type: 'category',
-        data: topRoles.map((r) => r.role),
-        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 28, interval: 0 },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: { color: '#a1a1aa', fontSize: 9, formatter: (v: number) => fmt(v) },
-        splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } },
-      },
-      series: [
-        {
-          name: 'Capacity (hrs)',
-          type: 'bar',
-          data: topRoles.map((r) => Math.round(r.capacityHours)),
-          itemStyle: { color: '#3B82F6' },
-          barMaxWidth: 26,
-        },
-        {
-          name: 'Demand (hrs)',
-          type: 'bar',
-          data: topRoles.map((r) => Math.round(r.demandHours)),
-          itemStyle: { color: '#F59E0B' },
-          barMaxWidth: 26,
-        },
-      ],
+      tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: 'var(--border-color)', textStyle: { color: '#fff' } },
+      legend: { bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      series: [{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: false,
+        itemStyle: { borderRadius: 6, borderColor: 'var(--bg-card)', borderWidth: 2 },
+        label: { show: false },
+        emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+        labelLine: { show: false },
+        data: [
+          { value: distribution.available, name: 'Available', itemStyle: { color: '#3B82F6' } },
+          { value: distribution.optimal, name: 'Optimal', itemStyle: { color: '#10B981' } },
+          { value: distribution.busy, name: 'Busy', itemStyle: { color: '#F59E0B' } },
+          { value: distribution.overloaded, name: 'Overloaded', itemStyle: { color: '#EF4444' } },
+        ],
+      }],
     };
-  }, [roleCapacityDemand]);
+  }, [employeeMetrics]);
 
+  // Run resource leveling
   const runLeveling = useCallback(() => {
     const inputs = deriveLevelingInputs({ tasks: data.tasks, employees: data.employees, hours: data.hours });
-    setLevelingResult(runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS));
+    const result = runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS);
+    setLevelingResult(result);
   }, [data.tasks, data.employees, data.hours]);
 
-  // ── Resource Heatmap — shared data layer for both views ──
-  const heatmapSharedData = useMemo(() => {
-    // Build employee lookup maps
-    const empIdToName = new Map<string, string>();
-    const empIdToRole = new Map<string, string>();
-    const empNameToRole = new Map<string, string>();
-    data.employees.forEach((e: any) => {
-      const eid = e.id || e.employeeId;
-      const name = e.name || 'Unknown';
-      const role = e.jobTitle || e.role || 'Unknown';
-      empIdToName.set(eid, name);
-      empIdToRole.set(eid, role);
-      empNameToRole.set(name.toLowerCase(), role);
-    });
-
-    // Only tasks with dates and hours (from project plan)
-    const planTasks = data.tasks.filter((t: any) => {
-      const s = t.startDate || t.start_date;
-      const e = t.endDate || t.end_date || t.finishDate || t.finish_date;
-      const hrs = Number(t.baselineHours || t.baseline_hours) || 0;
-      return s && e && hrs > 0;
-    });
-
-    // When no tasks with dates/hours exist, create a stub grid using current quarter
-    if (planTasks.length === 0) {
-      // Generate 12 weeks from today as the display range
-      const now = Date.now();
-      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-      const displayWeeks: { start: number; label: string }[] = [];
-      for (let i = 0; i < 12; i++) {
-        const d = new Date(now + i * msPerWeek);
-        const mon = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const yr = d.getFullYear();
-        displayWeeks.push({ start: d.getTime(), label: `${mon}/${day}/${yr}` });
-      }
-      // Create empty maps — employees will be added later in the by-employee chart
-      return {
-        displayWeeks,
-        roleWeekHours: new Map<string, Map<number, number>>(),
-        empWeekHours: new Map<string, Map<number, number>>(),
-        empNameMap: new Map<string, string>(),
-        empRoleMap: new Map<string, string>(),
-        msPerWeek,
-        empIdToRole,
-      };
-    }
-
-    // Determine date range
-    const allDates: number[] = [];
-    planTasks.forEach((t: any) => {
-      allDates.push(new Date(t.startDate || t.start_date).getTime());
-      allDates.push(new Date(t.endDate || t.end_date || t.finishDate || t.finish_date).getTime());
-    });
-    const minDate = Math.min(...allDates);
-    const maxDate = Math.max(...allDates);
-
-    // Build weeks array with YEAR in labels
-    const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-    const weeks: { start: number; label: string }[] = [];
-    let cursor = minDate;
-    while (cursor <= maxDate + msPerWeek) {
-      const d = new Date(cursor);
-      const mon = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const yr = d.getFullYear();
-      weeks.push({ start: cursor, label: `${mon}/${day}/${yr}` });
-      cursor += msPerWeek;
-    }
-    // Cap to ~30 weeks max for readability
-    const displayWeeks = weeks.length > 30
-      ? weeks.filter((_, i) => i % Math.ceil(weeks.length / 30) === 0).slice(0, 30)
-      : weeks;
-
-    // Accumulate hours per role per week AND per employee per week
-    const roleWeekHours = new Map<string, Map<number, number>>();
-    const empWeekHours = new Map<string, Map<number, number>>();
-    const empNameMap = new Map<string, string>(); // empKey → display name
-    const empRoleMap = new Map<string, string>(); // empKey → role
-
-    planTasks.forEach((t: any) => {
-      const sMs = new Date(t.startDate || t.start_date).getTime();
-      const eMs = new Date(t.endDate || t.end_date || t.finishDate || t.finish_date).getTime();
-      const hrs = Number(t.baselineHours || t.baseline_hours) || 0;
-      const durationWeeks = Math.max(1, Math.round((eMs - sMs) / msPerWeek));
-      const hrsPerWeek = hrs / durationWeeks;
-
-      // Determine employee(s) — split comma-separated resource lists
-      const eid = t.employeeId || t.employee_id || '';
-      const assignedType = String(t.assignedResourceType || t.assigned_resource_type || '').toLowerCase();
-      const rawAssigned = (t.assignedTo || t.resource || t.assignedResource || '').trim();
-
-      // Split into individual resource names (handle comma, semicolon, " and " separators)
-      const resourceNames: string[] = rawAssigned
-        ? rawAssigned.split(/[,;]|\band\b/i).map((s: string) => s.trim()).filter((s: string) => s.length > 0)
-        : [];
-
-      // Generic role assignments from project plans should populate By Role directly.
-      if (assignedType === 'generic' && resourceNames.length > 0) {
-        const hrsPerRole = hrsPerWeek / resourceNames.length;
-        resourceNames.forEach((roleName) => {
-          const role = roleName || 'Unassigned';
-          if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
-          const roleMap = roleWeekHours.get(role)!;
-
-          displayWeeks.forEach((w, wi) => {
-            const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
-            if (sMs < wEnd && eMs >= w.start) {
-              roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerRole);
-            }
-          });
-        });
-        return;
-      }
-
-      // If we have an employeeId, use that as primary
-      if (eid && empIdToRole.get(eid)) {
-        const individuals = [{ eid, name: empIdToName.get(eid) || rawAssigned || 'Unknown', role: empIdToRole.get(eid)! }];
-
-        // If there are additional comma-separated names, add those too
-        if (resourceNames.length > 1) {
-          resourceNames.forEach(rn => {
-            const rnLower = rn.toLowerCase();
-            if (rnLower === (empIdToName.get(eid) || '').toLowerCase()) return; // skip the primary
-            const rnRole = empNameToRole.get(rnLower) || rn || 'Unassigned';
-            individuals.push({ eid: rn, name: rn, role: rnRole });
-          });
-        }
-
-        const hrsPerPerson = hrsPerWeek / individuals.length;
-
-        individuals.forEach(ind => {
-          let role = ind.role;
-          if (!role || role === 'N/A') role = 'Unassigned';
-
-          // By role — individual role per person
-          if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
-          const roleMap = roleWeekHours.get(role)!;
-
-          // By employee
-          const empKey = ind.eid || ind.name;
-          if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
-          empNameMap.set(empKey, ind.name);
-          empRoleMap.set(empKey, role);
-          const empMap = empWeekHours.get(empKey)!;
-
-          displayWeeks.forEach((w, wi) => {
-            const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
-            if (sMs < wEnd && eMs >= w.start) {
-              roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerPerson);
-              empMap.set(wi, (empMap.get(wi) || 0) + hrsPerPerson);
-            }
-          });
-        });
-      } else if (resourceNames.length > 0) {
-        // No employeeId — split by resource names
-        const hrsPerPerson = hrsPerWeek / resourceNames.length;
-
-        resourceNames.forEach(rn => {
-          const rnLower = rn.toLowerCase();
-          let role = empNameToRole.get(rnLower) || rn || 'Unassigned';
-          if (!role || role === 'N/A') role = 'Unassigned';
-
-          // By role — individual role per person
-          if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
-          const roleMap = roleWeekHours.get(role)!;
-
-          // By employee
-          const empKey = rn;
-          if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
-          empNameMap.set(empKey, rn);
-          empRoleMap.set(empKey, role);
-          const empMap = empWeekHours.get(empKey)!;
-
-          displayWeeks.forEach((w, wi) => {
-            const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
-            if (sMs < wEnd && eMs >= w.start) {
-              roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerPerson);
-              empMap.set(wi, (empMap.get(wi) || 0) + hrsPerPerson);
-            }
-          });
-        });
-      } else {
-        // No resource info at all — assign to 'Unassigned'
-        const role = 'Unassigned';
-        if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
-        const roleMap = roleWeekHours.get(role)!;
-
-        const empKey = 'unassigned';
-        if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
-        empNameMap.set(empKey, 'Unassigned');
-        empRoleMap.set(empKey, role);
-        const empMap = empWeekHours.get(empKey)!;
-
-        displayWeeks.forEach((w, wi) => {
-          const wEnd = wi < displayWeeks.length - 1 ? displayWeeks[wi + 1].start : w.start + msPerWeek;
-          if (sMs < wEnd && eMs >= w.start) {
-            roleMap.set(wi, (roleMap.get(wi) || 0) + hrsPerWeek);
-            empMap.set(wi, (empMap.get(wi) || 0) + hrsPerWeek);
-          }
-        });
-      }
-    });
-
-    return { displayWeeks, roleWeekHours, empWeekHours, empNameMap, empRoleMap, msPerWeek, empIdToRole };
-  }, [data.tasks, data.employees]);
-
-  // ── Heatmap by ROLE ──
-  const heatmapByRoleOption: EChartsOption | null = useMemo(() => {
-    if (!heatmapSharedData) return null;
-    const { displayWeeks, roleWeekHours } = heatmapSharedData;
-
-    // Each individual role gets its own row
-    const sortedRoles = [...roleWeekHours.entries()]
-      .map(([role, wm]) => ({ role, total: [...wm.values()].reduce((s, v) => s + v, 0) }))
-      .sort((a, b) => b.total - a.total)
-      .map(r => r.role);
-
-    const heatData: [number, number, number][] = [];
-    const overlayData: Array<{ value: [number, number, number]; overload: boolean }> = [];
-    let maxVal = 0;
-    sortedRoles.forEach((role, ri) => {
-      const weekMap = roleWeekHours.get(role)!;
-      displayWeeks.forEach((_, wi) => {
-        const val = Math.round(weekMap.get(wi) || 0);
-        heatData.push([wi, ri, val]);
-        if (val > 0) overlayData.push({ value: [wi, ri, val], overload: val > HOURS_PER_WEEK });
-        if (val > maxVal) maxVal = val;
-      });
-    });
-
-    const dynamicHeight = Math.max(520, sortedRoles.length * 36 + 140);
-
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        position: 'top', confine: true,
-        backgroundColor: 'rgba(9,14,20,0.96)', borderColor: 'rgba(148,163,184,0.45)',
-        textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);backdrop-filter:blur(8px);max-width:360px;white-space:normal;',
-        formatter: (params: any) => {
-          const [wi, ri, val] = params.data;
-          const role = sortedRoles[ri];
-          const week = displayWeeks[wi]?.label;
-          const fteEquivalent = HOURS_PER_WEEK > 0 ? (val / HOURS_PER_WEEK) : 0;
-          const cappedPct = HOURS_PER_WEEK > 0 ? Math.min(999, Math.round((val / HOURS_PER_WEEK) * 100)) : 0;
-          const uc = getUtilColor(cappedPct);
-          const statusLabel = cappedPct > 100 ? 'Overloaded' : cappedPct > 85 ? 'Busy' : cappedPct > 50 ? 'Optimal' : 'Available';
-          return `<div style="padding:8px 10px">
-            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${role}</div>
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
-              <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
-              <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
-              <span style="color:#9ca3af">FTE Needed</span><span style="font-weight:700;color:${uc}">${fteEquivalent.toFixed(2)} FTE</span>
-              <span style="color:#9ca3af">Load Status</span><span style="font-weight:700;color:${uc}">${cappedPct}% — ${statusLabel}</span>
-            </div>
-          </div>`;
-        },
-      },
-      grid: { top: 60, left: 200, right: 60, bottom: 80 },
-      xAxis: {
-        type: 'category',
-        data: displayWeeks.map(w => w.label),
-        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
-      },
-      yAxis: {
-        type: 'category',
-        data: sortedRoles,
-        axisLabel: {
-          color: '#d4d4d8', fontSize: 11, interval: 0,
-          formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
-        },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-      },
-      visualMap: {
-        min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
-        calculable: true, orient: 'horizontal', left: 'center', bottom: 4,
-        itemWidth: 14, itemHeight: 120,
-        textStyle: { color: '#a1a1aa', fontSize: 9 },
-        inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
-      },
-      series: [
-        {
-          type: 'heatmap',
-          data: heatData,
-          label: { show: false },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } },
-        },
-        {
-          type: 'scatter',
-          data: overlayData,
-          symbol: 'rect',
-          symbolSize: [10, 10],
-          itemStyle: {
-            color: 'transparent',
-            borderColor: '#93c5fd',
-            borderWidth: 1,
-          },
-          label: {
-            show: true,
-            fontSize: 8,
-            color: '#cbd5e1',
-            formatter: (params: any) => {
-              const val = Number(params?.data?.value?.[2] || 0);
-              if (val <= 0) return '';
-              return `${Math.round(val)}/${HOURS_PER_WEEK}`;
-            },
-          },
-          emphasis: {
-            itemStyle: {
-              borderColor: '#40E0D0',
-              borderWidth: 1.6,
-            },
-          },
-          z: 4,
-        },
-      ],
-      _dynamicHeight: dynamicHeight,
-    } as any;
-  }, [heatmapSharedData]);
-
-  // Collect all unique roles for the filter dropdown
-  const allHeatmapRoles = useMemo(() => {
-    if (!heatmapSharedData) return [];
-    const roles = new Set<string>();
-    heatmapSharedData.roleWeekHours.forEach((_wm, role) => { if (role) roles.add(role); });
-    heatmapSharedData.empRoleMap.forEach(r => { if (r) roles.add(r); });
-    heatmapSharedData.empIdToRole.forEach(r => { if (r) roles.add(r); });
-    data.employees.forEach((e: any) => {
-      const role = e.jobTitle || e.role;
-      if (role) roles.add(role);
-    });
-    return [...roles].sort();
-  }, [heatmapSharedData, data.employees]);
-
-  // ── Heatmap by EMPLOYEE ──
-  const heatmapByEmployeeOption: EChartsOption | null = useMemo(() => {
-    if (!heatmapSharedData) return null;
-    const { displayWeeks, empWeekHours, empNameMap, empRoleMap, empIdToRole } = heatmapSharedData;
-
-    // Include ALL employees, even those without tasks
-    const allEmpEntries: { key: string; name: string; role: string; total: number }[] = [];
-    const addedKeys = new Set<string>();
-
-    // First add employees that appear in task data
-    empWeekHours.forEach((wm, key) => {
-      const name = empNameMap.get(key) || key;
-      const role = empRoleMap.get(key) || empIdToRole.get(key) || '';
-      const total = [...wm.values()].reduce((s, v) => s + v, 0);
-      allEmpEntries.push({ key, name, role, total });
-      addedKeys.add(key);
-      addedKeys.add(name.toLowerCase());
-    });
-
-    // Then add employees from the master list that weren't already included
-    data.employees.forEach((e: any) => {
-      const eid = e.id || e.employeeId;
-      const name = e.name || 'Unknown';
-      if (addedKeys.has(eid) || addedKeys.has(name.toLowerCase())) return;
-      const role = e.jobTitle || e.role || 'Unknown';
-      allEmpEntries.push({ key: eid, name, role, total: 0 });
-      addedKeys.add(eid);
-    });
-
-    // Apply role filter
-    const filteredEntries = heatmapRoleFilter === 'all'
-      ? allEmpEntries
-      : allEmpEntries.filter(e => e.role === heatmapRoleFilter);
-
-    // Sort: employees with hours first (desc), then alphabetical
-    filteredEntries.sort((a, b) => {
-      if (a.total !== b.total) return b.total - a.total;
-      return a.name.localeCompare(b.name);
-    });
-
-    const empLabels = filteredEntries.map(e => e.name);
-
-    const heatData: [number, number, number][] = [];
-    let maxVal = 0;
-    filteredEntries.forEach((emp, ei) => {
-      const weekMap = empWeekHours.get(emp.key);
-      displayWeeks.forEach((_, wi) => {
-        const val = Math.round(weekMap?.get(wi) || 0);
-        heatData.push([wi, ei, val]);
-        if (val > maxVal) maxVal = val;
-      });
-    });
-
-    const dynamicHeight = Math.max(520, filteredEntries.length * 32 + 140);
-
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        position: 'top', confine: true,
-        backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
-        textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;white-space:normal;',
-        formatter: (params: any) => {
-          const [wi, ei, val] = params.data;
-          const emp = filteredEntries[ei];
-          const week = displayWeeks[wi]?.label;
-          const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
-          const uc = getUtilColor(utilPct);
-          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : val === 0 ? 'No tasks' : 'Available';
-          return `<div style="padding:8px 10px">
-            <div style="font-weight:700;font-size:13px;margin-bottom:2px">${emp.name}</div>
-            ${emp.role ? `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">${emp.role}</div>` : ''}
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
-              <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
-              <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
-              <span style="color:#9ca3af">Status</span><span style="font-weight:700;color:${uc}">${utilPct}% — ${statusLabel}</span>
-            </div>
-          </div>`;
-        },
-      },
-      grid: { top: 60, left: 200, right: 60, bottom: 80 },
-      xAxis: {
-        type: 'category',
-        data: displayWeeks.map(w => w.label),
-        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
-      },
-      yAxis: {
-        type: 'category',
-        data: empLabels,
-        axisLabel: {
-          color: '#d4d4d8', fontSize: 11, interval: 0,
-          formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
-        },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-      },
-      visualMap: {
-        min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
-        calculable: true, orient: 'horizontal', left: 'center', bottom: 4,
-        itemWidth: 14, itemHeight: 120,
-        textStyle: { color: '#a1a1aa', fontSize: 9 },
-        inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
-      },
-      series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
-      _dynamicHeight: dynamicHeight,
-    } as any;
-  }, [heatmapSharedData, data.employees, heatmapRoleFilter]);
-
-  // ── Loading state ───────────────────────────────────────────────
-  if (isLoading) return <PageLoader />;
-
-  // ── Empty state ───────────────────────────────────────────────
+  // Empty state
   if (!hasData) {
     return (
       <div className="page-panel" style={{ padding: '2rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem' }}>Resourcing</h1>
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '4rem 2rem', background: 'var(--bg-card)', borderRadius: '16px', border: '1px solid var(--border-color)', textAlign: 'center',
+        }}>
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: '1.5rem', opacity: 0.5 }}>
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
           <h2 style={{ margin: '0 0 0.75rem', fontSize: '1.25rem', fontWeight: 600 }}>No Data Available</h2>
-          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>Import employee and project data from the Data Management page to view resource allocation.</p>
-          <a href="/project-controls/data-management" style={{ padding: '0.75rem 1.5rem', background: 'var(--pinnacle-teal)', color: '#000', borderRadius: '8px', textDecoration: 'none', fontWeight: 600, fontSize: '0.9rem' }}>Go to Data Management</a>
+          <p style={{ margin: '0 0 1.5rem', fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '400px' }}>
+            Import employee and project data from the Data Management page to view resource allocation.
+          </p>
+          <a href="/project-controls/data-management" style={{
+            padding: '0.75rem 1.5rem', background: 'var(--pinnacle-teal)', color: '#000',
+            borderRadius: '8px', textDecoration: 'none', fontWeight: 600, fontSize: '0.9rem',
+          }}>
+            Go to Data Management
+          </a>
         </div>
       </div>
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────
+  if (dataLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading resourcing data...
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden', padding: '0.5rem 1rem 0.25rem', gap: '0.35rem' }}>
-      {/* Success Toast */}
+    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', overflow: 'hidden' }}>
+      {/* Assignment Success Message */}
       {assignmentMessage && (
-        <div style={{ position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)', padding: '1rem 2rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.9), rgba(16,185,129,0.8))', borderRadius: '12px', color: '#fff', fontWeight: 600, zIndex: 2000, boxShadow: '0 10px 40px rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5" /></svg>
+        <div style={{
+          position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
+          padding: '1rem 2rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.9), rgba(16,185,129,0.8))',
+          borderRadius: '12px', color: '#fff', fontWeight: 600, zIndex: 2000,
+          boxShadow: '0 10px 40px rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', gap: '0.75rem',
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
           {assignmentMessage}
         </div>
       )}
 
-      {/* ── Employee Detail Modal ──────────────────────────────── */}
-      {showEmployeeModal && selectedEmployee && (() => {
-        const suggestedTasks = getSuggestedTasks(selectedEmployee);
-        const teamsNeeding = getTeamsNeedingEmployee(selectedEmployee);
-        const uc = getUtilColor(selectedEmployee.utilization);
-        return (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '2rem' }} onClick={() => setShowEmployeeModal(false)}>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.5rem', maxWidth: '700px', width: '100%', maxHeight: '85vh', overflow: 'auto', border: '1px solid var(--border-color)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }} onClick={e => e.stopPropagation()}>
-              {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>{selectedEmployee.name}</h2>
-                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{selectedEmployee.role}</p>
-                </div>
-                <button onClick={() => setShowEmployeeModal(false)} style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                </button>
-              </div>
-
-              {/* Metrics Strip */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                <div style={{ padding: '0.75rem', background: `linear-gradient(135deg, ${uc}20, transparent)`, borderRadius: '10px', border: `1px solid ${uc}40`, textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: uc }}>{selectedEmployee.utilization}%</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Utilization</div>
-                </div>
-                <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{selectedEmployee.taskCount}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Tasks</div>
-                </div>
-                <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{fmt(selectedEmployee.allocatedHours)}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Allocated Hrs</div>
-                </div>
-                <div style={{ padding: '0.75rem', background: 'rgba(16,185,129,0.1)', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>{fmt(selectedEmployee.availableHours)}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Available Hrs</div>
-                </div>
-              </div>
-
-              {/* Projects */}
-              {selectedEmployee.projects?.length > 0 && (
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Current Projects</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    {selectedEmployee.projects.map((p: any, i: number) => (
-                      <span key={i} style={{ padding: '0.3rem 0.65rem', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--border-color)' }}>{p.name}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ── Suggested Priority Tasks (role-matched) ─────────── */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Suggested Tasks to Assign
-                </div>
-                <div style={{ background: 'var(--bg-secondary)', borderRadius: '10px', padding: '0.5rem', maxHeight: '220px', overflow: 'auto' }}>
-                  {suggestedTasks.length > 0 ? suggestedTasks.map((t: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', borderRadius: '8px', marginBottom: '0.35rem', border: `1px solid ${t.criticality.color}25`, borderLeft: `3px solid ${t.criticality.color}` }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name || t.taskName}</div>
-                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          <span>{fmt(Number(t.baselineHours) || 0)} hrs</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>{t.projectName}</span>
-                          <span style={{ color: t.criticality.color, fontWeight: 600 }}>{t.criticality.label}</span>
-                        </div>
-                      </div>
-                      <button onClick={() => handleAssignTask(t, selectedEmployee)} style={{ padding: '0.35rem 0.75rem', background: 'rgba(64,224,208,0.15)', border: '1px solid rgba(64,224,208,0.3)', borderRadius: '6px', color: 'var(--pinnacle-teal)', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                        Assign
-                      </button>
-                    </div>
-                  )) : (
-                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No matching unassigned tasks for this role</div>
-                  )}
-                </div>
-              </div>
-
-              {/* ── Teams Needing This Employee ───────────────────── */}
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Other Teams That Need This Employee
-                </div>
-                <div style={{ background: 'var(--bg-secondary)', borderRadius: '10px', padding: '0.5rem', maxHeight: '200px', overflow: 'auto' }}>
-                  {teamsNeeding.length > 0 ? teamsNeeding.map((team: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', borderRadius: '8px', marginBottom: '0.35rem', border: '1px solid var(--border-color)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{team.name}</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          <span>{team.totalUnassigned} unassigned</span>
-                          {team.roleMatch > 0 && <span style={{ color: '#8B5CF6' }}>{team.roleMatch} match role</span>}
-                          {team.criticalCount > 0 && <span style={{ color: '#EF4444' }}>{team.criticalCount} critical</span>}
-                          <span>{fmt(team.unassignedHours)} hrs</span>
-                        </div>
-                      </div>
-                      <button onClick={async () => {
-                        setAssignmentMessage(`Suggesting move: ${selectedEmployee.name} → ${team.name}...`);
-                        try {
-                          await fetch('/api/notifications', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              employeeId: selectedEmployee.id,
-                              role: selectedEmployee.role,
-                              type: 'resource_change',
-                              title: 'Team Move Suggested',
-                              message: `${selectedEmployee.name} (${selectedEmployee.role}) has been suggested to move to project "${team.name}" — ${team.roleMatch} role-matched tasks, ${team.criticalCount} critical tasks, ${fmt(team.unassignedHours)} hrs of unassigned work.`,
-                              relatedProjectId: team.id,
-                            }),
-                          });
-                          setAssignmentMessage(`Move suggested: ${selectedEmployee.name} → ${team.name}`);
-                        } catch {
-                          setAssignmentMessage(`Suggested move: ${selectedEmployee.name} → ${team.name} (notification failed)`);
-                        }
-                        setTimeout(() => setAssignmentMessage(null), 3000);
-                      }} style={{ padding: '0.35rem 0.75rem', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#8B5CF6', fontWeight: 600, fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                        Suggest Move
-                      </button>
-                    </div>
-                  )) : (
-                    <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>No other teams currently need this role</div>
-                  )}
-                </div>
-              </div>
-
-              <button onClick={() => setShowEmployeeModal(false)} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }}>Close</button>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ═══ TAB HEADER + CONTROLS ════════════════════════════════ */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-          <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
-            {([
-              { key: 'organization' as const, label: 'Organization' },
-              { key: 'analytics' as const, label: 'Analytics' },
-              { key: 'heatmap' as const, label: 'Resource Heatmap' },
-            ]).map(tab => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
-                padding: '0.45rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                background: activeTab === tab.key ? 'var(--pinnacle-teal)' : 'transparent',
-                color: activeTab === tab.key ? '#000' : 'var(--text-primary)',
-                fontWeight: 600, fontSize: '0.8rem',
-              }}>{tab.label}</button>
-            ))}
-          </div>
-
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 0', flexShrink: 0 }}>
+        <div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Resource Management</h1>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+            Assign resources, manage capacity, and optimize utilization
+          </p>
         </div>
-        {activeTab === 'organization' && (
-          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', alignItems: 'center' }}>
-            {Object.entries(UTIL_COLORS).map(([label, color]) => (
-              <span key={label}><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: color, marginRight: '4px' }} />{label.charAt(0).toUpperCase() + label.slice(1)}</span>
-            ))}
+        
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {/* Tab Buttons */}
+          <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
+            <button
+              onClick={() => setActiveTab('organization')}
+              style={{
+                padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                background: activeTab === 'organization' ? 'var(--pinnacle-teal)' : 'transparent',
+                color: activeTab === 'organization' ? '#000' : 'var(--text-primary)',
+                fontWeight: 600, fontSize: '0.8rem',
+              }}
+            >
+              Organization
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              style={{
+                padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                background: activeTab === 'analytics' ? 'var(--pinnacle-teal)' : 'transparent',
+                color: activeTab === 'analytics' ? '#000' : 'var(--text-primary)',
+                fontWeight: 600, fontSize: '0.8rem',
+              }}
+            >
+              Analytics
+            </button>
           </div>
-        )}
-        {activeTab === 'heatmap' && (
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {`${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`} across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* ═══ TABS CONTENT ══════════════════════════════════════════ */}
-      {activeTab === 'organization' ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.75rem', overflow: 'auto', minHeight: 0 }}>
-          {/* ── Search bar ── */}
-          <input
-            type="text" value={orgSearch} onChange={e => setOrgSearch(e.target.value)}
-            placeholder="Search employees, projects, or portfolios..."
-            style={{ padding: '0.55rem 0.85rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%', maxWidth: 360, transition: 'border-color 0.2s', flexShrink: 0 }}
-          />
+      {/* Summary Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', marginBottom: '1rem', flexShrink: 0 }}>
+        <div style={{ padding: '0.75rem', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Portfolios</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{summaryMetrics.totalPortfolios}</div>
+        </div>
+        <div style={{ padding: '0.75rem', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Projects</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{summaryMetrics.totalProjects}</div>
+        </div>
+        <div style={{ padding: '0.75rem', background: 'linear-gradient(135deg, rgba(64,224,208,0.15), rgba(64,224,208,0.05))', borderRadius: '10px', border: '1px solid rgba(64,224,208,0.3)' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Employees</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{summaryMetrics.totalEmployees}</div>
+        </div>
+        <div style={{ padding: '0.75rem', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Avg Utilization</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: getUtilizationColor(summaryMetrics.avgUtilization) }}>
+            {summaryMetrics.avgUtilization}%
+          </div>
+        </div>
+        <div style={{ padding: '0.75rem', background: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.1)' : 'var(--bg-card)', borderRadius: '10px', border: `1px solid ${summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.3)' : 'var(--border-color)'}` }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Overloaded</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#EF4444' }}>{summaryMetrics.overloaded}</div>
+        </div>
+        <div style={{ padding: '0.75rem', background: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.1)' : 'var(--bg-card)', borderRadius: '10px', border: `1px solid ${summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.3)' : 'var(--border-color)'}` }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Unassigned Tasks</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#F59E0B' }}>{summaryMetrics.unassignedTasks}</div>
+        </div>
+      </div>
 
-          {/* ── Tree chart ── */}
-          <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'auto', minHeight: '70vh' }}>
-            {treeData.length > 0 ? (
-              <div style={{ minWidth: `${dynamicTreeWidth}px`, minHeight: `${dynamicTreeHeight}px` }}>
-                <ChartWrapper option={treeOption} height={`${dynamicTreeHeight}px`} onChartReady={handleTreeChartReady} />
+      {/* Employee Detail Modal */}
+      {showEmployeeModal && selectedEmployee && (
+        <div 
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: '2rem',
+          }}
+          onClick={() => setShowEmployeeModal(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card)', borderRadius: '16px', padding: '1.5rem',
+              maxWidth: '600px', width: '100%', maxHeight: '80vh', overflow: 'auto',
+              border: '1px solid var(--border-color)', boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>{selectedEmployee.name}</h2>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{selectedEmployee.role}</p>
               </div>
+              <button 
+                onClick={() => setShowEmployeeModal(false)} 
+                style={{ background: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', padding: '0.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+
+            {/* Metrics Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ padding: '1rem', background: `linear-gradient(135deg, ${getUtilizationColor(selectedEmployee.utilization)}20, transparent)`, borderRadius: '12px', border: `1px solid ${getUtilizationColor(selectedEmployee.utilization)}40`, textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 800, color: getUtilizationColor(selectedEmployee.utilization) }}>{selectedEmployee.utilization}%</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Utilization</div>
+              </div>
+              <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 800 }}>{selectedEmployee.taskCount}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks</div>
+              </div>
+              <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{formatNumber(selectedEmployee.allocatedHours)}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Allocated Hrs</div>
+              </div>
+              <div style={{ padding: '1rem', background: 'rgba(16,185,129,0.1)', borderRadius: '12px', border: '1px solid rgba(16,185,129,0.3)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10B981' }}>{formatNumber(selectedEmployee.availableHours)}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Available Hrs</div>
+              </div>
+            </div>
+
+            {/* Projects */}
+            {selectedEmployee.projects?.length > 0 && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>Assigned Projects</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {selectedEmployee.projects.map((proj: any, idx: number) => (
+                    <span key={idx} style={{ padding: '0.35rem 0.75rem', background: 'var(--bg-tertiary)', borderRadius: '6px', fontSize: '0.8rem', border: '1px solid var(--border-color)' }}>{proj.name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Task List */}
+            <div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem' }}>Assigned Tasks ({selectedEmployee.tasks?.length || 0})</div>
+              <div style={{ maxHeight: '200px', overflow: 'auto', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '0.5rem' }}>
+                {selectedEmployee.tasks?.length > 0 ? (
+                  selectedEmployee.tasks.map((task: any, idx: number) => (
+                    <div key={idx} style={{ padding: '0.5rem', background: 'var(--bg-card)', borderRadius: '6px', marginBottom: '0.35rem', border: '1px solid var(--border-color)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.85rem' }}>{task.name || task.taskName}</div>
+                        <span style={{ 
+                          fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '4px',
+                          background: (task.percentComplete || 0) >= 100 ? 'rgba(16,185,129,0.2)' : 'rgba(59,130,246,0.2)',
+                          color: (task.percentComplete || 0) >= 100 ? '#10B981' : '#3B82F6',
+                        }}>
+                          {task.percentComplete || 0}%
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        {task.baselineHours || 0} hrs | {getProjectName(task.projectId || task.project_id)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>No tasks assigned</div>
+                )}
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setShowEmployeeModal(false)}
+              style={{ width: '100%', marginTop: '1.5rem', padding: '0.75rem', borderRadius: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      {activeTab === 'organization' ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', gap: '1rem' }}>
+          {/* Controls Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              {/* View Mode Toggle */}
+              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '8px', padding: '3px' }}>
+                <button
+                  onClick={() => setViewMode('portfolio')}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '5px', border: 'none', cursor: 'pointer',
+                    background: viewMode === 'portfolio' ? 'var(--bg-card)' : 'transparent',
+                    color: viewMode === 'portfolio' ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
+                    fontWeight: 500, fontSize: '0.75rem',
+                  }}
+                >
+                  By Portfolio
+                </button>
+                <button
+                  onClick={() => setViewMode('project')}
+                  style={{
+                    padding: '0.4rem 0.75rem', borderRadius: '5px', border: 'none', cursor: 'pointer',
+                    background: viewMode === 'project' ? 'var(--bg-card)' : 'transparent',
+                    color: viewMode === 'project' ? 'var(--pinnacle-teal)' : 'var(--text-muted)',
+                    fontWeight: 500, fontSize: '0.75rem',
+                  }}
+                >
+                  By Project
+                </button>
+              </div>
+              
+              {/* Portfolio Filter */}
+              <select
+                value={selectedPortfolio}
+                onChange={(e) => setSelectedPortfolio(e.target.value)}
+                style={{
+                  padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)',
+                  background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.8rem',
+                }}
+              >
+                <option value="all">All Portfolios</option>
+                {data.portfolios.map((p: any) => (
+                  <option key={p.portfolioId || p.id} value={p.portfolioId || p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Legend */}
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem' }}>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#3B82F6', marginRight: '4px' }}></span>Available</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#10B981', marginRight: '4px' }}></span>Optimal</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#F59E0B', marginRight: '4px' }}></span>Busy</span>
+              <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444', marginRight: '4px' }}></span>Overloaded</span>
+            </div>
+          </div>
+
+          {/* Collapsible Unassigned Tasks Section */}
+          <div style={{ 
+            background: unassignedTasks.length > 0 ? 'rgba(245,158,11,0.08)' : 'var(--bg-card)', 
+            borderRadius: '12px', 
+            border: unassignedTasks.length > 0 ? '1px solid rgba(245,158,11,0.3)' : '1px solid var(--border-color)',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}>
+            {/* Header - Always Visible */}
+            <button
+              onClick={() => setShowUnassignedTasks(!showUnassignedTasks)}
+              style={{
+                width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-primary)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <svg 
+                  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  style={{ transform: showUnassignedTasks ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Unassigned Tasks</span>
+                <span style={{ 
+                  padding: '0.2rem 0.6rem', background: unassignedTasks.length > 0 ? '#F59E0B' : 'var(--bg-secondary)', 
+                  borderRadius: '12px', fontSize: '0.75rem', fontWeight: 700, 
+                  color: unassignedTasks.length > 0 ? '#000' : 'var(--text-muted)',
+                }}>
+                  {unassignedTasks.length}
+                </span>
+                {summaryMetrics.criticalTasks > 0 && (
+                  <span style={{ 
+                    padding: '0.2rem 0.6rem', background: '#EF4444', 
+                    borderRadius: '12px', fontSize: '0.7rem', fontWeight: 700, color: '#fff',
+                  }}>
+                    {summaryMetrics.criticalTasks} Critical
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {showUnassignedTasks ? 'Click to collapse' : 'Click to expand'} | Drag tasks to employee nodes to assign
+              </span>
+            </button>
+            
+            {/* Expandable Content */}
+            {showUnassignedTasks && unassignedTasks.length > 0 && (
+              <div style={{ padding: '0 1rem 1rem', maxHeight: '200px', overflow: 'auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.5rem' }}>
+                  {unassignedTasks.slice(0, 20).map((task: any, idx: number) => {
+                    const criticality = getTaskCriticality(task);
+                    return (
+                      <div
+                        key={idx}
+                        draggable
+                        onDragStart={(e) => handleTaskDragStart(e, task)}
+                        onDragEnd={handleDragEnd}
+                        style={{
+                          padding: '0.6rem 0.75rem',
+                          background: draggedTask?.id === task.id ? 'var(--pinnacle-teal)' : 'var(--bg-card)',
+                          borderRadius: '8px',
+                          border: `1px solid ${criticality.color}40`,
+                          borderLeft: `3px solid ${criticality.color}`,
+                          cursor: 'grab',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+                          <div style={{ fontWeight: 500, fontSize: '0.8rem', flex: 1, marginRight: '0.5rem' }}>
+                            {task.name || task.taskName}
+                          </div>
+                          <span style={{
+                            padding: '0.1rem 0.4rem', background: `${criticality.color}20`, 
+                            borderRadius: '4px', fontSize: '0.65rem', fontWeight: 600, color: criticality.color,
+                          }}>
+                            {criticality.label}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          <span>{task.baselineHours || 0} hrs</span>
+                          <span>{getProjectName(task.projectId || task.project_id)}</span>
+                          {task.resource && <span style={{ color: '#3B82F6' }}>{task.resource}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {unassignedTasks.length > 20 && (
+                  <div style={{ textAlign: 'center', padding: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    +{unassignedTasks.length - 20} more tasks
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Tree Visualization */}
+          <div 
+            style={{ 
+              flex: 1, 
+              background: 'var(--bg-card)', 
+              borderRadius: '12px', 
+              border: draggedTask ? '2px dashed var(--pinnacle-teal)' : '1px solid var(--border-color)', 
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+            onDragOver={(e) => { if (draggedTask) { e.preventDefault(); } }}
+          >
+            {/* Drag Overlay */}
+            {draggedTask && (
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(22,27,34,0.95)', zIndex: 100, padding: '1.5rem', overflow: 'auto',
+              }}>
+                {/* Task being assigned */}
+                <div style={{ 
+                  padding: '1rem', 
+                  background: 'linear-gradient(135deg, rgba(64,224,208,0.2), rgba(64,224,208,0.05))', 
+                  borderRadius: '12px', marginBottom: '1rem',
+                  border: '1px solid rgba(64,224,208,0.4)',
+                }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>Assigning Task</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{draggedTask.name || draggedTask.taskName}</div>
+                  <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    <span>{draggedTask.baselineHours || 0} hrs</span>
+                    <span>{getProjectName(draggedTask.projectId || draggedTask.project_id)}</span>
+                    {draggedTask.resource && <span style={{ color: '#3B82F6' }}>Requires: {draggedTask.resource}</span>}
+                  </div>
+                </div>
+                
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Select Employee to Assign</div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem' }}>
+                  {employeeMetrics.map((emp) => (
+                    <div
+                      key={emp.id}
+                      onClick={() => handleAssignTask(draggedTask, emp)}
+                      onMouseEnter={() => setDropTargetId(emp.id)}
+                      onMouseLeave={() => setDropTargetId(null)}
+                      style={{
+                        padding: '1rem',
+                        background: dropTargetId === emp.id ? 'rgba(64,224,208,0.15)' : 'var(--bg-secondary)',
+                        borderRadius: '12px',
+                        border: dropTargetId === emp.id ? '2px solid var(--pinnacle-teal)' : '2px solid var(--border-color)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{emp.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{emp.role}</div>
+                        </div>
+                        <div style={{ 
+                          width: '36px', height: '36px', borderRadius: '50%', 
+                          background: `${getUtilizationColor(emp.utilization)}20`,
+                          border: `2px solid ${getUtilizationColor(emp.utilization)}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.7rem', fontWeight: 700, color: getUtilizationColor(emp.utilization),
+                        }}>
+                          {emp.utilization}%
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        <span>{emp.taskCount} tasks</span>
+                        <span style={{ color: '#10B981' }}>{formatNumber(emp.availableHours)} hrs avail</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <button
+                  onClick={() => setDraggedTask(null)}
+                  style={{
+                    marginTop: '1.5rem', padding: '0.75rem 2rem',
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                    borderRadius: '8px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600,
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            
+            {/* Tree Chart */}
+            {treeData.length > 0 ? (
+              <ChartWrapper option={treeOption} height="100%" onClick={handleTreeClick} />
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
                 <div style={{ textAlign: 'center', maxWidth: '400px' }}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
                   <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No organization data to display</p>
-                  <p style={{ fontSize: '0.85rem' }}>No employees or portfolios found. Import data from Data Management.</p>
+                  <p style={{ fontSize: '0.85rem' }}>
+                    {viewMode === 'portfolio' 
+                      ? 'No employees or portfolios found. Import data from Data Management.'
+                      : 'No projects found. Import project data from Data Management.'
+                    }
+                  </p>
+                  {selectedPortfolio !== 'all' && (
+                    <button
+                      onClick={() => setSelectedPortfolio('all')}
+                      style={{
+                        marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '6px',
+                        background: 'var(--pinnacle-teal)', color: '#000', border: 'none',
+                        cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem',
+                      }}
+                    >
+                      Show All Portfolios
+                    </button>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
-      ) : activeTab === 'analytics' ? (
-        /* ═══ ANALYTICS TAB ═════════════════════════════════════════════════ */
+      ) : (
+        /* Analytics Tab */
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Scorecards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', flexShrink: 0 }}>
-            {[
-              { label: 'Portfolios', value: summaryMetrics.totalPortfolios },
-              { label: 'Projects', value: summaryMetrics.totalProjects },
-              { label: 'Employees', value: summaryMetrics.totalEmployees, accent: 'var(--pinnacle-teal)', bg: 'linear-gradient(135deg, rgba(64,224,208,0.15), rgba(64,224,208,0.05))', border: 'rgba(64,224,208,0.3)' },
-              { label: 'Avg Utilization', value: `${summaryMetrics.avgUtilization}%`, accent: getUtilColor(summaryMetrics.avgUtilization) },
-              { label: 'Overloaded', value: summaryMetrics.overloaded, accent: '#EF4444', bg: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.1)' : undefined, border: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.3)' : undefined },
-              { label: 'Unassigned Tasks', value: summaryMetrics.unassignedTasks, accent: '#F59E0B', bg: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.1)' : undefined, border: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.3)' : undefined },
-            ].map(m => (
-              <div key={m.label} style={{ padding: '0.75rem', background: m.bg || 'var(--bg-card)', borderRadius: '10px', border: `1px solid ${m.border || 'var(--border-color)'}` }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{m.label}</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: m.accent }}>{m.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Employee Utilization — Horizontal bar, ALL employees */}
-          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 700 }}>Employee Utilization</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sortedEmployeesByUtil.length} employees - Click a bar to view details</div>
-            </div>
-            <div style={{ overflowY: 'auto', maxHeight: '500px' }}>
-              <ChartWrapper option={capacityChartOption} height={`${Math.max(420, sortedEmployeesByUtil.length * 28)}px`} onClick={(params: any) => {
-                const idx = params?.dataIndex;
-                if (idx != null && sortedEmployeesByUtil[idx]) {
-                  setSelectedEmployee(sortedEmployeesByUtil[idx]);
-                  setShowEmployeeModal(true);
-                }
-              }} />
-            </div>
-          </div>
-
-          {/* Capacity vs Demand + Utilization Distribution */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {/* Utilization Charts Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Capacity vs Demand (By Role)</div>
-              <ChartWrapper option={capacityVsDemandOption} height="280px" />
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Employee Utilization</div>
+              <ChartWrapper option={capacityChartOption} height="250px" />
             </div>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Utilization Distribution</div>
-              <ChartWrapper option={utilizationPieOption} height="280px" />
+              <ChartWrapper option={utilizationPieOption} height="250px" />
             </div>
           </div>
-
-          {/* Utilization by Role + FTE Requirements */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 330, maxHeight: 330, overflowY: 'auto' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Utilization by Role</div>
-              {(() => {
-                const roleMap = new Map<string, { total: number; count: number }>();
-                employeeMetrics.forEach(e => {
-                  const role = e.role || 'Unassigned';
-                  const existing = roleMap.get(role) || { total: 0, count: 0 };
-                  roleMap.set(role, { total: existing.total + e.utilization, count: existing.count + 1 });
-                });
-                const roleData = [...roleMap.entries()]
-                  .map(([role, { total, count }]) => ({ role, avgUtil: Math.round(total / count), count }))
-                  .sort((a, b) => b.avgUtil - a.avgUtil);
-                if (roleData.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No role data available</div>;
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {roleData.map(r => (
-                      <div key={r.role} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }} title={`${r.role} - ${r.avgUtil}% utilization across ${r.count} people`}>
-                        <div style={{ width: '120px', fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }} title={r.role}>{r.role}</div>
-                        <div style={{ flex: 1, height: '20px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
-                          <div style={{ height: '100%', width: `${Math.min(r.avgUtil, 150) / 1.5}%`, background: getUtilColor(r.avgUtil), borderRadius: '4px', transition: 'width 0.4s ease' }} />
-                        </div>
-                        <div style={{ width: '50px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 700, color: getUtilColor(r.avgUtil) }}>{r.avgUtil}%</div>
-                        <div style={{ width: '30px', textAlign: 'right', fontSize: '0.65rem', color: 'var(--text-muted)' }}>{r.count}</div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 330, maxHeight: 330, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.6rem' }}>FTE Requirements by Role</div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-secondary)' }}>
-                      {['Role', 'People', 'Capacity', 'Demand', 'Actual', 'Remaining', 'FTE Req', 'Demand %'].map((h) => (
-                        <th key={h} style={{ padding: '0.5rem 0.45rem', textAlign: h === 'Role' ? 'left' : 'right', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roleCapacityDemand.map((r, idx) => (
-                      <tr key={`${r.role}-${idx}`} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--bg-secondary)' }}>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)' }}>{r.role}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: 'var(--text-muted)' }}>{r.people}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>{fmt(Math.round(r.capacityHours))}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: '#F59E0B' }}>{fmt(Math.round(r.demandHours))}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: '#3B82F6' }}>{fmt(Math.round(r.actualHours))}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: '#10B981' }}>{fmt(Math.round(r.remainingHours))}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', fontWeight: 700 }}>{r.fteRequired.toFixed(2)}</td>
-                        <td style={{ padding: '0.45rem', borderBottom: '1px solid var(--border-color)', textAlign: 'right', color: r.demandPct > 100 ? '#EF4444' : r.demandPct > 85 ? '#F59E0B' : '#10B981' }}>{r.demandPct}%</td>
-                      </tr>
-                    ))}
-                    {roleCapacityDemand.length === 0 && (
-                      <tr>
-                        <td colSpan={8} style={{ padding: '0.8rem', textAlign: 'center', color: 'var(--text-muted)' }}>No role-level data available</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
+          
           {/* Resource Leveling */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Resource Leveling Analysis</div>
-              <button onClick={runLeveling} style={{ padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', background: 'var(--pinnacle-teal)', color: '#000', border: 'none', fontWeight: 600, fontSize: '0.8rem' }}>Run Analysis</button>
+              <button
+                onClick={runLeveling}
+                style={{
+                  padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer',
+                  background: 'var(--pinnacle-teal)', color: '#000', border: 'none', fontWeight: 600, fontSize: '0.8rem',
+                }}
+              >
+                Run Analysis
+              </button>
             </div>
             {levelingResult ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800, color: getUtilColor((levelingResult as any).overallUtilization) }}>{(levelingResult as any).overallUtilization}%</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Overall Utilization</div></div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{(levelingResult as any).totalMoves}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Suggested Moves</div></div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{(levelingResult as any).tasksMoved || 0}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks to Shift</div></div>
-                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}><div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recommendation</div><div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(levelingResult as any).summary}</div></div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: getUtilizationColor(levelingResult.overallUtilization) }}>
+                    {levelingResult.overallUtilization}%
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Overall Utilization</div>
+                </div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 800 }}>{levelingResult.totalMoves}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Suggested Moves</div>
+                </div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 800 }}>{levelingResult.tasksMoved || 0}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks to Shift</div>
+                </div>
+                <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recommendation</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{levelingResult.summary}</div>
+                </div>
               </div>
-            ) : <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Click "Run Analysis" to get resource leveling recommendations</div>}
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Click "Run Analysis" to get resource leveling recommendations
+              </div>
+            )}
           </div>
-
-          {/* Employee Table with Search */}
+          
+          {/* Employee Details Table */}
           <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', flex: 1, minHeight: '300px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Employee Details</div>
-              <input
-                type="text" value={analyticsSearch} onChange={e => setAnalyticsSearch(e.target.value)}
-                placeholder="Search by name or role..."
-                style={{ padding: '0.4rem 0.75rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)', fontSize: '0.78rem', width: '240px' }}
-              />
-            </div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Employee Details</div>
             <div style={{ flex: 1, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                <thead><tr style={{ background: 'var(--bg-secondary)' }}>
-                  {['Name', 'Role', 'Utilization', 'Tasks', 'Allocated', 'Actual', 'Remaining', 'Available', 'QC Rate', 'Projects'].map(h => (
-                    <th key={h} style={{ padding: '0.6rem', textAlign: h === 'Name' || h === 'Role' ? 'left' : 'center', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
-                  ))}
-                </tr></thead>
+                <thead>
+                  <tr style={{ background: 'var(--bg-secondary)' }}>
+                    <th style={{ padding: '0.6rem', textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>Name</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>Role</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>Utilization</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>Tasks</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>Allocated</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>Available</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>QC Rate</th>
+                    <th style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>Projects</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {employeeMetrics
-                    .filter(emp => {
-                      if (!analyticsSearch) return true;
-                      const q = analyticsSearch.toLowerCase();
-                      return emp.name.toLowerCase().includes(q) || (emp.role || '').toLowerCase().includes(q);
-                    })
-                    .map((emp: any, idx: number) => (
-                      <tr key={emp.id} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--bg-secondary)', cursor: 'pointer' }} onClick={() => { setSelectedEmployee(emp); setShowEmployeeModal(true); }}>
-                        <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)' }}>{emp.name}</td>
-                        <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>{emp.role}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>
-                          <span style={{ padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600, background: `${getUtilColor(emp.utilization)}20`, color: getUtilColor(emp.utilization) }}>{emp.utilization}%</span>
-                        </td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.taskCount}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{fmt(emp.allocatedHours)}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#3B82F6' }}>{fmt(emp.actualHours)}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{fmt(Math.max(0, (emp.allocatedHours || 0) - (emp.actualHours || 0)))}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{fmt(emp.availableHours)}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.qcPassRate !== null ? `${emp.qcPassRate}%` : '-'}</td>
-                        <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.projects?.length || 0}</td>
-                      </tr>
-                    ))}
+                  {employeeMetrics.map((emp, idx) => (
+                    <tr 
+                      key={emp.id} 
+                      style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--bg-secondary)', cursor: 'pointer' }}
+                      onClick={() => { setSelectedEmployee(emp); setShowEmployeeModal(true); }}
+                    >
+                      <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)' }}>{emp.name}</td>
+                      <td style={{ padding: '0.6rem', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>{emp.role}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>
+                        <span style={{ 
+                          padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600,
+                          background: `${getUtilizationColor(emp.utilization)}20`, color: getUtilizationColor(emp.utilization),
+                        }}>
+                          {emp.utilization}%
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.taskCount}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{formatNumber(emp.allocatedHours)}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)', color: '#10B981' }}>{formatNumber(emp.availableHours)}</td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>
+                        {emp.qcPassRate !== null ? `${emp.qcPassRate}%` : '-'}
+                      </td>
+                      <td style={{ padding: '0.6rem', textAlign: 'center', borderBottom: '1px solid var(--border-color)' }}>{emp.projects?.length || 0}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-      ) : activeTab === 'heatmap' ? (
-        /* ═══ RESOURCE HEATMAP TAB ═══════════════════════════════════ */
-        <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Header with view toggle */}
-          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>Resource Heatmap</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Weekly planned hours derived from project plan task schedules — grouped by role
-                </div>
-              </div>
-            </div>
-
-            {/* Heatmap chart — full width */}
-            {heatmapByRoleOption ? (
-              <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
-            ) : (
-              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
-                </svg>
-                <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
-                <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// EXPORT (with Suspense boundary)
-// ═══════════════════════════════════════════════════════════════════
-
+// Wrapper with Suspense
 export default function ResourcingPage() {
   return (
-    <Suspense fallback={<ResourcingPageLoading />}>
+    <Suspense fallback={null}>
       <ResourcingPageContent />
     </Suspense>
   );
