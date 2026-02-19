@@ -836,18 +836,19 @@ function ResourcingPageContent() {
       const durationWeeks = Math.max(1, Math.round((eMs - sMs) / msPerWeek));
       const hrsPerWeek = hrs / durationWeeks;
 
-      // Determine employee(s) — split comma-separated resource lists
-      const eid = t.employeeId || t.employee_id || '';
+      // Determine employee(s) — split comma-separated resource lists (from project plan / MPP)
+      const eid = t.employeeId || t.employee_id || t.assignedResourceId || t.assigned_resource_id || '';
       const assignedType = String(t.assignedResourceType || t.assigned_resource_type || '').toLowerCase();
-      const rawAssigned = (t.assignedTo || t.resource || t.assignedResource || '').trim();
+      const rawAssigned = (t.assignedTo || t.resource || t.assignedResource || t.assigned_resource || t.assignedResourceName || t.assigned_resource_name || '').trim();
 
       // Split into individual resource names (handle comma, semicolon, " and " separators)
       const resourceNames: string[] = rawAssigned
         ? rawAssigned.split(/[,;]|\band\b/i).map((s: string) => s.trim()).filter((s: string) => s.length > 0)
         : [];
 
-      // Generic role assignments from project plans should populate By Role directly.
-      if (assignedType === 'generic' && resourceNames.length > 0) {
+      // Generic role assignments from project plans, or role names when no employeeId match
+      const treatAsGeneric = assignedType === 'generic' || (resourceNames.length > 0 && !eid);
+      if (treatAsGeneric && resourceNames.length > 0) {
         const hrsPerRole = hrsPerWeek / resourceNames.length;
         resourceNames.forEach((roleName) => {
           const role = roleName || 'Unassigned';
@@ -993,18 +994,28 @@ function ResourcingPageContent() {
           const [wi, ri, val] = params.data;
           const role = sortedRoles[ri];
           const week = displayWeeks[wi]?.label;
-          const fteEquivalent = HOURS_PER_WEEK > 0 ? (val / HOURS_PER_WEEK) : 0;
-          const cappedPct = HOURS_PER_WEEK > 0 ? Math.min(999, Math.round((val / HOURS_PER_WEEK) * 100)) : 0;
+          const capacity = HOURS_PER_WEEK;
+          const demand = val;
+          const fteEquivalent = capacity > 0 ? (demand / capacity) : 0;
+          const cappedPct = capacity > 0 ? Math.min(999, Math.round((demand / capacity) * 100)) : 0;
           const uc = getUtilColor(cappedPct);
           const statusLabel = cappedPct > 100 ? 'Overloaded' : cappedPct > 85 ? 'Busy' : cappedPct > 50 ? 'Optimal' : 'Available';
-          return `<div style="padding:8px 10px">
-            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${role}</div>
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
+          const gap = demand - capacity;
+          const gapLabel = gap > 0 ? `+${fmt(gap)} over capacity` : gap < 0 ? `${fmt(Math.abs(gap))} under capacity` : 'At capacity';
+          return `<div style="padding:10px 12px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#40E0D0">${role}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:8px">Week of ${week}</div>
+            <div style="background:rgba(64,224,208,0.08);border:1px solid rgba(64,224,208,0.25);border-radius:6px;padding:8px 10px;margin-bottom:8px">
+              <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Capacity vs Demand</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+                <span><span style="color:#9ca3af">Demand:</span> <strong style="color:#fff">${fmt(demand)} hrs</strong></span>
+                <span><span style="color:#9ca3af">Capacity:</span> <strong>${capacity} hrs</strong></span>
+              </div>
+              <div style="font-size:11px;margin-top:4px;color:${uc};font-weight:600">${gapLabel} (${cappedPct}%)</div>
+            </div>
             <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
-              <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
-              <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
               <span style="color:#9ca3af">FTE Needed</span><span style="font-weight:700;color:${uc}">${fteEquivalent.toFixed(2)} FTE</span>
-              <span style="color:#9ca3af">Load Status</span><span style="font-weight:700;color:${uc}">${cappedPct}% — ${statusLabel}</span>
+              <span style="color:#9ca3af">Status</span><span style="font-weight:700;color:${uc}">${statusLabel}</span>
             </div>
           </div>`;
         },
@@ -1153,17 +1164,27 @@ function ResourcingPageContent() {
           const [wi, ei, val] = params.data;
           const emp = filteredEntries[ei];
           const week = displayWeeks[wi]?.label;
-          const utilPct = HOURS_PER_WEEK > 0 ? Math.round((val / HOURS_PER_WEEK) * 100) : 0;
+          const capacity = HOURS_PER_WEEK;
+          const demand = val;
+          const utilPct = capacity > 0 ? Math.round((demand / capacity) * 100) : 0;
           const uc = getUtilColor(utilPct);
-          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : val === 0 ? 'No tasks' : 'Available';
-          return `<div style="padding:8px 10px">
-            <div style="font-weight:700;font-size:13px;margin-bottom:2px">${emp.name}</div>
+          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : demand === 0 ? 'No tasks' : 'Available';
+          const gap = demand - capacity;
+          const gapLabel = gap > 0 ? `+${fmt(gap)} over capacity` : gap < 0 ? `${fmt(Math.abs(gap))} under capacity` : 'At capacity';
+          return `<div style="padding:10px 12px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:2px;color:#40E0D0">${emp.name}</div>
             ${emp.role ? `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">${emp.role}</div>` : ''}
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">Week of ${week}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:8px">Week of ${week}</div>
+            <div style="background:rgba(64,224,208,0.08);border:1px solid rgba(64,224,208,0.25);border-radius:6px;padding:8px 10px;margin-bottom:8px">
+              <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Capacity vs Demand</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+                <span><span style="color:#9ca3af">Demand:</span> <strong style="color:#fff">${fmt(demand)} hrs</strong></span>
+                <span><span style="color:#9ca3af">Capacity:</span> <strong>${capacity} hrs</strong></span>
+              </div>
+              <div style="font-size:11px;margin-top:4px;color:${uc};font-weight:600">${gapLabel} (${utilPct}%)</div>
+            </div>
             <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
-              <span style="color:#9ca3af">Planned</span><span style="font-weight:600">${fmt(val)} hrs</span>
-              <span style="color:#9ca3af">Capacity</span><span>${HOURS_PER_WEEK} hrs/week</span>
-              <span style="color:#9ca3af">Status</span><span style="font-weight:700;color:${uc}">${utilPct}% — ${statusLabel}</span>
+              <span style="color:#9ca3af">Status</span><span style="font-weight:700;color:${uc}">${statusLabel}</span>
             </div>
           </div>`;
         },

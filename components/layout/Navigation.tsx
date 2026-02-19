@@ -37,7 +37,7 @@ const navigation: NavDropdown[] = [
   {
     label: 'Project Controls',
     items: [
-      { label: 'WBS Gantt V2', href: '/project-controls/wbs-gantt-v2' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Project Plans', href: '/project-controls/folders' },
       { label: 'Resourcing', href: '/project-controls/resourcing' },
       { divider: true },

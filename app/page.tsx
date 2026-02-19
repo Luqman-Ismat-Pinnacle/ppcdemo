@@ -8,7 +8,7 @@ export default function Home() {
   const router = useRouter();
   useEffect(() => {
     // Redirect to WBS Gantt as the home/landing page
-    router.push('/project-controls/wbs-gantt');
+    router.push('/project-controls/wbs-gantt-v2');
   }, [router]);
 
   return (

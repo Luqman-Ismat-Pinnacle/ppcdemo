@@ -103,11 +103,8 @@ export default function Header() {
             </svg>
           </button>
           <div className={`nav-dropdown-content ${logoMenuOpen ? 'open' : ''}`}>
-            <Link href="/project-controls/wbs-gantt" className="nav-dropdown-item" onClick={() => setLogoMenuOpen(false)}>
-              WBS Gantt
-            </Link>
             <Link href="/project-controls/wbs-gantt-v2" className="nav-dropdown-item" onClick={() => setLogoMenuOpen(false)}>
-              WBS Gantt V2
+              WBS Gantt
             </Link>
           </div>
         </div>

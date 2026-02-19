@@ -297,14 +297,14 @@ export default function WBSGanttV2Page() {
       borderColor: pick('--border-color', '#334155'),
       drilldownBorder: pick('--border-color', '#334155'),
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
-      cellHorizontalPadding: 12,
-      cellVerticalPadding: 9,
-      headerFontStyle: '800 16px var(--font-montserrat, sans-serif)',
-      headerIconSize: 18,
-      baseFontStyle: '800 16px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '800 14px var(--font-mono, monospace)',
+      cellHorizontalPadding: 14,
+      cellVerticalPadding: 10,
+      headerFontStyle: '800 18px var(--font-montserrat, sans-serif)',
+      headerIconSize: 20,
+      baseFontStyle: '800 18px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '800 15px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '16px',
+      editorFontSize: '18px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -807,7 +807,7 @@ export default function WBSGanttV2Page() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '800 13px var(--font-montserrat, sans-serif)';
+      ctx.font = '800 15px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -871,7 +871,7 @@ export default function WBSGanttV2Page() {
       return;
     }
 
-    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '800' : '800'} 16px var(--font-montserrat, sans-serif)`;
+    ctx.font = '800 18px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';
@@ -1162,13 +1162,13 @@ export default function WBSGanttV2Page() {
     };
   }, [hoursBreakdownRow, fullData.tasks, fullData.hours, fullData.phases, fullData.units]);
 
-  if (isLoading) return <PageLoader message="Loading WBS Gantt V2..." />;
+  if (isLoading) return <PageLoader message="Loading WBS Gantt..." />;
 
   return (
     <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem' }}>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>WBS Gantt V2</h1>
+          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>WBS Gantt</h1>
           <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.74rem' }}>
             Original theme + hierarchy + dependencies + resizable split
           </div>
