@@ -865,13 +865,18 @@ function ResourcingPageContent() {
         return;
       }
 
-      // If we have an employeeId, use that as primary
-      if (eid && empIdToRole.get(eid)) {
-        const individuals = [{ eid, name: empIdToName.get(eid) || rawAssigned || 'Unknown', role: empIdToRole.get(eid)! }];
+      // Prioritize role from project plan (resource/assignedResource) over employee lookup
+      const planRole = resourceNames.length > 0 ? resourceNames[0] : (rawAssigned || null);
 
-        // If there are additional comma-separated names, add those too
+      // If we have an employeeId, use that as primary for employee view
+      if (eid && empIdToRole.get(eid)) {
+        // Use plan role (from project plan) when available, else employee's jobTitle
+        const roleForHeatmap = planRole || empIdToRole.get(eid) || 'Unassigned';
+        const individuals = [{ eid, name: empIdToName.get(eid) || rawAssigned || 'Unknown', role: roleForHeatmap }];
+
+        // If there are additional comma-separated names from plan, add those too (as roles)
         if (resourceNames.length > 1) {
-          resourceNames.forEach(rn => {
+          resourceNames.slice(1).forEach(rn => {
             const rnLower = rn.toLowerCase();
             if (rnLower === (empIdToName.get(eid) || '').toLowerCase()) return; // skip the primary
             const rnRole = empNameToRole.get(rnLower) || rn || 'Unassigned';
@@ -885,7 +890,7 @@ function ResourcingPageContent() {
           let role = ind.role;
           if (!role || role === 'N/A') role = 'Unassigned';
 
-          // By role — individual role per person
+          // By role — use role from project plan when available
           if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
           const roleMap = roleWeekHours.get(role)!;
 
@@ -905,19 +910,18 @@ function ResourcingPageContent() {
           });
         });
       } else if (resourceNames.length > 0) {
-        // No employeeId — split by resource names
+        // No employeeId — use resource names from project plan as roles
         const hrsPerPerson = hrsPerWeek / resourceNames.length;
 
         resourceNames.forEach(rn => {
-          const rnLower = rn.toLowerCase();
-          let role = empNameToRole.get(rnLower) || rn || 'Unassigned';
-          if (!role || role === 'N/A') role = 'Unassigned';
+          // Use project plan resource as role (roles from MPP/plan)
+          const role = rn?.trim() || 'Unassigned';
 
-          // By role — individual role per person
+          // By role — from project plan
           if (!roleWeekHours.has(role)) roleWeekHours.set(role, new Map());
           const roleMap = roleWeekHours.get(role)!;
 
-          // By employee
+          // By employee (resource name as key)
           const empKey = rn;
           if (!empWeekHours.has(empKey)) empWeekHours.set(empKey, new Map());
           empNameMap.set(empKey, rn);

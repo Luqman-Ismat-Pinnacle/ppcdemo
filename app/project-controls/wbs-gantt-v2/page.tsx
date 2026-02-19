@@ -299,12 +299,12 @@ export default function WBSGanttV2Page() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 14,
       cellVerticalPadding: 10,
-      headerFontStyle: '800 20px var(--font-montserrat, sans-serif)',
-      headerIconSize: 22,
-      baseFontStyle: '800 20px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '800 16px var(--font-mono, monospace)',
+      headerFontStyle: '800 22px var(--font-montserrat, sans-serif)',
+      headerIconSize: 24,
+      baseFontStyle: '800 22px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '800 18px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '20px',
+      editorFontSize: '22px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -807,7 +807,7 @@ export default function WBSGanttV2Page() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '800 17px var(--font-montserrat, sans-serif)';
+      ctx.font = '800 19px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -871,7 +871,7 @@ export default function WBSGanttV2Page() {
       return;
     }
 
-    ctx.font = '800 20px var(--font-montserrat, sans-serif)';
+    ctx.font = '800 22px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';

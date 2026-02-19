@@ -1,8 +1,9 @@
 /**
  * @fileoverview Hours-to-Tasks Matching API
- * 
- * Matches unassigned hour_entries to tasks/units based on description matching.
- * Uses PostgreSQL (primary) or Supabase (fallback).
+ *
+ * Simplified matching: Project ID must match. For each task, check if BOTH
+ * task name AND phase name are in the hour entry's description column.
+ * If both are present, it's a match.
  */
 
 import { NextResponse } from 'next/server';
@@ -28,48 +29,28 @@ async function matchWithPostgres() {
   // Fetch unassigned hours
   let unassignedHours: any[] = [];
   try {
-    const res = await pgQuery('SELECT id, project_id, description, workday_phase, workday_task, charge_code FROM hour_entries WHERE task_id IS NULL');
+    const res = await pgQuery('SELECT id, project_id, description FROM hour_entries WHERE task_id IS NULL');
     unassignedHours = res.rows;
-  } catch {
-    try {
-      const res = await pgQuery('SELECT id, project_id, description FROM hour_entries WHERE task_id IS NULL');
-      unassignedHours = res.rows;
-    } catch (e: any) {
-      return NextResponse.json({ success: false, error: e.message }, { status: 500 });
-    }
+  } catch (e: any) {
+    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
   }
 
   if (unassignedHours.length === 0) {
     return NextResponse.json({ success: true, tasksMatched: 0, unitsMatched: 0, stillUnmatched: 0, aggregated: 0 });
   }
 
-  // Fetch tasks and units
-  const tasksRes = await pgQuery('SELECT id, task_id, project_id, name FROM tasks');
+  // Fetch tasks with phase names (join phases for phase name)
+  const tasksRes = await pgQuery(`
+    SELECT t.id, t.project_id, t.name, COALESCE(p.name, '') AS phase_name
+    FROM tasks t
+    LEFT JOIN phases p ON t.phase_id = p.id
+    WHERE t.project_id IS NOT NULL AND t.name IS NOT NULL
+  `);
   const tasks = tasksRes.rows;
 
-  // Group by project
-  const tasksByProject = new Map<string, any[]>();
-  tasks.forEach((t: any) => {
-    if (!t.project_id || !t.name) return;
-    const arr = tasksByProject.get(t.project_id) || [];
-    arr.push(t);
-    tasksByProject.set(t.project_id, arr);
-  });
-
-  // Build a set of valid task IDs for FK validation
   const validTaskIds = new Set<string>(tasks.map((t: any) => t.id));
-
   const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
-  const normalizeId = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/\s+/g, '');
-  const taskByProjectAndUid = new Map<string, string>();
-  tasks.forEach((t: any) => {
-    const pid = String(t.project_id || '');
-    if (!pid) return;
-    const id = String(t.id || '').trim();
-    const taskId = String(t.task_id || '').trim();
-    if (taskId) taskByProjectAndUid.set(`${pid}|${normalizeId(taskId)}`, id);
-    if (id) taskByProjectAndUid.set(`${pid}|${normalizeId(id)}`, id);
-  });
+
   let tasksMatched = 0;
   let skippedInvalidFK = 0;
   const updates: { id: string; task_id: string }[] = [];
@@ -77,65 +58,26 @@ async function matchWithPostgres() {
   for (const h of unassignedHours) {
     if (!h.project_id) continue;
     const desc = normalize(h.description || '');
-    const chargeCode = normalize(h.charge_code || '');
-    const searchStr = chargeCode || desc;
-    if (!searchStr) continue;
-    const workdayTaskRaw = normalizeId(String(h.workday_task || ''));
+    if (!desc) continue;
 
-    // First: direct unique-ID match from project file UID/task_id.
-    if (workdayTaskRaw) {
-      const direct = taskByProjectAndUid.get(`${h.project_id}|${workdayTaskRaw}`);
-      if (direct && validTaskIds.has(direct)) {
-        updates.push({ id: h.id, task_id: direct });
-        tasksMatched++;
-        continue;
-      }
-      const tokenMatch = workdayTaskRaw.match(/([a-z0-9_.-]{2,})$/i);
-      if (tokenMatch) {
-        const fromToken = taskByProjectAndUid.get(`${h.project_id}|${normalizeId(tokenMatch[1])}`);
-        if (fromToken && validTaskIds.has(fromToken)) {
-          updates.push({ id: h.id, task_id: fromToken });
-          tasksMatched++;
-          continue;
-        }
-      }
-    }
-
-    // Try charge code segments first (split by >)
-    const segments = chargeCode ? chargeCode.split('>').map((s: string) => s.trim()).filter(Boolean) : [];
-
+    const projectTasks = tasks.filter((t: any) => String(t.project_id) === String(h.project_id));
     let matched = false;
-    const projectTasks = tasksByProject.get(h.project_id) || [];
 
-    // Match by charge code segments
-    for (const seg of segments) {
-      for (const task of projectTasks) {
-        const taskName = normalize(task.name);
-        if (taskName && (seg.includes(taskName) || taskName.includes(seg))) {
-          updates.push({ id: h.id, task_id: task.id });
-          tasksMatched++;
-          matched = true;
-          break;
-        }
-      }
-      if (matched) break;
-    }
+    for (const task of projectTasks) {
+      const taskName = normalize(task.name || '');
+      const phaseName = normalize(task.phase_name || '');
+      if (!taskName) continue;
 
-    if (!matched && desc) {
-      // Match by description
-      for (const task of projectTasks) {
-        const taskName = normalize(task.name);
-        if (taskName && desc.includes(taskName)) {
-          updates.push({ id: h.id, task_id: task.id });
-          tasksMatched++;
-          matched = true;
-          break;
-        }
+      // Match: BOTH task name AND phase name must be in the description
+      const taskInDesc = taskName && desc.includes(taskName);
+      const phaseInDesc = !phaseName || desc.includes(phaseName); // phase optional if empty
+      if (taskInDesc && phaseInDesc) {
+        updates.push({ id: h.id, task_id: task.id });
+        tasksMatched++;
+        matched = true;
+        break;
       }
     }
-
-    // NOTE: Unit matching removed — unit IDs are NOT valid for hour_entries.task_id FK
-    // (the FK references tasks(id), not units(id))
   }
 
   // Batch update hour_entries — only with validated task IDs
@@ -187,11 +129,10 @@ async function matchWithSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // Fetch unassigned hours (paginated)
   const PAGE = 1000;
   const all: any[] = [];
   for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase.from('hour_entries').select('id, project_id, description, workday_task')
+    const { data, error } = await supabase.from('hour_entries').select('id, project_id, description')
       .is('task_id', null).range(offset, offset + PAGE - 1);
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     all.push(...(data || []));
@@ -202,51 +143,43 @@ async function matchWithSupabase() {
     return NextResponse.json({ success: true, tasksMatched: 0, unitsMatched: 0, stillUnmatched: 0, aggregated: 0 });
   }
 
-  const { data: tasks } = await supabase.from('tasks').select('id, task_id, project_id, name');
-  const tasksByProject = new Map<string, any[]>();
-  (tasks || []).forEach((t: any) => {
-    if (!t.project_id || !t.name) return;
-    const arr = tasksByProject.get(t.project_id) || [];
-    arr.push(t);
-    tasksByProject.set(t.project_id, arr);
+  const { data: tasks } = await supabase.from('tasks').select('id, project_id, name, phase_id');
+  const { data: phases } = await supabase.from('phases').select('id, name');
+  const phaseIdToName = new Map<string, string>();
+  (phases || []).forEach((p: any) => {
+    if (p.id) phaseIdToName.set(String(p.id), (p.name || '').toString().trim());
   });
 
-  const validTaskIds = new Set<string>((tasks || []).map((t: any) => t.id));
+  const tasksWithPhase = (tasks || []).map((t: any) => ({
+    ...t,
+    phase_name: (t.phase_id ? phaseIdToName.get(String(t.phase_id)) : null) || '',
+  }));
+
+  const validTaskIds = new Set<string>(tasksWithPhase.map((t: any) => t.id));
   const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
-  const normalizeId = (s: string) => (s ?? '').toString().trim().toLowerCase().replace(/\s+/g, '');
-  const taskByProjectAndUid = new Map<string, string>();
-  (tasks || []).forEach((t: any) => {
-    const pid = String(t.project_id || '');
-    if (!pid) return;
-    const id = String(t.id || '').trim();
-    const taskId = String(t.task_id || '').trim();
-    if (taskId) taskByProjectAndUid.set(`${pid}|${normalizeId(taskId)}`, id);
-    if (id) taskByProjectAndUid.set(`${pid}|${normalizeId(id)}`, id);
-  });
+
   let tasksMatched = 0;
   const updates: { id: string; task_id: string }[] = [];
 
   for (const h of all) {
     if (!h.project_id) continue;
-    const workdayTaskRaw = normalizeId(String(h.workday_task || ''));
-    if (workdayTaskRaw) {
-      const direct = taskByProjectAndUid.get(`${h.project_id}|${workdayTaskRaw}`);
-      if (direct && validTaskIds.has(direct)) {
-        updates.push({ id: h.id, task_id: direct });
-        tasksMatched++;
-        continue;
-      }
-    }
     const desc = normalize(h.description || '');
     if (!desc) continue;
-    for (const task of (tasksByProject.get(h.project_id) || [])) {
-      if (normalize(task.name) && desc.includes(normalize(task.name))) {
+
+    const projectTasks = tasksWithPhase.filter((t: any) => String(t.project_id) === String(h.project_id));
+    for (const task of projectTasks) {
+      const taskName = normalize(task.name || '');
+      const phaseName = normalize(task.phase_name || '');
+      if (!taskName) continue;
+
+      const taskInDesc = desc.includes(taskName);
+      const phaseInDesc = !phaseName || desc.includes(phaseName);
+      if (taskInDesc && phaseInDesc) {
         updates.push({ id: h.id, task_id: task.id });
         tasksMatched++;
         break;
       }
     }
-    // Unit matching removed — unit IDs violate hour_entries.task_id FK
   }
 
   for (const u of updates) {

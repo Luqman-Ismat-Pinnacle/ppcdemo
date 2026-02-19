@@ -2338,11 +2338,7 @@ function resolveHourEntriesToTasks(
     if (id != null) phaseIdToName.set(String(id), name);
   });
 
-  // Build lookup: (projectId, phaseName, taskName) -> taskId with exact, relaxed, and aggressive keys
-  const exactKeys = new Map<string, string>();
-  const relaxedKeys = new Map<string, string>();
-  const aggressiveKeys = new Map<string, string>();
-  const taskListByProject: { projectId: string; phaseName: string; taskName: string; taskId: string; phaseId: string }[] = [];
+  const taskListByProject: { projectId: string; phaseName: string; taskName: string; taskId: string }[] = [];
 
   tasks.forEach((t: any) => {
     const projectId = t.projectId ?? t.project_id;
@@ -2352,13 +2348,7 @@ function resolveHourEntriesToTasks(
     const taskId = String(t.id ?? t.taskId ?? '');
     if (projectId == null) return;
 
-    const exactKey = `${String(projectId)}|${normalizeNameForMatch(phaseName)}|${normalizeNameForMatch(taskName)}`;
-    const relaxedKey = `${String(projectId)}|${normalizeNameRelaxed(phaseName)}|${normalizeNameRelaxed(taskName)}`;
-    const aggressiveKey = `${String(projectId)}|${normalizeNameAggressive(phaseName)}|${normalizeNameAggressive(taskName)}`;
-    if (!exactKeys.has(exactKey)) exactKeys.set(exactKey, taskId);
-    if (!relaxedKeys.has(relaxedKey)) relaxedKeys.set(relaxedKey, taskId);
-    if (!aggressiveKeys.has(aggressiveKey)) aggressiveKeys.set(aggressiveKey, taskId);
-    taskListByProject.push({ projectId: String(projectId), phaseName, taskName, taskId, phaseId: String(phaseId) });
+    taskListByProject.push({ projectId: String(projectId), phaseName, taskName, taskId });
   });
 
   const projectTasks = taskListByProject.filter((x) => x.projectId);
@@ -2399,120 +2389,30 @@ function resolveHourEntriesToTasks(
     }
 
     const projectId = h.projectId ?? h.project_id;
-    const workdayPhase = (h.workdayPhase ?? h.workday_phase ?? '').toString().trim();
-    const workdayTask = (h.workdayTask ?? h.workday_task ?? '').toString().trim();
-    const hourPhaseId = h.phaseId ?? h.phase_id;
 
     if (!projectId) {
       trackUnmatched(h);
       return h;
     }
 
-    // If hour has phaseId but no taskId, try to match to single task in that phase for this project
-    if (hourPhaseId && !existingTaskId) {
-      const inPhase = projectTasks.filter(
-        (x) => x.projectId === String(projectId) && x.phaseId === String(hourPhaseId)
-      );
-      if (inPhase.length === 1) {
-        trackMatch(hourId, inPhase[0].taskId, 'phaseId-single');
-        return { ...h, taskId: inPhase[0].taskId, task_id: inPhase[0].taskId };
-      }
-    }
-
-    if (!workdayPhase && !workdayTask) {
+    // Simplified: check if BOTH task name AND phase name are in the hour's description
+    const description = (h.description ?? '').toString().trim().toLowerCase();
+    if (!description) {
       trackUnmatched(h);
       return h;
     }
 
-    // 1) Exact normalized key
-    let key = `${String(projectId)}|${normalizeNameForMatch(workdayPhase)}|${normalizeNameForMatch(workdayTask)}`;
-    let matchedTaskId = exactKeys.get(key);
-    if (matchedTaskId) {
-      trackMatch(hourId, matchedTaskId, 'exact');
-      return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
-    }
+    const projectTasksForDesc = projectTasks.filter((x) => x.projectId === String(projectId));
+    for (const task of projectTasksForDesc) {
+      const taskNameLower = (task.taskName ?? '').toString().trim().toLowerCase();
+      const phaseNameLower = (task.phaseName ?? '').toString().trim().toLowerCase();
+      if (!taskNameLower) continue;
 
-    // 2) Relaxed key (strip punctuation, collapse separators)
-    key = `${String(projectId)}|${normalizeNameRelaxed(workdayPhase)}|${normalizeNameRelaxed(workdayTask)}`;
-    matchedTaskId = relaxedKeys.get(key);
-    if (matchedTaskId) {
-      trackMatch(hourId, matchedTaskId, 'relaxed');
-      return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
-    }
-
-    // 3) Aggressive key (strip Phase/Task prefixes, normalize numbers)
-    key = `${String(projectId)}|${normalizeNameAggressive(workdayPhase)}|${normalizeNameAggressive(workdayTask)}`;
-    matchedTaskId = aggressiveKeys.get(key);
-    if (matchedTaskId) {
-      trackMatch(hourId, matchedTaskId, 'aggressive');
-      return { ...h, taskId: matchedTaskId, task_id: matchedTaskId };
-    }
-
-    // 4) Phase + task name match (relaxed or contains)
-    let found = projectTasks.find(
-      (x) =>
-        x.projectId === String(projectId) &&
-        namesMatch(workdayPhase, x.phaseName, true) &&
-        namesMatch(workdayTask, x.taskName, true)
-    );
-    if (found) {
-      trackMatch(hourId, found.taskId, 'contains');
-      return { ...h, taskId: found.taskId, task_id: found.taskId };
-    }
-
-    // 5) Phase-only: workdayTask empty but workdayPhase set — match first task in matching phase
-    if (!workdayTask && workdayPhase) {
-      found = projectTasks.find(
-        (x) => x.projectId === String(projectId) && namesMatch(workdayPhase, x.phaseName, true)
-      );
-      if (found) {
-        trackMatch(hourId, found.taskId, 'phase-only');
-        return { ...h, taskId: found.taskId, task_id: found.taskId };
-      }
-    }
-
-    // 6) Task-only: workdayPhase empty but workdayTask set — match first task with matching task name
-    if (!workdayPhase && workdayTask) {
-      found = projectTasks.find(
-        (x) => x.projectId === String(projectId) && namesMatch(workdayTask, x.taskName, true)
-      );
-      if (found) {
-        trackMatch(hourId, found.taskId, 'task-only');
-        return { ...h, taskId: found.taskId, task_id: found.taskId };
-      }
-    }
-
-    // 7) Token-overlap fallback: best candidate where phase and task token overlap are both high
-    const candidates = projectTasks.filter((x) => x.projectId === String(projectId));
-    if (candidates.length > 0) {
-      const phaseScore = (x: typeof candidates[0]) => tokenOverlapScore(workdayPhase, x.phaseName);
-      const taskScore = (x: typeof candidates[0]) => tokenOverlapScore(workdayTask, x.taskName);
-      let best = candidates[0];
-      let bestScore = (phaseScore(best) + taskScore(best)) / 2;
-      for (let i = 1; i < candidates.length; i++) {
-        const c = candidates[i];
-        const score = (phaseScore(c) + taskScore(c)) / 2;
-        if (score > bestScore) {
-          bestScore = score;
-          best = c;
-        }
-      }
-      if (bestScore >= 0.6) {
-        trackMatch(hourId, best.taskId, 'token-overlap');
-        return { ...h, taskId: best.taskId, task_id: best.taskId };
-      }
-    }
-
-    // 8) Description-based matching: check if any task name is contained in hour description
-    const description = (h.description ?? '').toString().trim().toLowerCase();
-    if (description && projectId) {
-      const projectTasksForDesc = projectTasks.filter((x) => x.projectId === String(projectId));
-      for (const task of projectTasksForDesc) {
-        const taskNameLower = (task.taskName ?? '').toString().trim().toLowerCase();
-        if (taskNameLower && description.includes(taskNameLower)) {
-          trackMatch(hourId, task.taskId, 'description-contains');
-          return { ...h, taskId: task.taskId, task_id: task.taskId };
-        }
+      const taskInDesc = description.includes(taskNameLower);
+      const phaseInDesc = !phaseNameLower || description.includes(phaseNameLower);
+      if (taskInDesc && phaseInDesc) {
+        trackMatch(hourId, task.taskId, 'description');
+        return { ...h, taskId: task.taskId, task_id: task.taskId };
       }
     }
 
