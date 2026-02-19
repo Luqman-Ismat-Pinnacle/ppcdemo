@@ -616,13 +616,38 @@ export default function DataManagementPage() {
     };
   }, [openFilterDropdown]);
 
+  // Strip date patterns from end of string (e.g. "Charge Code > Path 2024-01-15" -> "Charge Code > Path")
+  const stripDatesFromEnd = useCallback((s: string): string => {
+    if (!s || typeof s !== 'string') return s || '';
+    let trimmed = s.trimEnd();
+    // Match common date patterns at end: 2024-01-15, 01/15/2024, Jan 15 2024, 15-Jan-2024, etc.
+    const datePatterns = [
+      /\s*\d{4}-\d{2}-\d{2}\s*$/,           // 2024-01-15
+      /\s*\d{2}\/\d{2}\/\d{4}\s*$/,         // 01/15/2024
+      /\s*\d{2}-\d{2}-\d{4}\s*$/,           // 01-15-2024
+      /\s*\d{4}\/\d{2}\/\d{2}\s*$/,         // 2024/01/15
+      /\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*$/i,
+      /\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\s*$/i,
+      /\s*\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4}\s*$/i,
+    ];
+    for (const p of datePatterns) {
+      trimmed = trimmed.replace(p, '');
+    }
+    return trimmed.trimEnd();
+  }, []);
+
   // Helper: get cell value with snake_case fallback (for DB that returns snake_case)
   const getCellValue = useCallback((row: any, fieldKey: string): unknown => {
+    // Charge Code: show cleaned description (without trailing dates) for hours table
+    if (fieldKey === 'chargeCode') {
+      const source = String(row.description ?? row[fieldKey] ?? row.charge_code ?? '');
+      return source ? stripDatesFromEnd(source) : '';
+    }
     const camel = row[fieldKey];
     if (camel !== undefined && camel !== null && camel !== '') return camel;
     const snake = fieldKey.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
     return row[snake];
-  }, []);
+  }, [stripDatesFromEnd]);
 
   // Get unique values for a column (for filter dropdown). For FK types, uses display names for better UX.
   const getUniqueValues = useCallback((fieldKey: string, data: any[], field?: FieldConfig): string[] => {

@@ -1752,9 +1752,10 @@ export default function ForecastPage() {
             </div>
           </SectionCard>
           </div>
-      )}
       </>
-      )}
+    )}
+    </>
+  )}
     </div>
   );
 }
