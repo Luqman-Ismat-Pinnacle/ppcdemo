@@ -1324,6 +1324,7 @@ export default function WBSGanttV2Page() {
         <>
         <div
           ref={leftPanel.ref}
+          className="wbs-gantt-grid"
           style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
         >
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (

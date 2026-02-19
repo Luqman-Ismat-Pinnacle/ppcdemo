@@ -36,6 +36,9 @@ yarn-error.log*
 .env*
 .env.example
 
+# optional large QC Log seed file (place qc-log-entries.xlsx in public/ to enable default load)
+/public/qc-log-entries.xlsx
+
 # vercel
 .vercel
 

@@ -86,6 +86,18 @@
   --foreground: var(--text-primary);
 }
 
+/* WBS Gantt grid – force larger, bolder fonts (overrides glide-data-grid theme) */
+.wbs-gantt-grid {
+  --gdg-header-font-style: 800 22px var(--font-montserrat, sans-serif) !important;
+  --gdg-base-font-style: 800 22px var(--font-montserrat, sans-serif) !important;
+  --gdg-marker-font-style: 800 18px var(--font-mono, monospace) !important;
+  --gdg-editor-font-size: 22px !important;
+  --gdg-font-family: var(--font-montserrat, sans-serif) !important;
+}
+.wbs-gantt-grid [data-editor-container] {
+  font: 800 22px var(--font-montserrat, sans-serif) !important;
+}
+
 /* Light Theme – clean, high contrast, green accent */
 [data-theme="light"] {
   --bg-primary: #f8fafc;

@@ -13,7 +13,7 @@
  * @module app/project-management/qc-log/page
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import ContainerLoader from '@/components/ui/ContainerLoader';
@@ -25,13 +25,7 @@ import {
   sortByState,
 } from '@/lib/sort-utils';
 import type { EChartsOption } from 'echarts';
-import {
-  fetchAzureQcWorkItems,
-  getAdoAssignedName,
-  mapAdoStateToLocal,
-  syncAzureWorkItem,
-  type AzureWorkItemDto,
-} from '@/lib/azure-devops-client';
+import * as XLSX from 'xlsx';
 
 // ============================================================================
 // TYPES
@@ -39,41 +33,71 @@ import {
 
 type ViewType = 'dashboard' | 'orders' | 'nonconformance' | 'capa';
 
-function mapAdoWorkItemToQcTask(item: AzureWorkItemDto): QCTask {
-  const fields = item.fields || {};
-  const title = String(fields['System.Title'] || `QC Work Item ${item.id}`);
-  const state = String(fields['System.State'] || 'New');
-  const tags = String(fields['System.Tags'] || '');
-  const assigned = getAdoAssignedName(fields['System.AssignedTo']);
-  const completedWork = Number(fields['Microsoft.VSTS.Scheduling.CompletedWork'] || 0);
-  const originalEstimate = Number(fields['Microsoft.VSTS.Scheduling.OriginalEstimate'] || 0);
-  const varianceHours = Math.max(0, completedWork - originalEstimate);
+/** Map Excel QC Log row to QCTask. Expects sheet with columns like QC Transaction, Title, Task Worker, QC Status, Pct Items Correct, etc. */
+function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTask {
+  const qcTransaction = String(row['QC Transaction'] ?? row['(Do Not Modify) QC Log'] ?? `QC-${index + 1}`).trim() || `QC-${index + 1}`;
+  const title = String(row['Title'] ?? row['DESCRIPTION (Charge Code) (IFS - Activities)'] ?? '').trim();
+  const taskWorker = String(row['Task Worker'] ?? '').trim();
+  const qcResource = String(row['QC Resource'] ?? '').trim();
+  const resource = qcResource || taskWorker || 'Unassigned';
+  const rawStatus = String(row['QC Status'] ?? '').trim();
+  const pctCorrect = Number(row['Pct Items Correct']) || 0;
+  const itemsSubmitted = Number(row['Items Submitted']) || 0;
+  const itemsCorrect = Number(row['Items Correct']) || 0;
+  const notes = String(row['Notes'] ?? '').trim();
+  const qcRequestedDate = row['QC Requested Date'];
+  const qcCompleteDate = row['QC Complete Date Override'] ?? row['QC Complete Date'];
+  const createdOn = row['Created On'];
+  const modifiedOn = row['Modified On'];
 
+  const toIso = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'number' && v > 10000) {
+      const excelEpoch = new Date(1899, 11, 30).getTime();
+      const d = new Date(excelEpoch + v * 86400 * 1000);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    const d = new Date(String(v));
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
+  const statusMap: Record<string, string> = {
+    requested: 'Not Started',
+    'in progress': 'In Progress',
+    complete: 'Complete',
+    completed: 'Complete',
+    ready: 'Complete',
+    rejected: 'On Hold',
+    'on hold': 'On Hold',
+    cancelled: 'Closed',
+    closed: 'Closed',
+  };
+  const qcStatus = statusMap[rawStatus.toLowerCase()] || (rawStatus || 'Not Started');
+
+  const now = new Date().toISOString();
   return {
-    id: `ado-qc-${item.id}`,
-    qcTaskId: `QCT-ADO-${item.id}`,
-    parentTaskId: `ADO-${item.id}`,
-    qcResourceId: assigned,
-    employeeId: assigned,
-    qcHours: completedWork,
-    qcScore: Math.max(0, Math.min(100, Math.round(100 - varianceHours * 5))),
-    qcCount: 1,
-    qcUOM: 'Task',
-    qcType: tags.toLowerCase().includes('review') ? 'Peer Review' : 'Quality Review',
-    qcStatus: mapAdoStateToLocal(state, tags) === 'Closed' ? 'Complete' : 'In Progress',
-    qcCriticalErrors: tags.toLowerCase().includes('critical') ? 1 : 0,
-    qcNonCriticalErrors: tags.toLowerCase().includes('minor') ? 1 : 0,
-    qcComments: title,
-    qcStartDate: new Date().toISOString(),
-    qcEndDate: mapAdoStateToLocal(state, tags) === 'Closed' ? new Date().toISOString() : null,
+    qcTaskId: qcTransaction,
+    parentTaskId: title || qcTransaction,
+    qcResourceId: resource,
+    employeeId: resource,
+    qcHours: itemsSubmitted || 0,
+    qcScore: Math.round(Number.isFinite(pctCorrect) ? pctCorrect : (itemsSubmitted ? (itemsCorrect / itemsSubmitted) * 100 : 0)),
+    qcCount: itemsSubmitted || 1,
+    qcUOM: 'Item',
+    qcType: 'Quality Review',
+    qcStatus,
+    qcCriticalErrors: 0,
+    qcNonCriticalErrors: 0,
+    qcComments: notes || title || qcTransaction,
+    qcStartDate: toIso(qcRequestedDate) || toIso(createdOn) || now,
+    qcEndDate: toIso(qcCompleteDate),
     baselineStartDate: null,
     baselineEndDate: null,
     actualStartDate: null,
     actualEndDate: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    adoWorkItemId: item.id,
-  } as QCTask;
+    createdAt: toIso(createdOn) || now,
+    updatedAt: toIso(modifiedOn) || now,
+  };
 }
 
 // ============================================================================
@@ -347,51 +371,79 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
 export default function QCLogPage() {
   const { filteredData, data, updateData, isLoading } = useData();
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
-  const azureQcUrl = process.env.NEXT_PUBLIC_AZURE_QC_URL || 'https://dev.azure.com/';
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [qcSort, setQcSort] = useState<SortState | null>(null);
-  const [adoConnected, setAdoConnected] = useState(false);
-  const [adoLoading, setAdoLoading] = useState(false);
-  const [adoError, setAdoError] = useState<string | null>(null);
-  const [lastAdoSync, setLastAdoSync] = useState<string | null>(null);
-  const [adoQcTasks, setAdoQcTasks] = useState<QCTask[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get task name helper
   const getTaskName = useCallback((taskId: string): string => {
     const task = data.tasks?.find((t) => t.taskId === taskId);
     return task?.taskName || taskId;
   }, [data.tasks]);
 
-  const refreshAdoQc = useCallback(async (signal?: AbortSignal) => {
-    setAdoLoading(true);
-    setAdoError(null);
-    try {
-      const workItems = await fetchAzureQcWorkItems(signal);
-      setAdoQcTasks(workItems.map(mapAdoWorkItemToQcTask));
-      setAdoConnected(true);
-      setLastAdoSync(new Date().toISOString());
-    } catch (error) {
-      setAdoConnected(false);
-      setAdoQcTasks([]);
-      setAdoError(error instanceof Error ? error.message : 'Unable to reach Azure DevOps');
-    } finally {
-      setAdoLoading(false);
-    }
+  const qcTasksSource = useMemo(() => filteredData.qctasks || [], [filteredData.qctasks]);
+
+  const parseWorkbookToQcTasks = useCallback((wb: XLSX.WorkBook): QCTask[] => {
+    const sheetName = wb.SheetNames.find((n) => /qc|log|entries/i.test(n)) || wb.SheetNames[0];
+    const sheet = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[];
+    return rows.map((row, i) => mapExcelRowToQcTask(row, i));
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    refreshAdoQc(controller.signal);
-    return () => controller.abort();
-  }, [refreshAdoQc]);
+  const handleImportExcel = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setImporting(true);
+      setImportError(null);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const buf = ev.target?.result;
+          if (!buf || !(buf instanceof ArrayBuffer)) throw new Error('Failed to read file');
+          const wb = XLSX.read(buf, { type: 'array' });
+          const qctasks = parseWorkbookToQcTasks(wb);
+          updateData({ qctasks });
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        } catch (err) {
+          setImportError(err instanceof Error ? err.message : 'Import failed');
+        } finally {
+          setImporting(false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      e.target.value = '';
+    },
+    [updateData, parseWorkbookToQcTasks],
+  );
 
-  const qcTasksSource = useMemo(() => {
-    if (adoConnected && adoQcTasks.length > 0) return adoQcTasks;
-    return filteredData.qctasks || [];
-  }, [adoConnected, adoQcTasks, filteredData.qctasks]);
+  const loadDefaultQcLog = useCallback(async () => {
+    setImporting(true);
+    setImportError(null);
+    try {
+      const res = await fetch('/qc-log-entries.xlsx', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Default QC Log file not found');
+      const buf = await res.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const qctasks = parseWorkbookToQcTasks(wb);
+      updateData({ qctasks });
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to load default QC Log');
+    } finally {
+      setImporting(false);
+    }
+  }, [updateData, parseWorkbookToQcTasks]);
+
+  const defaultLoadAttempted = useRef(false);
+  useEffect(() => {
+    if (defaultLoadAttempted.current || qcTasksSource.length > 0) return;
+    defaultLoadAttempted.current = true;
+    loadDefaultQcLog();
+  }, [qcTasksSource.length, loadDefaultQcLog]);
 
   // Filter and sort QC tasks
   const filteredQCTasks = useMemo(() => {
@@ -487,19 +539,6 @@ export default function QCLogPage() {
     });
     updateData({ qctasks: updatedQCTasks });
     setEditingCell(null);
-
-    const adoWorkItemId = (qcTask as any).adoWorkItemId;
-    if (adoConnected && adoWorkItemId) {
-      await syncAzureWorkItem({
-        workItem: { ...qcTask, adoWorkItemId },
-        workItemType: 'Task',
-        changes: {
-          [field]: newValue,
-          comments: field === 'qcComments' ? newValue : undefined,
-          status: field === 'qcStatus' ? newValue : undefined,
-        },
-      });
-    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent, qcTask: QCTask) => {
@@ -540,25 +579,35 @@ export default function QCLogPage() {
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            padding: '6px 10px',
-            borderRadius: '999px',
-            border: `1px solid ${adoConnected ? 'rgba(16,185,129,0.45)' : 'rgba(245,158,11,0.45)'}`,
-            background: adoConnected ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-            color: adoConnected ? 'var(--pinnacle-lime)' : '#F59E0B',
-            fontSize: '0.72rem',
-            fontWeight: 700,
-          }}>
-            <span>{adoConnected ? 'Azure Connected' : 'Local Fallback'}</span>
-            {adoLoading && <span style={{ opacity: 0.8 }}>Syncing...</span>}
-          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImportExcel}
+            style={{ display: 'none' }}
+          />
           <button
             type="button"
-            onClick={() => refreshAdoQc()}
-            disabled={adoLoading}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            style={{
+              padding: '0.45rem 0.85rem',
+              borderRadius: '8px',
+              border: '1px solid var(--pinnacle-teal)',
+              background: 'rgba(64,224,208,0.12)',
+              color: 'var(--pinnacle-teal)',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: importing ? 'not-allowed' : 'pointer',
+              opacity: importing ? 0.7 : 1,
+            }}
+          >
+            {importing ? 'Importing...' : 'Import from Excel'}
+          </button>
+          <button
+            type="button"
+            onClick={loadDefaultQcLog}
+            disabled={importing}
             style={{
               padding: '0.45rem 0.85rem',
               borderRadius: '8px',
@@ -567,35 +616,17 @@ export default function QCLogPage() {
               color: 'var(--text-secondary)',
               fontSize: '0.75rem',
               fontWeight: 700,
-              cursor: adoLoading ? 'not-allowed' : 'pointer',
-              opacity: adoLoading ? 0.7 : 1,
+              cursor: importing ? 'not-allowed' : 'pointer',
+              opacity: importing ? 0.7 : 1,
             }}
           >
-            Refresh Azure
+            Load default QC Log
           </button>
-          <a
-            href={azureQcUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: '0.45rem 0.85rem',
-              borderRadius: '8px',
-              border: '1px solid rgba(16,185,129,0.45)',
-              background: 'rgba(16,185,129,0.12)',
-              color: 'var(--pinnacle-lime)',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Open Azure QC
-          </a>
         </div>
       </div>
-      {(adoError || lastAdoSync) && (
-        <div style={{ marginTop: '0.2rem', fontSize: '0.72rem', color: adoError ? '#EF4444' : 'var(--text-muted)' }}>
-          {adoError ? `Azure sync warning: ${adoError}` : `Last Azure sync: ${new Date(lastAdoSync || '').toLocaleString()}`}
+      {importError && (
+        <div style={{ marginTop: '0.2rem', fontSize: '0.72rem', color: '#EF4444' }}>
+          {importError}
         </div>
       )}
 
