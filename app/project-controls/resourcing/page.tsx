@@ -35,25 +35,12 @@ const HOURS_PER_WEEK = HOURS_PER_DAY * DAYS_PER_WEEK;
 const WEEKS_PER_YEAR = 52;
 const HOURS_PER_YEAR = HOURS_PER_WEEK * WEEKS_PER_YEAR;
 
-// Loading fallback
-function ResourcingPageLoading() {
-  return (
-    <div className="page-panel full-height-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 100px)' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: '48px', height: '48px', border: '3px solid var(--border-color)', borderTopColor: 'var(--pinnacle-teal)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }} />
-        <p style={{ color: 'var(--text-secondary)' }}>Loading Resourcing...</p>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-}
-
 // ============================================================================
 // MAIN PAGE COMPONENT
 // ============================================================================
 function ResourcingPageContent() {
   const searchParams = useSearchParams();
-  const { filteredData, fullData, setData } = useData();
+  const { filteredData, fullData, setData, isLoading: dataLoading } = useData();
   
   // UI State
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics'>('organization');
@@ -604,19 +591,23 @@ function ResourcingPageContent() {
 
   // Handle task assignment
   const handleAssignTask = useCallback((task: any, employee: any) => {
-    console.log('Assigning task', task.name || task.taskName, 'to', employee.name);
-    
-    // Show success message
-    setAssignmentMessage(`Task "${task.name || task.taskName}" assigned to ${employee.name}`);
+    const taskId = task.id || task.taskId;
+    const employeeId = employee.id || employee.employeeId;
+    const employeeName = employee.name;
+    const taskName = task.name || task.taskName;
+
+    const updatedTasks = (data.tasks || []).map((t: any) =>
+      (t.id || t.taskId) === taskId
+        ? { ...t, assignedTo: employeeName, employeeId, assignedResource: employeeName, updatedAt: new Date().toISOString() }
+        : t
+    );
+    updateData({ tasks: updatedTasks });
+
+    setAssignmentMessage(`Task "${taskName}" assigned to ${employeeName}`);
     setTimeout(() => setAssignmentMessage(null), 3000);
-    
-    // Clear drag state
     setDraggedTask(null);
     setDropTargetId(null);
-    
-    // TODO: Update data context and persist to database
-    // This would update the task's assignedTo field and refresh the data
-  }, []);
+  }, [data.tasks, updateData]);
 
   // Handle employee project reassignment
   const handleReassignToProject = useCallback((employee: any, projectId: string) => {
@@ -763,6 +754,16 @@ function ResourcingPageContent() {
           }}>
             Go to Data Management
           </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading resourcing data...
         </div>
       </div>
     );
@@ -1341,10 +1342,10 @@ function ResourcingPageContent() {
   );
 }
 
-// Wrapper with Suspense
+// Wrapper with Suspense (no full-page loading; content loads in-container)
 export default function ResourcingPage() {
   return (
-    <Suspense fallback={<ResourcingPageLoading />}>
+    <Suspense fallback={null}>
       <ResourcingPageContent />
     </Suspense>
   );

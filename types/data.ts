@@ -2086,6 +2086,7 @@ export interface UserStory {
   acceptanceCriteria?: string;
   status: string;
   sprintId?: string;
+  storyPoints?: number;
   createdAt: string;
   updatedAt: string;
 }
