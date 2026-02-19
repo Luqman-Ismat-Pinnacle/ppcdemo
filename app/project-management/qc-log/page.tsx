@@ -33,7 +33,7 @@ import * as XLSX from 'xlsx';
 
 type ViewType = 'dashboard' | 'orders' | 'nonconformance' | 'capa';
 
-/** Map Excel QC Log row to QCTask. Expects sheet with columns like QC Transaction, Title, Task Worker, QC Status, Pct Items Correct, etc. */
+/** Map Excel QC Log row to QCTask. Aligns with All QC Log Entries columns + UOM, QC Score, Count. */
 function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTask {
   const qcTransaction = String(row['QC Transaction'] ?? row['(Do Not Modify) QC Log'] ?? `QC-${index + 1}`).trim() || `QC-${index + 1}`;
   const title = String(row['Title'] ?? row['DESCRIPTION (Charge Code) (IFS - Activities)'] ?? '').trim();
@@ -47,8 +47,15 @@ function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTas
   const notes = String(row['Notes'] ?? '').trim();
   const qcRequestedDate = row['QC Requested Date'];
   const qcCompleteDate = row['QC Complete Date Override'] ?? row['QC Complete Date'];
+  const qcAssignedDate = row['QC Assigned Date'];
   const createdOn = row['Created On'];
   const modifiedOn = row['Modified On'];
+  const chargeCodeV2 = String(row['Charge Code V2'] ?? row['Project_ID (Charge Code V2) (Workday - RPT - Project Plan Data - v2.0)'] ?? '').trim();
+  const projectIdV2 = String(row['Project_ID (Charge Code V2) (Workday - RPT - Project Plan Data - v2.0)'] ?? row['Charge Code V2'] ?? '').trim();
+  const clientReady = String(row['Client Ready?'] ?? '').trim();
+  const qcGate = String(row['QC Gate'] ?? '').trim();
+  const createdBy = String(row['Created By'] ?? '').trim();
+  const modifiedBy = String(row['Modified By'] ?? '').trim();
 
   const toIso = (v: unknown): string | null => {
     if (v == null) return null;
@@ -73,6 +80,7 @@ function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTas
     closed: 'Closed',
   };
   const qcStatus = statusMap[rawStatus.toLowerCase()] || (rawStatus || 'Not Started');
+  const score = Math.round(Number.isFinite(pctCorrect) ? pctCorrect : (itemsSubmitted ? (itemsCorrect / itemsSubmitted) * 100 : 0));
 
   const now = new Date().toISOString();
   return {
@@ -81,7 +89,7 @@ function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTas
     qcResourceId: resource,
     employeeId: resource,
     qcHours: itemsSubmitted || 0,
-    qcScore: Math.round(Number.isFinite(pctCorrect) ? pctCorrect : (itemsSubmitted ? (itemsCorrect / itemsSubmitted) * 100 : 0)),
+    qcScore: score,
     qcCount: itemsSubmitted || 1,
     qcUOM: 'Item',
     qcType: 'Quality Review',
@@ -97,6 +105,23 @@ function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTas
     actualEndDate: null,
     createdAt: toIso(createdOn) || now,
     updatedAt: toIso(modifiedOn) || now,
+    title: title || undefined,
+    chargeCodeV2: chargeCodeV2 || undefined,
+    projectIdV2: projectIdV2 || undefined,
+    taskWorker: taskWorker || undefined,
+    qcResource: qcResource || undefined,
+    clientReady: clientReady || undefined,
+    itemsSubmitted: itemsSubmitted || undefined,
+    itemsCorrect: itemsCorrect || undefined,
+    notes: notes || undefined,
+    qcGate: qcGate || undefined,
+    qcRequestedDate: toIso(qcRequestedDate) ?? undefined,
+    qcAssignedDate: toIso(qcAssignedDate) ?? undefined,
+    qcCompleteDate: toIso(qcCompleteDate) ?? undefined,
+    qcCompleteDateOverride: toIso(row['QC Complete Date Override']) ?? undefined,
+    createdBy: createdBy || undefined,
+    modifiedBy: modifiedBy || undefined,
+    pctItemsCorrect: Number.isFinite(pctCorrect) ? pctCorrect : undefined,
   };
 }
 
@@ -110,7 +135,7 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
   return (
     <div style={{ 
       background: 'var(--bg-card)', 
-      borderRadius: '16px', 
+      borderRadius: '12px', 
       border: `1px solid ${accent ? accent + '40' : 'var(--border-color)'}`, 
       overflow: 'hidden', 
       display: 'flex', 
@@ -126,8 +151,8 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
         background: accent ? `${accent}08` : undefined,
       }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: accent || 'var(--text-primary)' }}>{title}</h3>
-          {subtitle && <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{subtitle}</span>}
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: accent || 'var(--text-primary)' }}>{title}</h3>
+          {subtitle && <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{subtitle}</span>}
         </div>
         {headerRight}
       </div>
@@ -145,26 +170,26 @@ function QualityCommandCenter({ stats }: { stats: any }) {
   
   return (
     <div style={{
-      background: 'var(--bg-card)',
-      borderRadius: '16px',
+      background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%)',
+      borderRadius: '20px',
       padding: '1.25rem',
       border: '1px solid var(--border-color)',
       display: 'grid',
-      gridTemplateColumns: '140px 1fr',
+      gridTemplateColumns: '160px 1fr',
       alignItems: 'center',
       gap: '1.5rem',
     }}>
       {/* Quality Score Ring */}
-      <div style={{ position: 'relative', width: '140px', height: '140px' }}>
+      <div style={{ position: 'relative', width: '160px', height: '160px' }}>
         <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%' }}>
           <circle cx="50" cy="50" r="42" fill="none" stroke="var(--bg-tertiary)" strokeWidth="8" />
           <circle cx="50" cy="50" r="42" fill="none" stroke={healthColor} strokeWidth="8"
             strokeDasharray={`${stats.passRate * 2.64} 264`} strokeLinecap="round"
-            transform="rotate(-90 50 50)" />
+            transform="rotate(-90 50 50)" style={{ filter: `drop-shadow(0 0 8px ${healthColor})` }} />
         </svg>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: '1.75rem', fontWeight: 800, color: healthColor }}>{stats.passRate.toFixed(0)}%</span>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pass Rate</span>
+          <span style={{ fontSize: '2rem', fontWeight: 900, color: healthColor }}>{stats.passRate.toFixed(0)}%</span>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Pass Rate</span>
         </div>
       </div>
 
@@ -178,16 +203,16 @@ function QualityCommandCenter({ stats }: { stats: any }) {
           { label: 'Critical Errors', value: stats.criticalNC, color: '#EF4444' },
           { label: 'Non-Critical', value: stats.minorNC, color: '#F59E0B' },
           { label: 'Avg Score', value: stats.avgScore.toFixed(1), color: 'var(--pinnacle-teal)' },
-          { label: 'Total Hours', value: stats.totalHours.toFixed(0), color: 'var(--pinnacle-lime)' },
+          { label: 'Total Hours', value: (Number(stats.totalHours) || 0).toFixed(0), color: 'var(--pinnacle-lime)' },
         ].map((item, idx) => (
           <div key={idx} style={{
             background: `${item.color}10`,
-            borderRadius: '10px',
-            padding: '0.6rem 0.75rem',
-            border: `1px solid ${item.color}25`,
+            borderRadius: '12px',
+            padding: '0.75rem 1rem',
+            border: `1px solid ${item.color}30`,
           }}>
-            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>{item.label}</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: item.color }}>{item.value}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{item.label}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color }}>{item.value}</div>
           </div>
         ))}
       </div>
@@ -241,12 +266,12 @@ function QualityTrendChart({ qcTasks }: { qcTasks: any[] }) {
       xAxis: {
         type: 'category',
         data: scoreRanges.map(r => r.range),
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 11 },
         axisLine: { lineStyle: { color: 'var(--border-color)' } }
       },
       yAxis: {
         type: 'value',
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 11 },
         splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }
       },
       series: [{
@@ -262,7 +287,7 @@ function QualityTrendChart({ qcTasks }: { qcTasks: any[] }) {
           position: 'top',
           formatter: '{c}',
           color: 'var(--text-muted)',
-          fontSize: 10
+          fontSize: 11
         }
       }]
     };
@@ -285,7 +310,7 @@ function DefectDistributionChart({ qcTasks }: { qcTasks: any[] }) {
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', textStyle: { color: '#fff' } },
-      legend: { bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 10 } },
+      legend: { bottom: 0, textStyle: { color: 'var(--text-muted)', fontSize: 11 } },
       series: [{
         type: 'pie',
         radius: ['45%', '75%'],
@@ -333,13 +358,13 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
       grid: { left: 100, right: 30, top: 20, bottom: 30 },
       xAxis: {
         type: 'value',
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 11 },
         splitLine: { lineStyle: { color: 'var(--border-color)', type: 'dashed' } }
       },
       yAxis: {
         type: 'category',
         data: statuses.map(s => s[0]),
-        axisLabel: { color: 'var(--text-muted)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-muted)', fontSize: 11 },
         axisLine: { lineStyle: { color: 'var(--border-color)' } }
       },
       series: [{
@@ -355,7 +380,7 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
           position: 'right',
           formatter: '{c}',
           color: 'var(--text-muted)',
-          fontSize: 10
+          fontSize: 11
         }
       }]
     };
@@ -449,10 +474,15 @@ export default function QCLogPage() {
   const filteredQCTasks = useMemo(() => {
     return qcTasksSource.filter((qc) => {
       if (statusFilter !== 'all' && qc.qcStatus !== statusFilter) return false;
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
       const taskName = getTaskName(qc.parentTaskId);
-      if (searchTerm && !qc.qcTaskId.toLowerCase().includes(searchTerm.toLowerCase()) && 
-          !taskName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-      return true;
+      const title = (qc.title || '').toLowerCase();
+      const taskWorker = (qc.taskWorker || '').toLowerCase();
+      const qcResource = (qc.qcResource || '').toLowerCase();
+      const chargeCode = (qc.chargeCodeV2 || '').toLowerCase();
+      return qc.qcTaskId.toLowerCase().includes(term) || taskName.toLowerCase().includes(term) ||
+        title.includes(term) || taskWorker.includes(term) || qcResource.includes(term) || chargeCode.includes(term);
     });
   }, [qcTasksSource, statusFilter, searchTerm, getTaskName]);
 
@@ -461,10 +491,27 @@ export default function QCLogPage() {
       switch (key) {
         case 'qcTaskId': return qc.qcTaskId;
         case 'parentTask': return getTaskName(qc.parentTaskId);
+        case 'title': return qc.title || getTaskName(qc.parentTaskId) || '';
+        case 'chargeCodeV2': return qc.chargeCodeV2 || '';
+        case 'taskWorker': return qc.taskWorker || '';
+        case 'qcResource': return qc.qcResource || '';
+        case 'clientReady': return qc.clientReady || '';
+        case 'pctItemsCorrect': return qc.pctItemsCorrect ?? qc.qcScore ?? 0;
+        case 'itemsSubmitted': return qc.itemsSubmitted ?? qc.qcCount ?? 0;
+        case 'itemsCorrect': return qc.itemsCorrect ?? 0;
+        case 'qcUom': return qc.qcUOM || '';
         case 'qcHours': return qc.qcHours ?? 0;
         case 'qcScore': return qc.qcScore ?? 0;
+        case 'qcCount': return qc.qcCount ?? 0;
         case 'qcStatus': return qc.qcStatus;
+        case 'notes': return qc.notes || qc.qcComments || '';
+        case 'qcGate': return qc.qcGate || '';
+        case 'qcRequestedDate': return qc.qcRequestedDate || qc.qcStartDate || '';
+        case 'qcCompleteDate': return qc.qcCompleteDate || qc.qcEndDate || '';
+        case 'createdBy': return qc.createdBy || '';
+        case 'modifiedBy': return qc.modifiedBy || '';
         case 'qcCriticalErrors': return qc.qcCriticalErrors ?? 0;
+        case 'qcNonCriticalErrors': return qc.qcNonCriticalErrors ?? 0;
         default: return null;
       }
     });
@@ -530,12 +577,14 @@ export default function QCLogPage() {
       return;
     }
     let newValue: any = editValue;
-    if (['qcHours', 'qcScore', 'qcCount', 'qcCriticalErrors', 'qcNonCriticalErrors'].includes(field)) {
-      newValue = parseFloat(editValue) || 0;
+    if (['qcHours', 'qcScore', 'qcCount', 'qcCriticalErrors', 'qcNonCriticalErrors', 'itemsSubmitted', 'itemsCorrect', 'pctItemsCorrect'].includes(field)) {
+      newValue = (field === 'qcScore' || field === 'pctItemsCorrect' || field === 'qcHours') ? (parseFloat(editValue) || 0) : (parseInt(editValue, 10) || 0);
     }
     const updatedQCTasks = (data.qctasks || []).map(task => {
-      if (task.qcTaskId === qcTask.qcTaskId) return { ...task, [field]: newValue };
-      return task;
+      if (task.qcTaskId !== qcTask.qcTaskId) return task;
+      const updated = { ...task, [field]: newValue };
+      if (field === 'qcComments') (updated as any).notes = newValue;
+      return updated;
     });
     updateData({ qctasks: updatedQCTasks });
     setEditingCell(null);
@@ -546,92 +595,105 @@ export default function QCLogPage() {
     else if (e.key === 'Escape') setEditingCell(null);
   };
 
+  const viewTabs: { key: ViewType; label: string }[] = [
+    { key: 'dashboard', label: 'Dashboard' },
+    { key: 'orders', label: 'Quality Orders' },
+    { key: 'nonconformance', label: 'Non-conformance' },
+    { key: 'capa', label: 'CAPA' },
+  ];
+
   return (
-    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflow: 'auto' }}>
+    <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <ContainerLoader message="Loading QC Log..." minHeight={200} />
         </div>
       ) : (
       <>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        {/* View Tabs */}
-        <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '10px' }}>
-          {[
-            { key: 'dashboard', label: 'Dashboard' },
-            { key: 'orders', label: 'Quality Orders' },
-            { key: 'nonconformance', label: 'Non-conformance' },
-            { key: 'capa', label: 'CAPA' },
-          ].map(tab => (
+      {/* Header - Sprint-style */}
+      <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>QC Log</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImportExcel}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: '1px solid var(--pinnacle-teal)',
+                background: 'rgba(64,224,208,0.12)',
+                color: 'var(--pinnacle-teal)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: importing ? 'not-allowed' : 'pointer',
+                opacity: importing ? 0.7 : 1,
+              }}
+            >
+              {importing ? 'Importing...' : 'Import from Excel'}
+            </button>
+            <button
+              type="button"
+              onClick={loadDefaultQcLog}
+              disabled={importing}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-secondary)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: importing ? 'not-allowed' : 'pointer',
+                opacity: importing ? 0.7 : 1,
+              }}
+            >
+              Load default QC Log
+            </button>
+          </div>
+        </div>
+        {importError && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#EF4444' }}>
+            {importError}
+          </div>
+        )}
+      </div>
+
+      {/* Command Center */}
+      <div style={{ padding: '1rem 1.5rem', flexShrink: 0 }}>
+        <QualityCommandCenter stats={stats} />
+      </div>
+
+      {/* View Toolbar - Sprint-style */}
+      <div style={{ display: 'flex', gap: '4px', padding: '0.5rem 1.5rem', background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+        {viewTabs.map(tab => {
+          const isActive = activeView === tab.key;
+          return (
             <button
               key={tab.key}
-              onClick={() => setActiveView(tab.key as ViewType)}
+              onClick={() => setActiveView(tab.key)}
               style={{
-                padding: '0.5rem 1rem', borderRadius: '8px', border: 'none',
-                background: activeView === tab.key ? 'var(--pinnacle-teal)' : 'transparent',
-                color: activeView === tab.key ? '#000' : 'var(--text-secondary)',
-                fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px',
+                background: isActive ? 'var(--pinnacle-teal)' : 'transparent', border: 'none', borderRadius: '6px',
+                color: isActive ? '#000' : 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: isActive ? 600 : 500, cursor: 'pointer',
               }}
             >
               {tab.label}
             </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleImportExcel}
-            style={{ display: 'none' }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            style={{
-              padding: '0.45rem 0.85rem',
-              borderRadius: '8px',
-              border: '1px solid var(--pinnacle-teal)',
-              background: 'rgba(64,224,208,0.12)',
-              color: 'var(--pinnacle-teal)',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              cursor: importing ? 'not-allowed' : 'pointer',
-              opacity: importing ? 0.7 : 1,
-            }}
-          >
-            {importing ? 'Importing...' : 'Import from Excel'}
-          </button>
-          <button
-            type="button"
-            onClick={loadDefaultQcLog}
-            disabled={importing}
-            style={{
-              padding: '0.45rem 0.85rem',
-              borderRadius: '8px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              cursor: importing ? 'not-allowed' : 'pointer',
-              opacity: importing ? 0.7 : 1,
-            }}
-          >
-            Load default QC Log
-          </button>
-        </div>
+          );
+        })}
       </div>
-      {importError && (
-        <div style={{ marginTop: '0.2rem', fontSize: '0.72rem', color: '#EF4444' }}>
-          {importError}
-        </div>
-      )}
 
-      {/* Command Center */}
-      <QualityCommandCenter stats={stats} />
+      {/* Content */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
       {/* DASHBOARD VIEW */}
       {activeView === 'dashboard' && (
@@ -652,15 +714,15 @@ export default function QCLogPage() {
           {/* Recent Activity */}
           <SectionCard title="Recent Quality Orders" subtitle="Latest inspection results" noPadding>
             <div style={{ maxHeight: '300px', overflow: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Order ID</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Task</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Score</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Minor</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>QC Transaction</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Title</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Score</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Status</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Critical</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Minor</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -671,12 +733,12 @@ export default function QCLogPage() {
                     return (
                       <tr key={qc.qcTaskId} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: 'var(--pinnacle-teal)', fontWeight: 500 }}>{qc.qcTaskId}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getTaskName(qc.parentTaskId)}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{qc.title || getTaskName(qc.parentTaskId)}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}>{qc.qcStatus}</span>
+                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600, background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}>{qc.qcStatus}</span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: (qc.qcCriticalErrors || 0) > 0 ? '#EF4444' : 'var(--text-muted)' }}>
                           {(qc.qcCriticalErrors || 0) > 0 && <span style={{ background: 'rgba(239,68,68,0.15)', padding: '2px 8px', borderRadius: '8px' }}>{qc.qcCriticalErrors}</span>}
@@ -700,45 +762,58 @@ export default function QCLogPage() {
       {activeView === 'orders' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
           {/* Filters */}
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
             <div style={{ flex: '1 1 200px', maxWidth: '280px' }}>
-              <input type="text" placeholder="Search orders..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }} />
+              <input type="text" placeholder="Search QC Transaction, Title, Task Worker..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.9rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)' }} />
             </div>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer', minWidth: '140px' }}>
+              style={{ padding: '0.5rem 0.75rem', fontSize: '0.9rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer', minWidth: '140px' }}>
               <option value="all">All Status</option>
               {statuses.map((status) => (<option key={status} value={status}>{status}</option>))}
             </select>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', borderRadius: '6px' }}>
               {filteredQCTasks.length} of {qcTasksSource.length} orders
             </span>
           </div>
 
-          {/* Orders Table */}
+          {/* Orders Table - Excel columns + UOM, QC Score, Count */}
           <div style={{ flex: 1, background: 'var(--bg-card)', borderRadius: '12px', border: '1px solid var(--border-color)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ borderBottom: '1px solid var(--border-color)', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Quality Orders</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '4px' }}>Click cells to edit</span>
+            <div style={{ borderBottom: '1px solid var(--border-color)', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Quality Orders (QC Log)</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Click cells to edit</span>
             </div>
             <div style={{ flex: 1, overflow: 'auto' }}>
-              <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', minWidth: '1600px', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
                     {[
-                      { key: 'qcTaskId', label: 'Order ID', align: 'left' },
-                      { key: 'parentTask', label: 'Task', align: 'left' },
-                      { key: 'qcHours', label: 'Hours', align: 'center' },
-                      { key: 'qcScore', label: 'Score', align: 'center' },
-                      { key: 'qcStatus', label: 'Status', align: 'center' },
-                      { key: 'qcCriticalErrors', label: 'Critical', align: 'center' },
-                      { key: 'qcNonCriticalErrors', label: 'Non-Critical', align: 'center' },
-                      { key: 'qcComments', label: 'Comments', align: 'left' },
+                      { key: 'qcTaskId', label: 'QC Transaction', align: 'left' as const },
+                      { key: 'title', label: 'Title', align: 'left' as const },
+                      { key: 'chargeCodeV2', label: 'Charge Code V2', align: 'left' as const },
+                      { key: 'taskWorker', label: 'Task Worker', align: 'left' as const },
+                      { key: 'qcResource', label: 'QC Resource', align: 'left' as const },
+                      { key: 'qcStatus', label: 'QC Status', align: 'center' as const },
+                      { key: 'clientReady', label: 'Client Ready?', align: 'center' as const },
+                      { key: 'pctItemsCorrect', label: 'Pct Items Correct', align: 'center' as const },
+                      { key: 'itemsSubmitted', label: 'Items Submitted', align: 'center' as const },
+                      { key: 'itemsCorrect', label: 'Items Correct', align: 'center' as const },
+                      { key: 'qcUom', label: 'UOM', align: 'center' as const },
+                      { key: 'qcScore', label: 'QC Score', align: 'center' as const },
+                      { key: 'qcCount', label: 'Count', align: 'center' as const },
+                      { key: 'notes', label: 'Notes', align: 'left' as const },
+                      { key: 'qcGate', label: 'QC Gate', align: 'left' as const },
+                      { key: 'qcRequestedDate', label: 'QC Requested Date', align: 'left' as const },
+                      { key: 'qcCompleteDate', label: 'QC Complete Date', align: 'left' as const },
+                      { key: 'createdBy', label: 'Created By', align: 'left' as const },
+                      { key: 'modifiedBy', label: 'Modified By', align: 'left' as const },
+                      { key: 'qcCriticalErrors', label: 'Critical', align: 'center' as const },
+                      { key: 'qcNonCriticalErrors', label: 'Non-Critical', align: 'center' as const },
                     ].map((col) => (
-                      <th key={col.key} style={{ padding: '10px 12px', textAlign: col.align as any, fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.7rem', textTransform: 'uppercase', position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 1 }}>
-                        <button type="button" onClick={() => setQcSort(prev => getNextSortState(prev, col.key))} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: 'inherit', textTransform: 'inherit' }}>
+                      <th key={col.key} style={{ padding: '10px 8px', textAlign: col.align, fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem', position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 1, whiteSpace: 'nowrap' }}>
+                        <button type="button" onClick={() => setQcSort(prev => getNextSortState(prev, col.key))} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', cursor: 'pointer', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: 'inherit' }}>
                           {col.label}
-                          {formatSortIndicator(qcSort, col.key) && <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>{formatSortIndicator(qcSort, col.key)}</span>}
+                          {formatSortIndicator(qcSort, col.key) && <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>{formatSortIndicator(qcSort, col.key)}</span>}
                         </button>
                       </th>
                     ))}
@@ -749,48 +824,57 @@ export default function QCLogPage() {
                     const colors = getStatusColor(qc.qcStatus);
                     const score = qc.qcScore || 0;
                     const scoreColor = score >= 90 ? '#10B981' : score >= 80 ? '#F59E0B' : '#EF4444';
-                    
+                    const fmtDate = (s: string | null | undefined) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
                     return (
                       <tr key={qc.qcTaskId} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
-                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: 'var(--pinnacle-teal)', fontWeight: 500 }}>{qc.qcTaskId}</td>
-                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={getTaskName(qc.parentTaskId)}>{getTaskName(qc.parentTaskId)}</td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcHours', qc.qcHours)} style={{ padding: '8px 12px', textAlign: 'center', cursor: 'pointer' }}>
-                          {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcHours' ? (
-                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '50px', padding: '4px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
-                          ) : (qc.qcHours ?? 0)}
-                        </td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcScore', qc.qcScore)} style={{ padding: '8px 12px', textAlign: 'center', cursor: 'pointer' }}>
-                          {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcScore' ? (
-                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '50px', padding: '4px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
-                          ) : <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>}
-                        </td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcStatus', qc.qcStatus)} style={{ padding: '8px 12px', textAlign: 'center', cursor: 'pointer' }}>
+                        <td style={{ padding: '8px', fontFamily: 'monospace', color: 'var(--pinnacle-teal)', fontWeight: 500 }}>{qc.qcTaskId}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={qc.title || ''}>{qc.title || getTaskName(qc.parentTaskId) || '—'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{qc.chargeCodeV2 || '—'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{qc.taskWorker || '—'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{qc.qcResource || '—'}</td>
+                        <td onClick={() => startEdit(qc.qcTaskId, 'qcStatus', qc.qcStatus)} style={{ padding: '8px', textAlign: 'center', cursor: 'pointer' }}>
                           {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcStatus' ? (
-                            <select value={editValue} onChange={(e) => { setEditValue(e.target.value); }} onBlur={() => saveEdit(qc)} autoFocus style={{ padding: '4px 8px', fontSize: '0.75rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)' }}>
+                            <select value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} autoFocus style={{ padding: '4px 8px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)' }}>
                               {statuses.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
-                          ) : <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}>{qc.qcStatus}</span>}
+                          ) : <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600, background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}>{qc.qcStatus}</span>}
                         </td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcCriticalErrors', qc.qcCriticalErrors)} style={{ padding: '8px 12px', textAlign: 'center', cursor: 'pointer', color: (qc.qcCriticalErrors || 0) > 0 ? '#EF4444' : 'var(--text-muted)', fontWeight: 600 }}>
+                        <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{qc.clientReady ?? '—'}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{qc.pctItemsCorrect != null ? qc.pctItemsCorrect : '—'}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{qc.itemsSubmitted ?? qc.qcCount ?? '—'}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{qc.itemsCorrect ?? '—'}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{qc.qcUOM || 'Item'}</td>
+                        <td onClick={() => startEdit(qc.qcTaskId, 'qcScore', qc.qcScore)} style={{ padding: '8px', textAlign: 'center', cursor: 'pointer' }}>
+                          {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcScore' ? (
+                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '52px', padding: '4px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
+                          ) : <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{qc.qcCount ?? '—'}</td>
+                        <td onClick={() => startEdit(qc.qcTaskId, 'qcComments', qc.notes ?? qc.qcComments)} style={{ padding: '8px', cursor: 'pointer', color: 'var(--text-secondary)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={qc.notes || qc.qcComments || ''}>
+                          {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcComments' ? (
+                            <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '100%', padding: '4px 8px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)' }} />
+                          ) : (qc.notes || qc.qcComments || '—')}
+                        </td>
+                        <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{qc.qcGate || '—'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{fmtDate(qc.qcRequestedDate ?? null)}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>{fmtDate(qc.qcCompleteDate ?? qc.qcEndDate ?? null)}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{qc.createdBy || '—'}</td>
+                        <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{qc.modifiedBy || '—'}</td>
+                        <td onClick={() => startEdit(qc.qcTaskId, 'qcCriticalErrors', qc.qcCriticalErrors)} style={{ padding: '8px', textAlign: 'center', cursor: 'pointer', color: (qc.qcCriticalErrors || 0) > 0 ? '#EF4444' : 'var(--text-muted)', fontWeight: 600 }}>
                           {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcCriticalErrors' ? (
-                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '50px', padding: '4px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
+                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '44px', padding: '4px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
                           ) : <span style={{ background: (qc.qcCriticalErrors || 0) > 0 ? 'rgba(239,68,68,0.15)' : 'transparent', padding: '2px 8px', borderRadius: '8px' }}>{qc.qcCriticalErrors ?? 0}</span>}
                         </td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcNonCriticalErrors', qc.qcNonCriticalErrors)} style={{ padding: '8px 12px', textAlign: 'center', cursor: 'pointer', color: (qc.qcNonCriticalErrors || 0) > 0 ? '#F59E0B' : 'var(--text-muted)', fontWeight: 600 }}>
+                        <td onClick={() => startEdit(qc.qcTaskId, 'qcNonCriticalErrors', qc.qcNonCriticalErrors)} style={{ padding: '8px', textAlign: 'center', cursor: 'pointer', color: (qc.qcNonCriticalErrors || 0) > 0 ? '#F59E0B' : 'var(--text-muted)', fontWeight: 600 }}>
                           {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcNonCriticalErrors' ? (
-                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '50px', padding: '4px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
+                            <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '44px', padding: '4px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)', textAlign: 'center' }} />
                           ) : <span style={{ background: (qc.qcNonCriticalErrors || 0) > 0 ? 'rgba(245,158,11,0.15)' : 'transparent', padding: '2px 8px', borderRadius: '8px' }}>{qc.qcNonCriticalErrors ?? 0}</span>}
-                        </td>
-                        <td onClick={() => startEdit(qc.qcTaskId, 'qcComments', qc.qcComments)} style={{ padding: '8px 12px', cursor: 'pointer', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {editingCell?.taskId === qc.qcTaskId && editingCell?.field === 'qcComments' ? (
-                            <input type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => saveEdit(qc)} onKeyDown={(e) => handleKeyPress(e, qc)} autoFocus style={{ width: '100%', padding: '4px 8px', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '2px solid var(--pinnacle-teal)', borderRadius: '4px', color: 'var(--text-primary)' }} />
-                          ) : (qc.qcComments || '—')}
                         </td>
                       </tr>
                     );
                   })}
                   {sortedQCTasks.length === 0 && (
-                    <tr><td colSpan={8} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No quality orders found</td></tr>
+                    <tr><td colSpan={20} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No quality orders found. Import from Excel or load default QC Log.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -810,7 +894,7 @@ export default function QCLogPage() {
               { label: 'Total Issues', value: stats.criticalNC + stats.minorNC, color: '#8B5CF6' },
             ].map((item, idx) => (
               <div key={idx} style={{ background: `${item.color}10`, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${item.color}30` }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{item.label}</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{item.label}</div>
                 <div style={{ fontSize: '2rem', fontWeight: 800, color: item.color }}>{item.value}</div>
               </div>
             ))}
@@ -819,15 +903,15 @@ export default function QCLogPage() {
           {/* NC Table - Tasks with errors */}
           <SectionCard title="Tasks with Errors" subtitle="Quality issues by task" noPadding>
             <div style={{ maxHeight: '400px', overflow: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>QC Task ID</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Parent Task</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Non-Critical</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Score</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>QC Transaction</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Title</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Critical</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Non-Critical</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Score</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -839,7 +923,7 @@ export default function QCLogPage() {
                     return (
                       <tr key={`nc-${qc.qcTaskId}`} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: hasCritical ? '#EF4444' : '#F59E0B', fontWeight: 500 }}>{qc.qcTaskId}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getTaskName(qc.parentTaskId)}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{qc.title || getTaskName(qc.parentTaskId)}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: hasCritical ? '#EF4444' : 'var(--text-muted)' }}>
                           {qc.qcCriticalErrors ?? 0}
                         </td>
@@ -850,13 +934,13 @@ export default function QCLogPage() {
                           <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: colors.bg, color: colors.color }}>{qc.qcStatus}</span>
+                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600, background: colors.bg, color: colors.color }}>{qc.qcStatus}</span>
                         </td>
                       </tr>
                     );
                   })}
                   {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || (q.qcNonCriticalErrors || 0) > 0).length === 0 && (
-                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No tasks with errors</td></tr>
+                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No tasks with errors</td></tr>
                   )}
                 </tbody>
               </table>
@@ -876,7 +960,7 @@ export default function QCLogPage() {
               { label: 'Pending QC', value: sortedQCTasks.filter(q => q.qcStatus === 'Not Started').length, color: '#6B7280' },
             ].map((item, idx) => (
               <div key={idx} style={{ background: `${item.color}10`, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${item.color}30` }}>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{item.label}</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{item.label}</div>
                 <div style={{ fontSize: '2rem', fontWeight: 800, color: item.color }}>{item.value}</div>
               </div>
             ))}
@@ -885,15 +969,15 @@ export default function QCLogPage() {
           {/* Tasks requiring corrective action */}
           <SectionCard title="Tasks Requiring Corrective Action" subtitle="Tasks with critical errors or low scores" noPadding>
             <div style={{ maxHeight: '400px', overflow: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>QC Task ID</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Parent Task</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Score</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical Errors</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Issue</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>QC Transaction</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Title</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Score</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Critical Errors</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Status</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Issue</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -907,7 +991,7 @@ export default function QCLogPage() {
                     return (
                       <tr key={qc.qcTaskId} style={{ borderBottom: '1px solid var(--border-color)', background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#8B5CF6', fontWeight: 500 }}>{qc.qcTaskId}</td>
-                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getTaskName(qc.parentTaskId)}</td>
+                        <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{qc.title || getTaskName(qc.parentTaskId)}</td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           <span style={{ padding: '2px 8px', borderRadius: '12px', background: `${scoreColor}20`, color: scoreColor, fontWeight: 600 }}>{score}</span>
                         </td>
@@ -915,14 +999,14 @@ export default function QCLogPage() {
                           {qc.qcCriticalErrors ?? 0}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: 600, background: colors.bg, color: colors.color }}>{qc.qcStatus}</span>
+                          <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600, background: colors.bg, color: colors.color }}>{qc.qcStatus}</span>
                         </td>
-                        <td style={{ padding: '10px 12px', color: hasCritical ? '#EF4444' : '#F59E0B', fontSize: '0.75rem' }}>{issue}</td>
+                        <td style={{ padding: '10px 12px', color: hasCritical ? '#EF4444' : '#F59E0B', fontSize: '0.85rem' }}>{issue}</td>
                       </tr>
                     );
                   })}
                   {sortedQCTasks.filter(q => (q.qcCriticalErrors || 0) > 0 || ((q.qcScore || 0) < 80 && (q.qcScore || 0) > 0)).length === 0 && (
-                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No tasks requiring corrective action</td></tr>
+                    <tr><td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No tasks requiring corrective action</td></tr>
                   )}
                 </tbody>
               </table>
@@ -930,6 +1014,7 @@ export default function QCLogPage() {
           </SectionCard>
         </div>
       )}
+      </div>
       </>
       )}
     </div>

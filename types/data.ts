@@ -690,6 +690,24 @@ export interface QCTask {
   actualEndDate: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Excel / qc_log_entries columns */
+  title?: string;
+  chargeCodeV2?: string;
+  projectIdV2?: string;
+  taskWorker?: string;
+  qcResource?: string;
+  clientReady?: string;
+  itemsSubmitted?: number;
+  itemsCorrect?: number;
+  notes?: string;
+  qcGate?: string;
+  qcRequestedDate?: string | null;
+  qcAssignedDate?: string | null;
+  qcCompleteDate?: string | null;
+  qcCompleteDateOverride?: string | null;
+  createdBy?: string;
+  modifiedBy?: string;
+  pctItemsCorrect?: number;
 }
 
 /**
