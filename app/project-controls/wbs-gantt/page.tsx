@@ -88,12 +88,12 @@ const COL = {
 const TH_BASE: React.CSSProperties = {
   background: 'var(--bg-secondary)',
   borderBottom: '1px solid #333',
-  fontWeight: 600,
-  fontSize: '0.65rem',
+  fontWeight: 700,
+  fontSize: '1.2rem',
 };
 
 /** Shared data-cell font size used on most <td> elements. */
-const TD_FONT: React.CSSProperties = { fontSize: '0.6rem' };
+const TD_FONT: React.CSSProperties = { fontSize: '1.1rem', fontWeight: 700 };
 
 /** Progress-to-colour mapping (used for ALL bars — leaf and rollup). */
 const getProgressColor = (pct: number): string => {
@@ -1190,7 +1190,7 @@ export default function WBSGanttPage() {
                 {dateColumns.map((col, i) => {
                   const cur = today >= col.start && today <= col.end;
                   return (
-                    <th key={i} style={{ textAlign: 'center', fontSize: '0.55rem', borderLeft: '1px solid #333', borderBottom: '1px solid #333', background: cur ? 'rgba(239,68,68,0.15)' : 'var(--bg-secondary)', color: cur ? '#EF4444' : 'inherit', fontWeight: 600, position: 'sticky', top: 0, zIndex: 90 }}>
+                    <th key={i} style={{ textAlign: 'center', fontSize: '1.2rem', borderLeft: '1px solid #333', borderBottom: '1px solid #333', background: cur ? 'rgba(239,68,68,0.15)' : 'var(--bg-secondary)', color: cur ? '#EF4444' : 'inherit', fontWeight: 700, position: 'sticky', top: 0, zIndex: 90 }}>
                       {col.label}
                     </th>
                   );
@@ -1244,17 +1244,17 @@ export default function WBSGanttPage() {
                             {isExpanded ? '▼' : '▶'}
                           </button>
                         )}
-                        <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: '0.6rem', fontWeight: isCritical ? 700 : 400, whiteSpace: 'nowrap' }}>{row.wbsCode}</span>
+                        <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: '1.1rem', fontWeight: isCritical ? 700 : 700, whiteSpace: 'nowrap' }}>{row.wbsCode}</span>
                       </div>
                     </td>
                     {/* Name — sticky left */}
                     <td style={{ position: 'sticky', left: `${wbsCodeColWidth}px`, zIndex: 10, background: stickyBg, borderRight: '1px solid #444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <EnhancedTooltip content={row.name || ''}>
-                        <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 400, fontSize: '0.65rem', color: isCritical ? '#ef4444' : row.hasChildren && !isExpanded && worstCase ? worstCase.color : 'inherit' }}>{row.name}</span>
+                        <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 700, fontSize: '1.1rem', color: isCritical ? '#ef4444' : row.hasChildren && !isExpanded && worstCase ? worstCase.color : 'inherit' }}>{row.name}</span>
                       </EnhancedTooltip>
                     </td>
                     {/* Type badge */}
-                    <td style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}><span className={`type-badge ${itemType}`} style={{ fontSize: '0.5rem' }}>{(itemType || '').replace('_', ' ')}</span></td>
+                    <td style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}><span className={`type-badge ${itemType}`} style={{ fontSize: '1.1rem', fontWeight: 700 }}>{(itemType || '').replace('_', ' ')}</span></td>
                     {/* Resource */}
                     <td style={{ ...TD_FONT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(row as any).assignedResource || ''}>{(row as any).assignedResource || '-'}</td>
                     {/* Employee (Assign dropdown) */}
@@ -1265,7 +1265,7 @@ export default function WBSGanttPage() {
                             <SearchableDropdown options={employeeOptions} value={row.assignedResourceId || null} onChange={id => handleAssignResource(row.id, id)} placeholder="Assign..." disabled={false} width="220px" />
                           </div>
                         ) : (
-                          <button onClick={() => setEditingTaskId(row.id)} style={{ background: 'none', border: 'none', color: row.assignedResourceId ? 'var(--text-primary)' : 'var(--pinnacle-teal)', cursor: 'pointer', fontSize: '0.6rem', padding: '2px', whiteSpace: 'nowrap' }}>
+                          <button onClick={() => setEditingTaskId(row.id)} style={{ background: 'none', border: 'none', color: row.assignedResourceId ? 'var(--text-primary)' : 'var(--pinnacle-teal)', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 700, padding: '2px', whiteSpace: 'nowrap' }}>
                             {row.assignedResourceId ? getEmployeeName(row.assignedResourceId, employees) : '+ Assign'}
                           </button>
                         )
@@ -1424,13 +1424,13 @@ export default function WBSGanttPage() {
                         .map((p: any) => p.predecessorName || p.predecessor_name || getTaskNameFromMap(p.predecessorTaskId || p.predecessor_task_id))
                         .filter(Boolean);
                       return (
-                        <td style={{ fontSize: '0.5rem' }} title={names.join(', ') || '-'}>
+                        <td style={{ fontSize: '1.1rem', fontWeight: 700 }} title={names.join(', ') || '-'}>
                           {names.length ? names.join(', ') : '-'}
                         </td>
                       );
                     })()}
                     <td className="number" style={{ ...TD_FONT, color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>{row.totalFloat != null ? row.totalFloat : '-'}</td>
-                    <td style={{ textAlign: 'center', borderRight: '1px solid #444' }}>{isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.6rem' }}>CP</span>}</td>
+                    <td style={{ textAlign: 'center', borderRight: '1px solid #444' }}>{isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '1.1rem' }}>CP</span>}</td>
 
                     {/* ── Gantt Timeline Cells ─────────────────────── */}
                     {dateColumns.map((col, i) => {

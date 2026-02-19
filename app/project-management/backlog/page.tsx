@@ -42,7 +42,7 @@ interface BacklogItem {
 }
 
 export default function BacklogPage() {
-  const { filteredData, data, updateData, isLoading } = useData();
+  const { filteredData, data, updateData, isLoading: dataLoading } = useData();
   
   const [viewMode, setViewMode] = useState<ViewMode>('hierarchy');
   const [groupBy, setGroupBy] = useState<GroupBy>('epic');
@@ -441,6 +441,16 @@ export default function BacklogPage() {
       </div>
     );
   };
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel full-height-page project-management-page">
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading backlog...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel full-height-page project-management-page">
