@@ -1,5 +1,5 @@
 /**
- * Employee Match API — matches a name/email against the employees table.
+ * Employee Match API — matches by email against the employees table.
  * Called after Auth0 login to fetch the user's role from the employee directory.
  */
 
@@ -8,10 +8,10 @@ import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email } = await req.json();
+    const { email } = await req.json();
 
-    if (!name && !email) {
-      return NextResponse.json({ success: false, error: 'Name or email required' }, { status: 400 });
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return NextResponse.json({ success: false, error: 'Email required' }, { status: 400 });
     }
 
     if (!isPostgresConfigured()) {
@@ -22,27 +22,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Exact match on name or email
-    let result = await pgQuery(
+    // Match by email only (case-insensitive)
+    const result = await pgQuery(
       `SELECT employee_id, name, email, role, job_title, management_level, department
        FROM employees
        WHERE (is_active IS NULL OR is_active = true)
-         AND (LOWER(name) = LOWER($1) OR LOWER(email) = LOWER($2))
+         AND LOWER(TRIM(email)) = LOWER(TRIM($1))
        LIMIT 1`,
-      [name || '', email || '']
+      [email.trim()]
     );
-
-    // Fuzzy match on name if no exact match
-    if (!result.rows.length && name) {
-      result = await pgQuery(
-        `SELECT employee_id, name, email, role, job_title, management_level, department
-         FROM employees
-         WHERE (is_active IS NULL OR is_active = true)
-           AND LOWER(name) LIKE LOWER($1)
-         LIMIT 1`,
-        [`%${name}%`]
-      );
-    }
 
     if (result.rows.length > 0) {
       const emp = result.rows[0];

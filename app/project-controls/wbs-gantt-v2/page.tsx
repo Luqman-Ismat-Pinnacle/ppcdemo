@@ -297,14 +297,14 @@ export default function WBSGanttV2Page() {
       borderColor: pick('--border-color', '#334155'),
       drilldownBorder: pick('--border-color', '#334155'),
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
-      cellHorizontalPadding: 10,
-      cellVerticalPadding: 7,
-      headerFontStyle: '800 14px var(--font-montserrat, sans-serif)',
-      headerIconSize: 16,
-      baseFontStyle: '700 14px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '700 13px var(--font-mono, monospace)',
+      cellHorizontalPadding: 12,
+      cellVerticalPadding: 9,
+      headerFontStyle: '800 16px var(--font-montserrat, sans-serif)',
+      headerIconSize: 18,
+      baseFontStyle: '800 16px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '800 14px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '14px',
+      editorFontSize: '16px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -807,7 +807,7 @@ export default function WBSGanttV2Page() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '700 11px var(--font-montserrat, sans-serif)';
+      ctx.font = '800 13px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -871,7 +871,7 @@ export default function WBSGanttV2Page() {
       return;
     }
 
-    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '800' : '700'} 14px var(--font-montserrat, sans-serif)`;
+    ctx.font = `${def.id === 'name' && (r.hasChildren || r.isCritical) ? '800' : '800'} 16px var(--font-montserrat, sans-serif)`;
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';
