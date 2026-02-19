@@ -16,7 +16,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import type { Epic, Feature, UserStory, Task, Employee, Sprint, ChangeLogEntry } from '@/types/data';
 
 // Helper functions
@@ -249,7 +249,13 @@ export default function BacklogPage() {
     }
   };
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <ContainerLoader message="Loading Backlog..." minHeight={200} />
+      </div>
+    );
+  }
 
   // Render backlog item
   const renderBacklogItem = (item: BacklogItem, level: number = 0) => {

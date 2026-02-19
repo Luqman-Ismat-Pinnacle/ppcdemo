@@ -16,7 +16,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import SprintBurndownChart from '@/components/charts/SprintBurndownChart';
 import VelocityChart from '@/components/charts/VelocityChart';
 import Link from 'next/link';
@@ -784,10 +784,14 @@ export default function SprintPlanningPage() {
     }));
   }, [selectedIteration?.workDays]);
 
-  if (isLoading) return <PageLoader />;
-
   return (
     <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {isLoading ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <ContainerLoader message="Loading Sprint Planning..." minHeight={300} />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
@@ -881,6 +885,8 @@ export default function SprintPlanningPage() {
       {/* Capacity Panel */}
       {showCapacity && <div style={{ position: 'fixed', top: '60px', left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }} onClick={() => setShowCapacity(false)} />}
       <CapacityPanel isOpen={showCapacity} onClose={() => setShowCapacity(false)} sprint={selectedIteration} teamMembers={teamMembers} onUpdateMember={handleUpdateMember} />
+      </>
+      )}
     </div>
   );
 }

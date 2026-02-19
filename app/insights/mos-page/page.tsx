@@ -4,7 +4,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
 
 const COLORS = {
@@ -547,7 +547,13 @@ export default function MosPage() {
     };
   }, [filteredData]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <ContainerLoader message="Loading MOS..." minHeight={200} />
+      </div>
+    );
+  }
 
   const entityLabel = model.entities[0]?.type === 'customer' ? 'Customer' : 'Project';
   const entityRows = model.projects.slice(0, entityViewSize);

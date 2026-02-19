@@ -16,7 +16,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import type { QCTask } from '@/types/data';
 import {
   type SortState,
@@ -507,10 +507,14 @@ export default function QCLogPage() {
     else if (e.key === 'Escape') setEditingCell(null);
   };
 
-  if (isLoading) return <PageLoader />;
-
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflow: 'auto' }}>
+      {isLoading ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <ContainerLoader message="Loading QC Log..." minHeight={200} />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         {/* View Tabs */}
@@ -894,6 +898,8 @@ export default function QCLogPage() {
             </div>
           </SectionCard>
         </div>
+      )}
+      </>
       )}
     </div>
   );

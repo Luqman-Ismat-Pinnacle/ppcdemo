@@ -14,7 +14,7 @@
 
 import React, { useMemo, useState, useRef, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 import ChartCard from '@/components/charts/ChartCard';
 import TableCompareExport from '@/components/ui/TableCompareExport';
@@ -139,7 +139,13 @@ export default function MilestonesPage() {
     });
   }, [filteredMilestones, milestonesSort]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <ContainerLoader message="Loading Milestones..." minHeight={200} />
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page">

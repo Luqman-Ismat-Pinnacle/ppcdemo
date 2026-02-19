@@ -16,7 +16,7 @@
 import React, { useMemo, useState, useCallback, Suspense, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import type { EChartsOption } from 'echarts';
 import {
@@ -54,7 +54,7 @@ const fmt = (n: number, d = 0) =>
 // ═══════════════════════════════════════════════════════════════════
 
 function ResourcingPageLoading() {
-  return <PageLoader message="Loading Resourcing..." />;
+  return <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}><ContainerLoader message="Loading Resourcing..." minHeight={200} /></div>;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1218,8 +1218,14 @@ function ResourcingPageContent() {
     } as any;
   }, [heatmapSharedData, data.employees, heatmapRoleFilter]);
 
-  // ── Loading state ───────────────────────────────────────────────
-  if (isLoading) return <PageLoader />;
+  // ── Loading state (container-level) ─────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', overflow: 'hidden', padding: '0.5rem 1rem 0.25rem', gap: '0.35rem' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ContainerLoader message="Loading Resourcing..." minHeight={400} /></div>
+      </div>
+    );
+  }
 
   // ── Empty state ───────────────────────────────────────────────
   if (!hasData) {

@@ -17,7 +17,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
 import { useRouter } from 'next/navigation';
@@ -609,9 +609,7 @@ export default function TasksPage() {
 
   const hasData = (data.tasks?.length ?? 0) > 0;
 
-  if (isLoading) return <PageLoader />;
-
-  if (!hasData) {
+  if (!hasData && !isLoading) {
     return (
       <div style={{ padding: '4rem', textAlign: 'center', background: C.bgCard, borderRadius: 24, margin: '2rem' }}>
         <h2 style={{ color: C.textPrimary, marginBottom: '1rem' }}>No Production Data</h2>
@@ -622,6 +620,14 @@ export default function TasksPage() {
   }
 
   const selectedId = selectedTask ? (selectedTask.taskId || selectedTask.id) : null;
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: '1.25rem 1.5rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - 96px)' }}>
+        <ContainerLoader message="Loading Production Floor..." minHeight={300} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '1.25rem 1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', maxWidth: 'none', minHeight: 'calc(100vh - 96px)' }}>

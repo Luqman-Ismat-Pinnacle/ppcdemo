@@ -14,7 +14,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import ChartCard from '@/components/charts/ChartCard';
 import TableCompareExport from '@/components/ui/TableCompareExport';
 import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
@@ -91,7 +91,13 @@ export default function DocumentsPage() {
     return { projects: projectsWithHealth, avgHealth, atRisk, healthy, total: projects.length };
   }, [data.projects, data.projectHealth]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <ContainerLoader message="Loading Documents..." minHeight={200} />
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page">

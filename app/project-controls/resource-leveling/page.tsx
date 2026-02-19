@@ -15,13 +15,11 @@
 
 import React from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 
 export default function ResourceLevelingPage() {
   const { filteredData, isLoading } = useData();
   const data = filteredData;
-
-  if (isLoading) return <PageLoader />;
 
   return (
     <div className="page-panel">
@@ -31,8 +29,14 @@ export default function ResourceLevelingPage() {
             <div className="chart-card-title">Resource Gantt</div>
           </div>
           <div className="chart-card-body">
-            <p>Resource leveling Gantt chart implementation coming soon...</p>
-            <p>Resources: {data.resourceGantt.items.length} resources</p>
+            {isLoading ? (
+              <ContainerLoader message="Loading Resource Leveling..." minHeight={200} />
+            ) : (
+              <>
+                <p>Resource leveling Gantt chart implementation coming soon...</p>
+                <p>Resources: {data?.resourceGantt?.items?.length ?? 0} resources</p>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -16,7 +16,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import type {
   ProjectHealth,
   HealthCheckItem,
@@ -229,8 +229,6 @@ export default function ProjectHealthPage() {
     return { total, passed, failed, pending };
   };
 
-  if (isLoading) return <PageLoader />;
-
   return (
     <div
       className="page-panel"
@@ -241,6 +239,12 @@ export default function ProjectHealthPage() {
         margin: '0 auto',
       }}
     >
+      {isLoading ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <ContainerLoader message="Loading Project Health..." minHeight={200} />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="page-header" style={{ flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -810,6 +814,8 @@ export default function ProjectHealthPage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

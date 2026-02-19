@@ -14,7 +14,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 
 interface Iteration {
   id: string;
@@ -199,10 +199,14 @@ export default function IterationsPage() {
 
   const hasChildren = (id: string) => iterations.some(i => i.parentId === id);
 
-  if (isLoading) return <PageLoader />;
-
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>
+      {isLoading ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <ContainerLoader message="Loading Iterations..." minHeight={200} />
+        </div>
+      ) : (
+      <>
       {/* Stats */}
       <div style={{ 
         display: 'grid', 
@@ -557,6 +561,8 @@ export default function IterationsPage() {
           Configure start and end dates for each iteration to enable capacity planning and burndown tracking.
         </p>
       </div>
+      </>
+      )}
     </div>
   );
 }

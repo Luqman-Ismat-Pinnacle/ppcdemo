@@ -8,7 +8,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useLogs } from '@/lib/logs-context';
 import { type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
@@ -902,16 +902,16 @@ export default function DocumentsPage() {
     }
   }, [addLog, refreshData]);
 
-  // Only show the full-page loader on the very first load when we don't
-  // have any uploaded files yet and we're not actively processing.
-  // This prevents the MPXJ status log panel from being wiped when we call
-  // refreshData() after a run completes.
-  if (isLoading && !hasLoadedFiles && !isProcessing && !isUploading) {
-    return <PageLoader message="Loading project files..." />;
-  }
+  const showInitialLoad = isLoading && !hasLoadedFiles && !isProcessing && !isUploading;
 
   return (
     <div className="page-panel">
+      {showInitialLoad ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <ContainerLoader message="Loading project files..." minHeight={200} />
+        </div>
+      ) : (
+      <>
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
 
         {/* Project plan status: how many have a plan, which do / don't */}
@@ -1776,6 +1776,8 @@ export default function DocumentsPage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

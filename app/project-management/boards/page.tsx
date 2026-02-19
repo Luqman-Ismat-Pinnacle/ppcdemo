@@ -20,7 +20,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import type { Task, UserStory, Feature, Epic, Employee, ChangeLogEntry } from '@/types/data';
 
 // Work item types
@@ -356,7 +356,13 @@ export default function BoardsPage() {
   // Get projects for project filter
   const projects = useMemo(() => filteredData.projects || [], [filteredData.projects]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <ContainerLoader message="Loading Boards..." minHeight={200} />
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel full-height-page project-management-page">

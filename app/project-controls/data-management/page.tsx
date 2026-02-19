@@ -536,7 +536,6 @@ export default function DataManagementPage() {
   const [changeRequestStatusFilter, setChangeRequestStatusFilter] = useState<string>('all');
   const [changeRequestFromDate, setChangeRequestFromDate] = useState<string>('');
   const [changeRequestToDate, setChangeRequestToDate] = useState<string>('');
-  const [showInactive, setShowInactive] = useState<boolean>(false);
   const [openFilterDropdown, setOpenFilterDropdown] = useState<{ table: string; field: string } | null>(null);
   const [filterSearchText, setFilterSearchText] = useState<Record<string, string>>({});
   const filterDropdownRef = useRef<HTMLDivElement>(null);
@@ -2008,15 +2007,47 @@ export default function DataManagementPage() {
     return sections.find(s => s.key === selectedTable);
   }, [sections, selectedTable]);
 
-  // Enhanced fuzzy filter that searches display values
+  // Global filter: search across ALL columns in the row
+  const globalSearchFilter: FilterFn<any> = useCallback((row, _columnId, filterValue, addMeta) => {
+    const section = getCurrentSection();
+    if (!section || !filterValue || typeof filterValue !== 'string') return true;
+    const search = filterValue.trim().toLowerCase();
+    if (!search) return true;
+
+    const rowData = row.original;
+    const searchableParts: string[] = [];
+
+    for (const field of section.fields) {
+      let cellValue = getCellValue(rowData, field.key);
+      if (field.type && ['employee', 'project', 'customer', 'site', 'portfolio', 'phase', 'task'].includes(field.type)) {
+        const options = getOptionsForType(field.type);
+        const option = options.find((opt: any) => String(opt.id) === String(cellValue));
+        cellValue = option?.name ?? cellValue;
+      } else if (field.type === 'date' && cellValue) {
+        try {
+          cellValue = new Date(cellValue).toLocaleDateString();
+        } catch {
+          // ignore
+        }
+      } else if (typeof cellValue === 'boolean') {
+        cellValue = cellValue ? 'Yes' : 'No';
+      }
+      if (cellValue != null && cellValue !== '') {
+        searchableParts.push(String(cellValue));
+      }
+    }
+    const haystack = searchableParts.join(' ').toLowerCase();
+    const itemRank = rankItem(haystack, search);
+    addMeta({ itemRank });
+    return itemRank.passed;
+  }, [getCurrentSection, getCellValue, getOptionsForType]);
+
+  // Column-level fuzzy filter (for individual column filters)
   const fuzzyFilter: FilterFn<any> = useCallback((row, columnId, value, addMeta) => {
     const section = getCurrentSection();
     if (!section) return false;
-
     const field = section.fields.find(f => f.key === columnId);
     let cellValue = row.getValue(columnId);
-
-    // Format value for search if it's a special type
     if (field && ['employee', 'project', 'customer', 'site', 'portfolio', 'phase', 'task'].includes(field.type)) {
       const options = getOptionsForType(field.type);
       const option = options.find((opt: any) => opt.id === cellValue);
@@ -2030,7 +2061,6 @@ export default function DataManagementPage() {
     } else if (typeof cellValue === 'boolean') {
       cellValue = cellValue ? 'Yes' : 'No';
     }
-
     const itemRank = rankItem(String(cellValue || ''), value);
     addMeta({ itemRank });
     return itemRank.passed;
@@ -2096,10 +2126,9 @@ export default function DataManagementPage() {
       ? [...mergedData.filter((t: any) => !t.isSubTask), ...newRows]
       : [...mergedData, ...newRows];
 
-    // Apply default filter: hide inactive/terminated rows unless showInactive is true.
-    // EXCEPTION: Portfolios table should always show all portfolios in Data Management
-    // (even inactive), while the rest of the app hides inactive portfolios.
-    if (!showInactive && section.key !== 'portfolios') {
+    // Hide inactive/terminated rows by default.
+    // EXCEPTION: Portfolios table shows all.
+    if (section.key !== 'portfolios') {
       const INACTIVE_TERMS = ['terminated', 'inactive', 'closed', 'archived', 'cancelled', 'inactive_-_current'];
       const textKeys = ['name', 'taskName', 'projectName', 'projectNumber', 'status', 'description', 'employmentStatus', 'workerType'];
       processed = processed.filter((row: any) => {
@@ -2175,7 +2204,7 @@ export default function DataManagementPage() {
     }
 
     return processed;
-  }, [getCurrentSection, data, editedRows, newRows, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, showInactive, customColumnFilters, tableSortStates, getSortValueForField, getCellValue, getOptionsForType]);
+  }, [getCurrentSection, data, editedRows, newRows, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, customColumnFilters, tableSortStates, getSortValueForField, getCellValue, getOptionsForType]);
 
 
   // Clean data for Supabase - simple 1:1 mapping with minimal transformations
@@ -3071,7 +3100,7 @@ export default function DataManagementPage() {
   // TanStack Table data and columns - memoized based on current section
   const tableData = useMemo(() => {
     return getTableData();
-  }, [getTableData, selectedTable, data, editedRows, newRows, showInactive, customColumnFilters, tableSortStates]);
+  }, [getTableData, selectedTable, data, editedRows, newRows, customColumnFilters, tableSortStates]);
 
   const tableColumns = useMemo(() => {
     const section = getCurrentSection();
@@ -3099,7 +3128,7 @@ export default function DataManagementPage() {
     onColumnSizingChange: setColumnSizing,
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: fuzzyFilter,
+    globalFilterFn: globalSearchFilter,
     enableColumnResizing: true,
     columnResizeMode: 'onChange',
     defaultColumn: {
@@ -3161,15 +3190,6 @@ export default function DataManagementPage() {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {!isSnapshotSection && (
               <>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={showInactive}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowInactive(e.target.checked)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span>Show Inactive</span>
-                </label>
                 <button onClick={handleAddRow} className="btn btn-primary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none">
                     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />

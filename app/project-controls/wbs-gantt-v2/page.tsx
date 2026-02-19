@@ -8,7 +8,7 @@ import { Arrow, Layer, Line, Rect, Stage, Text } from 'react-konva';
 import { useData } from '@/lib/data-context';
 import { useSnapshotVariance } from '@/lib/use-snapshot-variance';
 import { CPMEngine } from '@/lib/cpm-engine';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 
 type TimelineInterval = 'week' | 'month' | 'quarter' | 'year';
 
@@ -299,12 +299,12 @@ export default function WBSGanttV2Page() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 14,
       cellVerticalPadding: 10,
-      headerFontStyle: '800 18px var(--font-montserrat, sans-serif)',
-      headerIconSize: 20,
-      baseFontStyle: '800 18px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '800 15px var(--font-mono, monospace)',
+      headerFontStyle: '800 20px var(--font-montserrat, sans-serif)',
+      headerIconSize: 22,
+      baseFontStyle: '800 20px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '800 16px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '18px',
+      editorFontSize: '20px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -528,7 +528,7 @@ export default function WBSGanttV2Page() {
             if (direct.length > 0) return direct;
             return predecessorMapByTaskId.get(taskId) || [];
           })(),
-          totalFloat: readNumber(rec, 'totalFloat', 'total_float'),
+          totalFloat: readNumber(rec, 'totalFloat', 'total_float', 'totalSlack', 'total_slack'),
           isCritical: Boolean(rec.isCritical || rec.is_critical),
           varianceHours: null,
           varianceCost: null,
@@ -807,7 +807,7 @@ export default function WBSGanttV2Page() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '800 15px var(--font-montserrat, sans-serif)';
+      ctx.font = '800 17px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -871,7 +871,7 @@ export default function WBSGanttV2Page() {
       return;
     }
 
-    ctx.font = '800 18px var(--font-montserrat, sans-serif)';
+    ctx.font = '800 20px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';
@@ -1162,8 +1162,6 @@ export default function WBSGanttV2Page() {
     };
   }, [hoursBreakdownRow, fullData.tasks, fullData.hours, fullData.phases, fullData.units]);
 
-  if (isLoading) return <PageLoader message="Loading WBS Gantt..." />;
-
   return (
     <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem' }}>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1318,6 +1316,12 @@ export default function WBSGanttV2Page() {
       )}
 
       <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.46)' }}>
+        {isLoading ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ContainerLoader message="Loading WBS Gantt..." minHeight={400} />
+          </div>
+        ) : (
+        <>
         <div
           ref={leftPanel.ref}
           style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
@@ -1572,6 +1576,8 @@ export default function WBSGanttV2Page() {
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-muted)', fontSize: 12 }}>Preparing timeline...</div>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {barTip && (

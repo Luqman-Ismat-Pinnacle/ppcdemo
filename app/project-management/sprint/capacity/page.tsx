@@ -14,7 +14,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 
 interface TeamMember {
   id: string;
@@ -169,10 +169,14 @@ export default function CapacityPage() {
     }));
   };
 
-  if (isLoading) return <PageLoader />;
-
   return (
     <div className="page-panel" style={{ padding: '1.5rem', height: 'calc(100vh - 100px)', overflow: 'auto' }}>
+      {isLoading ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <ContainerLoader message="Loading Capacity..." minHeight={200} />
+        </div>
+      ) : (
+      <>
       {/* Capacity Overview */}
       <div style={{ 
         display: 'grid', 
@@ -448,6 +452,8 @@ export default function CapacityPage() {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

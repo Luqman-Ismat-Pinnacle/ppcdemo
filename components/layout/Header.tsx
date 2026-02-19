@@ -35,9 +35,7 @@ import NotificationBell from './NotificationBell';
  */
 export default function Header() {
   const [profileOpen, setProfileOpen] = useState(false);
-  const [logoMenuOpen, setLogoMenuOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
-  const logoMenuRef = useRef<HTMLDivElement>(null);
 
   // Get theme - must be called before any conditional returns
   const themeContext = useTheme();
@@ -52,9 +50,6 @@ export default function Header() {
     const handleClickOutside = (event: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setProfileOpen(false);
-      }
-      if (logoMenuRef.current && !logoMenuRef.current.contains(event.target as Node)) {
-        setLogoMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -75,39 +70,19 @@ export default function Header() {
       boxShadow: 'var(--shadow-sm)',
     }}>
       <div className="header-left">
-        <div
-          ref={logoMenuRef}
-          className="nav-dropdown"
-          onMouseEnter={() => setLogoMenuOpen(true)}
-          onMouseLeave={() => setLogoMenuOpen(false)}
-        >
-          <button
-            type="button"
-            className={`nav-dropdown-trigger app-logo-trigger ${logoMenuOpen ? 'active' : ''}`}
-            onClick={() => setLogoMenuOpen((prev) => !prev)}
-            aria-label="Open WBS navigation"
-          >
-            <Image
-              src="/logo.png"
-              alt="Pinnacle Project Management"
-              width={100}
-              height={24}
-              priority
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.outerHTML = '<span style="font-size:0.9rem;font-weight:700;background:linear-gradient(135deg,#40E0D0,#CDDC39);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Pinnacle Project Management</span>';
-              }}
-            />
-            <svg viewBox="0 0 12 12" width="10" height="10">
-              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
-            </svg>
-          </button>
-          <div className={`nav-dropdown-content ${logoMenuOpen ? 'open' : ''}`}>
-            <Link href="/project-controls/wbs-gantt-v2" className="nav-dropdown-item" onClick={() => setLogoMenuOpen(false)}>
-              WBS Gantt
-            </Link>
-          </div>
-        </div>
+        <Link href="/project-controls/wbs-gantt-v2" className="app-logo-trigger" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+          <Image
+            src="/logo.png"
+            alt="Pinnacle Project Management"
+            width={100}
+            height={24}
+            priority
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.outerHTML = '<span style="font-size:0.9rem;font-weight:700;background:linear-gradient(135deg,#40E0D0,#CDDC39);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Pinnacle Project Management</span>';
+            }}
+          />
+        </Link>
         <Navigation />
       </div>
       <div className="header-right">

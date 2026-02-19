@@ -16,7 +16,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 
 /** Safe number formatting - returns '0' for NaN/Infinity */
 const sn = (v: any, decimals = 1): string => {
@@ -408,7 +408,13 @@ export default function HoursPage() {
     });
   }, [sortedRoleRows, tableWeeks]);
 
-  if (isLoading) return <PageLoader />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <ContainerLoader message="Loading Hours..." minHeight={200} />
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>
