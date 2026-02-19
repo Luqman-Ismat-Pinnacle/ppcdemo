@@ -21,7 +21,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import ContainerLoader from '@/components/ui/ContainerLoader';
+import PageLoader from '@/components/ui/PageLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import {
@@ -1362,15 +1362,10 @@ export default function ForecastPage() {
     return `$${v.toFixed(0)}`;
   };
 
+  if (isLoading) return <PageLoader message="Loading Forecast..." />;
+
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>
-      {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-          <ContainerLoader message="Loading Forecast..." minHeight={200} />
-        </div>
-      ) : (
-      <>
-      {/* Empty State */}
       {!hasData && (
         <div style={{
           display: 'flex',
@@ -1411,7 +1406,7 @@ export default function ForecastPage() {
       )}
 
       {hasData && (
-      <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         {/* Tab Selector */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
           {[
@@ -1751,11 +1746,10 @@ export default function ForecastPage() {
                 </div>
             </div>
           </SectionCard>
-          </div>
-      </>
-    )}
-    </>
-  )}
+        </div>
+      )}
+        </div>
+      )}
     </div>
   );
 }
