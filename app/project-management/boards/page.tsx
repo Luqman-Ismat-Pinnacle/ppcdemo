@@ -20,6 +20,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import PageLoader from '@/components/ui/PageLoader';
 import type { Task, UserStory, Feature, Epic, Employee, ChangeLogEntry } from '@/types/data';
 
 // Work item types
@@ -111,7 +112,7 @@ interface BoardColumn {
 type SwimlaneType = 'none' | 'assignee' | 'priority' | 'workItemType' | 'project';
 
 export default function BoardsPage() {
-  const { filteredData, data, updateData, isLoading: dataLoading } = useData();
+  const { filteredData, data, updateData, isLoading } = useData();
   
   // View state
   const [selectedWorkItemTypes, setSelectedWorkItemTypes] = useState<WorkItemType[]>(['Epic', 'Feature', 'User Story', 'Task', 'Bug']);
@@ -270,16 +271,6 @@ export default function BoardsPage() {
     setDragOverColumn(state);
   };
 
-  if (dataLoading) {
-    return (
-      <div className="page-panel full-height-page project-management-page">
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
-          Loading boards...
-        </div>
-      </div>
-    );
-  }
-
   // Handle drag leave
   const handleDragLeave = () => {
     setDragOverColumn(null);
@@ -365,15 +356,11 @@ export default function BoardsPage() {
   // Get projects for project filter
   const projects = useMemo(() => filteredData.projects || [], [filteredData.projects]);
 
+  if (isLoading) return <PageLoader />;
+
   return (
     <div className="page-panel full-height-page project-management-page">
       <div className="page-header">
-        <div>
-          <h1 className="page-title">Boards</h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-            Azure DevOps-style Kanban board with real-time sync
-          </p>
-        </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <button className="btn btn-primary">+ New Work Item</button>
         </div>

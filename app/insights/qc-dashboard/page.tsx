@@ -192,7 +192,7 @@ export default function QCDashboardPage() {
                     .map((item, idx) => (
                       <tr key={idx}>
                         <td>{item.name}</td>
-                        <td>{typeof item.passRate === 'number' ? `${Number(item.passRate.toFixed(2))}%` : item.passRate}</td>
+                        <td>{typeof item.passRate === 'number' && isFinite(item.passRate) ? `${Number(item.passRate.toFixed(2))}%` : '0%'}</td>
                         <td>{item.openCount || 0}</td>
                         <td>{item.closedCount || 0}</td>
                         <td>{item.passCount || 0}</td>
