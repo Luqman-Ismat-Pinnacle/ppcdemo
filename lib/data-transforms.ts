@@ -2938,103 +2938,47 @@ function normId(value: unknown): string {
 }
 
 /**
- * Build resource heatmap data from hours and employees.
- * When allHoursForWeekRange is provided, the week list is built from it so all dates show; values still use data.hours (filtered).
- * 
- * Always generates a valid heatmap when employees exist:
- * - If hours exist: uses hours dates for week range
- * - If no hours: generates 12 weeks from current date with 0% utilization
+ * Build resource heatmap from project plan (tasks) only.
+ * No timecards are used. Each row = one assigned resource from the plan; values = baseline hours from tasks.
  */
 export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allHoursForWeekRange?: any[] }): ResourceHeatmap {
-  const hours = data.hours || [];
+  const tasks = data.tasks || [];
+  const projects = data.projects || [];
   const employees = data.employees || [];
-  const hoursForWeekList = (options?.allHoursForWeekRange && options.allHoursForWeekRange.length > 0)
-    ? options.allHoursForWeekRange
-    : hours;
 
-  // Log for debugging
   if (typeof window !== 'undefined') {
-    console.log('[buildResourceHeatmap] Input:', {
-      employeesCount: employees.length,
-      hoursCount: hours.length,
-      hoursForWeekListCount: hoursForWeekList.length,
-    });
+    console.log('[buildResourceHeatmap] Project plan only (no timecards). Tasks:', tasks.length);
   }
 
-  // If no employees, return empty but with valid structure
-  if (employees.length === 0) {
-    if (typeof window !== 'undefined') {
-      console.log('[buildResourceHeatmap] No employees, returning empty');
-    }
-    return { resources: [], weeks: [], data: [] };
-  }
-
-  // Build hours by employee Map - normalized keys so DB number/string ID mismatch doesn't break lookup
-  const hoursByEmployee = new Map<string, any[]>();
-  hours.forEach((h: any) => {
-    const empId = h.employeeId ?? h.employee_id;
-    const key = normId(empId);
-    if (key) {
-      if (!hoursByEmployee.has(key)) hoursByEmployee.set(key, []);
-      hoursByEmployee.get(key)!.push(h);
-    }
+  // Build week range from project plan dates only
+  const allDates: string[] = [];
+  projects.forEach((p: any) => {
+    const start = normalizeDateString(p.startDate || p.start_date || p.baselineStartDate || p.baseline_start_date);
+    const end = normalizeDateString(p.endDate || p.end_date || p.baselineEndDate || p.baseline_end_date);
+    if (start) allDates.push(start);
+    if (end) allDates.push(end);
   });
+  tasks.forEach((t: any) => {
+    const start = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
+    const end = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
+    if (start) allDates.push(start);
+    if (end) allDates.push(end);
+  });
+  const dates = allDates.filter((d): d is string => d != null);
 
-  if (typeof window !== 'undefined' && (window as any).__DEBUG__) {
-    const matched = employees.filter((e: any) => {
-      const k1 = normId(e.id);
-      const k2 = normId(e.employeeId);
-      return (k1 && hoursByEmployee.has(k1)) || (k2 && hoursByEmployee.has(k2));
-    }).length;
-    console.debug('[buildResourceHeatmap] employees:', employees.length, 'hours:', hours.length, 'hoursByEmployee keys:', hoursByEmployee.size, 'employees with hours:', matched);
-  }
-
-  // Get unique weeks from multiple date sources for full timeline coverage
   let rawWeeks: string[] = [];
   let weekMap: Map<string, string>;
   let weekIndexMap: Map<string, number>;
 
-  // Gather dates from hours, projects, and tasks for comprehensive week range
-  const projects = data.projects || [];
-  const tasks = data.tasks || [];
-  const allDates: string[] = [];
-  
-  // Add dates from hours entries
-  hoursForWeekList.forEach((h: any) => {
-    const d = normalizeDateString(h.date || h.entry_date);
-    if (d) allDates.push(d);
-  });
-  
-  // Add project start/end dates
-  projects.forEach((p: any) => {
-    const startDate = normalizeDateString(p.startDate || p.start_date || p.baselineStartDate || p.baseline_start_date);
-    const endDate = normalizeDateString(p.endDate || p.end_date || p.baselineEndDate || p.baseline_end_date);
-    if (startDate) allDates.push(startDate);
-    if (endDate) allDates.push(endDate);
-  });
-  
-  // Add task start/end dates
-  tasks.forEach((t: any) => {
-    const startDate = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
-    const endDate = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
-    if (startDate) allDates.push(startDate);
-    if (endDate) allDates.push(endDate);
-  });
-  
-  const dates = allDates.filter((d): d is string => d != null);
-
   if (dates.length > 0) {
-    // Use shared week mapping utility; normalize so all date formats map to same weeks
     const weekMappings = buildWeekMappings(dates);
     weekMap = weekMappings.weekMap;
     weekIndexMap = weekMappings.weekIndexMap;
     rawWeeks = weekMappings.rawWeeks;
   } else {
-    // No hours data - generate next 12 weeks from today
     const today = new Date();
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - today.getDay());
-
     weekMap = new Map();
     weekIndexMap = new Map();
     for (let i = 0; i < 12; i++) {
@@ -3046,40 +2990,65 @@ export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allH
     }
   }
 
-  // Include ALL employees, not just those with hours
+  const TARGET_HOURS_PER_WEEK = 40;
+
+  // Unique resources from project plan: key = canonical id (prefer assigned_resource_id, else normalized name), displayName = label for row
+  type ResourceKey = string;
+  const resourceDisplayNameByKey = new Map<ResourceKey, string>();
+  const taskEntriesByResource = new Map<ResourceKey, { start: string; end: string; hours: number }[]>();
+
+  const employeesById = new Map<string, any>();
+  employees.forEach((e: any) => {
+    const id = normId(e.id) || normId(e.employeeId);
+    if (id) employeesById.set(id, e);
+  });
+
+  tasks.forEach((t: any) => {
+    const blHrs = typeof t.baselineHours === 'number' ? t.baselineHours : parseFloat(t.baseline_hours || t.baselineHours) || 0;
+    if (blHrs <= 0) return;
+    const start = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
+    const end = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
+    if (!start || !end) return;
+
+    const assigneeId = normId(t.assignedResourceId ?? t.assigned_resource_id ?? t.employeeId ?? t.employee_id);
+    const assigneeName = (t.assignedResource ?? t.assigned_resource ?? t.assignedResourceName ?? t.assigned_resource_name ?? '').toString().trim();
+
+    if (!assigneeId && !assigneeName) return;
+
+    const resourceKey: ResourceKey = assigneeId || `name:${(assigneeName || 'Unassigned').toLowerCase()}`;
+    const displayName = assigneeId ? (employeesById.get(assigneeId)?.name || assigneeName || assigneeId) : (assigneeName || 'Unassigned');
+
+    if (!resourceDisplayNameByKey.has(resourceKey)) resourceDisplayNameByKey.set(resourceKey, displayName);
+    if (!taskEntriesByResource.has(resourceKey)) taskEntriesByResource.set(resourceKey, []);
+    taskEntriesByResource.get(resourceKey)!.push({ start, end, hours: blHrs });
+  });
+
   const resources: string[] = [];
   const heatmapData: number[][] = [];
 
-  // Target hours per week (40 hours = 100% utilization)
-  const TARGET_HOURS_PER_WEEK = 40;
-
-  employees.forEach((emp: any) => {
-    const name = emp.name || emp.id || emp.employeeId || '';
-    resources.push(name || 'Unknown');
-
-    const weeklyHours = new Array(rawWeeks.length).fill(0);
-
-    // Look up by both id and employeeId with normalized keys
-    const empHours =
-      hoursByEmployee.get(normId(emp.id)) ||
-      hoursByEmployee.get(normId(emp.employeeId)) ||
-      [];
-    empHours.forEach((h: any) => {
-      const hourDateNorm = normalizeDateString(h.date || h.entry_date);
-      const weekKey = hourDateNorm ? weekMap.get(hourDateNorm) : undefined;
-      const weekIdx = weekIndexMap.get(weekKey || '') ?? -1;
-      if (weekIdx >= 0) {
-        weeklyHours[weekIdx] += typeof h.hours === 'number' ? h.hours : parseFloat(h.hours) || 0;
-      }
+  function addTaskHoursToWeekly(weeklyHours: number[], entries: { start: string; end: string; hours: number }[]) {
+    entries.forEach(({ start, end, hours }) => {
+      const startWeekKey = weekMap.get(start);
+      const endWeekKey = weekMap.get(end);
+      if (startWeekKey === undefined || endWeekKey === undefined) return;
+      const startIdx = weekIndexMap.get(startWeekKey) ?? -1;
+      const endIdx = weekIndexMap.get(endWeekKey) ?? -1;
+      if (startIdx < 0 || endIdx < 0) return;
+      const spanWeeks = Math.max(1, endIdx - startIdx + 1);
+      const hrsPerWeek = hours / spanWeeks;
+      for (let i = startIdx; i <= endIdx && i < weeklyHours.length; i++) weeklyHours[i] += hrsPerWeek;
     });
+  }
 
-    // Convert hours to utilization percentage (hours / 40 * 100)
+  taskEntriesByResource.forEach((entries, resourceKey) => {
+    const displayName = resourceDisplayNameByKey.get(resourceKey) || resourceKey;
+    resources.push(displayName);
+    const weeklyHours = new Array(rawWeeks.length).fill(0);
+    addTaskHoursToWeekly(weeklyHours, entries);
     const utilizationData = weeklyHours.map(hrs => Math.round((hrs / TARGET_HOURS_PER_WEEK) * 100));
-
     heatmapData.push(utilizationData);
   });
 
-  // Format weeks for display using shared utility format
   const formattedWeeks = rawWeeks.map(week => {
     const d = new Date(week);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -5049,13 +5018,20 @@ export function buildMilestones(data: Partial<SampleData>) {
       const forecast = m.forecastedCompletion || m.projectedEndDate || planned;
       const actual = m.actualCompletion || m.actualEndDate;
 
-      // Calculate variance in days
       let varianceDays = 0;
       if (planned && (actual || forecast)) {
         const plannedDate = new Date(planned);
         const compareDate = new Date(actual || forecast);
         varianceDays = Math.floor((compareDate.getTime() - plannedDate.getTime()) / (1000 * 60 * 60 * 24));
+      } else if (planned && !actual) {
+        const plannedDate = new Date(planned);
+        if (plannedDate.getTime() < Date.now()) {
+          varianceDays = Math.floor((Date.now() - plannedDate.getTime()) / (1000 * 60 * 60 * 24));
+        }
       }
+
+      let status = m.status || 'Not Started';
+      if (varianceDays > 0 && status !== 'Completed') status = 'At Risk';
 
       return {
         portfolio: portfolio?.name || m.portfolio || 'Portfolio',
@@ -5063,7 +5039,7 @@ export function buildMilestones(data: Partial<SampleData>) {
         site: site?.name || m.site || 'Site',
         projectNum: project?.name || m.projectNum || 'Project',
         name: m.milestoneName || m.name || 'Milestone',
-        status: m.status || 'Not Started',
+        status,
         percentComplete: m.percentComplete || 0,
         plannedCompletion: planned,
         forecastedCompletion: forecast,
@@ -5090,11 +5066,6 @@ export function buildMilestones(data: Partial<SampleData>) {
     const portfolio = portfolioId ? portfolioMap.get(portfolioId) : null;
 
     const pct = t.percentComplete || 0;
-    let status = 'Not Started';
-    if (pct === 100) status = 'Completed';
-    else if (pct > 50) status = 'In Progress';
-    else if (pct > 0) status = 'At Risk';
-
     const planned = t.baselineEndDate || t.plannedEndDate;
     const forecast = t.projectedEndDate || planned;
     const actual = t.actualEndDate;
@@ -5104,7 +5075,19 @@ export function buildMilestones(data: Partial<SampleData>) {
       const plannedDate = new Date(planned);
       const compareDate = new Date(actual || forecast);
       varianceDays = Math.floor((compareDate.getTime() - plannedDate.getTime()) / (1000 * 60 * 60 * 24));
+    } else if (planned && !actual) {
+      const plannedDate = new Date(planned);
+      const now = Date.now();
+      if (plannedDate.getTime() < now) {
+        varianceDays = Math.floor((now - plannedDate.getTime()) / (1000 * 60 * 60 * 24));
+      }
     }
+
+    let status = 'Not Started';
+    if (pct === 100) status = 'Completed';
+    else if (varianceDays > 0) status = 'At Risk';
+    else if (pct > 50) status = 'In Progress';
+    else if (pct > 0) status = 'At Risk';
 
     return {
       portfolio: portfolio?.name || 'Portfolio',

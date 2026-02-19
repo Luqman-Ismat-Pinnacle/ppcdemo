@@ -63,6 +63,14 @@ async function callParser(parserUrl: string, fileName: string, fileBuffer: Buffe
 
 const JSONB_COLUMNS = new Set(['predecessors', 'successors']);
 
+const MAX_VARCHAR_LENGTH = 255;
+
+function truncateForVarchar(value: unknown): unknown {
+  if (value == null) return value;
+  if (typeof value === 'string' && value.length > MAX_VARCHAR_LENGTH) return value.slice(0, MAX_VARCHAR_LENGTH);
+  return value;
+}
+
 function serializeJsonb(value: unknown): string {
   if (value === null || value === undefined) return '[]';
   if (typeof value === 'string') {
@@ -120,7 +128,7 @@ async function upsertRows(
       const filtered: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(row)) {
         if (tableColumns.has(key)) {
-          filtered[key] = value;
+          filtered[key] = JSONB_COLUMNS.has(key) ? value : truncateForVarchar(value);
         }
       }
       return filtered;

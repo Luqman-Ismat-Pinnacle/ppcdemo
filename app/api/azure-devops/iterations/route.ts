@@ -12,11 +12,21 @@ export const revalidate = 0;
  * - iterationId: get work items for specific iteration
  */
 export async function GET(request: Request) {
+  const log = (msg: string, meta?: Record<string, unknown>) => {
+    if (meta) console.log(`[Azure DevOps] ${msg}`, meta);
+    else console.log(`[Azure DevOps] ${msg}`);
+  };
   try {
+    const hasOrg = Boolean(process.env.AZURE_DEVOPS_ORGANIZATION);
+    const hasProject = Boolean(process.env.AZURE_DEVOPS_PROJECT);
+    const hasPat = Boolean(process.env.AZURE_DEVOPS_PAT);
+    log('Config check', { hasOrg, hasProject, hasPat, envKeys: Object.keys(process.env).filter(k => k.startsWith('AZURE_DEVOPS')).join(',') });
+
     const config = getADOConfig();
     if (!config) {
+      log('Azure DevOps not configured - missing org, project, or PAT', { hasOrg, hasProject, hasPat });
       return NextResponse.json(
-        { error: 'Azure DevOps not configured' },
+        { error: 'Azure DevOps not configured. Set AZURE_DEVOPS_ORGANIZATION, AZURE_DEVOPS_PROJECT, and AZURE_DEVOPS_PAT.' },
         { status: 500 }
       );
     }
@@ -26,16 +36,19 @@ export async function GET(request: Request) {
     const iterationId = searchParams.get('iterationId');
 
     if (iterationId) {
-      // Get work items for specific iteration
+      log('Fetching work items for iteration', { iterationId: iterationId.slice(0, 50) });
       const workItems = await getSprintWorkItems(config, iterationId);
+      log('Work items fetched', { count: workItems.workItems?.length ?? 0 });
       return NextResponse.json({ workItems: workItems.workItems || [] });
     } else {
-      // Get iterations
+      log('Fetching iterations', { timeframe });
       const iterations = await getIterations(config, timeframe);
+      log('Iterations fetched', { count: iterations.value?.length ?? 0 });
       return NextResponse.json({ iterations: iterations.value || [] });
     }
   } catch (error: any) {
-    console.error('Error fetching iterations from Azure DevOps:', error);
+    console.error('[Azure DevOps] Error:', error?.message ?? error);
+    log('Request failed', { error: error?.message, stack: error?.stack?.slice(0, 200) });
     return NextResponse.json(
       { error: error.message || 'Failed to fetch iterations' },
       { status: 500 }

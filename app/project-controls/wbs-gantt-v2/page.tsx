@@ -202,6 +202,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: 'actc', title: 'Act Cost', width: 110, value: (r) => formatCurrency(r.actualCost) },
   { id: 'remc', title: 'Rem Cost', width: 110, value: (r) => formatCurrency(r.remainingCost) },
   { id: 'sched', title: 'Sched Cost', width: 120, value: (r) => formatCurrency(r.scheduleCost) },
+  { id: 'cpi', title: 'CPI', width: 64, value: (r) => { const ac = r.actualCost || 0; if (!Number.isFinite(ac) || ac === 0) return '-'; const ev = (r.baselineCost || 0) * ((r.percentComplete || 0) / 100); return Number.isFinite(ev) ? (ev / ac).toFixed(2) : '-'; } },
   { id: 'eff', title: 'Eff%', width: 70, value: (r) => formatPct(r.efficiency) },
   { id: 'pct', title: 'Progress', width: 80, value: (r) => formatPct(r.percentComplete) },
   { id: 'pred', title: 'Predecessors', width: 150, value: (r) => r.predecessorIds.join(', ') || '-' },
@@ -299,12 +300,12 @@ export default function WBSGanttV2Page() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 14,
       cellVerticalPadding: 10,
-      headerFontStyle: '800 22px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '600 13px var(--font-montserrat, sans-serif)',
       headerIconSize: 24,
-      baseFontStyle: '800 22px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '800 18px var(--font-mono, monospace)',
+      baseFontStyle: '500 13px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '500 12px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '22px',
+      editorFontSize: '13px',
       lineHeight: 1.3,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -549,7 +550,7 @@ export default function WBSGanttV2Page() {
     () => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: Math.max(56, Math.round(columnWidths[c.id] || c.width)) })),
     [visibleDefs, columnWidths],
   );
-  const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'eff', 'pct', 'tf']), []);
+  const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'cpi', 'eff', 'pct', 'tf']), []);
 
   const baseFilteredRows = useMemo(() => {
     const globalQuery = searchAllQuery.trim().toLowerCase();
@@ -807,7 +808,7 @@ export default function WBSGanttV2Page() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '800 19px var(--font-montserrat, sans-serif)';
+      ctx.font = '600 12px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -871,7 +872,7 @@ export default function WBSGanttV2Page() {
       return;
     }
 
-    ctx.font = '800 22px var(--font-montserrat, sans-serif)';
+    ctx.font = '500 13px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = def.id === 'tf' ? 'center' : isNumeric ? 'right' : 'left';

@@ -343,6 +343,7 @@ CREATE TABLE IF NOT EXISTS projects (
   is_overhead BOOLEAN DEFAULT false,
   is_tpw BOOLEAN DEFAULT false,
   has_schedule BOOLEAN DEFAULT false,
+  total_slack INTEGER DEFAULT 0,
   status VARCHAR(50) DEFAULT 'Not Started',
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT NOW(),

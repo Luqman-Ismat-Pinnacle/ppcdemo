@@ -13,10 +13,9 @@
  * @module app/project-management/qc-log/page
  */
 
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
-import ContainerLoader from '@/components/ui/ContainerLoader';
 import type { QCTask } from '@/types/data';
 import {
   type SortState,
@@ -25,105 +24,12 @@ import {
   sortByState,
 } from '@/lib/sort-utils';
 import type { EChartsOption } from 'echarts';
-import * as XLSX from 'xlsx';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 type ViewType = 'dashboard' | 'orders' | 'nonconformance' | 'capa';
-
-/** Map Excel QC Log row to QCTask. Aligns with All QC Log Entries columns + UOM, QC Score, Count. */
-function mapExcelRowToQcTask(row: Record<string, unknown>, index: number): QCTask {
-  const qcTransaction = String(row['QC Transaction'] ?? row['(Do Not Modify) QC Log'] ?? `QC-${index + 1}`).trim() || `QC-${index + 1}`;
-  const title = String(row['Title'] ?? row['DESCRIPTION (Charge Code) (IFS - Activities)'] ?? '').trim();
-  const taskWorker = String(row['Task Worker'] ?? '').trim();
-  const qcResource = String(row['QC Resource'] ?? '').trim();
-  const resource = qcResource || taskWorker || 'Unassigned';
-  const rawStatus = String(row['QC Status'] ?? '').trim();
-  const pctCorrect = Number(row['Pct Items Correct']) || 0;
-  const itemsSubmitted = Number(row['Items Submitted']) || 0;
-  const itemsCorrect = Number(row['Items Correct']) || 0;
-  const notes = String(row['Notes'] ?? '').trim();
-  const qcRequestedDate = row['QC Requested Date'];
-  const qcCompleteDate = row['QC Complete Date Override'] ?? row['QC Complete Date'];
-  const qcAssignedDate = row['QC Assigned Date'];
-  const createdOn = row['Created On'];
-  const modifiedOn = row['Modified On'];
-  const chargeCodeV2 = String(row['Charge Code V2'] ?? row['Project_ID (Charge Code V2) (Workday - RPT - Project Plan Data - v2.0)'] ?? '').trim();
-  const projectIdV2 = String(row['Project_ID (Charge Code V2) (Workday - RPT - Project Plan Data - v2.0)'] ?? row['Charge Code V2'] ?? '').trim();
-  const clientReady = String(row['Client Ready?'] ?? '').trim();
-  const qcGate = String(row['QC Gate'] ?? '').trim();
-  const createdBy = String(row['Created By'] ?? '').trim();
-  const modifiedBy = String(row['Modified By'] ?? '').trim();
-
-  const toIso = (v: unknown): string | null => {
-    if (v == null) return null;
-    if (typeof v === 'number' && v > 10000) {
-      const excelEpoch = new Date(1899, 11, 30).getTime();
-      const d = new Date(excelEpoch + v * 86400 * 1000);
-      return Number.isNaN(d.getTime()) ? null : d.toISOString();
-    }
-    const d = new Date(String(v));
-    return Number.isNaN(d.getTime()) ? null : d.toISOString();
-  };
-
-  const statusMap: Record<string, string> = {
-    requested: 'Not Started',
-    'in progress': 'In Progress',
-    complete: 'Complete',
-    completed: 'Complete',
-    ready: 'Complete',
-    rejected: 'On Hold',
-    'on hold': 'On Hold',
-    cancelled: 'Closed',
-    closed: 'Closed',
-  };
-  const qcStatus = statusMap[rawStatus.toLowerCase()] || (rawStatus || 'Not Started');
-  const score = Math.round(Number.isFinite(pctCorrect) ? pctCorrect : (itemsSubmitted ? (itemsCorrect / itemsSubmitted) * 100 : 0));
-
-  const now = new Date().toISOString();
-  return {
-    qcTaskId: qcTransaction,
-    parentTaskId: title || qcTransaction,
-    qcResourceId: resource,
-    employeeId: resource,
-    qcHours: itemsSubmitted || 0,
-    qcScore: score,
-    qcCount: itemsSubmitted || 1,
-    qcUOM: 'Item',
-    qcType: 'Quality Review',
-    qcStatus,
-    qcCriticalErrors: 0,
-    qcNonCriticalErrors: 0,
-    qcComments: notes || title || qcTransaction,
-    qcStartDate: toIso(qcRequestedDate) || toIso(createdOn) || now,
-    qcEndDate: toIso(qcCompleteDate),
-    baselineStartDate: null,
-    baselineEndDate: null,
-    actualStartDate: null,
-    actualEndDate: null,
-    createdAt: toIso(createdOn) || now,
-    updatedAt: toIso(modifiedOn) || now,
-    title: title || undefined,
-    chargeCodeV2: chargeCodeV2 || undefined,
-    projectIdV2: projectIdV2 || undefined,
-    taskWorker: taskWorker || undefined,
-    qcResource: qcResource || undefined,
-    clientReady: clientReady || undefined,
-    itemsSubmitted: itemsSubmitted || undefined,
-    itemsCorrect: itemsCorrect || undefined,
-    notes: notes || undefined,
-    qcGate: qcGate || undefined,
-    qcRequestedDate: toIso(qcRequestedDate) ?? undefined,
-    qcAssignedDate: toIso(qcAssignedDate) ?? undefined,
-    qcCompleteDate: toIso(qcCompleteDate) ?? undefined,
-    qcCompleteDateOverride: toIso(row['QC Complete Date Override']) ?? undefined,
-    createdBy: createdBy || undefined,
-    modifiedBy: modifiedBy || undefined,
-    pctItemsCorrect: Number.isFinite(pctCorrect) ? pctCorrect : undefined,
-  };
-}
 
 // ============================================================================
 // SECTION CARD COMPONENT
@@ -394,16 +300,13 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
 // ============================================================================
 
 export default function QCLogPage() {
-  const { filteredData, data, updateData, isLoading } = useData();
+  const { filteredData, data, updateData } = useData();
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [editingCell, setEditingCell] = useState<{ taskId: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [qcSort, setQcSort] = useState<SortState | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const getTaskName = useCallback((taskId: string): string => {
     const task = data.tasks?.find((t) => t.taskId === taskId);
@@ -411,64 +314,6 @@ export default function QCLogPage() {
   }, [data.tasks]);
 
   const qcTasksSource = useMemo(() => filteredData.qctasks || [], [filteredData.qctasks]);
-
-  const parseWorkbookToQcTasks = useCallback((wb: XLSX.WorkBook): QCTask[] => {
-    const sheetName = wb.SheetNames.find((n) => /qc|log|entries/i.test(n)) || wb.SheetNames[0];
-    const sheet = wb.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[];
-    return rows.map((row, i) => mapExcelRowToQcTask(row, i));
-  }, []);
-
-  const handleImportExcel = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setImporting(true);
-      setImportError(null);
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const buf = ev.target?.result;
-          if (!buf || !(buf instanceof ArrayBuffer)) throw new Error('Failed to read file');
-          const wb = XLSX.read(buf, { type: 'array' });
-          const qctasks = parseWorkbookToQcTasks(wb);
-          updateData({ qctasks });
-          if (fileInputRef.current) fileInputRef.current.value = '';
-        } catch (err) {
-          setImportError(err instanceof Error ? err.message : 'Import failed');
-        } finally {
-          setImporting(false);
-        }
-      };
-      reader.readAsArrayBuffer(file);
-      e.target.value = '';
-    },
-    [updateData, parseWorkbookToQcTasks],
-  );
-
-  const loadDefaultQcLog = useCallback(async () => {
-    setImporting(true);
-    setImportError(null);
-    try {
-      const res = await fetch('/qc-log-entries.xlsx', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Default QC Log file not found');
-      const buf = await res.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const qctasks = parseWorkbookToQcTasks(wb);
-      updateData({ qctasks });
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Failed to load default QC Log');
-    } finally {
-      setImporting(false);
-    }
-  }, [updateData, parseWorkbookToQcTasks]);
-
-  const defaultLoadAttempted = useRef(false);
-  useEffect(() => {
-    if (defaultLoadAttempted.current || qcTasksSource.length > 0) return;
-    defaultLoadAttempted.current = true;
-    loadDefaultQcLog();
-  }, [qcTasksSource.length, loadDefaultQcLog]);
 
   // Filter and sort QC tasks
   const filteredQCTasks = useMemo(() => {
@@ -604,67 +449,11 @@ export default function QCLogPage() {
 
   return (
     <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <ContainerLoader message="Loading QC Log..." minHeight={200} />
-        </div>
-      ) : (
-      <>
       {/* Header - Sprint-style */}
       <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>QC Log</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleImportExcel}
-              style={{ display: 'none' }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: '1px solid var(--pinnacle-teal)',
-                background: 'rgba(64,224,208,0.12)',
-                color: 'var(--pinnacle-teal)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: importing ? 'not-allowed' : 'pointer',
-                opacity: importing ? 0.7 : 1,
-              }}
-            >
-              {importing ? 'Importing...' : 'Import from Excel'}
-            </button>
-            <button
-              type="button"
-              onClick={loadDefaultQcLog}
-              disabled={importing}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-tertiary)',
-                color: 'var(--text-secondary)',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-                cursor: importing ? 'not-allowed' : 'pointer',
-                opacity: importing ? 0.7 : 1,
-              }}
-            >
-              Load default QC Log
-            </button>
-          </div>
         </div>
-        {importError && (
-          <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#EF4444' }}>
-            {importError}
-          </div>
-        )}
       </div>
 
       {/* Command Center */}
@@ -683,7 +472,7 @@ export default function QCLogPage() {
               style={{
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px',
                 background: isActive ? 'var(--pinnacle-teal)' : 'transparent', border: 'none', borderRadius: '6px',
-                color: isActive ? '#000' : 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: isActive ? 600 : 500, cursor: 'pointer',
+                color: isActive ? '#041717' : 'var(--text-primary)', fontSize: '0.85rem', fontWeight: isActive ? 600 : 500, cursor: 'pointer',
               }}
             >
               {tab.label}
@@ -692,8 +481,8 @@ export default function QCLogPage() {
         })}
       </div>
 
-      {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {/* Content - ensure readable text on dark background */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', color: 'var(--text-primary)' }}>
 
       {/* DASHBOARD VIEW */}
       {activeView === 'dashboard' && (
@@ -874,7 +663,7 @@ export default function QCLogPage() {
                     );
                   })}
                   {sortedQCTasks.length === 0 && (
-                    <tr><td colSpan={20} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No quality orders found. Import from Excel or load default QC Log.</td></tr>
+                    <tr><td colSpan={20} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>No quality orders found. Data is loaded from the backend.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1015,8 +804,6 @@ export default function QCLogPage() {
         </div>
       )}
       </div>
-      </>
-      )}
     </div>
   );
 }
