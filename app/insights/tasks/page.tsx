@@ -398,7 +398,7 @@ const ContributorSwimlanes = ({ task, hours, laborByWorker, qcByNameAndRole }: {
             {/* Name */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: C.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name || c.employeeId}</div>
-              <div style={{ fontSize: '0.55rem', color: C.textMuted }}>{c.actual.toFixed(1)}h logged</div>
+              <div style={{ fontSize: '0.55rem', color: C.textMuted }}>{asNumber(c.actual).toFixed(1)}h logged</div>
             </div>
 
             {/* Efficiency gauge */}

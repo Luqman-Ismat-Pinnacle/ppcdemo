@@ -262,7 +262,7 @@ export default function SprintView() {
                 <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{group.key}</h3>
                 <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.1)', padding: '0.1rem 0.5rem', borderRadius: '10px', color: 'var(--text-muted)' }}>{group.count}</span>
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', fontWeight: 'bold' }}>{group.totalHours.toFixed(0)} hrs</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--pinnacle-teal)', fontWeight: 'bold' }}>{(group.totalHours ?? 0).toFixed(0)} hrs</div>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: '100px' }}>
               {group.tasks.map((task: any, idx) => {

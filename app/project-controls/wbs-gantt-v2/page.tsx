@@ -10,7 +10,7 @@ import { useSnapshotVariance } from '@/lib/use-snapshot-variance';
 import { CPMEngine } from '@/lib/cpm-engine';
 import PageLoader from '@/components/ui/PageLoader';
 
-type TimelineInterval = 'day' | 'month' | 'quarter' | 'year';
+type TimelineInterval = 'week' | 'month' | 'quarter' | 'year';
 
 type FlatWbsRow = {
   id: string;
@@ -197,7 +197,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: 'blh', title: 'BL Hrs', width: 90, value: (r) => formatInt(r.baselineHours) },
   { id: 'acth', title: 'Act Hrs', width: 90, value: (r) => formatInt(r.actualHours) },
   { id: 'remh', title: 'Rem Hrs', width: 95, value: (r) => formatInt(r.remainingHours) },
-  { id: 'work', title: 'Work', width: 90, value: (r) => formatInt(r.work) },
+  { id: 'work', title: 'Total Hrs', width: 90, value: (r) => formatInt(r.work) },
   { id: 'blc', title: 'BL Cost', width: 110, value: (r) => formatCurrency(r.baselineCost) },
   { id: 'actc', title: 'Act Cost', width: 110, value: (r) => formatCurrency(r.actualCost) },
   { id: 'remc', title: 'Rem Cost', width: 110, value: (r) => formatCurrency(r.remainingCost) },
@@ -334,7 +334,7 @@ export default function WBSGanttV2Page() {
 
   useEffect(() => {
     const defaults: Record<TimelineInterval, number> = {
-      day: 16,
+      week: 16,
       month: 2,
       quarter: 1,
       year: 0.55,
@@ -1041,13 +1041,13 @@ export default function WBSGanttV2Page() {
     const min = timelineRange.min;
     const max = timelineRange.max;
 
-    if (timelineInterval === 'day') {
+    if (timelineInterval === 'week') {
       const start = new Date(min.getFullYear(), min.getMonth(), min.getDate());
       const end = new Date(max.getFullYear(), max.getMonth(), max.getDate());
       const cursor = new Date(start);
       while (cursor <= end) {
         ticks.push(new Date(cursor));
-        cursor.setDate(cursor.getDate() + 1);
+        cursor.setDate(cursor.getDate() + 7);
       }
       return ticks;
     }
@@ -1086,8 +1086,8 @@ export default function WBSGanttV2Page() {
   }, [timelineRange, timelineInterval]);
 
   const tickLabel = useCallback((tick: Date): string => {
-    if (timelineInterval === 'day') {
-      return tick.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
+    if (timelineInterval === 'week') {
+      return tick.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
     }
     if (timelineInterval === 'month') {
       return tick.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
@@ -1194,7 +1194,7 @@ export default function WBSGanttV2Page() {
           />
 
           <div style={{ display: 'flex', gap: 2, background: 'var(--bg-tertiary)', borderRadius: 6, padding: 2 }}>
-            {(['day', 'month', 'quarter', 'year'] as TimelineInterval[]).map((iv) => (
+            {(['week', 'month', 'quarter', 'year'] as TimelineInterval[]).map((iv) => (
               <button
                 key={iv}
                 type="button"
@@ -1383,8 +1383,8 @@ export default function WBSGanttV2Page() {
                       timelineInterval === 'year' ||
                       (timelineInterval === 'quarter' && tick.getMonth() === 0) ||
                       (timelineInterval === 'month' && tick.getMonth() === 0) ||
-                      (timelineInterval === 'day' && tick.getDate() === 1);
-                    const showLabel = timelineInterval === 'day' ? (tick.getDate() === 1 || tick.getDate() === 15) : true;
+                      (timelineInterval === 'week' && tick.getDate() <= 7);
+                    const showLabel = timelineInterval === 'week' ? (tick.getDate() <= 7) : true;
                     return (
                       <React.Fragment key={`axis-${tick.toISOString()}`}>
                         <Line
@@ -1395,10 +1395,10 @@ export default function WBSGanttV2Page() {
                         {showLabel && (
                           <Text
                             x={x + 3}
-                            y={timelineInterval === 'day' ? 18 : 12}
+                            y={timelineInterval === 'week' ? 18 : 12}
                             text={tickLabel(tick)}
                             fill={isMajor ? timelineColors.text : timelineColors.quarter}
-                            fontSize={timelineInterval === 'day' ? 12 : 13}
+                            fontSize={timelineInterval === 'week' ? 12 : 13}
                             fontStyle={isMajor ? 'bold' : 'normal'}
                           />
                         )}
@@ -1406,7 +1406,7 @@ export default function WBSGanttV2Page() {
                     );
                   })}
 
-                  {(timelineInterval === 'day' || timelineInterval === 'month' || timelineInterval === 'quarter') &&
+                  {(timelineInterval === 'week' || timelineInterval === 'month' || timelineInterval === 'quarter') &&
                     yearTicks.map((tick) => {
                       const x = toX(tick);
                       return (
@@ -1714,7 +1714,7 @@ export default function WBSGanttV2Page() {
                     <span>{formatDate(readDate(entry, 'date', 'entryDate', 'createdAt'))}</span>
                     <span>{readString(entry, 'employeeName', 'employeeId', 'employee_id') || '-'}</span>
                     <span>{readString(entry, 'chargeType', 'charge_type') || '-'}</span>
-                    <span style={{ textAlign: 'right' }}>{readNumber(entry, 'hours', 'actualHours', 'totalHoursWorked').toFixed(2)}</span>
+                    <span style={{ textAlign: 'right' }}>{Number(readNumber(entry, 'hours', 'actualHours', 'totalHoursWorked')).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
