@@ -300,7 +300,7 @@ function StatusBreakdownChart({ qcTasks }: { qcTasks: any[] }) {
 // ============================================================================
 
 export default function QCLogPage() {
-  const { filteredData, data, updateData } = useData();
+  const { filteredData, data, updateData, isLoading: dataLoading } = useData();
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -410,6 +410,16 @@ export default function QCLogPage() {
     updateData({ qctasks: updatedQCTasks });
     setEditingCell(null);
   };
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem', overflow: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading QC log...
+        </div>
+      </div>
+    );
+  }
 
   const handleKeyPress = (e: React.KeyboardEvent, qcTask: QCTask) => {
     if (e.key === 'Enter') saveEdit(qcTask);

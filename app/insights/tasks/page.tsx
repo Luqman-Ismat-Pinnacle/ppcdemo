@@ -1336,7 +1336,7 @@ function DrillDownPanel({
 
 // ===== MAIN PAGE =====
 export default function TasksPage() {
-  const { filteredData, hierarchyFilters, metricsHistory, variancePeriod } = useData();
+  const { filteredData, hierarchyFilters, metricsHistory, variancePeriod, isLoading: dataLoading } = useData();
   const data = filteredData;
   
   // Cross-filter state
@@ -1526,6 +1526,16 @@ export default function TasksPage() {
 
   // Check for empty data state
   const hasData = (data.tasks?.length ?? 0) > 0;
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading task insights...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>

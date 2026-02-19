@@ -157,8 +157,10 @@ function filterWbsItemsByPath(items: any[], path: (string | undefined)[]): any[]
     }));
 }
 
+const WBS_TABLE_FONT = { header: '1rem', cell: '0.95rem', fontWeight: 600 as const };
+
 export default function WBSGanttPage() {
-  const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter } = useData();
+  const { filteredData, updateData, data: fullData, setHierarchyFilter, dateFilter, hierarchyFilter, isLoading: dataLoading } = useData();
   const { addEngineLog } = useLogs();
   const fixedColsWidth = 1560; // Includes Employee column
   const data = filteredData;
@@ -1049,6 +1051,12 @@ export default function WBSGanttPage() {
 
       <div className="chart-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '60vh' }}>
         <div className="chart-card-body no-padding" style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'scroll', position: 'relative' }} ref={containerRef} onScroll={handleScroll} onWheel={handleWheelZoom}>
+          {dataLoading ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '200px', color: 'var(--text-muted)', fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>
+              <span>Loading WBS &amp; Gantt...</span>
+            </div>
+          ) : (
+          <>
           {/* SVG for Dependencies */}
           <svg ref={svgRef} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 5 }}>
             <defs>
@@ -1067,31 +1075,31 @@ export default function WBSGanttPage() {
           <table ref={tableRef} className="wbs-table" style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0, maxWidth: `${fixedColsWidth + (dateColumns.length * columnWidth)}px` }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 90, background: 'var(--bg-secondary)' }}>
               <tr style={{ height: `${headerHeight}px` }}>
-                <th style={{ width: `${wbsCodeColWidth}px`, minWidth: `${wbsCodeColWidth}px`, position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', transition: 'width 0.2s' }}>WBS</th>
-                <th style={{ width: '280px', minWidth: '280px', maxWidth: '280px', position: 'sticky', left: `${wbsCodeColWidth}px`, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', transition: 'left 0.2s' }}>Name</th>
-                <th style={{ width: '65px', minWidth: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Type</th>
-                <th style={{ width: '80px', minWidth: '80px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Resource</th>
-                <th style={{ width: '90px', minWidth: '90px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Employee</th>
-                {showSparklines && <th style={{ width: '70px', minWidth: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>FTE Load</th>}
-                <th style={{ width: '75px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Start</th>
-                <th style={{ width: '75px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>End</th>
-                <th style={{ width: '40px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Days</th>
-                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">BL Hrs</th>
-                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }} className="number">Act Hrs</th>
-                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Rem</th>
-                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">BL Cost</th>
-                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', color: 'var(--pinnacle-teal)' }} className="number">Act Cost</th>
-                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Rem Cost</th>
-                <th style={{ width: '40px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Eff%</th>
-                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }} className="number">Prog</th>
-                <th style={{ width: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>Pred</th>
-                <th style={{ width: '35px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem', color: '#ff6b6b' }} className="number">TF</th>
-                <th style={{ width: '30px', background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 600, fontSize: '0.65rem' }}>CP</th>
+                <th style={{ width: `${wbsCodeColWidth}px`, minWidth: `${wbsCodeColWidth}px`, position: 'sticky', left: 0, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header, transition: 'width 0.2s' }}>WBS</th>
+                <th style={{ width: '280px', minWidth: '280px', maxWidth: '280px', position: 'sticky', left: `${wbsCodeColWidth}px`, top: 0, zIndex: 100, background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header, transition: 'left 0.2s' }}>Name</th>
+                <th style={{ width: '65px', minWidth: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>Type</th>
+                <th style={{ width: '80px', minWidth: '80px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>Resource</th>
+                <th style={{ width: '90px', minWidth: '90px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>Employee</th>
+                {showSparklines && <th style={{ width: '70px', minWidth: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>FTE Load</th>}
+                <th style={{ width: '75px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>Start</th>
+                <th style={{ width: '75px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>End</th>
+                <th style={{ width: '40px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">Days</th>
+                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">BL Hrs</th>
+                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header, color: 'var(--pinnacle-teal)' }} className="number">Act Hrs</th>
+                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">Rem</th>
+                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">BL Cost</th>
+                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header, color: 'var(--pinnacle-teal)' }} className="number">Act Cost</th>
+                <th style={{ width: '65px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">Rem Cost</th>
+                <th style={{ width: '40px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">Eff%</th>
+                <th style={{ width: '50px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }} className="number">Prog</th>
+                <th style={{ width: '70px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>Pred</th>
+                <th style={{ width: '35px', background: 'var(--bg-secondary)', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header, color: '#ff6b6b' }} className="number">TF</th>
+                <th style={{ width: '30px', background: 'var(--bg-secondary)', borderRight: '1px solid #444', borderBottom: '1px solid #333', fontWeight: 700, fontSize: WBS_TABLE_FONT.header }}>CP</th>
                 {dateColumns.map((col, i) => {
                   const isCurrentPeriod = today >= col.start && today <= col.end;
                   return (
                     <th key={i} style={{
-                      width: `${columnWidth}px`, textAlign: 'center', fontSize: '0.55rem',
+                      width: `${columnWidth}px`, textAlign: 'center', fontSize: WBS_TABLE_FONT.header,
                       borderLeft: '1px solid #333', borderBottom: '1px solid #333',
                       background: isCurrentPeriod ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-secondary)',
                       color: isCurrentPeriod ? '#EF4444' : 'inherit', fontWeight: 600,
@@ -1134,24 +1142,24 @@ export default function WBSGanttPage() {
                             {isExpanded ? '▼' : '▶'}
                           </button>
                         )}
-                        <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: '0.6rem', fontWeight: isCritical ? 700 : 400, whiteSpace: 'nowrap' }}>{row.wbsCode}</span>
+                        <span style={{ color: isCritical ? '#ef4444' : 'inherit', fontSize: WBS_TABLE_FONT.cell, fontWeight: isCritical ? 700 : WBS_TABLE_FONT.fontWeight, whiteSpace: 'nowrap' }}>{row.wbsCode}</span>
                       </div>
                     </td>
                     <td style={{ position: 'sticky', left: `${wbsCodeColWidth}px`, zIndex: 10, background: isCritical ? '#1a1010' : 'var(--bg-primary)', borderRight: '1px solid #444', width: '280px', minWidth: '280px', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', transition: 'left 0.2s' }}>
                       <EnhancedTooltip content={row.name || ''}>
-                        <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : 400, fontSize: '0.65rem', color: isCritical ? '#ef4444' : row.hasChildren && !isExpanded && worstCase ? worstCase.color : 'inherit' }}>{row.name}</span>
+                        <span style={{ fontWeight: row.hasChildren || isCritical ? 700 : WBS_TABLE_FONT.fontWeight, fontSize: WBS_TABLE_FONT.cell, color: isCritical ? '#ef4444' : row.hasChildren && !isExpanded && worstCase ? worstCase.color : 'inherit' }}>{row.name}</span>
                       </EnhancedTooltip>
                     </td>
-                    <td style={{ width: '65px', minWidth: '65px' }}><span className={`type-badge ${row.itemType}`} style={{ fontSize: '0.5rem' }}>{(row.itemType || '').replace('_', ' ')}</span></td>
-                    <td style={{ fontSize: '0.6rem', width: '80px', minWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(row as any).assignedResource || ''}>
+                    <td style={{ width: '65px', minWidth: '65px' }}><span className={`type-badge ${row.itemType}`} style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{(row.itemType || '').replace('_', ' ')}</span></td>
+                    <td style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, width: '80px', minWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={(row as any).assignedResource || ''}>
                       {(row as any).assignedResource || '-'}
                     </td>
-                    <td style={{ fontSize: '0.6rem', width: '90px', minWidth: '90px' }}>
+                    <td style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, width: '90px', minWidth: '90px' }}>
                       {!row.hasChildren ? (
                         editingTaskId === row.id ? (
                           <SearchableDropdown options={employeeOptions} value={row.assignedResourceId || null} onChange={(id) => handleAssignResource(row.id, id)} placeholder="Assign..." disabled={false} />
                         ) : (
-                          <button onClick={() => setEditingTaskId(row.id)} style={{ background: 'none', border: 'none', color: row.assignedResourceId ? 'var(--text-primary)' : 'var(--pinnacle-teal)', cursor: 'pointer', fontSize: '0.6rem', padding: '2px' }}>
+                          <button onClick={() => setEditingTaskId(row.id)} style={{ background: 'none', border: 'none', color: row.assignedResourceId ? 'var(--text-primary)' : 'var(--pinnacle-teal)', cursor: 'pointer', fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, padding: '2px' }}>
                             {row.assignedResourceId ? getEmployeeName(row.assignedResourceId, employees) : '+ Assign'}
                           </button>
                         )
@@ -1162,29 +1170,29 @@ export default function WBSGanttPage() {
                         <FTESparkline baselineHours={row.baselineHours || 0} daysRequired={row.daysRequired || 0} percentComplete={row.percentComplete || 0} />
                       </td>
                     )}
-                    <td style={{ fontSize: '0.6rem' }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
-                    <td style={{ fontSize: '0.6rem' }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.daysRequired != null ? Number(row.daysRequired).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineHours ? Number(row.baselineHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{row.actualHours ? Number(row.actualHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{(row as any).remainingHours != null ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineCost != null ? formatCurrency(row.baselineCost) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem', color: 'var(--pinnacle-teal)' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem' }}>{row.baselineCost != null ? formatCurrency(Math.max(0, (row.baselineCost || 0) - (row.actualCost || 0))) : '-'}</td>
-                    <td className="number" style={{ fontSize: '0.6rem', color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
+                    <td style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{row.startDate ? new Date(row.startDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
+                    <td style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{row.endDate ? new Date(row.endDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{row.daysRequired != null ? Number(row.daysRequired).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{row.baselineHours ? Number(row.baselineHours).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, color: 'var(--pinnacle-teal)' }}>{row.actualHours ? Number(row.actualHours).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{(row as any).remainingHours != null ? Number((row as any).remainingHours).toFixed(0) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{row.baselineCost != null ? formatCurrency(row.baselineCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, color: 'var(--pinnacle-teal)' }}>{row.actualCost != null ? formatCurrency(row.actualCost) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }}>{row.baselineCost != null ? formatCurrency(Math.max(0, (row.baselineCost || 0) - (row.actualCost || 0))) : '-'}</td>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, color: efficiency >= 100 ? '#22c55e' : efficiency >= 80 ? '#eab308' : '#ef4444' }}>{row.taskEfficiency ? `${Math.round(row.taskEfficiency)}%` : '-'}</td>
                     <td>
                       <div className="progress-bar" style={{ width: '30px', height: '6px' }}>
                         <div className="progress-bar-fill" style={{ width: `${row.percentComplete || 0}%`, background: barColor }}></div>
                       </div>
                     </td>
-                    <td style={{ fontSize: '0.5rem' }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.taskId)).join(', ')}>
+                    <td style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight }} title={row.predecessors?.map((p: any) => getTaskNameFromMap(p.taskId)).join(', ')}>
                       {row.predecessors?.length ? `${row.predecessors.length} dep` : '-'}
                     </td>
-                    <td className="number" style={{ fontSize: '0.6rem', color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>
+                    <td className="number" style={{ fontSize: WBS_TABLE_FONT.cell, fontWeight: WBS_TABLE_FONT.fontWeight, color: (row.totalFloat != null && row.totalFloat <= 0) ? '#ef4444' : 'inherit' }}>
                       {row.totalFloat != null ? row.totalFloat : '-'}
                     </td>
                     <td style={{ textAlign: 'center', borderRight: '1px solid #444' }}>
-                      {isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: '0.6rem' }}>CP</span>}
+                      {isCritical && <span style={{ color: '#ef4444', fontWeight: 800, fontSize: WBS_TABLE_FONT.cell }}>CP</span>}
                     </td>
 
                     {/* Gantt Timeline Cells */}
@@ -1297,6 +1305,8 @@ export default function WBSGanttPage() {
               {paddingBottom > 0 && <tr style={{ height: `${paddingBottom}px` }}><td colSpan={100} style={{ padding: 0, border: 'none' }}></td></tr>}
             </tbody>
           </table>
+          </>
+          )}
         </div>
       </div>
     </div>

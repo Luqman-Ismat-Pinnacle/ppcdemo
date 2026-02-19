@@ -20,7 +20,7 @@ import DeliverableStatusPie from '@/components/charts/DeliverableStatusPie';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
 
 export default function DocumentsPage() {
-  const { filteredData } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const statusFilterValues = useMemo(() => pageFilters.filter((f) => f.dimension === 'status').map((f) => f.value), [pageFilters]);
@@ -89,6 +89,16 @@ export default function DocumentsPage() {
 
     return { projects: projectsWithHealth, avgHealth, atRisk, healthy, total: projects.length };
   }, [data.projects, data.projectHealth]);
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading documents...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page">

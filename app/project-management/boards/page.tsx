@@ -111,7 +111,7 @@ interface BoardColumn {
 type SwimlaneType = 'none' | 'assignee' | 'priority' | 'workItemType' | 'project';
 
 export default function BoardsPage() {
-  const { filteredData, data, updateData } = useData();
+  const { filteredData, data, updateData, isLoading: dataLoading } = useData();
   
   // View state
   const [selectedWorkItemTypes, setSelectedWorkItemTypes] = useState<WorkItemType[]>(['Epic', 'Feature', 'User Story', 'Task', 'Bug']);
@@ -269,6 +269,16 @@ export default function BoardsPage() {
     e.dataTransfer.dropEffect = 'move';
     setDragOverColumn(state);
   };
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel full-height-page project-management-page">
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading boards...
+        </div>
+      </div>
+    );
+  }
 
   // Handle drag leave
   const handleDragLeave = () => {

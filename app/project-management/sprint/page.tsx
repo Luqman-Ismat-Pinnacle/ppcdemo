@@ -525,7 +525,7 @@ const VIEW_CONFIG: Record<ViewType, { label: string; icon: JSX.Element }> = {
 // ============================================================================
 
 export default function SprintPlanningPage() {
-  const { filteredData } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
   
   const [selectedView, setSelectedView] = useState<ViewType>('board');
@@ -639,6 +639,16 @@ export default function SprintPlanningPage() {
       return updated;
     }));
   }, [selectedIteration?.workDays]);
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading sprint data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel full-height-page" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

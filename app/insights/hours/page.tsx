@@ -51,7 +51,7 @@ function formatWeekLabel(dateStr: string): string {
 }
 
 export default function HoursPage() {
-  const { filteredData, variancePeriod, varianceEnabled, metricsHistory } = useData();
+  const { filteredData, variancePeriod, varianceEnabled, metricsHistory, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [pageFilters, setPageFilters] = useState<FilterChip[]>([]);
   const [stackedView, setStackedView] = useState<StackedViewType>('chargeCode');
@@ -398,6 +398,16 @@ export default function HoursPage() {
       return row;
     });
   }, [sortedRoleRows, tableWeeks]);
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading hours & labor...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page" style={{ height: 'calc(100vh - 100px)', overflow: 'auto', paddingBottom: '3rem' }}>

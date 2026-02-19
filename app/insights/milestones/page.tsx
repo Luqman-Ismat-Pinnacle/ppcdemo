@@ -35,7 +35,7 @@ function formatPercent(value: unknown): string {
 }
 
 export default function MilestonesPage() {
-  const { filteredData } = useData();
+  const { filteredData, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [scoreboardSort, setScoreboardSort] = useState<SortState | null>(null);
   const [milestonesSort, setMilestonesSort] = useState<SortState | null>(null);
@@ -122,6 +122,16 @@ export default function MilestonesPage() {
       }
     });
   }, [filteredMilestones, milestonesSort]);
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading milestones...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page">

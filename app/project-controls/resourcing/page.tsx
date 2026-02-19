@@ -591,23 +591,19 @@ function ResourcingPageContent() {
 
   // Handle task assignment
   const handleAssignTask = useCallback((task: any, employee: any) => {
-    const taskId = task.id || task.taskId;
-    const employeeId = employee.id || employee.employeeId;
-    const employeeName = employee.name;
-    const taskName = task.name || task.taskName;
-
-    const updatedTasks = (data.tasks || []).map((t: any) =>
-      (t.id || t.taskId) === taskId
-        ? { ...t, assignedTo: employeeName, employeeId, assignedResource: employeeName, updatedAt: new Date().toISOString() }
-        : t
-    );
-    updateData({ tasks: updatedTasks });
-
-    setAssignmentMessage(`Task "${taskName}" assigned to ${employeeName}`);
+    console.log('Assigning task', task.name || task.taskName, 'to', employee.name);
+    
+    // Show success message
+    setAssignmentMessage(`Task "${task.name || task.taskName}" assigned to ${employee.name}`);
     setTimeout(() => setAssignmentMessage(null), 3000);
+    
+    // Clear drag state
     setDraggedTask(null);
     setDropTargetId(null);
-  }, [data.tasks, updateData]);
+    
+    // TODO: Update data context and persist to database
+    // This would update the task's assignedTo field and refresh the data
+  }, []);
 
   // Handle employee project reassignment
   const handleReassignToProject = useCallback((employee: any, projectId: string) => {
@@ -1342,7 +1338,7 @@ function ResourcingPageContent() {
   );
 }
 
-// Wrapper with Suspense (no full-page loading; content loads in-container)
+// Wrapper with Suspense
 export default function ResourcingPage() {
   return (
     <Suspense fallback={null}>

@@ -41,7 +41,7 @@ interface BacklogItem {
 }
 
 export default function BacklogPage() {
-  const { filteredData, data, updateData, isLoading: dataLoading } = useData();
+  const { filteredData, data, updateData } = useData();
   
   const [viewMode, setViewMode] = useState<ViewMode>('hierarchy');
   const [groupBy, setGroupBy] = useState<GroupBy>('epic');
@@ -221,84 +221,13 @@ export default function BacklogPage() {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  // Handle drop - reorder sibling items and persist
+  // Handle drop - reorder items
   const handleDrop = (e: React.DragEvent, targetItem: BacklogItem) => {
     e.preventDefault();
-    if (!draggedItem || draggedItem.id === targetItem.id || draggedItem.type !== targetItem.type) {
-      setDraggedItem(null);
-      return;
-    }
+    if (!draggedItem || draggedItem.id === targetItem.id) return;
 
-    const type = draggedItem.type;
-    const draggedId = draggedItem.id;
-    const targetId = targetItem.id;
-
-    if (type === 'User Story') {
-      const stories = (data.userStories || []) as { id: string; featureId: string }[];
-      const draggedStory = stories.find(s => s.id === draggedId);
-      const targetStory = stories.find(s => s.id === targetId);
-      if (!draggedStory || !targetStory || draggedStory.featureId !== targetStory.featureId) {
-        setDraggedItem(null);
-        return;
-      }
-      const featureId = draggedStory.featureId;
-      const siblingIndices = stories.map((s, i) => ({ s, i })).filter(({ s }) => s.featureId === featureId);
-      const idxA = siblingIndices.findIndex(({ s }) => s.id === draggedId);
-      const idxB = siblingIndices.findIndex(({ s }) => s.id === targetId);
-      if (idxA === -1 || idxB === -1) { setDraggedItem(null); return; }
-      const firstIdx = siblingIndices[0].i;
-      const lastIdx = siblingIndices[siblingIndices.length - 1].i;
-      const reordered = [...stories.slice(firstIdx, lastIdx + 1)];
-      [reordered[idxA], reordered[idxB]] = [reordered[idxB], reordered[idxA]];
-      const newUserStories = [...stories.slice(0, firstIdx), ...reordered, ...stories.slice(lastIdx + 1)];
-      updateData({ userStories: newUserStories });
-    } else if (type === 'Task') {
-      const tasks = (data.tasks || []) as { id?: string; taskId?: string; userStoryId?: string }[];
-      const draggedTask = tasks.find(t => (t.id || t.taskId) === draggedId);
-      const targetTask = tasks.find(t => (t.id || t.taskId) === targetId);
-      if (!draggedTask || !targetTask || draggedTask.userStoryId !== targetTask.userStoryId) {
-        setDraggedItem(null);
-        return;
-      }
-      const storyId = draggedTask.userStoryId;
-      const siblingIndices = tasks.map((t, i) => ({ t, i })).filter(({ t }) => t.userStoryId === storyId);
-      const idxA = siblingIndices.findIndex(({ t }) => (t.id || t.taskId) === draggedId);
-      const idxB = siblingIndices.findIndex(({ t }) => (t.id || t.taskId) === targetId);
-      if (idxA === -1 || idxB === -1) { setDraggedItem(null); return; }
-      const firstIdx = siblingIndices[0].i;
-      const lastIdx = siblingIndices[siblingIndices.length - 1].i;
-      const reordered = [...tasks.slice(firstIdx, lastIdx + 1)];
-      [reordered[idxA], reordered[idxB]] = [reordered[idxB], reordered[idxA]];
-      const newTasks = [...tasks.slice(0, firstIdx), ...reordered, ...tasks.slice(lastIdx + 1)];
-      updateData({ tasks: newTasks });
-    } else if (type === 'Feature') {
-      const features = (data.features || []) as { id: string; epicId: string }[];
-      const draggedF = features.find(f => f.id === draggedId);
-      const targetF = features.find(f => f.id === targetId);
-      if (!draggedF || !targetF || draggedF.epicId !== targetF.epicId) {
-        setDraggedItem(null);
-        return;
-      }
-      const epicId = draggedF.epicId;
-      const siblingIndices = features.map((f, i) => ({ f, i })).filter(({ f }) => f.epicId === epicId);
-      const idxA = siblingIndices.findIndex(({ f }) => f.id === draggedId);
-      const idxB = siblingIndices.findIndex(({ f }) => f.id === targetId);
-      if (idxA === -1 || idxB === -1) { setDraggedItem(null); return; }
-      const firstIdx = siblingIndices[0].i;
-      const lastIdx = siblingIndices[siblingIndices.length - 1].i;
-      const reordered = [...features.slice(firstIdx, lastIdx + 1)];
-      [reordered[idxA], reordered[idxB]] = [reordered[idxB], reordered[idxA]];
-      const newFeatures = [...features.slice(0, firstIdx), ...reordered, ...features.slice(lastIdx + 1)];
-      updateData({ features: newFeatures });
-    } else if (type === 'Epic') {
-      const epics = (data.epics || []) as { id: string }[];
-      const idxA = epics.findIndex(e => e.id === draggedId);
-      const idxB = epics.findIndex(e => e.id === targetId);
-      if (idxA === -1 || idxB === -1) { setDraggedItem(null); return; }
-      const newEpics = [...epics];
-      [newEpics[idxA], newEpics[idxB]] = [newEpics[idxB], newEpics[idxA]];
-      updateData({ epics: newEpics });
-    }
+    // TODO: Implement reordering logic
+    // This would update the priority/order of items
     setDraggedItem(null);
   };
 
@@ -465,14 +394,9 @@ export default function BacklogPage() {
               type="number"
               min="0"
               max="100"
-              value={(item.data as { storyPoints?: number }).storyPoints ?? item.storyPoints ?? 0}
+              value={item.storyPoints || 0}
               onChange={(e) => {
-                const points = parseInt(e.target.value, 10) || 0;
-                const storyId = item.id;
-                const updatedStories = (data.userStories || []).map((s: any) =>
-                  s.id === storyId ? { ...s, storyPoints: points, updatedAt: new Date().toISOString() } : s
-                );
-                updateData({ userStories: updatedStories });
+                // TODO: Store story points
               }}
               onClick={(e) => e.stopPropagation()}
               style={{
@@ -514,16 +438,6 @@ export default function BacklogPage() {
       </div>
     );
   };
-
-  if (dataLoading) {
-    return (
-      <div className="page-panel full-height-page project-management-page">
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
-          Loading backlog...
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="page-panel full-height-page project-management-page">

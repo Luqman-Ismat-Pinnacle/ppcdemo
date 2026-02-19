@@ -1262,7 +1262,7 @@ function BurnRateTrend({ hours, projects }: { hours: any[]; projects: any[] }) {
 
 // ===== MAIN PAGE =====
 export default function ForecastPage() {
-  const { filteredData, data: fullData } = useData();
+  const { filteredData, data: fullData, isLoading: dataLoading } = useData();
   const data = filteredData;
   const [fteLimit, setFteLimit] = useState(10);
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
@@ -1360,6 +1360,16 @@ export default function ForecastPage() {
     if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
     return `$${v.toFixed(0)}`;
   };
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading forecast data...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>

@@ -1802,7 +1802,7 @@ function VarianceTimelineChart({ varianceData, healthMetrics, onClick }: { varia
 
 // ===== MAIN PAGE =====
 export default function OverviewPage() {
-  const { filteredData, hierarchyFilters, variancePeriod, varianceEnabled, metricsHistory } = useData();
+  const { filteredData, hierarchyFilters, variancePeriod, varianceEnabled, metricsHistory, isLoading: dataLoading } = useData();
   const data = filteredData;
   
   // Cross-filter state
@@ -1966,6 +1966,16 @@ export default function OverviewPage() {
 
   // Check for empty data state
   const hasData = (data.tasks?.length ?? 0) > 0 || (data.projects?.length ?? 0) > 0;
+
+  if (dataLoading) {
+    return (
+      <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '280px', color: 'var(--text-muted)', fontSize: '0.95rem', fontWeight: 600 }}>
+          Loading insights...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
