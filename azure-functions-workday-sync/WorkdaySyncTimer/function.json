@@ -1,11 +1,7 @@
 {
+  "_comment": "WorkdaySyncTimer - updated via repo push for deployment verification",
   "bindings": [
-    {
-      "name": "myTimer",
-      "type": "timerTrigger",
-      "direction": "in",
-      "schedule": "0 */15 * * * *"
-    }
+    {"name":"myTimer","type":"timerTrigger","direction":"in","schedule":"0 */15 * * * *"}
   ],
   "scriptFile": "../index.js",
   "entryPoint": "timerTrigger"
