@@ -68,6 +68,32 @@ interface AzureFunctionResponse {
   results?: Record<string, AzureFunctionStepResult>;
 }
 
+/** Build step results from flat summary for older Azure deployments that don't return results. */
+function buildResultsFromSummary(summary: Record<string, unknown>): Record<string, AzureFunctionStepResult> {
+  const results: Record<string, AzureFunctionStepResult> = {};
+  if (summary.employees != null) results.employees = { success: true, summary: summary.employees };
+  if (summary.hierarchy != null) results.hierarchy = { success: true, summary: summary.hierarchy };
+  if (summary.hours != null) {
+    const h = summary.hours as Record<string, unknown>;
+    results.hours = {
+      success: (h.chunksFail as number) === 0,
+      summary: {
+        chunksOk: h.chunksOk,
+        chunksFail: h.chunksFail,
+        totalHours: h.totalHours,
+        totalFetched: h.totalFetched,
+        lastError: h.lastError,
+      },
+    };
+  }
+  if (summary.matching != null) results.matching = { success: true, summary: summary.matching };
+  if (summary.customerContracts != null) {
+    const cc = summary.customerContracts as Record<string, unknown>;
+    results.customerContracts = { success: !cc.error, summary: summary.customerContracts };
+  }
+  return results;
+}
+
 interface HourEntryRow {
   id: string;
   project_id?: string;
@@ -253,14 +279,25 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
         const data = (await response.json()) as AzureFunctionResponse;
         logAndPush(`Azure Function sync completed: ${JSON.stringify(data.summary || {})}`);
 
-        // Emit step events for each component
-        if (data.results) {
-          for (const [step, result] of Object.entries(data.results)) {
+        // Emit step events for each component (employees, hierarchy, hours, matching, customerContracts)
+        const results = data.results || (data.summary && buildResultsFromSummary(data.summary));
+        if (results) {
+          const stepOrder = ['employees', 'hierarchy', 'hours', 'matching', 'customerContracts'];
+          for (const step of stepOrder) {
+            const result = results[step];
+            if (!result) continue;
+            const success = result.success !== false;
+            const summary = result.summary || result;
+            if (step === 'hours' && result.summary?.lastError) {
+              pushLine(controller, { type: 'step', step, status: 'chunk_done', success: false, error: result.summary.lastError });
+            }
             pushLine(controller, {
               type: 'step',
               step,
               status: 'done',
-              result: { success: result.success !== false, summary: result.summary || result },
+              result: { success, summary },
+              totalHours: step === 'hours' ? (result.summary?.totalHours ?? result.summary?.totalFetched) : undefined,
+              ...(step === 'hours' && result.summary?.chunksFail > 0 ? { error: result.summary.lastError } : {}),
             });
           }
         }

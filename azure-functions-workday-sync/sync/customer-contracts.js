@@ -19,12 +19,27 @@ function safeString(val) {
   return (val != null ? String(val) : '').trim();
 }
 
-/** Extract project ID from Billable_Project (ID at the beginning of the string) */
-function projectIdFromBillableProject(raw) {
+/** Extract leading digits from Billable_Project (e.g. "20040 Chevron..." -> "20040") */
+function leadingDigitsFromBillableProject(raw) {
   const s = safeString(raw);
   if (!s) return null;
-  const match = s.match(/^([A-Za-z0-9_-]+)/);
-  return match ? match[1].substring(0, 50) : null;
+  const match = s.match(/^(\d+)/);
+  return match ? match[1] : null;
+}
+
+/** Resolve Workday Billable_Project to a project id that exists in DB. Projects have id like "20040" or "20040 (Inactive)". */
+function resolveProjectId(billableProjectRaw, existingProjectIds) {
+  const raw = safeString(billableProjectRaw);
+  const leading = leadingDigitsFromBillableProject(raw);
+  if (!leading || !existingProjectIds.length) return null;
+  const set = new Set(existingProjectIds);
+  if (set.has(leading)) return leading;
+  const withInactive = leading + ' (Inactive)';
+  if (set.has(withInactive)) return withInactive;
+  for (const id of existingProjectIds) {
+    if (id === leading || id.startsWith(leading + ' ') || id.startsWith(leading + '_')) return id;
+  }
+  return null;
 }
 
 /** Simple non-USD to USD conversion (approximate). Override via env or extend as needed. */
@@ -82,18 +97,28 @@ async function syncCustomerContracts(client) {
   const records = data.Report_Entry || data.report_Entry || data.ReportEntry || [];
   log('Report parsed', { recordCount: records.length, sampleKeys: records[0] ? Object.keys(records[0]).slice(0, 20) : [] });
 
+  let projectIds = [];
+  try {
+    const res = await client.query('SELECT id FROM projects');
+    projectIds = (res.rows || []).map((row) => row.id);
+    log('Resolving project_id against projects', { count: projectIds.length });
+  } catch (e) {
+    log('Could not load project ids; customer_contracts will have project_id null', e.message);
+  }
+
   const rows = [];
-  for (const r of records) {
+  for (let idx = 0; idx < records.length; idx++) {
+    const r = records[idx];
     const lineAmount = r.Line_Amount ?? r.line_amount ?? r.LineAmount;
     const lineFromDate = r.Line_From_Date ?? r.line_from_date ?? r.LineFromDate ?? r.Date ?? r.date;
-    const currency = safeString(r.Currency ?? r.currency ?? 'USD');
+    const currency = safeString(r.Currency ?? r.currency ?? 'USD') || 'USD';
     const billableProject = r.Billable_Project ?? r.billable_project ?? r.BillableProject ?? '';
-
-    const projectId = projectIdFromBillableProject(billableProject);
-    if (!projectId) continue;
+    const referenceID = safeString(r.referenceID ?? r.referenceId ?? r.reference_id ?? '');
 
     const amount = parseFloat(lineAmount);
     if (Number.isNaN(amount)) continue;
+
+    const projectId = resolveProjectId(billableProject, projectIds);
 
     let dateOnly = null;
     if (lineFromDate != null) {
@@ -108,13 +133,14 @@ async function syncCustomerContracts(client) {
         dateOnly = lineFromDate.toISOString().split('T')[0];
       }
     }
-    if (!dateOnly) continue;
 
     const amountUsd = toUsd(amount, currency);
-    const id = `CC_${projectId}_${dateOnly}_${Math.abs(hashCode(billableProject + String(amount)))}`.replace(/-/g, 'M').substring(0, 80);
+    const id = referenceID
+      ? referenceID.replace(/[^A-Za-z0-9_-]/g, '_').substring(0, 80)
+      : `CC_${projectId || 'none'}_${dateOnly || 'nodate'}_${Math.abs(hashCode(billableProject + String(amount) + idx))}`.replace(/-/g, 'M').substring(0, 80);
     rows.push({
       id,
-      project_id: projectId,
+      project_id: projectId || null,
       line_amount: amount,
       line_from_date: dateOnly,
       currency: currency.substring(0, 10),

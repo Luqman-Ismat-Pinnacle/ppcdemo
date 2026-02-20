@@ -228,7 +228,8 @@ export default function StatusAndLogsDropdown() {
         onEvent: (ev) => {
           if (ev.type === 'step') {
             if (ev.status === 'started') {
-              const stepLabel = ev.step === 'employees' ? 'employees' : ev.step === 'projects' ? 'hierarchy' : 'hours';
+              const stepLabels: Record<string, string> = { employees: 'employees', projects: 'hierarchy', hierarchy: 'hierarchy', hours: 'hours', matching: 'matching', customerContracts: 'customer contracts' };
+              const stepLabel = stepLabels[ev.step as string] || ev.step;
               pushLog(`Syncing ${stepLabel}…`, 'info');
               if (ev.step === 'hours' && ev.totalChunks) {
                 errorCount.hoursTotal = ev.totalChunks;
@@ -248,12 +249,16 @@ export default function StatusAndLogsDropdown() {
               }
             }
             if (ev.status === 'done') {
-              const stepLabel = ev.step === 'employees' ? 'Employees' : ev.step === 'projects' ? 'Hierarchy' : 'Hours';
+              const stepLabels: Record<string, string> = { employees: 'Employees', projects: 'Hierarchy', hierarchy: 'Hierarchy', hours: 'Hours', matching: 'Matching', customerContracts: 'Customer contracts' };
+              const stepLabel = stepLabels[ev.step as string] || ev.step;
               if (ev.step === 'hours') {
                 setSyncProgress(null);
+                if (ev.error) pushLog(`Hours: ${ev.error}`, 'error');
                 if (ev.totalHours != null) {
                   pushLog(`${stepLabel}: ${ev.totalHours} total entries synced`, 'success');
                 }
+              } else if (ev.step === 'customerContracts') {
+                pushLog(`${stepLabel} sync complete`, 'success');
               } else {
                 pushLog(`${stepLabel} sync complete`, 'success');
               }

@@ -87,6 +87,11 @@ async function syncHours(client, startDate, endDate) {
     sampleKeys: records[0] ? Object.keys(records[0]).slice(0, 25) : [],
   });
 
+  if (records.length === 0) {
+    log('No hour records in report; skipping upserts');
+    return { fetched: 0, hours: 0, phases: 0, tasks: 0 };
+  }
+
   const hoursToUpsert = new Map();
   const phasesToUpsert = new Map();
   const tasksToUpsert = new Map();
@@ -231,10 +236,11 @@ async function syncHours(client, startDate, endDate) {
       try {
         await client.query(sql, values.flat());
       } catch (err) {
-        const detail = err.detail || err.message;
         const code = err.code || '';
-        log(`${table} batch ${i / batchSize + 1} failed`, { code, detail, rowSample: batch[0] });
-        throw new Error(`${table} upsert failed: ${code} ${detail}`);
+        const detail = err.detail || err.message;
+        const fullMsg = [code, detail].filter(Boolean).join(' ') || err.message;
+        log(`${table} batch ${i / batchSize + 1} failed`, { code, detail, message: err.message, rowSample: batch[0] });
+        throw new Error(`${table} upsert failed: ${fullMsg}`);
       }
     }
   };

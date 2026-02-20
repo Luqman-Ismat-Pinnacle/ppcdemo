@@ -946,9 +946,9 @@ export interface DBProjectDocument {
  */
 export interface DBCustomerContract {
   id: string;
-  projectId: string;
+  projectId: string | null;
   lineAmount: number;
-  lineFromDate: string;
+  lineFromDate: string | null;
   currency: string;
   amountUsd: number | null;
   billableProjectRaw: string | null;

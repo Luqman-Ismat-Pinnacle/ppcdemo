@@ -58,7 +58,29 @@ async function httpTrigger(context, req) {
       context.log('WorkdaySync HTTP: using hoursDaysBack from body', hoursDaysBack);
     }
     const summary = await runFullSync(hoursDaysBack);
-    res.body = { success: true, summary };
+    // Expose step-level results so API/UI can show employees, hierarchy, hours, matching, customerContracts
+    const results = {
+      employees: summary.employees != null ? { success: true, summary: summary.employees } : null,
+      hierarchy: summary.hierarchy != null ? { success: true, summary: summary.hierarchy } : null,
+      hours: summary.hours != null ? {
+        success: (summary.hours.chunksFail || 0) === 0,
+        summary: {
+          chunksOk: summary.hours.chunksOk,
+          chunksFail: summary.hours.chunksFail,
+          totalHours: summary.hours.totalHours,
+          totalFetched: summary.hours.totalFetched,
+          hoursDaysBack: summary.hours.hoursDaysBack,
+          lastError: summary.hours.lastError || undefined,
+        },
+      } : null,
+      matching: summary.matching != null ? { success: true, summary: summary.matching } : null,
+      customerContracts: summary.customerContracts != null && !summary.customerContracts.error
+        ? { success: true, summary: summary.customerContracts }
+        : summary.customerContracts != null
+          ? { success: false, error: summary.customerContracts.error, summary: summary.customerContracts }
+          : null,
+    };
+    res.body = { success: true, summary, results };
     context.log('WorkdaySync HTTP: done', JSON.stringify(summary));
   } catch (err) {
     context.log.error('WorkdaySync HTTP: error', err);
