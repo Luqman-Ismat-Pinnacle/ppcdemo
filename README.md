@@ -109,7 +109,7 @@ These are the minimum required variables for production website operation:
 | `MPP_PARSER_URL` | `/api/documents/process-mpp` | Server-side MPP parser base URL |
 | `AZURE_DEVOPS_ORGANIZATION` | Sprint/QC Azure sync | Azure DevOps org |
 | `AZURE_DEVOPS_PROJECT` | Sprint/QC Azure sync | Azure DevOps project |
-| `AZURE_DEVOPS_TEAM` | Sprint/QC Azure sync | Azure DevOps team |
+| `AZURE_DEVOPS_TEAM` | Sprint/QC Azure sync | Azure DevOps team (defaults to project name). If you see "team does not exist", call `GET /api/azure-devops/teams` to list valid team names and set this. |
 | `AZURE_DEVOPS_PAT` | Sprint/QC Azure sync | Azure DevOps PAT |
 | `AZURE_DEVOPS_BASE_URL` | Sprint/QC Azure sync | Defaults to `https://dev.azure.com` |
 

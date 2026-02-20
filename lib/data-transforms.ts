@@ -2919,123 +2919,145 @@ function normId(value: unknown): string {
 }
 
 /**
- * Build resource heatmap from project plan (tasks) only.
- * No timecards are used. Each row = one assigned resource from the plan; values = baseline hours from tasks.
+ * Build resource heatmap from scratch: tasks (baseline hours) + optional hour_entries (actuals).
+ * Rows = resources (assigned to tasks); columns = weeks; values = utilization % (hours/40*100).
  */
-export function buildResourceHeatmap(data: Partial<SampleData>, options?: { allHoursForWeekRange?: any[] }): ResourceHeatmap {
+export function buildResourceHeatmap(data: Partial<SampleData>, _options?: { allHoursForWeekRange?: any[] }): ResourceHeatmap {
   const tasks = data.tasks || [];
   const projects = data.projects || [];
   const employees = data.employees || [];
+  const hours = data.hours || [];
 
-  if (typeof window !== 'undefined') {
-    console.log('[buildResourceHeatmap] Project plan only (no timecards). Tasks:', tasks.length);
+  const HOURS_PER_WEEK = 40;
+
+  function toDate(s: string | Date | null | undefined): string | null {
+    if (s == null) return null;
+    const d = typeof s === 'string' && /^\d{4}-\d{2}-\d{2}/.test(s) ? new Date(s) : new Date(s as any);
+    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
   }
 
-  // Build week range from project plan dates only
-  const allDates: string[] = [];
+  function toMonday(dateStr: string): string {
+    const d = new Date(dateStr);
+    const day = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    return monday.toISOString().split('T')[0];
+  }
+
+  const allDateStrs: string[] = [];
   projects.forEach((p: any) => {
-    const start = normalizeDateString(p.startDate || p.start_date || p.baselineStartDate || p.baseline_start_date);
-    const end = normalizeDateString(p.endDate || p.end_date || p.baselineEndDate || p.baseline_end_date);
-    if (start) allDates.push(start);
-    if (end) allDates.push(end);
+    const s = toDate(p.startDate ?? p.start_date ?? p.baselineStartDate ?? p.baseline_start_date);
+    const e = toDate(p.endDate ?? p.end_date ?? p.baselineEndDate ?? p.baseline_end_date);
+    if (s) allDateStrs.push(s);
+    if (e) allDateStrs.push(e);
   });
   tasks.forEach((t: any) => {
-    const start = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
-    const end = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
-    if (start) allDates.push(start);
-    if (end) allDates.push(end);
+    const s = toDate(t.startDate ?? t.start_date ?? t.baselineStartDate ?? t.baseline_start_date);
+    const e = toDate(t.endDate ?? t.end_date ?? t.baselineEndDate ?? t.baseline_end_date);
+    if (s) allDateStrs.push(s);
+    if (e) allDateStrs.push(e);
   });
-  const dates = allDates.filter((d): d is string => d != null);
+  hours.forEach((h: any) => {
+    const d = toDate(h.date ?? h.entry_date);
+    if (d) allDateStrs.push(d);
+  });
 
-  let rawWeeks: string[] = [];
-  let weekMap: Map<string, string>;
-  let weekIndexMap: Map<string, number>;
+  const weekSet = new Set<string>();
+  allDateStrs.forEach(d => weekSet.add(toMonday(d)));
 
-  if (dates.length > 0) {
-    const weekMappings = buildWeekMappings(dates);
-    weekMap = weekMappings.weekMap;
-    weekIndexMap = weekMappings.weekIndexMap;
-    rawWeeks = weekMappings.rawWeeks;
-  } else {
+  let rawWeeks = [...weekSet].sort();
+  if (rawWeeks.length === 0) {
     const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-    weekMap = new Map();
-    weekIndexMap = new Map();
-    for (let i = 0; i < 12; i++) {
-      const weekStart = new Date(startOfWeek);
-      weekStart.setDate(startOfWeek.getDate() + (i * 7));
-      const weekKey = weekStart.toISOString().split('T')[0];
-      rawWeeks.push(weekKey);
-      weekIndexMap.set(weekKey, i);
+    for (let i = -4; i <= 8; i++) {
+      const w = new Date(today);
+      w.setDate(today.getDate() + i * 7);
+      rawWeeks.push(toMonday(w.toISOString().split('T')[0]));
     }
+    rawWeeks = [...new Set(rawWeeks)].sort();
   }
 
-  const TARGET_HOURS_PER_WEEK = 40;
+  const weekToIndex = new Map<string, number>();
+  rawWeeks.forEach((w, i) => weekToIndex.set(w, i));
+  const numWeeks = rawWeeks.length;
 
-  // Unique resources from project plan: key = canonical id (prefer assigned_resource_id, else normalized name), displayName = label for row
-  type ResourceKey = string;
-  const resourceDisplayNameByKey = new Map<ResourceKey, string>();
-  const taskEntriesByResource = new Map<ResourceKey, { start: string; end: string; hours: number }[]>();
-
-  const employeesById = new Map<string, any>();
-  employees.forEach((e: any) => {
-    const id = normId(e.id) || normId(e.employeeId);
-    if (id) employeesById.set(id, e);
-  });
-
-  tasks.forEach((t: any) => {
-    const blHrs = typeof t.baselineHours === 'number' ? t.baselineHours : parseFloat(t.baseline_hours || t.baselineHours) || 0;
-    if (blHrs <= 0) return;
-    const start = normalizeDateString(t.startDate || t.start_date || t.baselineStartDate || t.baseline_start_date);
-    const end = normalizeDateString(t.endDate || t.end_date || t.baselineEndDate || t.baseline_end_date);
-    if (!start || !end) return;
-
-    const assigneeId = normId(t.assignedResourceId ?? t.assigned_resource_id ?? t.employeeId ?? t.employee_id);
-    const assigneeName = (t.assignedResource ?? t.assigned_resource ?? t.assignedResourceName ?? t.assigned_resource_name ?? '').toString().trim();
-
-    if (!assigneeId && !assigneeName) return;
-
-    const resourceKey: ResourceKey = assigneeId || `name:${(assigneeName || 'Unassigned').toLowerCase()}`;
-    const displayName = assigneeId ? (employeesById.get(assigneeId)?.name || assigneeName || assigneeId) : (assigneeName || 'Unassigned');
-
-    if (!resourceDisplayNameByKey.has(resourceKey)) resourceDisplayNameByKey.set(resourceKey, displayName);
-    if (!taskEntriesByResource.has(resourceKey)) taskEntriesByResource.set(resourceKey, []);
-    taskEntriesByResource.get(resourceKey)!.push({ start, end, hours: blHrs });
-  });
-
-  const resources: string[] = [];
-  const heatmapData: number[][] = [];
-
-  function addTaskHoursToWeekly(weeklyHours: number[], entries: { start: string; end: string; hours: number }[]) {
-    entries.forEach(({ start, end, hours }) => {
-      const startWeekKey = weekMap.get(start);
-      const endWeekKey = weekMap.get(end);
-      if (startWeekKey === undefined || endWeekKey === undefined) return;
-      const startIdx = weekIndexMap.get(startWeekKey) ?? -1;
-      const endIdx = weekIndexMap.get(endWeekKey) ?? -1;
-      if (startIdx < 0 || endIdx < 0) return;
-      const spanWeeks = Math.max(1, endIdx - startIdx + 1);
-      const hrsPerWeek = hours / spanWeeks;
-      for (let i = startIdx; i <= endIdx && i < weeklyHours.length; i++) weeklyHours[i] += hrsPerWeek;
-    });
-  }
-
-  taskEntriesByResource.forEach((entries, resourceKey) => {
-    const displayName = resourceDisplayNameByKey.get(resourceKey) || resourceKey;
-    resources.push(displayName);
-    const weeklyHours = new Array(rawWeeks.length).fill(0);
-    addTaskHoursToWeekly(weeklyHours, entries);
-    const utilizationData = weeklyHours.map(hrs => Math.round((hrs / TARGET_HOURS_PER_WEEK) * 100));
-    heatmapData.push(utilizationData);
-  });
-
-  const formattedWeeks = rawWeeks.map(week => {
-    const d = new Date(week);
+  const formattedWeeks = rawWeeks.map(w => {
+    const d = new Date(w);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   });
 
-  return { resources, weeks: formattedWeeks, data: heatmapData };
+  type ResKey = string;
+  const resourceNames = new Map<ResKey, string>();
+  const weeklyHoursByResource = new Map<ResKey, number[]>();
+
+  const empById = new Map<string, any>();
+  employees.forEach((e: any) => {
+    const id = (e.id ?? e.employeeId ?? '').toString().trim();
+    if (id) empById.set(id, e);
+  });
+
+  function ensureResource(key: ResKey, displayName: string) {
+    if (!resourceNames.has(key)) resourceNames.set(key, displayName);
+    if (!weeklyHoursByResource.has(key)) weeklyHoursByResource.set(key, new Array(numWeeks).fill(0));
+  }
+
+  function addHoursToWeeks(weekHours: number[], startStr: string, endStr: string, totalHours: number) {
+    const wStart = weekToIndex.get(toMonday(startStr));
+    const wEnd = weekToIndex.get(toMonday(endStr));
+    if (wStart == null || wEnd == null) return;
+    const startIdx = Math.max(0, wStart);
+    const endIdx = Math.min(numWeeks - 1, wEnd);
+    const span = Math.max(1, endIdx - startIdx + 1);
+    const perWeek = totalHours / span;
+    for (let i = startIdx; i <= endIdx; i++) weekHours[i] += perWeek;
+  }
+
+  tasks.forEach((t: any) => {
+    const blHrs = Number(t.baselineHours ?? t.baseline_hours ?? 0) || 0;
+    if (blHrs <= 0) return;
+    const start = toDate(t.startDate ?? t.start_date ?? t.baselineStartDate ?? t.baseline_start_date);
+    const end = toDate(t.endDate ?? t.end_date ?? t.baselineEndDate ?? t.baseline_end_date);
+    if (!start || !end) return;
+
+    const assignId = (t.assignedResourceId ?? t.assigned_resource_id ?? t.employeeId ?? t.employee_id ?? '').toString().trim();
+    const assignName = (t.assignedResource ?? t.assigned_resource ?? t.assignedResourceName ?? t.assigned_resource_name ?? 'Unassigned').toString().trim() || 'Unassigned';
+    const key: ResKey = assignId || `n:${assignName.toLowerCase()}`;
+    const display = assignId ? (empById.get(assignId)?.name ?? assignName ?? assignId) : assignName;
+
+    ensureResource(key, display);
+    const arr = weeklyHoursByResource.get(key)!;
+    addHoursToWeeks(arr, start, end, blHrs);
+  });
+
+  if (hours.length > 0) {
+    const byResourceAndWeek = new Map<string, number[]>();
+    hours.forEach((h: any) => {
+      const dateStr = toDate(h.date ?? h.entry_date);
+      if (!dateStr) return;
+      const weekKey = toMonday(dateStr);
+      const wi = weekToIndex.get(weekKey);
+      if (wi == null) return;
+
+      const empId = (h.employeeId ?? h.employee_id ?? '').toString().trim();
+      const empName = (h.employeeName ?? h.employee_name ?? '').toString().trim() || 'Unknown';
+      const resKey: ResKey = empId || `n:${empName.toLowerCase()}`;
+      const display = empId ? (empById.get(empId)?.name ?? empName ?? empId) : empName;
+
+      ensureResource(resKey, display);
+      const arr = weeklyHoursByResource.get(resKey)!;
+      const hrs = Number(h.hours ?? 0) || 0;
+      arr[wi] = (arr[wi] ?? 0) + hrs;
+    });
+  }
+
+  const resources: string[] = [];
+  const dataMatrix: number[][] = [];
+
+  weeklyHoursByResource.forEach((weekArr, key) => {
+    resources.push(resourceNames.get(key) ?? key);
+    dataMatrix.push(weekArr.map(hrs => Math.round((hrs / HOURS_PER_WEEK) * 100)));
+  });
+
+  return { resources, weeks: formattedWeeks, data: dataMatrix };
 }
 
 // ============================================================================

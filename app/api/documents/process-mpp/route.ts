@@ -3,6 +3,7 @@ import { convertProjectPlanJSON } from '@/lib/data-converter';
 import { toSupabaseFormat } from '@/lib/supabase';
 import { downloadFile } from '@/lib/azure-storage';
 import { withClient } from '@/lib/postgres';
+import { runProjectHealthAutoCheck } from '@/lib/project-health-auto-check';
 
 type ProcessLogType = 'info' | 'success' | 'warning';
 
@@ -373,7 +374,19 @@ export async function POST(req: NextRequest) {
 
         await client.query('COMMIT');
         logDiag('[DB] COMMIT');
-        return { unitsSaved, phasesSaved, tasksSaved, depsSaved };
+
+        const healthResult = runProjectHealthAutoCheck({
+          tasks,
+          phases: converted.phases as any,
+          units: converted.units as any,
+        });
+        await client.query(
+          'UPDATE project_documents SET health_score = $1, health_check_json = $2, updated_at = NOW() WHERE id = $3',
+          [healthResult.score, JSON.stringify(healthResult), documentId]
+        );
+        logDiag(`[Health] score=${healthResult.score} passed=${healthResult.passed}/${healthResult.totalChecks}`);
+
+        return { unitsSaved, phasesSaved, tasksSaved, depsSaved, healthScore: healthResult.score };
       } catch (error) {
         await client.query('ROLLBACK');
         logDiag(`[DB] ROLLBACK ${(error as Error)?.message || String(error)}`);
@@ -387,6 +400,7 @@ export async function POST(req: NextRequest) {
       { type: 'success', message: `Synced ${summary.unitsSaved} units, ${summary.phasesSaved} phases, ${summary.tasksSaved} tasks` },
       { type: 'success', message: `Synced ${summary.depsSaved} task dependencies` },
       { type: 'success', message: 'Replaced existing project schedule data atomically' },
+      { type: 'success', message: `Health score: ${(summary as any).healthScore ?? 0}%` },
     ];
 
     return NextResponse.json({
@@ -394,6 +408,7 @@ export async function POST(req: NextRequest) {
       logs,
       diagnostics,
       summary,
+      healthScore: (summary as any).healthScore,
       taskCount: tasks.length,
       tasks,
     });

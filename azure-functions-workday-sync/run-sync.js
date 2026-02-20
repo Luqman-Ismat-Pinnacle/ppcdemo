@@ -45,6 +45,14 @@ async function runFullSync(hoursDaysBackOverride) {
       throw e;
     }
 
+    try {
+      summary.customerContracts = await syncCustomerContracts(client);
+      console.log('[WorkdaySync] Customer contracts:', JSON.stringify(summary.customerContracts));
+    } catch (e) {
+      console.error('[WorkdaySync] Customer contracts failed:', e.message);
+      summary.customerContracts = { error: e.message };
+    }
+
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - HOURS_DAYS_BACK);
@@ -76,14 +84,6 @@ async function runFullSync(hoursDaysBackOverride) {
       summary.matching = await runMatchingAndAggregation(client);
     } catch (e) {
       console.error('[WorkdaySync] Matching/aggregation failed:', e.message);
-    }
-
-    try {
-      summary.customerContracts = await syncCustomerContracts(client);
-      console.log('[WorkdaySync] Customer contracts:', JSON.stringify(summary.customerContracts));
-    } catch (e) {
-      console.error('[WorkdaySync] Customer contracts failed:', e.message);
-      summary.customerContracts = { error: e.message };
     }
 
     try {

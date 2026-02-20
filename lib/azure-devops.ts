@@ -74,6 +74,18 @@ export function getADOConfig(): AzureDevOpsConfig | null {
 }
 
 /**
+ * Build a user-friendly error when the configured team doesn't exist (404 TeamNotFoundException).
+ */
+function formatTeamNotFoundError(config: AzureDevOpsConfig, rawBody: string): string {
+  const team = config.team || config.project;
+  return (
+    `The Azure DevOps team "${team}" does not exist or you do not have permission to access it. ` +
+    `Set AZURE_DEVOPS_TEAM to a valid team name for your project (often the same as AZURE_DEVOPS_PROJECT, or see Project Settings > Teams in Azure DevOps). ` +
+    `You can list valid teams by calling GET /api/azure-devops/teams.`
+  );
+}
+
+/**
  * Make authenticated request to Azure DevOps API
  */
 async function adoRequest(
@@ -94,11 +106,67 @@ async function adoRequest(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Azure DevOps API error: ${response.status} ${response.statusText} - ${error}`);
+    const errorText = await response.text();
+    let parsed: { typeKey?: string; message?: string } | null = null;
+    try {
+      parsed = JSON.parse(errorText);
+    } catch {
+      // use raw text
+    }
+    const isTeamNotFound =
+      response.status === 404 &&
+      (parsed?.typeKey === 'TeamNotFoundException' ||
+        (typeof parsed?.message === 'string' && parsed.message.includes('team with id') && parsed.message.includes('does not exist')));
+    if (isTeamNotFound) {
+      throw new Error(formatTeamNotFoundError(config, errorText));
+    }
+    throw new Error(`Azure DevOps API error: ${response.status} ${response.statusText} - ${errorText}`);
   }
 
   return response.json();
+}
+
+/** Org-level request (no project in path): baseUrl/org/endpoint */
+async function adoRequestOrg(
+  config: AzureDevOpsConfig,
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<any> {
+  const url = `${config.baseUrl}/${config.organization}${endpoint}`;
+  const auth = Buffer.from(`:${config.personalAccessToken}`).toString('base64');
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Azure DevOps API error: ${response.status} ${response.statusText} - ${errorText}`);
+  }
+  return response.json();
+}
+
+/**
+ * List teams for the configured project. Use this to discover valid AZURE_DEVOPS_TEAM values.
+ * Returns array of { id: string, name: string }.
+ */
+export async function getProjectTeams(config: AzureDevOpsConfig): Promise<Array<{ id: string; name: string }>> {
+  const projects = await adoRequestOrg(config, '/_apis/projects?api-version=7.1');
+  const project = (projects.value as Array<{ id: string; name: string }>).find(
+    (p: { name: string }) => p.name === config.project
+  );
+  if (!project) {
+    throw new Error(`Azure DevOps project "${config.project}" not found. Check AZURE_DEVOPS_PROJECT.`);
+  }
+  const teamsPayload = await adoRequestOrg(
+    config,
+    `/_apis/projects/${project.id}/teams?api-version=7.1`
+  );
+  const teams = (teamsPayload.value as Array<{ id: string; name: string }>) || [];
+  return teams.map((t) => ({ id: t.id, name: t.name }));
 }
 
 /**
