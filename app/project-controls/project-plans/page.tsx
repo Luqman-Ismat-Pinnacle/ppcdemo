@@ -1428,7 +1428,7 @@ export default function DocumentsPage() {
                                     </button>
                                   )}
                                   {file.workdayProjectId && (
-                                    <button onClick={() => router.push(`/project-controls/wbs-gantt-v2?projectId=${file.workdayProjectId}`)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    <button onClick={() => router.push(`/project-controls/wbs-gantt?projectId=${file.workdayProjectId}`)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="9" x2="20" y2="9" /><line x1="4" y1="15" x2="20" y2="15" /><rect x="6" y="6" width="8" height="6" rx="1" /></svg>
                                       WBS Gantt
                                     </button>

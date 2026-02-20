@@ -614,7 +614,7 @@ export default function TasksPage() {
       <div style={{ padding: '4rem', textAlign: 'center', background: C.bgCard, borderRadius: 24, margin: '2rem' }}>
         <h2 style={{ color: C.textPrimary, marginBottom: '1rem' }}>No Production Data</h2>
         <p style={{ color: C.textMuted, marginBottom: '2rem' }}>Production metrics are generated from plan-enabled projects. Use the Project Plan page to create projects with task structures.</p>
-        <button onClick={() => router.push('/insights/project-plan')} style={{ background: C.teal, color: '#000', padding: '0.75rem 1.5rem', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer' }}>Go to Project Plan</button>
+        <button onClick={() => router.push('/project-controls/project-plans')} style={{ background: C.teal, color: '#000', padding: '0.75rem 1.5rem', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer' }}>Go to Project Plans</button>
       </div>
     );
   }

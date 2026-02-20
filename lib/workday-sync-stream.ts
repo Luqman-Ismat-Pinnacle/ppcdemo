@@ -17,7 +17,7 @@ export type WorkdayStreamEvent =
 export interface RunWorkdaySyncStreamOptions {
   /** 'unified' = employees + projects + hours (chunked). 'hours' = hours only (chunked). */
   syncType?: 'unified' | 'hours';
-  /** Days of hours to sync (default 365). Only for hours step. */
+  /** Days of hours to sync (default 7). Only for hours step. */
   hoursDaysBack?: number;
   /** Called for each NDJSON event. */
   onEvent: (event: WorkdayStreamEvent) => void;
@@ -32,7 +32,7 @@ export interface RunWorkdaySyncStreamOptions {
  * The sync continues even if individual chunks fail - it will report partial success.
  */
 export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions): Promise<{ success: boolean; summary?: any }> {
-  const { syncType = 'unified', hoursDaysBack = 365, onEvent, timeoutMs = 600000 } = options;
+  const { syncType = 'unified', hoursDaysBack = 7, onEvent, timeoutMs = 600000 } = options;
   
   let timeoutId: NodeJS.Timeout | undefined;
   let aborted = false;

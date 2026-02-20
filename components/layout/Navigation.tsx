@@ -37,7 +37,7 @@ const navigation: NavDropdown[] = [
   {
     label: 'Project Controls',
     items: [
-      { label: 'Project Plans', href: '/project-controls/folders' },
+      { label: 'Project Plans', href: '/project-controls/project-plans' },
       { label: 'Resourcing', href: '/project-controls/resourcing' },
       { divider: true },
       { label: 'Data Management', href: '/project-controls/data-management' },

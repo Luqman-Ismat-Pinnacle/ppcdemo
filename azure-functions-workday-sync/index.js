@@ -4,6 +4,7 @@
  * HTTP trigger: manual sync.
  */
 
+const config = require('./config');
 const { runFullSync } = require('./run-sync');
 const { withClient } = require('./shared/db');
 const { getSchedule, shouldRunNow, markRun } = require('./schedule-check');
@@ -51,9 +52,9 @@ async function httpTrigger(context, req) {
       context.res = res;
       return;
     }
-    let hoursDaysBack;
+    let hoursDaysBack = config.sync.hoursDaysBack;
     if (req.body && typeof req.body.hoursDaysBack === 'number') {
-      hoursDaysBack = Math.min(730, Math.max(30, req.body.hoursDaysBack));
+      hoursDaysBack = Math.min(730, Math.max(1, req.body.hoursDaysBack));
       context.log('WorkdaySync HTTP: using hoursDaysBack from body', hoursDaysBack);
     }
     const summary = await runFullSync(hoursDaysBack);

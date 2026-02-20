@@ -8,8 +8,16 @@ const nextConfig = {
 
   async redirects() {
     return [
-      { source: '/project-controls/project-health', destination: '/project-controls/folders', permanent: true },
+      { source: '/project-controls/project-health', destination: '/project-controls/project-plans', permanent: true },
       { source: '/insights/snapshots-variance', destination: '/insights/overview', permanent: false },
+      { source: '/insights/hours', destination: '/insights/tasks', permanent: false },
+      { source: '/insights/milestones', destination: '/insights/overview', permanent: false },
+      { source: '/insights/qc-dashboard', destination: '/insights/tasks', permanent: false },
+      { source: '/project-management/backlog', destination: '/project-management/sprint', permanent: false },
+      { source: '/project-management/boards', destination: '/project-management/sprint', permanent: false },
+      { source: '/project-controls/resource-leveling', destination: '/project-controls/resourcing', permanent: false },
+      { source: '/project-management/sprint/capacity', destination: '/project-management/sprint', permanent: false },
+      { source: '/project-management/sprint/iterations', destination: '/project-management/sprint', permanent: false },
     ];
   },
 

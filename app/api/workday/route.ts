@@ -9,9 +9,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 
-const WINDOW_DAYS = 30;
-const DEFAULT_HOURS_DAYS_BACK = 365;
+const WINDOW_DAYS = 7;
+const DEFAULT_HOURS_DAYS_BACK = 7;
 const MAX_HOURS_DAYS_BACK = 730;
+const MIN_HOURS_DAYS_BACK = 1;
 
 // Azure Functions HTTP trigger URL (set this in env vars)
 const AZURE_FUNCTION_URL = process.env.AZURE_FUNCTION_URL || '';
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
     const body = parseBody(await req.json().catch(() => ({})));
     const syncType = body.syncType as SyncType | 'unified';
     const action = body.action;
-    const hoursDaysBack = Math.min(MAX_HOURS_DAYS_BACK, Math.max(30, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
+    const hoursDaysBack = Math.min(MAX_HOURS_DAYS_BACK, Math.max(MIN_HOURS_DAYS_BACK, Number(body.hoursDaysBack) || DEFAULT_HOURS_DAYS_BACK));
 
     // Handle get-available-projects action
     if (action === 'get-available-projects') {

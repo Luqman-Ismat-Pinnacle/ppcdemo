@@ -221,7 +221,7 @@ const getProgressColor = (progress: number, critical: boolean) => {
   return '#6b7280';
 };
 
-export default function WBSGanttV2Page() {
+export default function WBSGanttPage() {
   const { filteredData, data: fullData, isLoading } = useData();
   const { getSnapshotValue, hasComparison } = useSnapshotVariance();
   const splitHostRef = useRef<HTMLDivElement>(null);

@@ -53,8 +53,8 @@ module.exports = {
   // Sync options
   // ---------------------------------------------------------------------------
   sync: {
-    hoursDaysBack: Math.min(730, Math.max(30, parseInt(process.env.WORKDAY_HOURS_DAYS_BACK || '365', 10))),
-    windowDays: parseInt(process.env.WORKDAY_HOURS_WINDOW_DAYS || '30', 10),
+    hoursDaysBack: Math.min(730, Math.max(1, parseInt(process.env.WORKDAY_HOURS_DAYS_BACK || '7', 10))),
+    windowDays: parseInt(process.env.WORKDAY_HOURS_WINDOW_DAYS || '7', 10),
     batchSize: 100,
     hoursBatchSize: 500,
   },

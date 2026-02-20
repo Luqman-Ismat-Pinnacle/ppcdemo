@@ -21,7 +21,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
-import PageLoader from '@/components/ui/PageLoader';
+import ContainerLoader from '@/components/ui/ContainerLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
 import {
@@ -1362,7 +1362,13 @@ export default function ForecastPage() {
     return `$${v.toFixed(0)}`;
   };
 
-  if (isLoading) return <PageLoader message="Loading Forecast..." />;
+  if (isLoading) {
+    return (
+      <div className="page-panel" style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
+        <ContainerLoader message="Loading Forecast..." minHeight={300} />
+      </div>
+    );
+  }
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem', overflow: 'auto' }}>

@@ -70,7 +70,7 @@ export default function Header() {
       boxShadow: 'var(--shadow-sm)',
     }}>
       <div className="header-left">
-        <Link href="/project-controls/wbs-gantt-v2" className="app-logo-trigger" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+        <Link href="/project-controls/wbs-gantt" className="app-logo-trigger" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
           <Image
             src="/logo.png"
             alt="Pinnacle Project Management"

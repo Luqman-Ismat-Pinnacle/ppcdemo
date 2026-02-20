@@ -14,7 +14,7 @@ const config = require('./config');
 const WINDOW_DAYS = config.sync.windowDays;
 
 function getHoursDaysBack(override) {
-  if (typeof override === 'number' && override >= 30 && override <= 730) return override;
+  if (typeof override === 'number' && override >= 1 && override <= 730) return override;
   return config.sync.hoursDaysBack;
 }
 

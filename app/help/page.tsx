@@ -24,7 +24,7 @@ const guides: Guide[] = [
   {
     id: 'wbs-gantt',
     title: 'WBS Gantt',
-    route: '/project-controls/wbs-gantt-v2',
+    route: '/project-controls/wbs-gantt',
     owner: 'Project Controls',
     status: 'current',
     summary: 'Master schedule management with hierarchy navigation, CPM analysis, dependency mapping, baseline ghosting, and variance views.',
@@ -107,7 +107,7 @@ const guides: Guide[] = [
   {
     id: 'project-plan',
     title: 'Project Plans',
-    route: '/project-controls/folders',
+    route: '/project-controls/project-plans',
     owner: 'Project Controls',
     status: 'current',
     summary: 'Plan upload and processing pipeline with parser fallback, health checks, and project synchronization.',

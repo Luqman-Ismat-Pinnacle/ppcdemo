@@ -114,6 +114,9 @@ export default function StatusAndLogsDropdown() {
   const [workdayLogs, setWorkdayLogs] = useState<string[]>([]);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; step: string } | null>(null);
 
+  // Hours range for Workday sync (days to pull)
+  const [hoursDaysBack, setHoursDaysBack] = useState(7);
+
   // Scheduled sync (cron) – hour/minute in UTC, saved to app_settings
   const [scheduleHour, setScheduleHour] = useState(2);
   const [scheduleMinute, setScheduleMinute] = useState(0);
@@ -220,7 +223,7 @@ export default function StatusAndLogsDropdown() {
       pushLog('Connecting to Workday API…', 'info');
       const { success, summary } = await runWorkdaySyncStream({
         syncType: 'unified',
-        hoursDaysBack: 365,
+        hoursDaysBack,
         timeoutMs: 600000, // 10 minute timeout
         onEvent: (ev) => {
           if (ev.type === 'step') {
@@ -471,6 +474,22 @@ export default function StatusAndLogsDropdown() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: workdaySyncing ? 'var(--pinnacle-teal)' : workdayColor }} />
                     <span style={{ fontSize: '0.8rem' }}>{workdaySyncing ? 'Syncing...' : workdayStatus === 'idle' ? 'Ready' : workdayStatus}</span>
+                  </div>
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Hours to pull</label>
+                    <select
+                      value={hoursDaysBack}
+                      onChange={(e) => setHoursDaysBack(Number(e.target.value))}
+                      disabled={workdaySyncing}
+                      style={{ width: '100%', fontSize: '0.8rem', padding: '8px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+                    >
+                      <option value={7}>Last 7 days</option>
+                      <option value={14}>Last 2 weeks</option>
+                      <option value={30}>Last 30 days</option>
+                      <option value={90}>Last 90 days</option>
+                      <option value={180}>Last 6 months</option>
+                      <option value={365}>Last 12 months</option>
+                    </select>
                   </div>
                   {syncProgress && (
                     <div style={{ marginBottom: '10px' }}>
