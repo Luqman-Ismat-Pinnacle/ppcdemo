@@ -143,7 +143,7 @@ const TaskLifecyclePulse = ({ task, hours }: { task: any; hours: any[] }) => {
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Active Time</div>
-            <div style={{ fontSize: '1rem', fontWeight: 800, color: C.blue }}>{asNumber(lifecycle.totalHours).toFixed(1)}h</div>
+            <div style={{ fontSize: '1rem', fontWeight: 800, color: C.blue }}>{asNumber(lifecycle?.totalHours ?? 0).toFixed(1)}h</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.55rem', color: C.textMuted, textTransform: 'uppercase' }}>Complete</div>

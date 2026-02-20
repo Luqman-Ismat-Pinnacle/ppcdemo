@@ -1,9 +1,7 @@
 /**
  * @fileoverview Hours-to-Tasks Matching API
  *
- * Simplified matching: Project ID must match. For each task, check if BOTH
- * task name AND phase name are in the hour entry's description column.
- * If both are present, it's a match.
+ * Matching: same project_id; hour's charge code must contain task name and phase name.
  */
 
 import { NextResponse } from 'next/server';
@@ -29,7 +27,7 @@ async function matchWithPostgres() {
   // Fetch unassigned hours
   let unassignedHours: any[] = [];
   try {
-    const res = await pgQuery('SELECT id, project_id, description FROM hour_entries WHERE task_id IS NULL');
+    const res = await pgQuery('SELECT id, project_id, COALESCE(charge_code, charge_code_v2, \'\') AS charge_code FROM hour_entries WHERE task_id IS NULL');
     unassignedHours = res.rows;
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e.message }, { status: 500 });
@@ -57,24 +55,21 @@ async function matchWithPostgres() {
 
   for (const h of unassignedHours) {
     if (!h.project_id) continue;
-    const desc = normalize(h.description || '');
-    if (!desc) continue;
+    const chargeCode = normalize(h.charge_code || '');
+    if (!chargeCode) continue;
 
     const projectTasks = tasks.filter((t: any) => String(t.project_id) === String(h.project_id));
-    let matched = false;
 
     for (const task of projectTasks) {
       const taskName = normalize(task.name || '');
       const phaseName = normalize(task.phase_name || '');
       if (!taskName) continue;
 
-      // Match: BOTH task name AND phase name must be in the description
-      const taskInDesc = taskName && desc.includes(taskName);
-      const phaseInDesc = !phaseName || desc.includes(phaseName); // phase optional if empty
-      if (taskInDesc && phaseInDesc) {
+      const taskInChargeCode = chargeCode.includes(taskName);
+      const phaseInChargeCode = !phaseName || chargeCode.includes(phaseName);
+      if (taskInChargeCode && phaseInChargeCode) {
         updates.push({ id: h.id, task_id: task.id });
         tasksMatched++;
-        matched = true;
         break;
       }
     }
@@ -132,7 +127,7 @@ async function matchWithSupabase() {
   const PAGE = 1000;
   const all: any[] = [];
   for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase.from('hour_entries').select('id, project_id, description')
+    const { data, error } = await supabase.from('hour_entries').select('id, project_id, charge_code, charge_code_v2')
       .is('task_id', null).range(offset, offset + PAGE - 1);
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     all.push(...(data || []));
@@ -163,8 +158,8 @@ async function matchWithSupabase() {
 
   for (const h of all) {
     if (!h.project_id) continue;
-    const desc = normalize(h.description || '');
-    if (!desc) continue;
+    const chargeCode = normalize((h.charge_code ?? h.charge_code_v2 ?? '').toString());
+    if (!chargeCode) continue;
 
     const projectTasks = tasksWithPhase.filter((t: any) => String(t.project_id) === String(h.project_id));
     for (const task of projectTasks) {
@@ -172,9 +167,9 @@ async function matchWithSupabase() {
       const phaseName = normalize(task.phase_name || '');
       if (!taskName) continue;
 
-      const taskInDesc = desc.includes(taskName);
-      const phaseInDesc = !phaseName || desc.includes(phaseName);
-      if (taskInDesc && phaseInDesc) {
+      const taskInChargeCode = chargeCode.includes(taskName);
+      const phaseInChargeCode = !phaseName || chargeCode.includes(phaseName);
+      if (taskInChargeCode && phaseInChargeCode) {
         updates.push({ id: h.id, task_id: task.id });
         tasksMatched++;
         break;

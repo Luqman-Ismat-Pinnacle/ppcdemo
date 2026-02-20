@@ -2277,30 +2277,11 @@ export interface HoursMappingStats {
 }
 
 /**
- * Resolve hour entries to MPP tasks by matching (project_id, workday_phase, workday_task)
- * to (task.project_id, phase.name, task.name). Project ID is set by the user when they
- * select the project during MPP upload, so mismatch should not occur. Matching uses
- * increasingly relaxed name comparison so phase/task names align even with punctuation
- * or wording differences.
+ * Resolve hour entries to MPP tasks by matching on:
+ * - Same project_id (required)
+ * - Hour's charge code contains the task name and contains the phase name.
+ * (Charge code is the string we search for task name and phase.)
  * Returns a new hours array with taskId/task_id set where a match was found, plus mapping statistics.
- *
- * Why matching might still not work (reasons 3 and 4 in detail):
- *
- * (3) Missing workday_phase / workday_task: These fields are populated only by the
- *     Workday sync from the Project Labor Transactions report (Phase and Task columns).
- *     If hour entries were imported from CSV, manual entry, or another system, they
- *     typically won't have workday_phase/workday_task. Likewise, if an older version
- *     of the Workday sync did not persist these columns, existing rows will have null.
- *     Without at least one of these, we cannot match by name—only by task_id if it
- *     was already set—so those hours will not roll up to any MPP task.
- *
- * (4) Multiple tasks with the same phase name and task name in one project: Matching
- *     uses the pair (phase_name, task_name) per project. If the MPP schedule has two
- *     different tasks that share the same phase and task name (e.g. duplicate labels
- *     or two "Design" tasks under "Phase 1"), we can only attach hours to one of them
- *     (the first we encounter when building the lookup). The other task will show no
- *     actuals from Workday. Fixing this would require a stronger discriminator (e.g.
- *     WBS code or task order) in both Workday and the MPP data.
  */
 function resolveHourEntriesToTasks(
   hours: any[],
@@ -2395,23 +2376,23 @@ function resolveHourEntriesToTasks(
       return h;
     }
 
-    // Simplified: check if BOTH task name AND phase name are in the hour's description
-    const description = (h.description ?? '').toString().trim().toLowerCase();
-    if (!description) {
+    // Match by charge code only: same project_id, and charge code contains task name and phase name
+    const chargeCode = (h.chargeCode ?? h.charge_code ?? '').toString().trim().toLowerCase();
+    if (!chargeCode) {
       trackUnmatched(h);
       return h;
     }
 
-    const projectTasksForDesc = projectTasks.filter((x) => x.projectId === String(projectId));
-    for (const task of projectTasksForDesc) {
+    const projectTasksForProject = projectTasks.filter((x) => x.projectId === String(projectId));
+    for (const task of projectTasksForProject) {
       const taskNameLower = (task.taskName ?? '').toString().trim().toLowerCase();
       const phaseNameLower = (task.phaseName ?? '').toString().trim().toLowerCase();
       if (!taskNameLower) continue;
 
-      const taskInDesc = description.includes(taskNameLower);
-      const phaseInDesc = !phaseNameLower || description.includes(phaseNameLower);
-      if (taskInDesc && phaseInDesc) {
-        trackMatch(hourId, task.taskId, 'description');
+      const taskInChargeCode = chargeCode.includes(taskNameLower);
+      const phaseInChargeCode = !phaseNameLower || chargeCode.includes(phaseNameLower);
+      if (taskInChargeCode && phaseInChargeCode) {
+        trackMatch(hourId, task.taskId, 'charge_code');
         return { ...h, taskId: task.taskId, task_id: task.taskId };
       }
     }

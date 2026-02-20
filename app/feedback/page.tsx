@@ -94,9 +94,6 @@ export default function FeedbackPage() {
   const [saving, setSaving] = useState(false);
   const [issueStatusFilter, setIssueStatusFilter] = useState<string>('all');
   const [featureStatusFilter, setFeatureStatusFilter] = useState<string>('all');
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
-  const [editStatus, setEditStatus] = useState<Record<number, string>>({});
-  const [editNotes, setEditNotes] = useState<Record<number, string>>({});
 
   const [issueForm, setIssueForm] = useState<IssueForm>({
     title: '',
@@ -271,37 +268,12 @@ export default function FeedbackPage() {
     }
   };
 
-  const updateFeedbackItem = useCallback(async (id: number, status?: string, notes?: string) => {
-    setUpdatingId(id);
-    setError(null);
-    try {
-      const body: { status?: string; notes?: string } = {};
-      if (status != null) body.status = status;
-      if (notes != null) body.notes = notes;
-      const res = await fetch(`/api/feedback/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload?.error || 'Failed to update');
-      await loadItems();
-      setEditStatus((prev) => { const n = { ...prev }; delete n[id]; return n; });
-      setEditNotes((prev) => { const n = { ...prev }; delete n[id]; return n; });
-    } catch (e: unknown) {
-      setError(getErrorMessage(e, 'Failed to update item'));
-    } finally {
-      setUpdatingId(null);
-    }
-  }, [loadItems]);
-
   const issueItems = items.filter(i => i.itemType === 'issue');
   const featureItems = items.filter(i => i.itemType === 'feature');
   const visibleIssueItems = issueItems.filter(i => issueStatusFilter === 'all' || i.status === issueStatusFilter);
   const visibleFeatureItems = featureItems.filter(i => featureStatusFilter === 'all' || i.status === featureStatusFilter);
   const issueStatuses = useMemo(() => ['all', ...Array.from(new Set(issueItems.map(i => i.status)))], [issueItems]);
   const featureStatuses = useMemo(() => ['all', ...Array.from(new Set(featureItems.map(i => i.status)))], [featureItems]);
-  const allStatusOptions = ['open', 'triaged', 'in_progress', 'planned', 'resolved', 'released', 'closed'];
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -423,33 +395,6 @@ export default function FeedbackPage() {
                     <div style={{ width: `${Math.max(0, Math.min(100, item.progressPercent || 0))}%`, height: '100%', background: statusColor[item.status] || '#6B7280', transition: 'width 220ms ease' }} />
                   </div>
                   <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', minWidth: 36, textAlign: 'right' }}>{item.progressPercent || 0}%</span>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
-                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>Work through:</span>
-                  <select
-                    value={editStatus[item.id] ?? item.status}
-                    onChange={e => setEditStatus(s => ({ ...s, [item.id]: e.target.value }))}
-                    style={{ ...inputStyle, width: 140, padding: '0.3rem 0.5rem', fontSize: '0.7rem' }}
-                  >
-                    {allStatusOptions.map(s => (
-                      <option key={s} value={s}>{s.replace('_', ' ')}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Add or edit note..."
-                    value={editNotes[item.id] !== undefined ? editNotes[item.id] : (item.notes ?? '')}
-                    onChange={e => setEditNotes(s => ({ ...s, [item.id]: e.target.value }))}
-                    style={{ ...inputStyle, flex: '1 1 120px', minWidth: 120, padding: '0.3rem 0.5rem', fontSize: '0.7rem' }}
-                  />
-                  <button
-                    type="button"
-                    disabled={updatingId === item.id}
-                    onClick={() => updateFeedbackItem(item.id, editStatus[item.id] ?? item.status, ((editNotes[item.id] !== undefined ? editNotes[item.id] : item.notes) ?? '').trim() || undefined)}
-                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.68rem', fontWeight: 600, background: 'var(--pinnacle-teal)', color: '#041717', border: 'none', borderRadius: 6, cursor: updatingId === item.id ? 'not-allowed' : 'pointer', opacity: updatingId === item.id ? 0.7 : 1 }}
-                  >
-                    {updatingId === item.id ? 'Saving...' : 'Update'}
-                  </button>
                 </div>
                 {item.notes && (
                   <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: '0.45rem', lineHeight: 1.3 }}>

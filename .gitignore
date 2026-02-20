@@ -39,6 +39,9 @@ yarn-error.log*
 # optional large QC Log seed file (place qc-log-entries.xlsx in public/ to enable default load)
 /public/qc-log-entries.xlsx
 
+# one-off export (do not commit)
+/feedback-export.json
+
 # vercel
 .vercel
 

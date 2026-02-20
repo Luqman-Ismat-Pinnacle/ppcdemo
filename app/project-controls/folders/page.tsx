@@ -223,6 +223,15 @@ export default function DocumentsPage() {
     loadWorkdayProjects();
   }, []);
 
+  // Scroll expanded file row into view so Run MPXJ status is visible
+  useEffect(() => {
+    if (!expandedDropdownId) return;
+    const el = document.querySelector(`[data-file-row="${expandedDropdownId}"]`);
+    if (el) {
+      (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [expandedDropdownId]);
+
   const loadWorkdayProjects = async () => {
     setLoadingWorkdayProjects(true);
     try {
@@ -627,6 +636,7 @@ export default function DocumentsPage() {
     const file = uploadedFiles.find(f => f.id === fileId);
     if (!file) return;
 
+    setExpandedDropdownId(fileId);
     setIsProcessing(true);
     setProcessingFileId(fileId);
     setProcessingStage({ step: 1, label: 'Preparing import...', fileName: file.fileName });
@@ -703,6 +713,7 @@ export default function DocumentsPage() {
 
       await refreshData();
       await loadStoredFiles();
+      setProcessingStage({ step: 7, label: 'Done', fileName: file.fileName });
     } catch (err: any) {
       pushLog('error', `[Process] Error: ${err.message}`);
       if (err?.stack) {
@@ -711,8 +722,6 @@ export default function DocumentsPage() {
       setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'error' as const } : f));
     } finally {
       setIsProcessing(false);
-      setProcessingFileId(null);
-      setTimeout(() => setProcessingStage(null), 2000);
     }
   }, [uploadedFiles, addLog, refreshData, loadStoredFiles, data, addEngineLog, assignPortfolioId, appendDiagnostic]);
 
@@ -1078,86 +1087,6 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Processing Progress Overlay */}
-        {processingStage && !processingFileId && (
-          <div className="chart-card grid-full" style={{ border: '1px solid var(--pinnacle-teal)', borderColor: processingStage.step === 7 ? '#10B981' : 'var(--pinnacle-teal)' }}>
-            <div style={{ padding: '1.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                {processingStage.step < 7 ? (
-                  <div style={{
-                    width: '32px', height: '32px', borderRadius: '50%',
-                    border: '3px solid var(--pinnacle-teal)', borderTopColor: 'transparent',
-                    animation: 'spin 1s linear infinite',
-                  }} />
-                ) : (
-                  <div style={{
-                    width: '32px', height: '32px', borderRadius: '50%',
-                    backgroundColor: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </div>
-                )}
-                <div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Processing: {processingStage.fileName}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    {processingStage.label}
-                  </div>
-                </div>
-              </div>
-
-              {/* Step indicators */}
-              <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.75rem' }}>
-                {[
-                  { step: 1, label: 'Download' },
-                  { step: 2, label: 'Parse' },
-                  { step: 3, label: 'Convert' },
-                  { step: 4, label: 'Health Check' },
-                  { step: 5, label: 'Sync' },
-                  { step: 6, label: 'Match Hours' },
-                  { step: 7, label: 'Done' },
-                ].map(({ step, label }) => (
-                  <div key={step} style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{
-                      height: '4px',
-                      borderRadius: '2px',
-                      backgroundColor: step < processingStage.step ? '#10B981'
-                        : step === processingStage.step ? 'var(--pinnacle-teal)'
-                          : 'var(--bg-tertiary)',
-                      transition: 'background-color 0.3s ease',
-                    }} />
-                    <div style={{
-                      fontSize: '0.65rem',
-                      color: step <= processingStage.step ? 'var(--text-secondary)' : 'var(--text-muted)',
-                      marginTop: '4px',
-                      fontWeight: step === processingStage.step ? 600 : 400,
-                    }}>
-                      {label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Progress bar */}
-              <div style={{
-                height: '6px', borderRadius: '3px', backgroundColor: 'var(--bg-tertiary)', overflow: 'hidden',
-              }}>
-                <div style={{
-                  height: '100%',
-                  width: `${(processingStage.step / 7) * 100}%`,
-                  borderRadius: '3px',
-                  backgroundColor: processingStage.step === 7 ? '#10B981' : 'var(--pinnacle-teal)',
-                  transition: 'width 0.5s ease',
-                }} />
-              </div>
-            </div>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        )}
-
         {/* Uploaded Files */}
         <div className="chart-card grid-full">
           <div className="chart-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1218,6 +1147,7 @@ export default function DocumentsPage() {
                     return (
                       <React.Fragment key={file.id}>
                         <tr
+                          data-file-row={file.id}
                           style={{ cursor: 'pointer' }}
                           onClick={() => setExpandedDropdownId(isDropdownOpen ? null : file.id)}
                         >
