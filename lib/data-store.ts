@@ -116,6 +116,7 @@ function createEmptyData(): SampleData {
     snapshots: [],
     projectDocuments: [],
     customerContracts: [],
+    workdayPhases: [],
     changeRequests: [],
     changeImpacts: [],
     changeControlSummary: { byProject: [], byMonth: [] },

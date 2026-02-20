@@ -228,7 +228,7 @@ export default function StatusAndLogsDropdown() {
         onEvent: (ev) => {
           if (ev.type === 'step') {
             if (ev.status === 'started') {
-              const stepLabels: Record<string, string> = { employees: 'employees', projects: 'hierarchy', hierarchy: 'hierarchy', hours: 'hours', matching: 'matching', customerContracts: 'customer contracts' };
+              const stepLabels: Record<string, string> = { employees: 'employees', projects: 'hierarchy', hierarchy: 'hierarchy', hours: 'hours', matching: 'matching', customerContracts: 'customer contracts', workdayPhases: 'workday phases' };
               const stepLabel = stepLabels[ev.step as string] || ev.step;
               pushLog(`Syncing ${stepLabel}…`, 'info');
               if (ev.step === 'hours' && ev.totalChunks) {
@@ -249,7 +249,7 @@ export default function StatusAndLogsDropdown() {
               }
             }
             if (ev.status === 'done') {
-              const stepLabels: Record<string, string> = { employees: 'Employees', projects: 'Hierarchy', hierarchy: 'Hierarchy', hours: 'Hours', matching: 'Matching', customerContracts: 'Customer contracts' };
+              const stepLabels: Record<string, string> = { employees: 'Employees', projects: 'Hierarchy', hierarchy: 'Hierarchy', hours: 'Hours', matching: 'Matching', customerContracts: 'Customer contracts', workdayPhases: 'Workday phases' };
               const stepLabel = stepLabels[ev.step as string] || ev.step;
               if (ev.step === 'hours') {
                 setSyncProgress(null);

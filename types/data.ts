@@ -1866,6 +1866,8 @@ export interface SampleData {
   snapshots: Snapshot[];
   visualSnapshots: VisualSnapshot[];
   projectDocuments: ProjectDocument[];
+  customerContracts?: any[];
+  workdayPhases?: any[];
   changeRequests: ChangeRequest[];
   changeImpacts: ChangeImpact[];
   changeControlSummary?: ChangeControlSummary;

@@ -9,6 +9,7 @@ const { syncProjects } = require('./sync/projects');
 const { syncHours } = require('./sync/hours');
 const { runMatchingAndAggregation } = require('./sync/matching');
 const { syncCustomerContracts } = require('./sync/customer-contracts');
+const { syncWorkdayPhases } = require('./sync/workday-phases');
 const config = require('./config');
 
 const WINDOW_DAYS = config.sync.windowDays;
@@ -26,6 +27,7 @@ async function runFullSync(hoursDaysBackOverride) {
     hours: { chunksOk: 0, chunksFail: 0, totalHours: 0, totalFetched: 0, hoursDaysBack: HOURS_DAYS_BACK, lastError: null },
     matching: null,
     customerContracts: null,
+    workdayPhases: null,
   };
 
   return await withClient(async (client) => {
@@ -82,6 +84,14 @@ async function runFullSync(hoursDaysBackOverride) {
     } catch (e) {
       console.error('[WorkdaySync] Customer contracts failed:', e.message);
       summary.customerContracts = { error: e.message };
+    }
+
+    try {
+      summary.workdayPhases = await syncWorkdayPhases(client);
+      console.log('[WorkdaySync] Workday phases:', JSON.stringify(summary.workdayPhases));
+    } catch (e) {
+      console.error('[WorkdaySync] Workday phases failed:', e.message);
+      summary.workdayPhases = { error: e.message };
     }
 
     return summary;

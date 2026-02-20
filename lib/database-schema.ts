@@ -467,6 +467,9 @@ export interface DBTask extends TrackingFields {
   isMilestone: boolean;
   isSubTask: boolean;
 
+  // Workday Phase mapping (from Workday parent-phase report)
+  workdayPhaseId?: string | null;
+
   // Metadata
   notes: string;
   createdAt: string;
@@ -956,6 +959,21 @@ export interface DBCustomerContract {
   updatedAt?: string;
 }
 
+/**
+ * Workday Phase - from RPT_-_View_Project_Plan_-_Integration_for_Parent_Phase
+ * Level_1 (unit), Level_2 (phase name) per project.
+ */
+export interface DBWorkdayPhase {
+  id: string;
+  projectId: string;
+  unit: string | null;
+  name: string;
+  phaseId?: string | null;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // ============================================================================
 // DEVOPS / SPRINT PLANNING
 // ============================================================================
@@ -1044,6 +1062,7 @@ export interface UnifiedData {
   projectLog: DBProjectLog[];
   projectDocuments: DBProjectDocument[];
   customerContracts: DBCustomerContract[];
+  workdayPhases: DBWorkdayPhase[];
 
   // DevOps
   epics: DBEpic[];
@@ -1228,6 +1247,7 @@ export function createEmptyUnifiedData(): UnifiedData {
     projectLog: [],
     projectDocuments: [],
     customerContracts: [],
+    workdayPhases: [],
     epics: [],
     features: [],
     userStories: [],

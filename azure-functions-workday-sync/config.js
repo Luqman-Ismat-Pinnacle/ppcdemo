@@ -40,6 +40,10 @@ module.exports = {
     customerContracts:
       process.env.WORKDAY_CUSTOMER_CONTRACTS_URL ||
       'https://services1.myworkday.com/ccx/service/customreport2/pinnacle/mandie.burnett/RPT_-_Find_Customer_Contract_Lines_-_Revenue?New_Business=0&Renewable=0&format=json',
+
+    workdayPhases:
+      process.env.WORKDAY_PHASES_URL ||
+      'https://services1.myworkday.com/ccx/service/customreport2/pinnacle/mandie.burnett/RPT_-_View_Project_Plan_-_Integration_for_Parent_Phase?Include_Subordinate_Project_Hierarchies=1&Projects_and_Project_Hierarchies%21WID=6c3abbb4fb20100174cf1f0f36850000&format=json',
   },
 
   // ---------------------------------------------------------------------------

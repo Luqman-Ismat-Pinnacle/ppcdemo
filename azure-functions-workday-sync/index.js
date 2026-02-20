@@ -79,6 +79,11 @@ async function httpTrigger(context, req) {
         : summary.customerContracts != null
           ? { success: false, error: summary.customerContracts.error, summary: summary.customerContracts }
           : null,
+      workdayPhases: summary.workdayPhases != null && !summary.workdayPhases.error
+        ? { success: true, summary: summary.workdayPhases }
+        : summary.workdayPhases != null
+          ? { success: false, error: summary.workdayPhases.error, summary: summary.workdayPhases }
+          : null,
     };
     res.body = { success: true, summary, results };
     context.log('WorkdaySync HTTP: done', JSON.stringify(summary));

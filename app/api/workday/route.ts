@@ -91,6 +91,10 @@ function buildResultsFromSummary(summary: Record<string, unknown>): Record<strin
     const cc = summary.customerContracts as Record<string, unknown>;
     results.customerContracts = { success: !cc.error, summary: summary.customerContracts };
   }
+  if (summary.workdayPhases != null) {
+    const wp = summary.workdayPhases as Record<string, unknown>;
+    results.workdayPhases = { success: !wp.error, summary: summary.workdayPhases };
+  }
   return results;
 }
 
@@ -282,7 +286,7 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
         // Emit step events for each component (employees, hierarchy, hours, matching, customerContracts)
         const results = data.results || (data.summary && buildResultsFromSummary(data.summary));
         if (results) {
-          const stepOrder = ['employees', 'hierarchy', 'hours', 'matching', 'customerContracts'];
+          const stepOrder = ['employees', 'hierarchy', 'hours', 'matching', 'customerContracts', 'workdayPhases'];
           for (const step of stepOrder) {
             const result = results[step];
             if (!result) continue;
