@@ -7,6 +7,7 @@
 const { runFullSync } = require('./run-sync');
 const { withClient } = require('./shared/db');
 const { getSchedule, shouldRunNow, markRun } = require('./schedule-check');
+const { syncCustomerContracts } = require('./sync/customer-contracts');
 
 async function timerTrigger(context, myTimer) {
   context.log('WorkdaySync Timer: tick');
@@ -41,6 +42,15 @@ async function httpTrigger(context, req) {
     headers: { 'Content-Type': 'application/json' },
   };
   try {
+    const syncOnly = (req.query && req.query.sync) || (req.body && req.body.sync);
+    if (syncOnly === 'customerContracts') {
+      context.log('WorkdaySync HTTP: customer contracts only');
+      const result = await withClient((client) => syncCustomerContracts(client));
+      res.body = { success: true, customerContracts: result };
+      context.log('WorkdaySync HTTP: customer contracts done', JSON.stringify(result));
+      context.res = res;
+      return;
+    }
     let hoursDaysBack;
     if (req.body && typeof req.body.hoursDaysBack === 'number') {
       hoursDaysBack = Math.min(730, Math.max(30, req.body.hoursDaysBack));

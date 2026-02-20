@@ -8,6 +8,7 @@ const { syncEmployees } = require('./sync/employees');
 const { syncProjects } = require('./sync/projects');
 const { syncHours } = require('./sync/hours');
 const { runMatchingAndAggregation } = require('./sync/matching');
+const { syncCustomerContracts } = require('./sync/customer-contracts');
 const config = require('./config');
 
 const WINDOW_DAYS = config.sync.windowDays;
@@ -22,8 +23,9 @@ async function runFullSync(hoursDaysBackOverride) {
   const summary = {
     employees: null,
     hierarchy: null,
-    hours: { chunksOk: 0, chunksFail: 0, totalHours: 0, hoursDaysBack: HOURS_DAYS_BACK },
+    hours: { chunksOk: 0, chunksFail: 0, totalHours: 0, totalFetched: 0, hoursDaysBack: HOURS_DAYS_BACK, lastError: null },
     matching: null,
+    customerContracts: null,
   };
 
   return await withClient(async (client) => {
@@ -46,6 +48,7 @@ async function runFullSync(hoursDaysBackOverride) {
     start.setDate(start.getDate() - HOURS_DAYS_BACK);
     const totalChunks = Math.ceil(HOURS_DAYS_BACK / WINDOW_DAYS);
 
+    console.log(`[WorkdaySync] Hours: ${totalChunks} chunks (${WINDOW_DAYS} days each), range ${start.toISOString().split('T')[0]} to ${end.toISOString().split('T')[0]}`);
     for (let i = 0; i < totalChunks; i++) {
       const chunkEnd = new Date(end);
       chunkEnd.setDate(end.getDate() - i * WINDOW_DAYS);
@@ -55,10 +58,14 @@ async function runFullSync(hoursDaysBackOverride) {
       try {
         const result = await syncHours(client, chunkStart, chunkEnd);
         summary.hours.chunksOk++;
-        summary.hours.totalHours += result.fetched || 0;
+        summary.hours.totalFetched += result.fetched || 0;
+        summary.hours.totalHours += result.hours || 0;
+        console.log(`[WorkdaySync] Hours chunk ${i + 1}/${totalChunks} ok: fetched=${result.fetched} upserted=${result.hours}`);
       } catch (e) {
         summary.hours.chunksFail++;
-        console.warn(`[WorkdaySync] Hours chunk ${i + 1}/${totalChunks} failed:`, e.message);
+        summary.hours.lastError = e.message || String(e);
+        console.error(`[WorkdaySync] Hours chunk ${i + 1}/${totalChunks} failed:`, e.message);
+        if (e.stack) console.error(e.stack);
       }
       if (i < totalChunks - 1) await new Promise((r) => setTimeout(r, 200));
     }
@@ -67,6 +74,14 @@ async function runFullSync(hoursDaysBackOverride) {
       summary.matching = await runMatchingAndAggregation(client);
     } catch (e) {
       console.error('[WorkdaySync] Matching/aggregation failed:', e.message);
+    }
+
+    try {
+      summary.customerContracts = await syncCustomerContracts(client);
+      console.log('[WorkdaySync] Customer contracts:', JSON.stringify(summary.customerContracts));
+    } catch (e) {
+      console.error('[WorkdaySync] Customer contracts failed:', e.message);
+      summary.customerContracts = { error: e.message };
     }
 
     return summary;

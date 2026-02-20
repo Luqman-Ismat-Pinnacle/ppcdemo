@@ -9,6 +9,7 @@ BEGIN;
 -- DROP EXISTING TABLES (reverse dependency order)
 -- ============================================================================
 DROP TABLE IF EXISTS visual_snapshots CASCADE;
+DROP TABLE IF EXISTS customer_contracts CASCADE;
 DROP TABLE IF EXISTS project_documents CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS feedback_items CASCADE;
@@ -360,6 +361,22 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_billable_type ON projects(billable_type);
 CREATE INDEX IF NOT EXISTS idx_projects_portfolio_active ON projects(portfolio_id, is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_projects_dates ON projects(baseline_start_date, baseline_end_date) WHERE baseline_start_date IS NOT NULL;
+
+-- CUSTOMER CONTRACTS (Workday contract lines for forecasting)
+CREATE TABLE IF NOT EXISTS customer_contracts (
+  id VARCHAR(80) PRIMARY KEY,
+  project_id VARCHAR(50) REFERENCES projects(id) ON DELETE CASCADE,
+  line_amount NUMERIC(14, 2) NOT NULL,
+  line_from_date DATE NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+  amount_usd NUMERIC(14, 2),
+  billable_project_raw VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_customer_contracts_project_id ON customer_contracts(project_id);
+CREATE INDEX IF NOT EXISTS idx_customer_contracts_line_from_date ON customer_contracts(line_from_date);
+CREATE INDEX IF NOT EXISTS idx_customer_contracts_project_date ON customer_contracts(project_id, line_from_date);
 
 -- SUBPROJECTS (depends on projects)
 CREATE TABLE IF NOT EXISTS subprojects (

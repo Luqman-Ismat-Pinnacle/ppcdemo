@@ -941,6 +941,21 @@ export interface DBProjectDocument {
   updatedAt: string;
 }
 
+/**
+ * Customer contract line from Workday (forecasting)
+ */
+export interface DBCustomerContract {
+  id: string;
+  projectId: string;
+  lineAmount: number;
+  lineFromDate: string;
+  currency: string;
+  amountUsd: number | null;
+  billableProjectRaw: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // ============================================================================
 // DEVOPS / SPRINT PLANNING
 // ============================================================================
@@ -1028,6 +1043,7 @@ export interface UnifiedData {
   projectHealth: DBProjectHealth[];
   projectLog: DBProjectLog[];
   projectDocuments: DBProjectDocument[];
+  customerContracts: DBCustomerContract[];
 
   // DevOps
   epics: DBEpic[];
@@ -1211,6 +1227,7 @@ export function createEmptyUnifiedData(): UnifiedData {
     projectHealth: [],
     projectLog: [],
     projectDocuments: [],
+    customerContracts: [],
     epics: [],
     features: [],
     userStories: [],
