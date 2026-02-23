@@ -126,7 +126,7 @@ const TaskLifecyclePulse = ({ task, hours }: { task: any; hours: any[] }) => {
   }, [task, hours]);
 
   const segments = Object.entries(lifecycle.byType).filter(([, v]) => v > 0);
-  const total = lifecycle.totalHours || 1;
+  const total = asNumber(lifecycle.totalHours) || 1;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

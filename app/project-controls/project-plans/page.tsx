@@ -898,6 +898,15 @@ export default function DocumentsPage() {
     return map;
   }, [data?.workdayPhases, filteredData?.workdayPhases]);
 
+  const [mappingHourId, setMappingHourId] = useState<string | null>(null);
+  const [mappingTaskId, setMappingTaskId] = useState<string | null>(null);
+  const [mappingTaskForPhaseId, setMappingTaskForPhaseId] = useState<string | null>(null);
+  const [mappingWorkdayPhaseId, setMappingWorkdayPhaseId] = useState<string | null>(null);
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingProjectFilter, setMappingProjectFilter] = useState<string>('');
+  const [mappingPhaseFilter, setMappingPhaseFilter] = useState<string>('');
+  const [mappingSearch, setMappingSearch] = useState('');
+
   const mappingProjectOptions = useMemo(() => {
     return projectsWithPlan.map((p: any) => ({ id: String(p.id ?? p.projectId ?? ''), name: p.name || p.id || 'Unknown' }));
   }, [projectsWithPlan]);
@@ -964,15 +973,6 @@ export default function DocumentsPage() {
     });
     return byPhase;
   }, [mappingProjectFilter, data?.tasks, filteredData?.tasks]);
-
-  const [mappingHourId, setMappingHourId] = useState<string | null>(null);
-  const [mappingTaskId, setMappingTaskId] = useState<string | null>(null);
-  const [mappingTaskForPhaseId, setMappingTaskForPhaseId] = useState<string | null>(null);
-  const [mappingWorkdayPhaseId, setMappingWorkdayPhaseId] = useState<string | null>(null);
-  const [mappingSaving, setMappingSaving] = useState(false);
-  const [mappingProjectFilter, setMappingProjectFilter] = useState<string>('');
-  const [mappingPhaseFilter, setMappingPhaseFilter] = useState<string>('');
-  const [mappingSearch, setMappingSearch] = useState('');
 
   const handleAssignHourToTask = useCallback(async () => {
     if (!mappingHourId || !mappingTaskId) return;

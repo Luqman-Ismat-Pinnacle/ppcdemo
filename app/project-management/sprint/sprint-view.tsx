@@ -102,7 +102,7 @@ export default function SprintView() {
 
     return entries.map(([key, tasks]) => ({
       key, tasks, count: tasks.length,
-      totalHours: tasks.reduce((sum, t) => sum + (t.projectedHours || 0), 0)
+      totalHours: tasks.reduce((sum, t) => sum + (Number(t.projectedHours) || 0), 0)
     }));
   }, [sprintTasks, view, employees]);
 
