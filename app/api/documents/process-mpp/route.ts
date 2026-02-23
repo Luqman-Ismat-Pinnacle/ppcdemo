@@ -351,6 +351,11 @@ export async function POST(req: NextRequest) {
         );
         await client.query('DELETE FROM tasks WHERE project_id = $1', [projectId]);
         await client.query('DELETE FROM units WHERE project_id = $1', [projectId]);
+        // Unlink any tasks (e.g. from other projects) that reference phases we are about to delete
+        await client.query(
+          'UPDATE tasks SET phase_id = NULL WHERE phase_id IN (SELECT id FROM phases WHERE project_id = $1)',
+          [projectId]
+        );
         await client.query('DELETE FROM phases WHERE project_id = $1', [projectId]);
         await client.query('DELETE FROM project_log WHERE project_id = $1', [projectId]);
 
