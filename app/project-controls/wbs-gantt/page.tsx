@@ -300,13 +300,13 @@ export default function WBSGanttPage() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 14,
       cellVerticalPadding: 10,
-      headerFontStyle: '700 17px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '800 19px var(--font-montserrat, sans-serif)',
       headerIconSize: 24,
-      baseFontStyle: '700 16px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '700 15px var(--font-mono, monospace)',
+      baseFontStyle: '800 18px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '800 16px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '16px',
-      lineHeight: 1.35,
+      editorFontSize: '18px',
+      lineHeight: 1.4,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
       roundingRadius: 6,
@@ -808,7 +808,7 @@ export default function WBSGanttPage() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '700 15px var(--font-montserrat, sans-serif)';
+      ctx.font = '800 16px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -873,7 +873,7 @@ export default function WBSGanttPage() {
     }
 
     const isNameOrWbs = def.id === 'name' || def.id === 'wbs';
-    ctx.font = '700 16px var(--font-montserrat, sans-serif)';
+    ctx.font = '800 18px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = isNameOrWbs ? 'left' : 'center';
@@ -1151,6 +1151,7 @@ export default function WBSGanttPage() {
     const unitEntries = allHours.filter((h) => taskIdsInUnit.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
 
     const sumHours = (arr: unknown[]) => arr.reduce((s, h) => s + readNumber(h, 'hours', 'actualHours', 'totalHoursWorked'), 0);
+    const sumCost = (arr: unknown[]) => arr.reduce((s, h) => s + readNumber(h, 'actualCost', 'actual_cost', 'reported_standard_cost_amt', 'reportedStandardCostAmt'), 0);
     const phaseName = phaseId ? (allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId) ? readString(allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId), 'name') : phaseId) : '-';
     const unitName = unitId ? (allUnits.find((u) => readString(u, 'id', 'unitId') === unitId) ? readString(allUnits.find((u) => readString(u, 'id', 'unitId') === unitId), 'name') : unitId) : '-';
 
@@ -1158,6 +1159,9 @@ export default function WBSGanttPage() {
       taskHours: sumHours(taskEntries),
       phaseHours: sumHours(phaseEntries),
       unitHours: sumHours(unitEntries),
+      taskCost: sumCost(taskEntries),
+      phaseCost: sumCost(phaseEntries),
+      unitCost: sumCost(unitEntries),
       phaseName,
       unitName,
       entries: taskEntries.slice(0, 200),
@@ -1658,11 +1662,12 @@ export default function WBSGanttPage() {
 
       {hoursBreakdownRow && hoursBreakdown && (
         <div
+          className="chart-card"
           style={{
             position: 'fixed',
             inset: 0,
             zIndex: 10020,
-            background: 'rgba(0,0,0,0.62)',
+            background: 'var(--bg-overlay, rgba(0,0,0,0.6))',
             display: 'grid',
             placeItems: 'center',
             padding: 16,
@@ -1670,60 +1675,65 @@ export default function WBSGanttPage() {
           onClick={() => setHoursBreakdownRow(null)}
         >
           <div
+            className="chart-card-body"
             style={{
-              width: 'min(920px, 100%)',
+              width: 'min(960px, 100%)',
               maxHeight: '88vh',
               overflow: 'auto',
-              background: 'rgba(12,15,19,0.97)',
-              border: '1px solid rgba(100,131,167,0.35)',
-              borderRadius: 12,
-              boxShadow: '0 18px 48px rgba(0,0,0,0.56)',
-              padding: 14,
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              boxShadow: 'var(--shadow-lg, 0 18px 48px rgba(0,0,0,0.4))',
+              padding: '1.25rem 1.5rem',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div>
-                <div style={{ color: '#f4f4f5', fontWeight: 700, fontSize: '0.92rem' }}>Actual Hours Breakdown</div>
-                <div style={{ color: '#9ca3af', fontSize: '0.68rem' }}>{hoursBreakdownRow.name} ({hoursBreakdownRow.wbsCode})</div>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '1.1rem' }}>Actuals (Hours &amp; Cost)</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 2 }}>{hoursBreakdownRow.name} ({hoursBreakdownRow.wbsCode})</div>
               </div>
               <button
                 type="button"
                 onClick={() => setHoursBreakdownRow(null)}
-                style={{ background: 'transparent', border: '1px solid rgba(148,163,184,0.35)', color: '#cbd5e1', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}
+                style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', borderRadius: 'var(--radius-md)', padding: '0.5rem 0.75rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 }}
               >
                 Close
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
-              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Task Actual Hours</div>
-                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.taskHours).toLocaleString()}h</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: '1rem' }}>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1rem', background: 'var(--bg-tertiary)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, marginBottom: 4 }}>Task (roll-up)</div>
+                <div style={{ color: 'var(--text-primary)', fontSize: '1.05rem', fontWeight: 800 }}>{Math.round(hoursBreakdown.taskHours).toLocaleString()}h</div>
+                <div style={{ color: 'var(--pinnacle-teal)', fontSize: '0.9rem', fontWeight: 700 }}>{formatCurrency(hoursBreakdown.taskCost)}</div>
               </div>
-              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Phase ({hoursBreakdown.phaseName})</div>
-                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.phaseHours).toLocaleString()}h</div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1rem', background: 'var(--bg-tertiary)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, marginBottom: 4 }}>Phase: {hoursBreakdown.phaseName}</div>
+                <div style={{ color: 'var(--text-primary)', fontSize: '1.05rem', fontWeight: 800 }}>{Math.round(hoursBreakdown.phaseHours).toLocaleString()}h</div>
+                <div style={{ color: 'var(--pinnacle-teal)', fontSize: '0.9rem', fontWeight: 700 }}>{formatCurrency(hoursBreakdown.phaseCost)}</div>
               </div>
-              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Unit ({hoursBreakdown.unitName})</div>
-                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.unitHours).toLocaleString()}h</div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1rem', background: 'var(--bg-tertiary)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, marginBottom: 4 }}>Unit: {hoursBreakdown.unitName}</div>
+                <div style={{ color: 'var(--text-primary)', fontSize: '1.05rem', fontWeight: 800 }}>{Math.round(hoursBreakdown.unitHours).toLocaleString()}h</div>
+                <div style={{ color: 'var(--pinnacle-teal)', fontSize: '0.9rem', fontWeight: 700 }}>{formatCurrency(hoursBreakdown.unitCost)}</div>
               </div>
             </div>
 
-            <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', background: 'rgba(17,24,39,0.82)', color: '#a1a1aa', fontSize: '0.63rem', fontWeight: 700, padding: '7px 8px' }}>
-                <span>Date</span><span>Employee</span><span>Charge Type</span><span style={{ textAlign: 'right' }}>Hours</span>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 100px 80px 100px', background: 'var(--bg-tertiary)', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 700, padding: '0.6rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                <span>Date</span><span>Employee</span><span>Charge</span><span style={{ textAlign: 'right' }}>Hours</span><span style={{ textAlign: 'right' }}>Cost</span>
               </div>
               <div style={{ maxHeight: 320, overflow: 'auto' }}>
                 {hoursBreakdown.entries.length === 0 ? (
-                  <div style={{ color: '#94a3b8', fontSize: '0.72rem', padding: 10 }}>No timecard entries mapped to this task.</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', padding: '1rem' }}>No timecard entries mapped to this task.</div>
                 ) : hoursBreakdown.entries.map((entry, idx) => (
-                  <div key={`hb-${idx}`} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', color: '#e2e8f0', fontSize: '0.68rem', padding: '6px 8px', borderTop: '1px solid rgba(100,131,167,0.18)' }}>
+                  <div key={`hb-${idx}`} style={{ display: 'grid', gridTemplateColumns: '110px 1fr 100px 80px 100px', color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 500, padding: '0.5rem 0.75rem', borderTop: '1px solid var(--border-color)' }}>
                     <span>{formatDate(readDate(entry, 'date', 'entryDate', 'createdAt'))}</span>
                     <span>{readString(entry, 'employeeName', 'employeeId', 'employee_id') || '-'}</span>
                     <span>{readString(entry, 'chargeType', 'charge_type') || '-'}</span>
                     <span style={{ textAlign: 'right' }}>{Number(readNumber(entry, 'hours', 'actualHours', 'totalHoursWorked')).toFixed(2)}</span>
+                    <span style={{ textAlign: 'right', color: 'var(--pinnacle-teal)' }}>{formatCurrency(readNumber(entry, 'actualCost', 'actual_cost', 'reported_standard_cost_amt', 'reportedStandardCostAmt'))}</span>
                   </div>
                 ))}
               </div>

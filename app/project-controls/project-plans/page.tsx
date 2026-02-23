@@ -898,11 +898,81 @@ export default function DocumentsPage() {
     return map;
   }, [data?.workdayPhases, filteredData?.workdayPhases]);
 
+  const mappingProjectOptions = useMemo(() => {
+    return projectsWithPlan.map((p: any) => ({ id: String(p.id ?? p.projectId ?? ''), name: p.name || p.id || 'Unknown' }));
+  }, [projectsWithPlan]);
+
+  const filteredUnmappedHours = useMemo(() => {
+    let list = unmappedHours;
+    if (mappingProjectFilter) {
+      list = list.filter((h: any) => String(h.projectId ?? h.project_id) === mappingProjectFilter);
+    }
+    if (mappingSearch.trim()) {
+      const q = mappingSearch.trim().toLowerCase();
+      list = list.filter((h: any) => {
+        const desc = ((h.description ?? h.workday_phase ?? '') + ' ' + (h.date ?? '')).toString().toLowerCase();
+        return desc.includes(q);
+      });
+    }
+    return list;
+  }, [unmappedHours, mappingProjectFilter, mappingSearch]);
+
+  const filteredTasksWithoutPhase = useMemo(() => {
+    let list = tasksWithoutWorkdayPhase;
+    if (mappingProjectFilter) {
+      list = list.filter((t: any) => String(t.projectId ?? t.project_id) === mappingProjectFilter);
+    }
+    if (mappingSearch.trim()) {
+      const q = mappingSearch.trim().toLowerCase();
+      list = list.filter((t: any) => (t.name || '').toString().toLowerCase().includes(q));
+    }
+    return list;
+  }, [tasksWithoutWorkdayPhase, mappingProjectFilter, mappingSearch]);
+
+  const suggestedTaskForHour = useMemo(() => {
+    if (!mappingHourId || !filteredUnmappedHours.length) return null;
+    const h = filteredUnmappedHours.find((x: any) => x.id === mappingHourId);
+    if (!h) return null;
+    const pid = h.projectId ?? h.project_id;
+    const tasks = (data?.tasks || filteredData?.tasks || []).filter((t: any) => String(t.projectId ?? t.project_id) === String(pid));
+    const desc = ((h.description ?? '') + ' ' + (h.workday_phase ?? '')).toString().toLowerCase();
+    const words = desc.split(/\s+/).filter(Boolean).slice(0, 5);
+    let best: { id: string; score: number } | null = null;
+    tasks.forEach((t: any) => {
+      const name = (t.name || '').toString().toLowerCase();
+      let score = 0;
+      words.forEach((w: string) => { if (name.includes(w)) score += 1; });
+      if (desc.length && name.includes(desc.slice(0, 20))) score += 3;
+      if (score > 0 && (!best || score > best.score)) best = { id: t.id, score };
+    });
+    return best ? best.id : null;
+  }, [mappingHourId, filteredUnmappedHours, data?.tasks, filteredData?.tasks]);
+
+  const tasksByWorkdayPhaseForProject = useMemo(() => {
+    const projectId = mappingProjectFilter || null;
+    const tasks = (data?.tasks || filteredData?.tasks || []).filter((t: any) =>
+      projectId ? String(t.projectId ?? t.project_id) === projectId : true
+    );
+    const byPhase = new Map<string | 'unassigned', any[]>();
+    byPhase.set('unassigned', []);
+    tasks.forEach((t: any) => {
+      const wpId = t.workdayPhaseId ?? t.workday_phase_id;
+      const key = wpId ? String(wpId) : 'unassigned';
+      const list = byPhase.get(key) || [];
+      list.push(t);
+      byPhase.set(key, list);
+    });
+    return byPhase;
+  }, [mappingProjectFilter, data?.tasks, filteredData?.tasks]);
+
   const [mappingHourId, setMappingHourId] = useState<string | null>(null);
   const [mappingTaskId, setMappingTaskId] = useState<string | null>(null);
   const [mappingTaskForPhaseId, setMappingTaskForPhaseId] = useState<string | null>(null);
   const [mappingWorkdayPhaseId, setMappingWorkdayPhaseId] = useState<string | null>(null);
   const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingProjectFilter, setMappingProjectFilter] = useState<string>('');
+  const [mappingPhaseFilter, setMappingPhaseFilter] = useState<string>('');
+  const [mappingSearch, setMappingSearch] = useState('');
 
   const handleAssignHourToTask = useCallback(async () => {
     if (!mappingHourId || !mappingTaskId) return;
@@ -936,10 +1006,12 @@ export default function DocumentsPage() {
         body: JSON.stringify({ action: 'assignTaskToWorkdayPhase', taskId: mappingTaskForPhaseId, workdayPhaseId: mappingWorkdayPhaseId || null }),
       });
       const result = await res.json();
+      if (res.ok && result.success) {
+        setMappingTaskForPhaseId(null);
+        setMappingWorkdayPhaseId(null);
+      }
       if (!res.ok || !result.success) throw new Error(result.error || 'Failed');
       addLog('success', `Task assigned to Workday phase`);
-      setMappingTaskForPhaseId(null);
-      setMappingWorkdayPhaseId(null);
       await refreshData();
     } catch (err: any) {
       addLog('error', err.message);
@@ -947,6 +1019,25 @@ export default function DocumentsPage() {
       setMappingSaving(false);
     }
   }, [mappingTaskForPhaseId, mappingWorkdayPhaseId, addLog, refreshData]);
+
+  const handleAssignTaskToPhaseFromBucket = useCallback(async (taskId: string, workdayPhaseId: string | null) => {
+    setMappingSaving(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assignTaskToWorkdayPhase', taskId, workdayPhaseId }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed');
+      addLog('success', 'Task assigned to phase');
+      await refreshData();
+    } catch (err: any) {
+      addLog('error', err.message);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [addLog, refreshData]);
 
   const visibleFiles = useMemo(() => {
     const q = fileSearchQuery.trim().toLowerCase();
@@ -1667,48 +1758,84 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Mapping: unmapped hours + tasks without workday phase */}
+        {/* Mapping: unmapped hours + bucket tasks into Workday phases */}
         <div className="chart-card grid-full">
           <div className="chart-card-header">
             <h3 className="chart-card-title">Mapping</h3>
           </div>
           <div className="chart-card-body" style={{ padding: '1.25rem 1.5rem' }}>
             <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              Map unmapped hour entries to tasks and assign Workday phases to tasks. Run MPXJ first to flag items that need mapping.
+              Map unmapped hour entries to tasks and bucket tasks into Workday phases. Use filters to focus on a project; suggestions help match hours to tasks.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>1. Map unmapped hours to task</div>
-                {unmappedHours.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>No unmapped hour entries for projects with a plan.</p>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Hour entry ({unmappedHours.length} unmapped)</label>
+
+            {/* Global filters */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem', alignItems: 'center' }}>
+              <div style={{ minWidth: '180px' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>Project</label>
+                <select
+                  value={mappingProjectFilter}
+                  onChange={(e) => setMappingProjectFilter(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">All projects</option>
+                  {mappingProjectOptions.map((p: { id: string; name: string }) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ minWidth: '200px' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>Search (description / task name)</label>
+                <input
+                  type="text"
+                  value={mappingSearch}
+                  onChange={(e) => setMappingSearch(e.target.value)}
+                  placeholder="Filter entries..."
+                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+                />
+              </div>
+            </div>
+
+            {/* 1. Map unmapped hours to task */}
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.25rem', marginBottom: '1.5rem', background: 'var(--bg-card)' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '1rem' }}>1. Map unmapped hours to task</div>
+              {filteredUnmappedHours.length === 0 ? (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  {unmappedHours.length === 0 ? 'No unmapped hour entries for projects with a plan.' : 'No unmapped hours match the current filters.'}
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Hour entry ({filteredUnmappedHours.length})</label>
                       <select
                         value={mappingHourId || ''}
                         onChange={(e) => setMappingHourId(e.target.value || null)}
-                        style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                        style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
                       >
                         <option value="">Select hour entry</option>
-                        {unmappedHours.slice(0, 100).map((h: any) => (
+                        {filteredUnmappedHours.slice(0, 150).map((h: any) => (
                           <option key={h.id} value={h.id}>
-                            {h.projectId ?? h.project_id} · {(h.date || '').toString().slice(0, 10)} · {(h.hours ?? 0)}h · {(h.description || h.workday_phase || '').toString().slice(0, 30)}
+                            {(h.date || '').toString().slice(0, 10)} · {(h.hours ?? 0)}h · {(h.description || h.workday_phase || '').toString().slice(0, 40)}
                           </option>
                         ))}
-                        {unmappedHours.length > 100 && <option value="" disabled>+{unmappedHours.length - 100} more</option>}
+                        {filteredUnmappedHours.length > 150 && <option value="" disabled>+{filteredUnmappedHours.length - 150} more</option>}
                       </select>
                     </div>
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Assign to task</label>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                        Assign to task
+                        {suggestedTaskForHour && (
+                          <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', fontWeight: 500, color: 'var(--pinnacle-teal)' }}>Suggested match</span>
+                        )}
+                      </label>
                       <select
-                        value={mappingTaskId || ''}
+                        value={mappingTaskId || (suggestedTaskForHour && mappingHourId ? suggestedTaskForHour : '') || ''}
                         onChange={(e) => setMappingTaskId(e.target.value || null)}
-                        style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                        style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
                       >
                         <option value="">Select task</option>
                         {mappingHourId && (() => {
-                          const h = unmappedHours.find((x: any) => x.id === mappingHourId);
+                          const h = filteredUnmappedHours.find((x: any) => x.id === mappingHourId) || unmappedHours.find((x: any) => x.id === mappingHourId);
                           const pid = h?.projectId ?? h?.project_id;
                           const projectTasks = (data?.tasks || filteredData?.tasks || []).filter((t: any) => String(t.projectId ?? t.project_id) === String(pid));
                           return projectTasks.map((t: any) => (
@@ -1717,64 +1844,91 @@ export default function DocumentsPage() {
                         })()}
                       </select>
                     </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => suggestedTaskForHour && setMappingTaskId(suggestedTaskForHour)}
+                      disabled={!suggestedTaskForHour || !mappingHourId}
+                      style={{ padding: '0.4rem 0.75rem', background: suggestedTaskForHour && mappingHourId ? 'var(--bg-tertiary)' : 'var(--bg-tertiary)', color: suggestedTaskForHour && mappingHourId ? 'var(--pinnacle-teal)' : 'var(--text-muted)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', fontWeight: 600, cursor: suggestedTaskForHour && mappingHourId ? 'pointer' : 'not-allowed' }}
+                    >
+                      Use suggestion
+                    </button>
                     <button
                       onClick={handleAssignHourToTask}
                       disabled={!mappingHourId || !mappingTaskId || mappingSaving}
-                      style={{ padding: '0.4rem 0.75rem', background: (mappingHourId && mappingTaskId && !mappingSaving) ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)', color: (mappingHourId && mappingTaskId && !mappingSaving) ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 500, cursor: (mappingHourId && mappingTaskId && !mappingSaving) ? 'pointer' : 'not-allowed' }}
+                      style={{ padding: '0.5rem 1rem', background: (mappingHourId && mappingTaskId && !mappingSaving) ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)', color: (mappingHourId && mappingTaskId && !mappingSaving) ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: 'var(--radius-md)', fontSize: '0.875rem', fontWeight: 600, cursor: (mappingHourId && mappingTaskId && !mappingSaving) ? 'pointer' : 'not-allowed' }}
                     >
                       {mappingSaving ? 'Saving...' : 'Assign to task'}
                     </button>
-                  </>
-                )}
-              </div>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>2. Assign Workday phase to task</div>
-                {tasksWithoutWorkdayPhase.length === 0 ? (
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>All tasks with a plan have a Workday phase assigned.</p>
-                ) : (
-                  <>
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Task ({tasksWithoutWorkdayPhase.length} without phase)</label>
-                      <select
-                        value={mappingTaskForPhaseId || ''}
-                        onChange={(e) => { setMappingTaskForPhaseId(e.target.value || null); setMappingWorkdayPhaseId(null); }}
-                        style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)' }}
-                      >
-                        <option value="">Select task</option>
-                        {tasksWithoutWorkdayPhase.slice(0, 100).map((t: any) => (
-                          <option key={t.id} value={t.id}>{(t.projectId ?? t.project_id)} · {t.name || t.id}</option>
-                        ))}
-                        {tasksWithoutWorkdayPhase.length > 100 && <option value="" disabled>+{tasksWithoutWorkdayPhase.length - 100} more</option>}
-                      </select>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 2. Bucket tasks into Workday phases */}
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1.25rem', background: 'var(--bg-card)' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>2. Bucket tasks into Workday phases</div>
+              <p style={{ margin: 0, marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Select a project above to see phase buckets. Assign unassigned tasks to a phase using the dropdown on each task.
+              </p>
+              {!mappingProjectFilter ? (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Select a project in the filter above to view and assign tasks to Workday phases.</p>
+              ) : (() => {
+                const phases = workdayPhasesByProject.get(mappingProjectFilter) || [];
+                let unassigned = tasksByWorkdayPhaseForProject.get('unassigned') || [];
+                if (mappingSearch.trim()) {
+                  const q = mappingSearch.trim().toLowerCase();
+                  unassigned = unassigned.filter((t: any) => (t.name || '').toString().toLowerCase().includes(q));
+                }
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Unassigned bucket */}
+                    <div style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', background: 'var(--bg-tertiary)' }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.75rem' }}>Unassigned ({unassigned.length})</div>
+                      {unassigned.length === 0 ? (
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>All tasks in this project have a Workday phase.</p>
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {unassigned.map((t: any) => (
+                            <li key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.875rem', color: 'var(--text-primary)' }}>{t.name || t.id}</span>
+                              <select
+                                value=""
+                                onChange={(e) => { const v = e.target.value; if (v) handleAssignTaskToPhaseFromBucket(t.id, v); }}
+                                disabled={mappingSaving}
+                                style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', minWidth: '180px' }}
+                              >
+                                <option value="">Assign to phase...</option>
+                                {phases.map((wp: any) => (
+                                  <option key={wp.id} value={wp.id}>{wp.unit ? `${wp.unit} → ` : ''}{wp.name || wp.id}</option>
+                                ))}
+                              </select>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Workday phase</label>
-                      <select
-                        value={mappingWorkdayPhaseId || ''}
-                        onChange={(e) => setMappingWorkdayPhaseId(e.target.value || null)}
-                        style={{ width: '100%', padding: '0.5rem', fontSize: '0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)' }}
-                      >
-                        <option value="">None / Clear</option>
-                        {mappingTaskForPhaseId && (() => {
-                          const t = tasksWithoutWorkdayPhase.find((x: any) => x.id === mappingTaskForPhaseId);
-                          const pid = t?.projectId ?? t?.project_id;
-                          const phases = workdayPhasesByProject.get(String(pid)) || [];
-                          return phases.map((wp: any) => (
-                            <option key={wp.id} value={wp.id}>{wp.unit ? `${wp.unit} → ` : ''}{wp.name || wp.id}</option>
-                          ));
-                        })()}
-                      </select>
+                    {/* Phase buckets */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+                      {phases.map((wp: any) => {
+                        const inPhase = tasksByWorkdayPhaseForProject.get(String(wp.id)) || [];
+                        return (
+                          <div key={wp.id} style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', background: 'var(--bg-tertiary)' }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{wp.unit ? `${wp.unit} → ` : ''}{wp.name || wp.id}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{inPhase.length} task{inPhase.length !== 1 ? 's' : ''}</div>
+                            <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              {inPhase.slice(0, 15).map((t: any) => (
+                                <li key={t.id}>{t.name || t.id}</li>
+                              ))}
+                              {inPhase.length > 15 && <li style={{ color: 'var(--text-muted)' }}>+{inPhase.length - 15} more</li>}
+                            </ul>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <button
-                      onClick={handleAssignTaskToWorkdayPhase}
-                      disabled={!mappingTaskForPhaseId || mappingSaving}
-                      style={{ padding: '0.4rem 0.75rem', background: (mappingTaskForPhaseId && !mappingSaving) ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)', color: (mappingTaskForPhaseId && !mappingSaving) ? '#000' : 'var(--text-muted)', border: 'none', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 500, cursor: (mappingTaskForPhaseId && !mappingSaving) ? 'pointer' : 'not-allowed' }}
-                    >
-                      {mappingSaving ? 'Saving...' : 'Assign Workday phase'}
-                    </button>
-                  </>
-                )}
-              </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
