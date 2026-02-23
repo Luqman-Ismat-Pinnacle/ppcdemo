@@ -1460,6 +1460,68 @@ export default function DataManagementPage() {
       })
     },
     {
+      key: 'customerContracts',
+      label: 'Customer Contracts',
+      dataKey: 'customerContracts',
+      idKey: 'id',
+      fields: [
+        { key: 'id', header: 'ID', type: 'text', editable: false, autoCalculated: false },
+        { key: 'projectId', header: 'Project', type: 'project', editable: true },
+        { key: 'lineAmount', header: 'Line Amount', type: 'number', editable: true },
+        { key: 'lineFromDate', header: 'Line From Date', type: 'date', editable: true },
+        { key: 'currency', header: 'Currency', type: 'text', editable: true },
+        { key: 'amountUsd', header: 'Amount USD', type: 'number', editable: true },
+        { key: 'billableProjectRaw', header: 'Billable Project (Raw)', type: 'text', editable: true },
+      ],
+      defaultNewRow: () => ({
+        id: '',
+        projectId: null,
+        lineAmount: 0,
+        lineFromDate: new Date().toISOString().split('T')[0],
+        currency: 'USD',
+        amountUsd: null,
+        billableProjectRaw: '',
+        createdAt: getCurrentTimestamp(),
+        updatedAt: getCurrentTimestamp(),
+      }),
+    },
+    {
+      key: 'workdayPhases',
+      label: 'Workday Phases',
+      dataKey: 'workdayPhases',
+      idKey: 'id',
+      fields: [
+        { key: 'id', header: 'ID', type: 'text', editable: false, autoCalculated: false },
+        { key: 'phaseId', header: 'Phase ID', type: 'text', editable: true },
+        { key: 'projectId', header: 'Project', type: 'project', editable: true },
+        { key: 'unit', header: 'Unit', type: 'text', editable: true },
+        { key: 'name', header: 'Name', type: 'text', editable: true },
+        { key: 'sequence', header: 'Sequence', type: 'number', editable: true },
+        { key: 'startDate', header: 'Start Date', type: 'date', editable: true },
+        { key: 'endDate', header: 'End Date', type: 'date', editable: true },
+        { key: 'percentComplete', header: '% Complete', type: 'number', editable: true },
+        { key: 'actualHours', header: 'Actual Hours', type: 'number', editable: true },
+        { key: 'baselineHours', header: 'Baseline Hours', type: 'number', editable: true },
+        { key: 'isActive', header: 'Active', type: 'boolean', editable: true },
+      ],
+      defaultNewRow: () => ({
+        id: '',
+        phaseId: '',
+        projectId: null,
+        unit: '',
+        name: '',
+        sequence: 0,
+        startDate: null,
+        endDate: null,
+        percentComplete: 0,
+        actualHours: 0,
+        baselineHours: 0,
+        isActive: true,
+        createdAt: getCurrentTimestamp(),
+        updatedAt: getCurrentTimestamp(),
+      }),
+    },
+    {
       key: 'milestonesTable',
       label: 'Milestones',
       dataKey: 'milestonesTable',
@@ -3923,25 +3985,35 @@ export default function DataManagementPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', padding: '0 0 10px 0', overflowX: 'auto', flexShrink: 0, borderBottom: '1px solid var(--border-color)', marginBottom: '10px' }}>
-        {sections.map(section => {
-          const count = ((data as any)[section.dataKey] || []).length;
-          return (
-            <button
-              key={section.key}
-              onClick={() => { setSelectedTable(section.key); setSelectedRows(new Set()); setNewRows([]); setEditedRows(new Map()); }}
-              style={{
-                padding: '6px 12px', fontSize: '0.7rem', fontWeight: 600,
-                background: selectedTable === section.key ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                color: selectedTable === section.key ? '#000' : 'var(--text-secondary)',
-                border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
-              }}
-            >
-              {section.label} <span style={{ fontSize: '0.6rem', opacity: 0.7 }}>({count})</span>
-            </button>
-          );
-        })}
+      {/* Table selection dropdown */}
+      <div style={{ marginBottom: '10px', maxWidth: '320px' }}>
+        <label htmlFor="data-mgmt-table-select" style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>Table</label>
+        <select
+          id="data-mgmt-table-select"
+          value={selectedTable}
+          onChange={(e) => { setSelectedTable(e.target.value); setSelectedRows(new Set()); setNewRows([]); setEditedRows(new Map()); }}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            background: 'var(--bg-tertiary)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            appearance: 'auto',
+          }}
+        >
+          {sections.map(section => {
+            const count = ((data as any)[section.dataKey] || []).length;
+            return (
+              <option key={section.key} value={section.key}>
+                {section.label} ({count})
+              </option>
+            );
+          })}
+        </select>
       </div>
 
       {/* Table - overflow auto so table grows with rows, no inner vertical scroll; page scrolls */}

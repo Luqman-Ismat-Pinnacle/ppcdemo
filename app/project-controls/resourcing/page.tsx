@@ -1052,36 +1052,21 @@ function ResourcingPageContent() {
         {
           type: 'heatmap',
           data: heatData,
-          label: { show: false },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } },
-        },
-        {
-          type: 'scatter',
-          data: overlayData,
-          symbol: 'rect',
-          symbolSize: [10, 10],
-          itemStyle: {
-            color: 'transparent',
-            borderColor: '#93c5fd',
-            borderWidth: 1,
-          },
           label: {
             show: true,
-            fontSize: 8,
-            color: '#cbd5e1',
+            fontSize: 9,
+            color: 'rgba(255,255,255,0.9)',
             formatter: (params: any) => {
-              const val = Number(params?.data?.value?.[2] || 0);
+              const val = Number(params?.data?.[2] ?? 0);
               if (val <= 0) return '';
-              return `${Math.round(val)}/${HOURS_PER_WEEK}`;
+              return `${Math.round(val)}`;
             },
           },
-          emphasis: {
-            itemStyle: {
-              borderColor: '#40E0D0',
-              borderWidth: 1.6,
-            },
+          itemStyle: {
+            borderColor: 'rgba(255,255,255,0.08)',
+            borderWidth: 1,
           },
-          z: 4,
+          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } },
         },
       ],
       _dynamicHeight: dynamicHeight,
