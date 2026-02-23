@@ -1196,11 +1196,11 @@ export function DataProvider({ children }: DataProviderProps) {
         return isNaN(date.getTime()) ? null : date;
       };
 
-      // Filter tasks by date range
+      // Filter tasks by date range (include plan fields: start_date, end_date, finish_date)
       if (filtered.tasks) {
-        filtered.tasks = filtered.tasks.filter((t) => {
-          const taskStart = parseDate(t.baselineStartDate || t.actualStartDate || '');
-          const taskEnd = parseDate(t.baselineEndDate || t.actualEndDate || '');
+        filtered.tasks = filtered.tasks.filter((t: any) => {
+          const taskStart = parseDate(t.baselineStartDate || t.actualStartDate || t.startDate || t.start_date || '');
+          const taskEnd = parseDate(t.baselineEndDate || t.actualEndDate || t.endDate || t.end_date || t.finishDate || t.finish_date || '');
           if (!taskStart && !taskEnd) return true;
           if (taskStart && taskEnd) return taskStart <= endDate && taskEnd >= startDate;
           if (taskStart) return taskStart <= endDate && taskStart >= startDate;

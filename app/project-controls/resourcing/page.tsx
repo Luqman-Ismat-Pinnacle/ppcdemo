@@ -63,11 +63,12 @@ function ResourcingPageLoading() {
 
 function ResourcingPageContent() {
   const searchParams = useSearchParams();
-  const { filteredData, fullData, setData, refreshData, isLoading } = useData();
+  const { filteredData, fullData, dateFilter, hierarchyFilter, setData, refreshData, isLoading } = useData();
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
   const [heatmapView] = useState<'role'>('role');
+  const [heatmapBucket, setHeatmapBucket] = useState<'week' | 'month' | 'quarter'>('week');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
@@ -749,6 +750,17 @@ function ResourcingPageContent() {
     setLevelingResult(runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS));
   }, [data.tasks, data.employees, data.hours]);
 
+  // Capacity per role per week = active employees in that role × HOURS_PER_WEEK
+  const roleCapacityPerWeek = useMemo(() => {
+    const map = new Map<string, number>();
+    data.employees.forEach((e: any) => {
+      const role = (e.jobTitle || e.role || 'Unassigned').trim() || 'Unassigned';
+      const current = map.get(role) || 0;
+      map.set(role, current + HOURS_PER_WEEK);
+    });
+    return map;
+  }, [data.employees]);
+
   // ── Resource Heatmap — shared data layer for both views ──
   const heatmapSharedData = useMemo(() => {
     // Build employee lookup maps
@@ -764,7 +776,7 @@ function ResourcingPageContent() {
       empNameToRole.set(name.toLowerCase(), role);
     });
 
-    // Only tasks with dates and hours (from project plan)
+    // Only tasks with dates and hours (from project plan) — already date/hierarchy filtered via filteredData
     const planTasks = data.tasks.filter((t: any) => {
       const s = t.startDate || t.start_date;
       const e = t.endDate || t.end_date || t.finishDate || t.finish_date;
@@ -772,9 +784,10 @@ function ResourcingPageContent() {
       return s && e && hrs > 0;
     });
 
-    // When no tasks with dates/hours exist, create a stub grid using current quarter
+    const hasHierarchyScope = !!(hierarchyFilter?.path?.length);
+
+    // When no tasks with dates/hours exist: show empty state if hierarchy is set, else stub
     if (planTasks.length === 0) {
-      // Generate 12 weeks from today as the display range
       const now = Date.now();
       const msPerWeek = 7 * 24 * 60 * 60 * 1000;
       const displayWeeks: { start: number; label: string }[] = [];
@@ -785,7 +798,6 @@ function ResourcingPageContent() {
         const yr = d.getFullYear();
         displayWeeks.push({ start: d.getTime(), label: `${mon}/${day}/${yr}` });
       }
-      // Create empty maps — employees will be added later in the by-employee chart
       return {
         displayWeeks,
         roleWeekHours: new Map<string, Map<number, number>>(),
@@ -794,6 +806,7 @@ function ResourcingPageContent() {
         empRoleMap: new Map<string, string>(),
         msPerWeek,
         empIdToRole,
+        emptyDueToScope: hasHierarchyScope,
       };
     }
 
@@ -958,13 +971,56 @@ function ResourcingPageContent() {
       }
     });
 
-    return { displayWeeks, roleWeekHours, empWeekHours, empNameMap, empRoleMap, msPerWeek, empIdToRole };
-  }, [data.tasks, data.employees]);
+    return { displayWeeks, roleWeekHours, empWeekHours, empNameMap, empRoleMap, msPerWeek, empIdToRole, emptyDueToScope: false };
+  }, [data.tasks, data.employees, hierarchyFilter?.path?.length]);
+
+  // Aggregate by week / month / quarter for heatmap
+  const heatmapBucketed = useMemo(() => {
+    if (!heatmapSharedData) return null;
+    const { displayWeeks, roleWeekHours } = heatmapSharedData;
+    if (heatmapBucket === 'week') {
+      return {
+        labels: displayWeeks.map((w) => w.label),
+        roleBucketHours: roleWeekHours,
+      };
+    }
+    // Group weeks into month or quarter buckets
+    const bucketKeyToIndex = new Map<string, number>();
+    const bucketLabels: string[] = [];
+    displayWeeks.forEach((w, wi) => {
+      const d = new Date(w.start);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const key = heatmapBucket === 'month' ? `${y}-${String(m + 1).padStart(2, '0')}` : `${y}-Q${Math.floor(m / 3) + 1}`;
+      if (!bucketKeyToIndex.has(key)) {
+        bucketKeyToIndex.set(key, bucketLabels.length);
+        bucketLabels.push(heatmapBucket === 'month' ? `${y}-${String(m + 1).padStart(2, '0')}` : `${key}`);
+      }
+    });
+    const weekToBucket: number[] = displayWeeks.map((w) => {
+      const d = new Date(w.start);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const key = heatmapBucket === 'month' ? `${y}-${String(m + 1).padStart(2, '0')}` : `${y}-Q${Math.floor(m / 3) + 1}`;
+      return bucketKeyToIndex.get(key) ?? 0;
+    });
+    const roleBucketHours = new Map<string, Map<number, number>>();
+    roleWeekHours.forEach((weekMap, role) => {
+      const bucketMap = new Map<number, number>();
+      weekMap.forEach((hours, weekIdx) => {
+        const bi = weekToBucket[weekIdx] ?? 0;
+        bucketMap.set(bi, (bucketMap.get(bi) || 0) + hours);
+      });
+      roleBucketHours.set(role, bucketMap);
+    });
+    return { labels: bucketLabels, roleBucketHours };
+  }, [heatmapSharedData, heatmapBucket]);
 
   // ── Heatmap by ROLE ──
   const heatmapByRoleOption: EChartsOption | null = useMemo(() => {
-    if (!heatmapSharedData) return null;
-    const { displayWeeks, roleWeekHours } = heatmapSharedData;
+    if (!heatmapSharedData || !heatmapBucketed) return null;
+    const { roleWeekHours } = heatmapSharedData;
+    const { labels: displayLabels, roleBucketHours } = heatmapBucketed;
 
     // Each individual role gets its own row
     const sortedRoles = [...roleWeekHours.entries()]
@@ -975,14 +1031,16 @@ function ResourcingPageContent() {
     const heatData: [number, number, number][] = [];
     const overlayData: Array<{ value: [number, number, number]; overload: boolean }> = [];
     let maxVal = 0;
+    const numBuckets = displayLabels.length;
     sortedRoles.forEach((role, ri) => {
-      const weekMap = roleWeekHours.get(role)!;
-      displayWeeks.forEach((_, wi) => {
-        const val = Math.round(weekMap.get(wi) || 0);
+      const bucketMap = roleBucketHours.get(role) ?? new Map<number, number>();
+      for (let wi = 0; wi < numBuckets; wi++) {
+        const val = Math.round(bucketMap.get(wi) || 0);
         heatData.push([wi, ri, val]);
-        if (val > 0) overlayData.push({ value: [wi, ri, val], overload: val > HOURS_PER_WEEK });
+        const capacityForRole = roleCapacityPerWeek.get(role) ?? HOURS_PER_WEEK;
+        if (val > 0) overlayData.push({ value: [wi, ri, val], overload: capacityForRole > 0 && val > capacityForRole });
         if (val > maxVal) maxVal = val;
-      });
+      }
     });
 
     const dynamicHeight = Math.max(520, sortedRoles.length * 36 + 140);
@@ -997,8 +1055,8 @@ function ResourcingPageContent() {
         formatter: (params: any) => {
           const [wi, ri, val] = params.data;
           const role = sortedRoles[ri];
-          const week = displayWeeks[wi]?.label;
-          const capacity = HOURS_PER_WEEK;
+          const periodLabel = displayLabels[wi] ?? '';
+          const capacity = roleCapacityPerWeek.get(role) ?? HOURS_PER_WEEK;
           const demand = val;
           const fteEquivalent = capacity > 0 ? (demand / capacity) : 0;
           const cappedPct = capacity > 0 ? Math.min(999, Math.round((demand / capacity) * 100)) : 0;
@@ -1008,12 +1066,12 @@ function ResourcingPageContent() {
           const gapLabel = gap > 0 ? `+${fmt(gap)} over capacity` : gap < 0 ? `${fmt(Math.abs(gap))} under capacity` : 'At capacity';
           return `<div style="padding:10px 12px">
             <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#40E0D0">${role}</div>
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:8px">Week of ${week}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:8px">${heatmapBucket === 'week' ? 'Week of ' : ''}${periodLabel}</div>
             <div style="background:rgba(64,224,208,0.08);border:1px solid rgba(64,224,208,0.25);border-radius:6px;padding:8px 10px;margin-bottom:8px">
               <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Capacity vs Demand</div>
               <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
                 <span><span style="color:#9ca3af">Demand:</span> <strong style="color:#fff">${fmt(demand)} hrs</strong></span>
-                <span><span style="color:#9ca3af">Capacity:</span> <strong>${capacity} hrs</strong></span>
+                <span><span style="color:#9ca3af">Capacity:</span> <strong>${fmt(capacity)} hrs</strong></span>
               </div>
               <div style="font-size:11px;margin-top:4px;color:${uc};font-weight:600">${gapLabel} (${cappedPct}%)</div>
             </div>
@@ -1027,7 +1085,7 @@ function ResourcingPageContent() {
       grid: { top: 60, left: 200, right: 60, bottom: 80 },
       xAxis: {
         type: 'category',
-        data: displayWeeks.map(w => w.label),
+        data: displayLabels,
         axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
         axisLine: { lineStyle: { color: '#3f3f46' } },
         splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
@@ -1071,7 +1129,7 @@ function ResourcingPageContent() {
       ],
       _dynamicHeight: dynamicHeight,
     } as any;
-  }, [heatmapSharedData]);
+  }, [heatmapSharedData, heatmapBucketed, heatmapBucket, roleCapacityPerWeek]);
 
   // Collect all unique roles for the filter dropdown
   const allHeatmapRoles = useMemo(() => {
@@ -1398,8 +1456,21 @@ function ResourcingPageContent() {
           </div>
         )}
         {activeTab === 'heatmap' && (
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-            {`${heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles`} across {heatmapSharedData ? heatmapSharedData.displayWeeks.length : 0} weeks
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {heatmapSharedData ? [...heatmapSharedData.roleWeekHours.keys()].length : 0} roles
+              {heatmapBucket === 'week' && heatmapSharedData ? ` across ${heatmapSharedData.displayWeeks.length} weeks` : ''}
+              {heatmapBucket !== 'week' && heatmapBucketed ? ` across ${heatmapBucketed.labels.length} ${heatmapBucket}s` : ''}
+            </span>
+            <select
+              value={heatmapBucket}
+              onChange={(e) => setHeatmapBucket(e.target.value as 'week' | 'month' | 'quarter')}
+              style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer' }}
+            >
+              <option value="week">By week</option>
+              <option value="month">By month</option>
+              <option value="quarter">By quarter</option>
+            </select>
           </div>
         )}
       </div>
@@ -1622,7 +1693,15 @@ function ResourcingPageContent() {
             </div>
 
             {/* Heatmap chart — full width */}
-            {heatmapByRoleOption ? (
+            {heatmapSharedData?.emptyDueToScope ? (
+              <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.4 }}>
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" />
+                </svg>
+                <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No scheduled tasks in this scope</div>
+                <div style={{ fontSize: '0.85rem' }}>The selected project or hierarchy level has no tasks with dates and baseline hours. Try another selection, or add tasks and upload a project plan.</div>
+              </div>
+            ) : heatmapByRoleOption ? (
               <ChartWrapper option={heatmapByRoleOption} height={`${(heatmapByRoleOption as any)._dynamicHeight || 600}px`} />
             ) : (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>

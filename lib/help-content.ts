@@ -305,7 +305,8 @@ export const HELP_CONTENT: Record<string, PageHelpContent> = {
       { title: 'Assignment Center', description: 'Match available employees to roles needing resources', icon: '' },
       { title: 'Capacity Analysis', description: 'Team utilization and capacity vs demand charts', icon: '' },
       { title: 'Employee Profiles', description: 'Detailed view of each employee\'s workload and performance', icon: '' },
-      { title: 'Resource Heatmap', description: 'Color-coded view of resource utilization by week', icon: '' },
+      { title: 'Resource Heatmap', description: 'Color-coded view of resource utilization by week, month, or quarter with capacity from active employees', icon: '' },
+      { title: 'Heatmap Drill down features', description: 'Date filter: heatmap respects the global date range. Hierarchy filter: drill to portfolio, project, or unit and see demand for that scope. View by week, month, or quarter. Capacity per role is based on how many active employees in the employee list match that role.', icon: '' },
       { title: 'Resource Leveling Engine', description: 'Automated task scheduling with precedence constraints', icon: '' },
     ],
     tour: [
