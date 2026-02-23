@@ -287,26 +287,26 @@ export default function WBSGanttPage() {
       fgIconHeader: pick('--text-secondary', '#cbd5e1'),
       textHeader: pick('--text-primary', '#e5e7eb'),
       textHeaderSelected: pick('--text-primary', '#e5e7eb'),
-      bgCell: 'rgba(0,0,0,0.56)',
-      bgCellMedium: 'rgba(0,0,0,0.72)',
-      bgHeader: 'rgba(0,0,0,0.88)',
-      bgHeaderHasFocus: 'rgba(0,0,0,0.96)',
-      bgHeaderHovered: 'rgba(6,10,14,0.95)',
-      bgBubble: 'rgba(0,0,0,0.84)',
-      bgBubbleSelected: 'rgba(0,0,0,0.9)',
+      bgCell: '#0c0f14',
+      bgCellMedium: '#0f1319',
+      bgHeader: '#0f1319',
+      bgHeaderHasFocus: '#12161d',
+      bgHeaderHovered: '#12161d',
+      bgBubble: '#12161d',
+      bgBubbleSelected: '#151a22',
       bgSearchResult: 'rgba(46,211,198,0.2)',
       borderColor: pick('--border-color', '#334155'),
       drilldownBorder: pick('--border-color', '#334155'),
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 14,
       cellVerticalPadding: 10,
-      headerFontStyle: '700 16px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '700 17px var(--font-montserrat, sans-serif)',
       headerIconSize: 24,
-      baseFontStyle: '700 15px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '700 14px var(--font-mono, monospace)',
+      baseFontStyle: '700 16px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '700 15px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '15px',
-      lineHeight: 1.3,
+      editorFontSize: '16px',
+      lineHeight: 1.35,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
       roundingRadius: 6,
@@ -325,9 +325,9 @@ export default function WBSGanttPage() {
       textPrimary: pick('--text-primary', '#e5e7eb'),
       textSecondary: pick('--text-secondary', '#cbd5e1'),
       textMuted: pick('--text-muted', '#94a3b8'),
-      bgPrimary: 'rgba(0,0,0,0.5)',
-      bgSecondary: 'rgba(0,0,0,0.82)',
-      bgTertiary: 'rgba(7,13,19,0.92)',
+      bgPrimary: '#0c0f14',
+      bgSecondary: '#0f1319',
+      bgTertiary: '#12161d',
       border: pick('--border-color', '#334155'),
       teal: '#40e0d0',
     });
@@ -760,7 +760,7 @@ export default function WBSGanttPage() {
 
     const isNumeric = numericColumnIds.has(def.id);
     const isCritical = r.isCritical;
-    const bg = isCritical ? 'rgba(220,38,38,0.07)' : uiColors.bgPrimary;
+    const bg = isCritical ? 'rgba(220,38,38,0.12)' : uiColors.bgPrimary;
 
     ctx.fillStyle = bg;
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
@@ -808,7 +808,7 @@ export default function WBSGanttPage() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '700 14px var(--font-montserrat, sans-serif)';
+      ctx.font = '700 15px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -872,12 +872,13 @@ export default function WBSGanttPage() {
       return;
     }
 
-    ctx.font = '700 15px var(--font-montserrat, sans-serif)';
+    const isNameOrWbs = def.id === 'name' || def.id === 'wbs';
+    ctx.font = '700 16px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
+    ctx.textAlign = isNameOrWbs ? 'left' : 'center';
 
-    const x = rect.x + rect.width / 2;
+    const x = isNameOrWbs ? rect.x + 12 : rect.x + rect.width / 2;
     const y = rect.y + rect.height / 2;
     ctx.save();
     ctx.beginPath();
@@ -1326,7 +1327,7 @@ export default function WBSGanttPage() {
         <div
           ref={leftPanel.ref}
           className="wbs-gantt-grid"
-          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
+          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: '#0a0c10', position: 'relative' }}
         >
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (
             <DataEditor
