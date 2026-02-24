@@ -101,6 +101,7 @@ function createEmptyData(): SampleData {
     forecast: { months: [], baseline: [], actual: [], forecast: [] },
     snapshots: [],
     projectDocuments: [],
+    moPeriodNotes: [],
     customerContracts: [],
     workdayPhases: [],
     changeRequests: [],
@@ -771,6 +772,12 @@ export function DataProvider({ children }: DataProviderProps) {
         return !pid || plannedProjectIds.has(pid);
       });
     }
+    if (filtered.moPeriodNotes) {
+      filtered.moPeriodNotes = (filtered.moPeriodNotes as any[]).filter((n: any) => {
+        const pid = n.projectId ?? n.project_id;
+        return !pid || plannedProjectIds.has(pid);
+      });
+    }
 
     // Filter WBS tree: only active portfolios, exclude empty portfolios (no children), then deep-clone and renumber
     if (filtered.wbsData?.items?.length) {
@@ -1014,6 +1021,28 @@ export function DataProvider({ children }: DataProviderProps) {
           return pid && validProjectIds.has(pid);
         });
       }
+      if (filtered.moPeriodNotes) {
+        const validPortfolioIds = new Set(
+          filtered.portfolios?.map((p: any) => p.id || p.portfolioId) || []
+        );
+        const validCustomerIds = new Set(
+          filtered.customers?.map((c: any) => c.id || c.customerId) || []
+        );
+        const validSiteIds = new Set(
+          filtered.sites?.map((s: any) => s.id || s.siteId) || []
+        );
+        filtered.moPeriodNotes = filtered.moPeriodNotes.filter((n: any) => {
+          const portfolioId = n.portfolioId ?? n.portfolio_id;
+          const customerId = n.customerId ?? n.customer_id;
+          const siteId = n.siteId ?? n.site_id;
+          const projectId = n.projectId ?? n.project_id;
+          if (portfolioId && validPortfolioIds.size > 0 && !validPortfolioIds.has(portfolioId)) return false;
+          if (customerId && validCustomerIds.size > 0 && !validCustomerIds.has(customerId)) return false;
+          if (siteId && validSiteIds.size > 0 && !validSiteIds.has(siteId)) return false;
+          if (projectId && validProjectIds.size > 0 && !validProjectIds.has(projectId)) return false;
+          return true;
+        });
+      }
       if (filtered.costTransactions && validProjectIds.size > 0) {
         filtered.costTransactions = filtered.costTransactions.filter((t: any) => {
           const pid = t.projectId ?? t.project_id;
@@ -1217,6 +1246,7 @@ export function DataProvider({ children }: DataProviderProps) {
           return entryDate >= startDate && entryDate <= endDate;
         });
       }
+
     }
 
     // Rebuild computed views (taskHoursEfficiency, qualityHours, laborBreakdown, wbsData, etc.)

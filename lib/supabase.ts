@@ -154,6 +154,7 @@ export const TABLES = {
   PROJECT_DOCUMENTS: 'project_documents',
   CUSTOMER_CONTRACTS: 'customer_contracts',
   WORKDAY_PHASES: 'workday_phases',
+  MO_PERIOD_NOTES: 'mo_period_notes',
   ENGINE_LOGS: 'engine_logs',
 } as const;
 
@@ -199,6 +200,7 @@ export const DATA_KEY_TO_TABLE: Record<string, TableName> = {
   projectDocuments: TABLES.PROJECT_DOCUMENTS,
   customerContracts: TABLES.CUSTOMER_CONTRACTS,
   workdayPhases: TABLES.WORKDAY_PHASES,
+  moPeriodNotes: TABLES.MO_PERIOD_NOTES,
 };
 
 /**

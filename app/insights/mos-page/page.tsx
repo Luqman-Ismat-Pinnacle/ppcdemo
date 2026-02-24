@@ -1,24 +1,25 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
+import MosGlideTable from './components/MosGlideTable';
+import type { MoPeriodNote, MoPeriodGranularity, MoPeriodNoteType } from '@/types/data';
 
-const COLORS = {
-  bg: 'transparent',
-  panel: '#18181b',
-  border: '#3f3f46',
+const C = {
   text: '#f4f4f5',
   muted: '#a1a1aa',
+  panel: '#18181b',
+  border: '#3f3f46',
   teal: '#10B981',
   blue: '#3B82F6',
-  purple: '#8B5CF6',
   amber: '#F59E0B',
   red: '#EF4444',
-  green: '#10B981',
+  green: '#22C55E',
+  slate: '#64748B',
 };
 
 const TT = {
@@ -33,1171 +34,770 @@ const TT = {
   confine: false,
 };
 
-type Row = { key: string; cells: React.ReactNode[] };
+type Tab = 'dashboard' | 'qa';
+type CommentEntity = 'tasks' | 'units' | 'phases' | 'subTasks';
 
-type SectionSpec = {
-  id: string;
-  title: string;
-  question: string;
-  explanation: string;
-  content: React.ReactNode;
-  defaultOpen?: boolean;
+const num = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 };
 
-const n = (v: unknown) => {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
-};
-
-const d = (v: unknown) => {
+const parseDate = (v: unknown): Date | null => {
   const dt = new Date(String(v || ''));
   return Number.isNaN(dt.getTime()) ? null : dt;
 };
 
-const fmtHours = (v: number) => `${Math.round(v).toLocaleString()}h`;
-const fmtMoney = (v: number) => `$${Math.round(v).toLocaleString()}`;
-const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-const daysBetween = (a: Date | null, b: Date | null) => (!a || !b ? 0 : Math.round((b.getTime() - a.getTime()) / (1000 * 3600 * 24)));
+const toISODate = (d: Date) => d.toISOString().slice(0, 10);
 
-function AccordionSection({
-  title,
-  question,
-  explanation,
-  content,
-  defaultOpen,
-}: SectionSpec) {
-  return (
-    <details
-      open={defaultOpen}
-      style={{
-        border: `1px solid ${COLORS.border}`,
-        borderRadius: 14,
-        overflow: 'hidden',
-        background: COLORS.panel,
-      }}
-    >
-      <summary
-        style={{
-          cursor: 'pointer',
-          listStyle: 'none',
-          padding: '0.9rem 1rem',
-          borderBottom: `1px solid rgba(16,185,129,0.16)`,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-        }}
-      >
-        <span style={{ color: COLORS.text, fontSize: '1rem', fontWeight: 800 }}>{title}</span>
-        <span style={{ color: COLORS.teal, fontSize: '0.74rem', fontWeight: 700 }}>{question}</span>
-      </summary>
-      <div style={{ padding: '0.95rem 1rem 1rem' }}>
-        <p style={{ margin: '0 0 0.75rem', color: COLORS.muted, fontSize: '0.78rem', lineHeight: 1.6 }}>{explanation}</p>
-        {content}
-      </div>
-    </details>
-  );
+function firstDayOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
-function DataTable({ headers, rows }: { headers: string[]; rows: Row[] }) {
-  const [filters, setFilters] = useState<Record<number, string>>({});
-  const toText = useCallback((cell: React.ReactNode): string => {
-    if (cell == null) return '';
-    if (typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean') return String(cell);
-    if (Array.isArray(cell)) return cell.map((x) => toText(x)).join(' ');
-    if (typeof cell === 'object' && 'props' in (cell as any)) return toText((cell as any).props?.children);
-    return '';
-  }, []);
-  const optionsByColumn = useMemo(() => {
-    return headers.map((_, idx) => {
-      const values = new Set<string>();
-      rows.forEach((r) => {
-        const v = toText(r.cells[idx]).trim();
-        if (v) values.add(v);
-      });
-      return Array.from(values).slice(0, 120);
-    });
-  }, [headers, rows, toText]);
-  const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      for (let i = 0; i < headers.length; i += 1) {
-        const selected = filters[i];
-        if (!selected) continue;
-        if (toText(r.cells[i]) !== selected) return false;
-      }
-      return true;
-    });
-  }, [rows, filters, headers, toText]);
+function lastDayOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
 
+function firstDayOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3);
+  return new Date(d.getFullYear(), q * 3, 1);
+}
+
+function lastDayOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3);
+  return new Date(d.getFullYear(), q * 3 + 3, 0);
+}
+
+function derivePeriods(dateFilter: any): {
+  granularity: MoPeriodGranularity;
+  currentStart: string;
+  currentEnd: string;
+  lastStart: string;
+  lastEnd: string;
+} {
+  const now = new Date();
+  let granularity: MoPeriodGranularity = 'month';
+  let currentStart: Date;
+  let currentEnd: Date;
+
+  if (dateFilter?.type === 'quarter') {
+    granularity = 'quarter';
+    currentStart = firstDayOfQuarter(now);
+    currentEnd = lastDayOfQuarter(now);
+  } else if (dateFilter?.type === 'custom' && dateFilter?.from && dateFilter?.to) {
+    granularity = 'month';
+    currentStart = parseDate(dateFilter.from) || firstDayOfMonth(now);
+    currentEnd = parseDate(dateFilter.to) || lastDayOfMonth(now);
+  } else {
+    granularity = 'month';
+    currentStart = firstDayOfMonth(now);
+    currentEnd = lastDayOfMonth(now);
+  }
+
+  const durationDays = Math.max(1, Math.round((currentEnd.getTime() - currentStart.getTime()) / 86400000) + 1);
+  const lastEnd = new Date(currentStart.getTime() - 86400000);
+  const lastStart = new Date(lastEnd.getTime() - (durationDays - 1) * 86400000);
+
+  return {
+    granularity,
+    currentStart: toISODate(currentStart),
+    currentEnd: toISODate(currentEnd),
+    lastStart: toISODate(lastStart),
+    lastEnd: toISODate(lastEnd),
+  };
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div style={{ overflow: 'auto', maxHeight: 360, border: `1px solid rgba(16,185,129,0.18)`, borderRadius: 10 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
-        <thead>
-          <tr>
-            {headers.map((h) => (
-              <th
-                key={h}
-                style={{
-                  textAlign: 'left',
-                  color: COLORS.muted,
-                  borderBottom: `1px solid rgba(16,185,129,0.16)`,
-                  padding: '0.5rem 0.45rem',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 600,
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 2,
-                  background: '#18181b',
-                }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-          <tr>
-            {headers.map((h, idx) => (
-              <th key={`f-${h}`} style={{ padding: '0.3rem 0.45rem', borderBottom: `1px solid rgba(16,185,129,0.14)`, position: 'sticky', top: 34, zIndex: 2, background: '#18181b' }}>
-                <select
-                  value={filters[idx] || ''}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, [idx]: e.target.value }))}
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(16,185,129,0.24)', color: COLORS.text, borderRadius: 5, fontSize: '0.65rem', padding: '0.2rem 0.3rem' }}
-                >
-                  <option value="">All {h}</option>
-                  {optionsByColumn[idx].map((opt) => (
-                    <option key={`${h}-${opt}`} value={opt}>{opt}</option>
-                  ))}
-                </select>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {filteredRows.length === 0 ? (
-            <tr>
-              <td style={{ color: COLORS.muted, padding: '0.85rem' }} colSpan={headers.length}>No data in current filter scope.</td>
-            </tr>
-          ) : (
-            filteredRows.map((r) => (
-              <tr key={r.key} style={{ borderBottom: `1px solid rgba(16,185,129,0.1)` }}>
-                {r.cells.map((c, idx) => (
-                  <td key={`${r.key}-${idx}`} style={{ padding: '0.52rem 0.45rem', color: COLORS.text }}>{c}</td>
-                ))}
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '1rem' }}>
+      <h3 style={{ margin: 0, color: C.text, fontSize: '1rem' }}>{title}</h3>
+      <p style={{ margin: '0.5rem 0 0', color: C.muted, fontSize: '0.82rem' }}>{body}</p>
     </div>
   );
 }
 
 export default function MosPage() {
-  const { filteredData, isLoading } = useData();
-  const [progressView, setProgressView] = useState<'burnup' | 'gantt'>('burnup');
-  const [axisDetail, setAxisDetail] = useState<'standard' | 'detailed'>('detailed');
-  const [entityViewSize, setEntityViewSize] = useState<12 | 24 | 40>(24);
+  const { filteredData, isLoading, hierarchyFilter, dateFilter, updateData, refreshData } = useData();
 
-  const model = useMemo(() => {
-    const customers = (filteredData.customers || []) as any[];
-    const projects = (filteredData.projects || []) as any[];
-    const units = (filteredData.units || []) as any[];
-    const phases = (filteredData.phases || []) as any[];
-    const tasks = (filteredData.tasks || []) as any[];
-    const deliverables = ([...(filteredData.deliverables || []), ...(filteredData.deliverablesTracker || [])] as any[]);
-    const docs = (filteredData.projectDocuments || []) as any[];
-    const milestones = ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]);
-    const qctasks = (filteredData.qctasks || []) as any[];
-    const hours = (filteredData.hours || []) as any[];
-    const employees = (filteredData.employees || []) as any[];
-    const risksRaw = ((filteredData.projectLog || []) as any[])
-      .filter((x) => String(x.type || x.logType || '').toLowerCase().includes('risk'));
+  const [tab, setTab] = useState<Tab>('dashboard');
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  const [selectedChargeCode, setSelectedChargeCode] = useState<string>('');
+  const [selectedBucket, setSelectedBucket] = useState<string>('');
+  const [entityType, setEntityType] = useState<CommentEntity>('tasks');
+  const [selectedCommentEntityId, setSelectedCommentEntityId] = useState<string>('');
+  const [commentDraft, setCommentDraft] = useState<string>('');
+  const [isSavingComments, setIsSavingComments] = useState(false);
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
 
-    const projectById = new Map<string, any>();
-    const taskById = new Map<string, any>();
-    const customerById = new Map<string, any>();
-    const employeeById = new Map<string, any>();
+  const periods = useMemo(() => derivePeriods(dateFilter), [dateFilter]);
 
-    customers.forEach((c) => customerById.set(String(c.id || c.customerId), c));
-    projects.forEach((p) => projectById.set(String(p.id || p.projectId), p));
-    tasks.forEach((t) => taskById.set(String(t.id || t.taskId), t));
-    employees.forEach((e) => employeeById.set(String(e.id || e.employeeId), e));
+  const portfolios = (filteredData.portfolios || []) as any[];
+  const customers = (filteredData.customers || []) as any[];
+  const sites = (filteredData.sites || []) as any[];
+  const projects = (filteredData.projects || []) as any[];
+  const units = (filteredData.units || []) as any[];
+  const phases = (filteredData.phases || []) as any[];
+  const tasks = (filteredData.tasks || []) as any[];
+  const subTasks = (filteredData.subTasks || []) as any[];
+  const milestones = ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]);
+  const hours = (filteredData.hours || []) as any[];
+  const moPeriodNotes = (filteredData.moPeriodNotes || []) as MoPeriodNote[];
 
-    const projectMetrics = new Map<string, any>();
-    const ensureProject = (projectId: string) => {
-      if (!projectMetrics.has(projectId)) {
-        const p = projectById.get(projectId) || {};
-        projectMetrics.set(projectId, {
-          id: projectId,
-          name: String(p.name || p.projectName || projectId),
-          customerId: String(p.customerId || p.customer_id || ''),
-          customerName: String(customerById.get(String(p.customerId || p.customer_id || ''))?.name || 'Unassigned'),
-          baselineHours: 0,
-          actualHours: 0,
-          remainingHours: 0,
-          baselineBudget: 0,
-          actualCost: 0,
-          plannedStart: d(p.startDate || p.start_date),
-          plannedEnd: d(p.endDate || p.end_date),
-          milestonesDefined: 0,
-          milestonesDelayed: 0,
-          qcLogs: 0,
-          deliverables: 0,
-          deliverablesClientApproved: 0,
-          proceduresDocumented: 0,
-          qaPlanActive: 0,
-          lastUpdate: null as Date | null,
-          forecastHistory: [] as Date[],
-          delayReasons: new Map<string, number>(),
-          riskItems: [] as any[],
-        });
-      }
-      return projectMetrics.get(projectId);
+  const projectById = useMemo(() => {
+    const map = new Map<string, any>();
+    projects.forEach((p) => map.set(String(p.id || p.projectId), p));
+    return map;
+  }, [projects]);
+
+  const siteById = useMemo(() => {
+    const map = new Map<string, any>();
+    sites.forEach((s) => map.set(String(s.id || s.siteId), s));
+    return map;
+  }, [sites]);
+
+  const customerById = useMemo(() => {
+    const map = new Map<string, any>();
+    customers.forEach((c) => map.set(String(c.id || c.customerId), c));
+    return map;
+  }, [customers]);
+
+  const portfolioById = useMemo(() => {
+    const map = new Map<string, any>();
+    portfolios.forEach((p) => map.set(String(p.id || p.portfolioId), p));
+    return map;
+  }, [portfolios]);
+
+  const taskById = useMemo(() => {
+    const map = new Map<string, any>();
+    tasks.forEach((t) => map.set(String(t.id || t.taskId), t));
+    return map;
+  }, [tasks]);
+
+  const taskActualHours = useMemo(() => {
+    const map = new Map<string, number>();
+    hours.forEach((h) => {
+      const tid = String(h.taskId || h.task_id || '');
+      if (!tid) return;
+      map.set(tid, (map.get(tid) || 0) + num(h.hours));
+    });
+    return map;
+  }, [hours]);
+
+  const taskEfficiencyRows = useMemo(() => {
+    const rows = tasks.map((t) => {
+      const id = String(t.id || t.taskId || '');
+      const baseline = num(t.baselineHours || t.baseline_hours || t.projectedHours || t.projected_hours);
+      const actual = taskActualHours.get(id) ?? num(t.actualHours || t.actual_hours);
+      const added = Math.max(0, actual - baseline);
+      return {
+        id,
+        name: String(t.taskName || t.name || id),
+        baseline,
+        actual,
+        added,
+        comments: String(t.comments || ''),
+        projectId: String(t.projectId || t.project_id || ''),
+      };
+    }).filter((r) => r.id && (r.baseline > 0 || r.actual > 0));
+    rows.sort((a, b) => (b.actual + b.baseline) - (a.actual + a.baseline));
+    return rows.slice(0, 40);
+  }, [tasks, taskActualHours]);
+
+  useEffect(() => {
+    if (!selectedTaskId && taskEfficiencyRows.length > 0) {
+      setSelectedTaskId(taskEfficiencyRows[0].id);
+    }
+  }, [selectedTaskId, taskEfficiencyRows]);
+
+  const selectedTask = useMemo(() => taskById.get(selectedTaskId), [taskById, selectedTaskId]);
+
+  const hierarchyBucketLevel = useMemo(() => {
+    const path = hierarchyFilter?.path || [];
+    if (!path[0]) return 'portfolio';
+    if (!path[1]) return 'customer';
+    if (!path[2]) return 'site';
+    if (!path[3]) return 'project';
+    return 'unit';
+  }, [hierarchyFilter]);
+
+  const getHourBucket = (h: any): string => {
+    const pid = String(h.projectId || h.project_id || '');
+    const project = projectById.get(pid);
+    if (!project) return 'Unassigned';
+    if (hierarchyBucketLevel === 'project') return String(project.name || project.projectName || pid);
+
+    const siteId = String(project.siteId || project.site_id || '');
+    const site = siteById.get(siteId);
+
+    if (hierarchyBucketLevel === 'site') return String(site?.name || 'Unassigned');
+
+    const customerId = String(site?.customerId || site?.customer_id || '');
+    const customer = customerById.get(customerId);
+
+    if (hierarchyBucketLevel === 'customer') return String(customer?.name || 'Unassigned');
+
+    const portfolioId = String(customer?.portfolioId || customer?.portfolio_id || '');
+    const portfolio = portfolioById.get(portfolioId);
+
+    if (hierarchyBucketLevel === 'portfolio') return String(portfolio?.name || 'Unassigned');
+
+    const taskId = String(h.taskId || h.task_id || '');
+    const task = taskById.get(taskId);
+    const unitId = String(task?.unitId || task?.unit_id || '');
+    const unit = units.find((u: any) => String(u.id || u.unitId) === unitId);
+    return String(unit?.name || 'Unassigned');
+  };
+
+  const hoursCrossFiltered = useMemo(() => {
+    return hours.filter((h) => {
+      const code = String(h.chargeCode || h.charge_code || h.chargeType || '').toUpperCase();
+      if (selectedTaskId && String(h.taskId || h.task_id || '') !== selectedTaskId) return false;
+      if (selectedChargeCode && String(h.chargeCode || h.charge_code || '') !== selectedChargeCode) return false;
+      if (selectedBucket && getHourBucket(h) !== selectedBucket) return false;
+      if (code === 'EX' || code === 'QC') return false;
+      return true;
+    });
+  }, [hours, selectedTaskId, selectedChargeCode, selectedBucket, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units]);
+
+  const milestoneSummary = useMemo(() => {
+    const summary = {
+      completedOnTime: 0,
+      completedDelayed: 0,
+      inProgressOnTime: 0,
+      inProgressDelayed: 0,
+      notStartedOnTime: 0,
+      notStartedDelayed: 0,
     };
-
-    tasks.forEach((t) => {
-      const pid = String(t.projectId || t.project_id || '');
-      if (!pid) return;
-      const row = ensureProject(pid);
-      const bl = n(t.baselineHours || t.baseline_hours || t.baselineWork || t.baseline_work);
-      const ac = n(t.actualHours || t.actual_hours || t.actualWork || t.actual_work);
-      const rem = t.remainingHours != null || t.remaining_hours != null
-        ? n(t.remainingHours || t.remaining_hours)
-        : Math.max(0, bl - ac);
-      row.baselineHours += bl;
-      row.actualHours += ac;
-      row.remainingHours += rem;
-      row.baselineBudget += n(t.baselineCost || t.baseline_cost || bl * 150);
-      row.actualCost += n(t.actualCost || t.actual_cost || ac * 150);
-      const updated = d(t.updatedAt || t.updated_at || t.modifiedAt || t.modified_at || t.date);
-      if (!row.lastUpdate || (updated && updated > row.lastUpdate)) row.lastUpdate = updated;
-      if (!row.plannedStart || (d(t.startDate || t.start_date) && d(t.startDate || t.start_date)! < row.plannedStart)) {
-        row.plannedStart = d(t.startDate || t.start_date) || row.plannedStart;
-      }
-      if (!row.plannedEnd || (d(t.endDate || t.end_date) && d(t.endDate || t.end_date)! > row.plannedEnd)) {
-        row.plannedEnd = d(t.endDate || t.end_date) || row.plannedEnd;
-      }
-    });
-
-    deliverables.forEach((dv) => {
-      const pid = String(dv.projectId || dv.project_id || '');
-      if (!pid) return;
-      const row = ensureProject(pid);
-      row.deliverables += 1;
-      const status = String(dv.status || dv.approvalStatus || '').toLowerCase();
-      const name = String(dv.name || dv.type || '').toLowerCase();
-      if (status.includes('approved') || status.includes('signed')) row.deliverablesClientApproved += 1;
-      if (name.includes('procedure') || name.includes('sop')) row.proceduresDocumented += 1;
-      if (name.includes('qa') || name.includes('qmp') || name.includes('quality')) row.qaPlanActive += 1;
-    });
-
-    docs.forEach((doc) => {
-      const pid = String(doc.projectId || doc.project_id || '');
-      if (!pid) return;
-      const row = ensureProject(pid);
-      const status = String(doc.status || doc.approvalStatus || '').toLowerCase();
-      if (status.includes('approved') || status.includes('signed')) row.deliverablesClientApproved += 1;
-      const updated = d(doc.updatedAt || doc.updated_at || doc.date || doc.createdAt);
-      if (!row.lastUpdate || (updated && updated > row.lastUpdate)) row.lastUpdate = updated;
-    });
 
     milestones.forEach((m) => {
-      const pid = String(m.projectId || m.project_id || '');
-      if (!pid) return;
-      const row = ensureProject(pid);
-      row.milestonesDefined += 1;
-      const planned = d(m.plannedDate || m.planned_date || m.baselineEndDate || m.baseline_end_date);
-      const forecast = d(m.forecastedDate || m.forecasted_date || m.currentForecastDate || m.current_forecast_date || m.endDate || m.end_date);
-      if (planned && forecast && forecast > planned) row.milestonesDelayed += 1;
-      if (forecast) row.forecastHistory.push(forecast);
-      const reason = String(m.delayReason || m.reason || m.status || 'Unclassified');
-      row.delayReasons.set(reason, (row.delayReasons.get(reason) || 0) + 1);
+      const status = String(m.status || '').toLowerCase();
+      const pct = num(m.percentComplete || m.percent_complete);
+      const planned = parseDate(m.plannedDate || m.planned_date || m.baselineEndDate || m.baseline_end_date);
+      const forecast = parseDate(m.forecastedDate || m.forecasted_date || m.endDate || m.end_date);
+      const actual = parseDate(m.actualDate || m.actual_date);
+      const delayed = Boolean(planned && ((actual && actual > planned) || (forecast && forecast > planned)));
+
+      const isCompleted = status.includes('complete') || Boolean(actual) || pct >= 100;
+      const isNotStarted = status.includes('not') || pct === 0;
+
+      if (isCompleted) {
+        if (delayed) summary.completedDelayed += 1;
+        else summary.completedOnTime += 1;
+        return;
+      }
+      if (isNotStarted) {
+        if (delayed) summary.notStartedDelayed += 1;
+        else summary.notStartedOnTime += 1;
+        return;
+      }
+      if (delayed) summary.inProgressDelayed += 1;
+      else summary.inProgressOnTime += 1;
     });
 
-    qctasks.forEach((q) => {
-      const taskId = String(q.parentTaskId || q.parent_task_id || q.taskId || q.task_id || '');
-      const task = taskById.get(taskId);
-      const pid = String(task?.projectId || task?.project_id || q.projectId || q.project_id || '');
-      if (!pid) return;
-      const row = ensureProject(pid);
-      row.qcLogs += 1;
-      const updated = d(q.updatedAt || q.updated_at || q.createdAt || q.created_at);
-      if (!row.lastUpdate || (updated && updated > row.lastUpdate)) row.lastUpdate = updated;
-    });
+    return summary;
+  }, [milestones]);
 
-    const roleStats = new Map<string, { role: string; available: number; logged: number; earned: number; fteLoss: number }>();
-    const monthlyDemandByRole = new Map<string, Map<string, number>>();
-    const getRole = (empIdRaw: string) => {
-      const e = employeeById.get(empIdRaw) || {};
-      return String(e.role || e.jobTitle || e.discipline || 'Unassigned');
+  const periodHours = useMemo(() => {
+    const plan = taskEfficiencyRows.reduce((s, r) => s + r.baseline, 0);
+    const actual = taskEfficiencyRows.reduce((s, r) => s + r.actual, 0);
+    const added = Math.max(0, actual - plan);
+    const reduced = Math.max(0, plan - actual);
+    const efficiency = plan > 0 ? Math.round((Math.min(plan, actual) / plan) * 100) : 0;
+    return {
+      plan,
+      actual,
+      added,
+      reduced,
+      efficiency,
+      fte: added / 160,
     };
+  }, [taskEfficiencyRows]);
 
-    const taskEarnedByRole = new Map<string, number>();
-    tasks.forEach((t) => {
-      const empId = String(t.assignedResourceId || t.assigned_resource_id || t.employeeId || t.employee_id || '');
-      const role = getRole(empId);
-      const bl = n(t.baselineHours || t.baseline_hours);
-      const pct = Math.max(0, Math.min(100, n(t.percentComplete || t.percent_complete)));
-      taskEarnedByRole.set(role, (taskEarnedByRole.get(role) || 0) + ((bl * pct) / 100));
-
-      const end = d(t.endDate || t.end_date) || new Date();
-      const month = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}`;
-      const rem = t.remainingHours != null || t.remaining_hours != null
-        ? n(t.remainingHours || t.remaining_hours)
-        : Math.max(0, bl - n(t.actualHours || t.actual_hours));
-      if (!monthlyDemandByRole.has(role)) monthlyDemandByRole.set(role, new Map<string, number>());
-      const mm = monthlyDemandByRole.get(role)!;
-      mm.set(month, (mm.get(month) || 0) + rem);
-    });
-
-    hours.forEach((h) => {
-      const empId = String(h.employeeId || h.employee_id || h.resourceId || '');
-      const role = getRole(empId);
-      if (!roleStats.has(role)) roleStats.set(role, { role, available: 0, logged: 0, earned: 0, fteLoss: 0 });
-      const row = roleStats.get(role)!;
-      row.logged += n(h.hours || h.actualHours || h.totalHoursWorked);
-    });
-
-    const headcountByRole = new Map<string, number>();
-    employees.forEach((e) => {
-      const role = String(e.role || e.jobTitle || e.discipline || 'Unassigned');
-      headcountByRole.set(role, (headcountByRole.get(role) || 0) + 1);
-    });
-
-    headcountByRole.forEach((count, role) => {
-      if (!roleStats.has(role)) roleStats.set(role, { role, available: 0, logged: 0, earned: 0, fteLoss: 0 });
-      const row = roleStats.get(role)!;
-      row.available = count * 160;
-    });
-
-    roleStats.forEach((row, role) => {
-      row.earned = taskEarnedByRole.get(role) || 0;
-      row.fteLoss = Math.max(0, (row.logged - row.earned) / 160);
-    });
-
-    const projectArr = Array.from(projectMetrics.values()).map((p) => {
-      const totalWork = p.actualHours + p.remainingHours;
-      const addedScope = Math.max(0, totalWork - p.baselineHours);
-      const remaining = Math.max(0, p.baselineHours + addedScope - p.actualHours);
-      const eac = p.actualCost + Math.max(0, p.remainingHours) * 150;
-      const variancePct = p.baselineBudget > 0 ? ((eac - p.baselineBudget) / p.baselineBudget) * 100 : 0;
-      const forecastChanges = Math.max(0, p.forecastHistory.length - 1);
-      const delayCategory = p.milestonesDefined === 0
-        ? 'Isolated'
-        : p.milestonesDelayed / p.milestonesDefined > 0.35
-          ? 'Systemic'
-          : 'Isolated';
-      const scheduleVariancePct = p.baselineHours > 0 ? ((totalWork - p.baselineHours) / p.baselineHours) * 100 : 0;
-      const costVariancePct = p.baselineBudget > 0 ? ((p.actualCost - p.baselineBudget) / p.baselineBudget) * 100 : 0;
-      return {
-        ...p,
-        totalWork,
-        addedScope,
-        remaining,
-        eac,
-        variancePct,
-        forecastChanges,
-        delayCategory,
-        scheduleVariancePct,
-        costVariancePct,
-      };
-    });
-
-    const projectIdsByCustomer = new Map<string, string[]>();
-    projects.forEach((p) => {
-      const cid = String(p.customerId || p.customer_id || '');
-      const pid = String(p.id || p.projectId || '');
-      if (!cid || !pid) return;
-      if (!projectIdsByCustomer.has(cid)) projectIdsByCustomer.set(cid, []);
-      projectIdsByCustomer.get(cid)!.push(pid);
-    });
-
-    const entities: Array<{ id: string; name: string; projectIds: string[]; type: 'project' | 'customer' }> =
-      projects.length > 0
-        ? projects.map((p) => ({
-            id: String(p.id || p.projectId),
-            name: String(p.name || p.projectName || p.id || p.projectId),
-            projectIds: [String(p.id || p.projectId)],
-            type: 'project',
-          }))
-        : customers.map((c) => ({
-            id: String(c.id || c.customerId),
-            name: String(c.name || c.customerName || c.id || c.customerId),
-            projectIds: projectIdsByCustomer.get(String(c.id || c.customerId)) || [],
-            type: 'customer',
-          }));
-
-    const setupRows = entities.map((e) => {
-      const rows = projectArr.filter((p) => e.projectIds.includes(p.id));
-      const totals = rows.reduce(
-        (acc, r) => {
-          acc.deliverables += r.deliverables;
-          acc.clientApproved += r.deliverablesClientApproved;
-          acc.procedures += r.proceduresDocumented;
-          acc.qa += r.qaPlanActive;
-          acc.milestones += r.milestonesDefined;
-          acc.qcLogs += r.qcLogs;
-          const upd = r.lastUpdate?.getTime() || 0;
-          if (upd > acc.lastUpdateTs) acc.lastUpdateTs = upd;
-          return acc;
-        },
-        { deliverables: 0, clientApproved: 0, procedures: 0, qa: 0, milestones: 0, qcLogs: 0, lastUpdateTs: 0 }
-      );
-      const cap = Math.max(1, totals.deliverables || totals.milestones || 1);
-      return {
-        entity: e.name,
-        clientPct: Math.max(0, Math.min(100, (totals.clientApproved / cap) * 100)),
-        proceduresPct: Math.max(0, Math.min(100, (totals.procedures / cap) * 100)),
-        qaPct: Math.max(0, Math.min(100, (totals.qa / cap) * 100)),
-        deliverables: totals.deliverables,
-        clientApproved: totals.clientApproved,
-        procedures: totals.procedures,
-        qa: totals.qa,
-        milestones: totals.milestones,
-        qcLogs: totals.qcLogs,
-        lastUpdate: totals.lastUpdateTs ? new Date(totals.lastUpdateTs) : null,
-      };
-    }).sort((a, b) => a.entity.localeCompare(b.entity));
-
-    const defectsByCategory = new Map<string, { category: string; reworkHours: number; costImpact: number; detection: string }>();
-    qctasks.forEach((q) => {
-      const cat = String(q.defectCategory || q.category || q.qcType || 'Unclassified');
-      const detection = String(q.detectionPhase || q.phase || q.status || 'QA');
-      const rework = n(q.reworkHours || q.qcHours || q.qc_hours || 0.5);
-      const costImpact = rework * 150;
-      if (!defectsByCategory.has(cat)) defectsByCategory.set(cat, { category: cat, reworkHours: 0, costImpact: 0, detection });
-      const row = defectsByCategory.get(cat)!;
-      row.reworkHours += rework;
-      row.costImpact += costImpact;
-    });
-
-    const defects = Array.from(defectsByCategory.values()).sort((a, b) => b.reworkHours - a.reworkHours);
-
-    const riskRecords = risksRaw.length > 0
-      ? risksRaw.map((r, idx) => {
-          const pid = String(r.projectId || r.project_id || projects[idx % Math.max(1, projects.length)]?.id || '');
-          const project = projectById.get(pid);
-          const start = d(project?.startDate || project?.start_date);
-          const created = d(r.createdAt || r.created_at || r.date) || new Date();
-          const pVal = Math.max(1, Math.min(5, Math.round(n(r.probability || r.probabilityScore || 3))));
-          const iVal = Math.max(1, Math.min(5, Math.round(n(r.impact || r.impactScore || 3))));
-          return {
-            id: String(r.id || `risk-${idx}`),
-            entity: String(project?.name || project?.projectName || pid || 'Unknown'),
-            description: String(r.description || r.title || r.message || 'Risk item'),
-            probability: pVal,
-            impact: iVal,
-            exposure: pVal * iVal,
-            detectDays: Math.max(0, daysBetween(start, created)),
-            corrective: String(r.correctiveActionStatus || r.status || 'Open'),
-            mitigationSuccess: /closed|resolved|mitigated/i.test(String(r.status || '')) ? 'Y' : 'N',
-          };
-        })
-      : projectArr.slice(0, 16).map((p, idx) => {
-          const probability = Math.max(1, Math.min(5, Math.round(Math.abs(p.scheduleVariancePct) / 10) + 1));
-          const impact = Math.max(1, Math.min(5, Math.round(Math.abs(p.variancePct) / 12) + 1));
-          return {
-            id: `risk-synth-${idx}`,
-            entity: p.name,
-            description: p.scheduleVariancePct > 0 ? 'Schedule drift risk' : 'Forecast confidence risk',
-            probability,
-            impact,
-            exposure: probability * impact,
-            detectDays: Math.max(1, Math.round((idx + 1) * 3.5)),
-            corrective: p.scheduleVariancePct > 8 ? 'Needs Action' : 'Monitoring',
-            mitigationSuccess: p.scheduleVariancePct < 5 ? 'Y' : 'N',
-          };
-        });
-
-    const months = Array.from({ length: 6 }).map((_, i) => {
-      const x = new Date();
-      x.setMonth(x.getMonth() + i);
-      return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`;
-    });
-
-    const roleCapacityDemandRows: Array<any> = [];
-    const roles = Array.from(new Set([...Array.from(roleStats.keys()), ...Array.from(monthlyDemandByRole.keys())]));
-    roles.forEach((role) => {
-      const capacity = (headcountByRole.get(role) || 0) * 160;
-      months.forEach((month) => {
-        const demand = monthlyDemandByRole.get(role)?.get(month) || 0;
-        const utilization = capacity > 0 ? (demand / capacity) * 100 : 0;
-        roleCapacityDemandRows.push({
-          key: `${role}-${month}`,
-          role,
-          month,
-          capacity,
-          demand,
-          utilization,
-          shortageFte: (demand - capacity) / 160,
-        });
-      });
-    });
+  const taskEfficiencyOption: EChartsOption = useMemo(() => {
+    const top = taskEfficiencyRows.slice(0, 20);
+    if (!top.length) return {};
 
     return {
-      projects: projectArr,
-      entities,
-      setupRows,
-      roles: Array.from(roleStats.values()).sort((a, b) => b.fteLoss - a.fteLoss),
-      defects,
-      risks: riskRecords,
-      roleCapacityDemandRows,
-      months,
-      units,
-      phases,
-      tasks,
+      tooltip: TT,
+      legend: { top: 0, textStyle: { color: C.muted } },
+      grid: { left: 180, right: 20, top: 30, bottom: 30, containLabel: true },
+      xAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
+      yAxis: {
+        type: 'category',
+        data: top.map((r) => r.name),
+        axisLabel: { color: C.text, width: 170, overflow: 'truncate' },
+      },
+      series: [
+        { type: 'bar', name: 'Baseline', data: top.map((r) => ({ value: r.baseline, itemStyle: { color: 'rgba(59,130,246,0.65)' } })) },
+        { type: 'bar', name: 'Actual', data: top.map((r) => ({ value: r.actual, itemStyle: { color: 'rgba(16,185,129,0.9)' } })) },
+        { type: 'bar', name: 'Added Hours', data: top.map((r) => ({ value: r.added, itemStyle: { color: 'rgba(245,158,11,0.95)' } })) },
+      ],
     };
-  }, [filteredData]);
+  }, [taskEfficiencyRows]);
+
+  const taskChargeCodeRows = useMemo(() => {
+    if (!selectedTaskId) return [] as Array<{ code: string; hours: number }>;
+    const map = new Map<string, number>();
+    hours.forEach((h) => {
+      if (String(h.taskId || h.task_id || '') !== selectedTaskId) return;
+      const code = String(h.chargeCode || h.charge_code || 'Uncoded');
+      map.set(code, (map.get(code) || 0) + num(h.hours));
+    });
+    return Array.from(map.entries())
+      .map(([code, value]) => ({ code, hours: value }))
+      .sort((a, b) => b.hours - a.hours);
+  }, [hours, selectedTaskId]);
+
+  const lifecycleOption: EChartsOption = useMemo(() => {
+    if (!taskChargeCodeRows.length) return {};
+    return {
+      tooltip: { ...TT, trigger: 'item' },
+      grid: { left: 40, right: 20, top: 20, bottom: 40, containLabel: true },
+      xAxis: { type: 'category', data: taskChargeCodeRows.map((r) => r.code), axisLabel: { color: C.muted, interval: 0, rotate: 25 } },
+      yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
+      series: [{ type: 'bar', name: 'Hours', data: taskChargeCodeRows.map((r) => ({ value: r.hours, itemStyle: { color: selectedChargeCode && selectedChargeCode !== r.code ? 'rgba(100,100,100,0.35)' : C.blue } })) }],
+    };
+  }, [taskChargeCodeRows, selectedChargeCode]);
+
+  const pieRows = useMemo(() => {
+    const map = new Map<string, number>();
+    hoursCrossFiltered.forEach((h) => {
+      const bucket = getHourBucket(h) || 'Unassigned';
+      map.set(bucket, (map.get(bucket) || 0) + num(h.hours));
+    });
+    return Array.from(map.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [hoursCrossFiltered, hierarchyBucketLevel]);
+
+  const pieOption: EChartsOption = useMemo(() => {
+    if (!pieRows.length) return {};
+    return {
+      tooltip: { ...TT, trigger: 'item' },
+      legend: { bottom: 0, textStyle: { color: C.muted } },
+      series: [{ type: 'pie', radius: ['35%', '72%'], center: ['50%', '48%'], data: pieRows.map((r) => ({ ...r, itemStyle: { opacity: selectedBucket && selectedBucket !== r.name ? 0.35 : 1 } })), label: { color: C.text } }],
+    };
+  }, [pieRows, selectedBucket]);
+
+  const milestoneChartOption: EChartsOption = useMemo(() => {
+    const cats = [
+      ['Completed On Time', milestoneSummary.completedOnTime],
+      ['Completed Delayed', milestoneSummary.completedDelayed],
+      ['In Progress On Time', milestoneSummary.inProgressOnTime],
+      ['In Progress Delayed', milestoneSummary.inProgressDelayed],
+      ['Not Started On Time', milestoneSummary.notStartedOnTime],
+      ['Not Started Delayed', milestoneSummary.notStartedDelayed],
+    ];
+    return {
+      tooltip: TT,
+      grid: { left: 170, right: 20, top: 10, bottom: 10, containLabel: true },
+      xAxis: { type: 'value', axisLabel: { color: C.muted } },
+      yAxis: { type: 'category', data: cats.map((c) => c[0]), axisLabel: { color: C.text } },
+      series: [{ type: 'bar', data: cats.map((c) => c[1]), itemStyle: { color: C.teal } }],
+    };
+  }, [milestoneSummary]);
+
+  const noteScope = useMemo(() => {
+    const byName = (arr: any[], name: string) => arr.find((x) => String(x.name || '') === name);
+    const path = hierarchyFilter?.path || [];
+
+    const portfolioId = hierarchyFilter?.portfolio || (path[0] ? String(byName(portfolios, path[0])?.id || '') : '');
+    const customerId = hierarchyFilter?.customer || (path[1] ? String(byName(customers, path[1])?.id || '') : '');
+    const siteId = hierarchyFilter?.site || (path[2] ? String(byName(sites, path[2])?.id || '') : '');
+    const projectId = hierarchyFilter?.project || (path[3] ? String(byName(projects, path[3])?.id || '') : '');
+
+    return {
+      portfolioId: portfolioId || null,
+      customerId: customerId || null,
+      siteId: siteId || null,
+      projectId: projectId || null,
+    };
+  }, [hierarchyFilter, portfolios, customers, sites, projects]);
+
+  const scopedNotes = useMemo(() => {
+    return moPeriodNotes.filter((n: any) => {
+      const pid = n.projectId || n.project_id || null;
+      const sid = n.siteId || n.site_id || null;
+      const cid = n.customerId || n.customer_id || null;
+      const pfid = n.portfolioId || n.portfolio_id || null;
+
+      const matchProject = noteScope.projectId ? (pid === null || pid === noteScope.projectId) : pid === null;
+      const matchSite = noteScope.siteId ? (sid === null || sid === noteScope.siteId) : sid === null;
+      const matchCustomer = noteScope.customerId ? (cid === null || cid === noteScope.customerId) : cid === null;
+      const matchPortfolio = noteScope.portfolioId ? (pfid === null || pfid === noteScope.portfolioId) : pfid === null;
+      return matchProject && matchSite && matchCustomer && matchPortfolio;
+    });
+  }, [moPeriodNotes, noteScope]);
+
+  const [lastCommitmentsDraft, setLastCommitmentsDraft] = useState<string[]>(['']);
+  const [thisCommitmentsDraft, setThisCommitmentsDraft] = useState<string[]>(['']);
+  const [hoursCommentsDraft, setHoursCommentsDraft] = useState<string[]>(['']);
+
+  useEffect(() => {
+    const toLines = (type: MoPeriodNoteType, start: string, end: string) => {
+      const rows = scopedNotes
+        .filter((n: any) => (n.noteType || n.note_type) === type)
+        .filter((n: any) => (n.periodStart || n.period_start) === start && (n.periodEnd || n.period_end) === end)
+        .sort((a: any, b: any) => num(a.sortOrder || a.sort_order) - num(b.sortOrder || b.sort_order));
+      if (!rows.length) return [''];
+      return rows.map((r: any) => String(r.content || ''));
+    };
+
+    setLastCommitmentsDraft(toLines('last_commitment', periods.lastStart, periods.lastEnd));
+    setThisCommitmentsDraft(toLines('this_commitment', periods.currentStart, periods.currentEnd));
+    setHoursCommentsDraft(toLines('hours_comment', periods.currentStart, periods.currentEnd));
+  }, [scopedNotes, periods]);
+
+  const upsertNotes = async (type: MoPeriodNoteType, lines: string[], periodStart: string, periodEnd: string) => {
+    const existing = scopedNotes
+      .filter((n: any) => (n.noteType || n.note_type) === type)
+      .filter((n: any) => (n.periodStart || n.period_start) === periodStart && (n.periodEnd || n.period_end) === periodEnd)
+      .sort((a: any, b: any) => num(a.sortOrder || a.sort_order) - num(b.sortOrder || b.sort_order));
+
+    const records: MoPeriodNote[] = lines
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line, idx) => {
+        const existingId = existing[idx]?.id;
+        return {
+          id: existingId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `monote-${Date.now()}-${idx}`),
+          noteType: type,
+          periodGranularity: periods.granularity,
+          periodStart,
+          periodEnd,
+          portfolioId: noteScope.portfolioId,
+          customerId: noteScope.customerId,
+          siteId: noteScope.siteId,
+          projectId: noteScope.projectId,
+          content: line,
+          sortOrder: idx,
+          updatedAt: new Date().toISOString(),
+          createdAt: existing[idx]?.createdAt || new Date().toISOString(),
+        };
+      });
+
+    const res = await fetch('/api/data/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataKey: 'moPeriodNotes', records }),
+    });
+    const result = await res.json();
+    if (!result.success) {
+      throw new Error(result.error || `Failed to save ${type}`);
+    }
+
+    return records;
+  };
+
+  const saveAllNotes = async () => {
+    setIsSavingNotes(true);
+    try {
+      const savedLast = await upsertNotes('last_commitment', lastCommitmentsDraft, periods.lastStart, periods.lastEnd);
+      const savedThis = await upsertNotes('this_commitment', thisCommitmentsDraft, periods.currentStart, periods.currentEnd);
+      const savedHours = await upsertNotes('hours_comment', hoursCommentsDraft, periods.currentStart, periods.currentEnd);
+
+      const remaining = moPeriodNotes.filter((n: any) => {
+        const type = n.noteType || n.note_type;
+        const ps = n.periodStart || n.period_start;
+        const pe = n.periodEnd || n.period_end;
+        if (type === 'last_commitment' && ps === periods.lastStart && pe === periods.lastEnd) return false;
+        if ((type === 'this_commitment' || type === 'hours_comment') && ps === periods.currentStart && pe === periods.currentEnd) return false;
+        return true;
+      });
+
+      updateData({ moPeriodNotes: [...remaining, ...savedLast, ...savedThis, ...savedHours] as any });
+    } finally {
+      setIsSavingNotes(false);
+    }
+  };
+
+  const commentEntities = useMemo(() => {
+    const src = entityType === 'tasks'
+      ? tasks
+      : entityType === 'units'
+        ? units
+        : entityType === 'phases'
+          ? phases
+          : subTasks;
+
+    return src
+      .map((r: any) => ({
+        id: String(r.id || r.taskId || r.unitId || r.phaseId || ''),
+        name: String(r.taskName || r.name || r.phaseName || r.unitName || ''),
+        comments: String(r.comments || ''),
+      }))
+      .filter((r: any) => r.id && r.name)
+      .slice(0, 200);
+  }, [entityType, tasks, units, phases, subTasks]);
+
+  const saveComment = async () => {
+    if (!selectedCommentEntityId) return;
+    setIsSavingComments(true);
+    try {
+      const dataKey = entityType === 'subTasks' ? 'tasks' : entityType;
+      const res = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataKey,
+          operation: 'update',
+          records: [{ id: selectedCommentEntityId, comments: commentDraft }],
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to save comment');
+      await refreshData();
+    } finally {
+      setIsSavingComments(false);
+    }
+  };
+
+  const clearCrossFilters = () => {
+    setSelectedChargeCode('');
+    setSelectedBucket('');
+  };
 
   if (isLoading) {
     return (
       <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <ContainerLoader message="Loading MOS..." minHeight={200} />
+        <ContainerLoader message="Loading Mo's Page..." minHeight={220} />
       </div>
     );
   }
 
-  const entityLabel = model.entities[0]?.type === 'customer' ? 'Customer' : 'Project';
-  const entityRows = model.projects.slice(0, entityViewSize);
-  const detailedAxes = axisDetail === 'detailed';
-
-  const categoryAxis = (data: string[], name?: string) => ({
-    type: 'category' as const,
-    data,
-    name,
-    axisLabel: {
-      color: COLORS.muted,
-      fontSize: detailedAxes ? 10 : 9,
-      rotate: detailedAxes ? 28 : 0,
-      interval: detailedAxes ? 0 : 'auto',
-    },
-    axisLine: { lineStyle: { color: 'rgba(148,163,184,0.4)' } },
-    axisTick: { lineStyle: { color: 'rgba(148,163,184,0.35)' } },
-  });
-  const valueAxis = (name?: string, max?: number) => ({
-    type: 'value' as const,
-    name,
-    max,
-    axisLabel: { color: COLORS.muted, fontSize: detailedAxes ? 10 : 9 },
-    axisLine: { show: false },
-    splitLine: { show: true, lineStyle: { color: 'rgba(148,163,184,0.14)', type: 'dashed' as const } },
-  });
-  const optionalZoom = detailedAxes ? [{ type: 'inside' as const }, { type: 'slider' as const, height: 12, bottom: 0 }] : undefined;
-
-  const setupChartOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 140, right: 24, top: 20, bottom: 22, containLabel: true },
-    xAxis: { ...valueAxis('Completion %', 100), axisLabel: { color: COLORS.muted, formatter: '{value}%' } },
-    yAxis: categoryAxis(model.setupRows.map((r) => r.entity)),
-    series: [
-      { type: 'bar', name: 'Client Signed Off', stack: 'g', data: model.setupRows.map((r) => Number(r.clientPct.toFixed(1))), itemStyle: { color: COLORS.green } },
-      { type: 'bar', name: 'Procedures Documented', stack: 'g', data: model.setupRows.map((r) => Number(r.proceduresPct.toFixed(1))), itemStyle: { color: COLORS.blue } },
-      { type: 'bar', name: 'QA Plan Approved', stack: 'g', data: model.setupRows.map((r) => Number(r.qaPct.toFixed(1))), itemStyle: { color: COLORS.purple } },
-    ],
-    legend: { bottom: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const burnupOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 40, right: 16, top: 28, bottom: 26, containLabel: true },
-    xAxis: categoryAxis(entityRows.map((r) => r.name), 'Entity'),
-    yAxis: valueAxis('Hours'),
-    dataZoom: optionalZoom,
-    series: [
-      {
-        type: 'line',
-        name: 'Baseline Hours',
-        smooth: true,
-        data: entityRows.map((r) => Number(r.baselineHours.toFixed(1))),
-        lineStyle: { color: COLORS.blue },
-        itemStyle: { color: COLORS.blue },
-        areaStyle: { color: 'rgba(59,130,246,0.14)' },
-      },
-      {
-        type: 'line',
-        name: 'Actual Hours Burned',
-        smooth: true,
-        data: entityRows.map((r) => Number(r.actualHours.toFixed(1))),
-        lineStyle: { color: COLORS.green, width: 2.2 },
-        itemStyle: { color: COLORS.green },
-      },
-      {
-        type: 'line',
-        name: 'Added Scope Hours',
-        stack: 'scope',
-        smooth: true,
-        data: entityRows.map((r) => Number(r.addedScope.toFixed(1))),
-        lineStyle: { color: COLORS.amber },
-        itemStyle: { color: COLORS.amber },
-        areaStyle: { color: 'rgba(245,158,11,0.22)' },
-      },
-    ],
-    legend: { top: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const ganttRows = entityRows.map((r) => {
-    const start = r.plannedStart || new Date();
-    const baselineEnd = r.plannedEnd || new Date(start.getTime() + (20 * 86400000));
-    const actualEnd = new Date(start.getTime() + Math.max(3, Math.round((r.actualHours / Math.max(1, r.baselineHours)) * daysBetween(start, baselineEnd))) * 86400000);
-    return {
-      name: r.name,
-      start: start.getTime(),
-      baselineEnd: baselineEnd.getTime(),
-      actualEnd: actualEnd.getTime(),
-    };
-  });
-  const minTime = Math.min(...ganttRows.map((x) => x.start), Date.now() - 30 * 86400000);
-  const maxTime = Math.max(...ganttRows.map((x) => Math.max(x.baselineEnd, x.actualEnd)), Date.now() + 30 * 86400000);
-
-  const customGanttOption: EChartsOption = {
-    tooltip: {
-      ...TT,
-      trigger: 'item',
-      formatter: (params: any) => {
-        const d0 = params.data as any;
-        return `${d0.name}<br/>Baseline: ${new Date(d0.start).toLocaleDateString()} - ${new Date(d0.baselineEnd).toLocaleDateString()}<br/>Actual: ${new Date(d0.start).toLocaleDateString()} - ${new Date(d0.actualEnd).toLocaleDateString()}`;
-      },
-    },
-    grid: { left: 140, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: { ...valueAxis('Date'), type: 'time', min: minTime, max: maxTime },
-    yAxis: categoryAxis(ganttRows.map((r) => r.name), 'Entity'),
-    dataZoom: optionalZoom,
-    series: [
-      {
-        type: 'custom',
-        name: 'Baseline vs Actual',
-        renderItem: (params: any, api: any) => {
-          const y = api.value(0);
-          const s = api.coord([api.value(1), y]);
-          const e1 = api.coord([api.value(2), y]);
-          const e2 = api.coord([api.value(3), y]);
-          const h = 12;
-          return {
-            type: 'group',
-            children: [
-              {
-                type: 'rect',
-                shape: { x: s[0], y: s[1] - h / 2 - 4, width: Math.max(3, e1[0] - s[0]), height: 6 },
-                style: { fill: 'rgba(59,130,246,0.5)' },
-              },
-              {
-                type: 'rect',
-                shape: { x: s[0], y: s[1] - h / 2 + 4, width: Math.max(3, e2[0] - s[0]), height: 6 },
-                style: { fill: 'rgba(16,185,129,0.75)' },
-              },
-            ],
-          };
-        },
-        encode: { x: [1, 2, 3], y: 0 },
-        data: ganttRows.map((r, i) => [i, r.start, r.baselineEnd, r.actualEnd, r.name]),
-      } as any,
-    ],
-  };
-
-  const forecastTrendDates = model.months;
-  const avgForecast = forecastTrendDates.map((month, idx) => {
-    const rows = model.projects.slice(0, 50);
-    const avgShift = rows.length === 0
-      ? 0
-      : rows.reduce((sum, r) => sum + (r.forecastChanges * 2 + (r.delayCategory === 'Systemic' ? 3 : 0)), 0) / rows.length;
-    return idx * 2 + avgShift;
-  });
-
-  const forecastTrendOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 36, right: 16, top: 24, bottom: 22, containLabel: true },
-    xAxis: categoryAxis(forecastTrendDates, 'Report Date'),
-    yAxis: valueAxis('Predicted End Shift (days)'),
-    series: [{ type: 'line', smooth: true, data: avgForecast, itemStyle: { color: COLORS.green }, lineStyle: { color: COLORS.green } }],
-  };
-
-  const reasonMap = new Map<string, { onTime: number; delayed: number }>();
-  model.projects.forEach((p) => {
-    const key = p.delayCategory === 'Systemic' ? 'Systemic Drivers' : 'Isolated Events';
-    if (!reasonMap.has(key)) reasonMap.set(key, { onTime: 0, delayed: 0 });
-    const v = reasonMap.get(key)!;
-    v.delayed += p.milestonesDelayed;
-    v.onTime += Math.max(0, p.milestonesDefined - p.milestonesDelayed);
-  });
-  const reasonKeys = Array.from(reasonMap.keys());
-
-  const forecastStackedOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 45, right: 16, top: 22, bottom: 22, containLabel: true },
-    xAxis: categoryAxis(reasonKeys, 'Delay Class'),
-    yAxis: valueAxis('Milestone Count'),
-    series: [
-      { type: 'bar', stack: 'f', name: 'On Time', data: reasonKeys.map((k) => reasonMap.get(k)?.onTime || 0), itemStyle: { color: COLORS.green } },
-      { type: 'bar', stack: 'f', name: 'Delayed', data: reasonKeys.map((k) => reasonMap.get(k)?.delayed || 0), itemStyle: { color: COLORS.red } },
-    ],
-    legend: { top: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const roles = model.roles.slice(0, 10);
-  const waterfallData = roles.map((r) => ({ role: r.role, available: r.available, nonBillable: Math.max(0, r.logged * 0.12), ineff: Math.max(0, r.logged - r.earned), productive: Math.max(0, r.earned) }));
-  const waterfallOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 50, right: 16, top: 22, bottom: 30, containLabel: true },
-    xAxis: categoryAxis(waterfallData.map((r) => r.role), 'Role'),
-    yAxis: valueAxis('Hours'),
-    series: [
-      { type: 'bar', stack: 'w', name: 'Available Hours', data: waterfallData.map((r) => r.available), itemStyle: { color: 'rgba(16,185,129,0.35)' } },
-      { type: 'bar', stack: 'w', name: 'Non-Billable', data: waterfallData.map((r) => -r.nonBillable), itemStyle: { color: COLORS.amber } },
-      { type: 'bar', stack: 'w', name: 'Inefficiency', data: waterfallData.map((r) => -r.ineff), itemStyle: { color: COLORS.red } },
-      { type: 'bar', name: 'True Productive', data: waterfallData.map((r) => r.productive), itemStyle: { color: COLORS.green } },
-    ],
-    legend: { bottom: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const evActualOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 42, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: categoryAxis(model.months, 'Timeline'),
-    yAxis: valueAxis('Hours'),
-    series: [
-      {
-        type: 'line',
-        name: 'Earned Value',
-        smooth: true,
-        data: model.months.map((_, i) => Number((roles.reduce((s, r) => s + r.earned, 0) * ((i + 1) / model.months.length)).toFixed(1))),
-        itemStyle: { color: COLORS.green },
-      },
-      {
-        type: 'line',
-        name: 'Actual Hours',
-        smooth: true,
-        data: model.months.map((_, i) => Number((roles.reduce((s, r) => s + r.logged, 0) * ((i + 1) / model.months.length)).toFixed(1))),
-        itemStyle: { color: COLORS.blue },
-      },
-    ],
-    legend: { top: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const quadrantOption: EChartsOption = {
-    tooltip: {
-      ...TT,
-      trigger: 'item',
-      formatter: (p: any) => {
-        const dt = p.data as any;
-        return `${dt.name}<br/>Schedule Variance: ${fmtPct(dt.value[0])}<br/>Cost Variance: ${fmtPct(dt.value[1])}<br/>Budget: ${fmtMoney(dt.budget)}`;
-      },
-    },
-    grid: { left: 44, right: 16, top: 16, bottom: 28, containLabel: true },
-    xAxis: valueAxis('Schedule Variance %'),
-    yAxis: valueAxis('Cost Variance %'),
-    series: [{
-      type: 'scatter',
-      data: model.projects.slice(0, 40).map((p) => ({
-        name: p.name,
-        budget: p.baselineBudget,
-        value: [Number(p.scheduleVariancePct.toFixed(1)), Number(p.variancePct.toFixed(1)), Math.max(8, Math.sqrt(Math.max(1, p.baselineBudget)) / 40)],
-      })),
-      symbolSize: (v: number[]) => v[2],
-      itemStyle: { color: COLORS.amber, opacity: 0.8 },
-    }],
-  };
-
-  const eacTrendOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 38, right: 16, top: 20, bottom: 22, containLabel: true },
-    xAxis: categoryAxis(model.months, 'Timeline'),
-    yAxis: valueAxis('Cost'),
-    series: [
-      {
-        type: 'line',
-        name: 'Baseline Budget',
-        smooth: true,
-        data: model.months.map(() => Number((model.projects.reduce((s, p) => s + p.baselineBudget, 0) / Math.max(1, model.projects.length)).toFixed(1))),
-        itemStyle: { color: COLORS.blue },
-      },
-      {
-        type: 'line',
-        name: 'EAC',
-        smooth: true,
-        data: model.months.map((_, i) => {
-          const lift = 1 + ((i + 1) / model.months.length) * 0.08;
-          return Number(((model.projects.reduce((s, p) => s + p.eac, 0) / Math.max(1, model.projects.length)) * lift).toFixed(1));
-        }),
-        itemStyle: { color: COLORS.red },
-      },
-    ],
-    legend: { top: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const defectCats = model.defects.slice(0, 10);
-  const cumulativeCost: number[] = [];
-  defectCats.reduce((sum, x) => {
-    const next = sum + x.costImpact;
-    cumulativeCost.push(Number(next.toFixed(1)));
-    return next;
-  }, 0);
-
-  const paretoOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 46, right: 38, top: 22, bottom: 32, containLabel: true },
-    xAxis: categoryAxis(defectCats.map((d0) => d0.category), 'Defect Category'),
-    yAxis: [{ ...valueAxis('Rework Hours') }, { ...valueAxis('Cumulative Cost'), position: 'right' }],
-    series: [
-      { type: 'bar', name: 'Rework Hours', data: defectCats.map((d0) => Number(d0.reworkHours.toFixed(1))), itemStyle: { color: COLORS.amber } },
-      { type: 'line', name: 'Cumulative Cost', yAxisIndex: 1, data: cumulativeCost, itemStyle: { color: COLORS.red }, smooth: true },
-    ],
-    legend: { bottom: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const reworkAreaOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 38, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: categoryAxis(model.months, 'Timeline'),
-    yAxis: valueAxis('Rework Hours'),
-    series: [{ type: 'line', smooth: true, areaStyle: { color: 'rgba(239,68,68,0.22)' }, data: model.months.map((_, i) => Number(((defectCats.reduce((s, d0) => s + d0.reworkHours, 0) / Math.max(1, model.months.length)) * (0.7 + i * 0.2)).toFixed(1))), itemStyle: { color: COLORS.red } }],
-  };
-
-  const monthDemand = model.months.map((mth) => {
-    const rows = model.roleCapacityDemandRows.filter((r) => r.month === mth);
-    return {
-      month: mth,
-      demand: rows.reduce((s, r) => s + r.demand, 0),
-      capacity: rows.reduce((s, r) => s + r.capacity, 0),
-    };
-  });
-
-  const capacityDemandOption: EChartsOption = {
-    tooltip: TT,
-    grid: { left: 38, right: 16, top: 20, bottom: 24, containLabel: true },
-    xAxis: categoryAxis(model.months, 'Timeline'),
-    yAxis: valueAxis('Hours'),
-    series: [
-      { type: 'bar', name: 'Forecasted Demand Hours', data: monthDemand.map((x) => Number(x.demand.toFixed(1))), itemStyle: { color: COLORS.purple } },
-      { type: 'line', name: 'Total Capacity Hours', data: monthDemand.map((x) => Number(x.capacity.toFixed(1))), itemStyle: { color: COLORS.green }, lineStyle: { color: COLORS.green, width: 2.4 } },
-    ],
-    legend: { top: 0, textStyle: { color: COLORS.muted, fontSize: 10 } },
-  };
-
-  const riskMatrix = Array.from({ length: 5 }, (_, yi) =>
-    Array.from({ length: 5 }, (_, xi) => {
-      const pVal = xi + 1;
-      const iVal = yi + 1;
-      const count = model.risks.filter((r) => r.probability === pVal && r.impact === iVal).length;
-      return [xi, yi, count];
-    }).flat()
-  ).flat();
-
-  const riskHeatmapOption: EChartsOption = {
-    tooltip: {
-      ...TT,
-      formatter: (p: any) => `Probability ${Number(p.value[0]) + 1}, Impact ${Number(p.value[1]) + 1}<br/>Active Risks: ${p.value[2]}`,
-    },
-    grid: { left: 36, right: 16, top: 18, bottom: 24, containLabel: true },
-    xAxis: categoryAxis(['1', '2', '3', '4', '5'], 'Probability'),
-    yAxis: categoryAxis(['1', '2', '3', '4', '5'], 'Impact'),
-    visualMap: {
-      min: 0,
-      max: Math.max(3, ...riskMatrix.filter((_, i) => i % 3 === 2)),
-      orient: 'horizontal',
-      left: 'center',
-      bottom: 0,
-      textStyle: { color: COLORS.muted },
-      inRange: { color: ['#0f172a', '#0ea5a4', '#f59e0b', '#ef4444'] },
-    },
-    series: [{ type: 'heatmap', data: riskMatrix, label: { show: true, color: '#fff' } }],
-  };
-
-  const riskDetectScatter: EChartsOption = {
-    tooltip: {
-      ...TT,
-      trigger: 'item',
-      formatter: (p: any) => {
-        const dt = p.data as any;
-        return `${dt.name}<br/>Time to Detect: ${dt.value[0]} days<br/>Exposure: ${dt.value[1]}`;
-      },
-    },
-    grid: { left: 40, right: 16, top: 16, bottom: 24, containLabel: true },
-    xAxis: valueAxis('Time to Detect (days)'),
-    yAxis: valueAxis('Exposure Score'),
-    series: [{
-      type: 'scatter',
-      data: model.risks.slice(0, 50).map((r) => ({ name: r.entity, value: [r.detectDays, r.exposure] })),
-      itemStyle: { color: COLORS.green, opacity: 0.8 },
-      symbolSize: (v: number[]) => Math.max(8, v[1] * 1.6),
-    }],
-  };
-
-  const sections: SectionSpec[] = [
-    {
-      id: 'setup',
-      title: 'Setup: Overall Health & Setup Readiness',
-      question: 'Do we have a workflow/plan to complete the deliverables?',
-      explanation:
-        'Evaluates if the foundational setup procedures, QA plans, milestones, and client sign-offs are complete before execution begins, and ensures teams are keeping this data accurate.',
-      defaultOpen: true,
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem' }}>
-          <ChartWrapper option={setupChartOption} height={380} />
-          <DataTable
-            headers={[
-              `${entityLabel} / Deliverable Name`,
-              'Client Approved (Y/N)',
-              'Procedures Documented (Y/N)',
-              'QA Plan Active (Y/N)',
-              'Milestones / QC Logs (Count)',
-              'Last Update / Data Freshness',
-            ]}
-            rows={model.setupRows.slice(0, 20).map((r, idx) => ({
-              key: `${r.entity}-${idx}`,
-              cells: [
-                r.entity,
-                r.clientApproved > 0 ? 'Y' : 'N',
-                r.procedures > 0 ? 'Y' : 'N',
-                r.qa > 0 ? 'Y' : 'N',
-                `${r.milestones} / ${r.qcLogs}`,
-                r.lastUpdate ? `${r.lastUpdate.toLocaleDateString()} (${daysBetween(r.lastUpdate, new Date()) <= 7 ? 'Fresh' : 'Stale'})` : 'No update',
-              ],
-            }))}
-          />
-        </div>
-      ),
-    },
-    {
-      id: 'progress',
-      title: 'Section 1: Progress vs Plan',
-      question: 'Are we ahead or behind plan, and what is our trajectory?',
-      explanation:
-        'Compares baseline expectations against actual progress, tracks newly added scope, and uses trend behavior to indicate whether delivery is moving toward on-time completion.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{ display: 'inline-flex', border: `1px solid ${COLORS.border}`, borderRadius: 8, overflow: 'hidden' }}>
-              <button
-                onClick={() => setProgressView('burnup')}
-                style={{ background: progressView === 'burnup' ? 'rgba(16,185,129,0.2)' : 'transparent', color: COLORS.text, border: 'none', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.72rem' }}
-              >
-                Burn-Up
-              </button>
-              <button
-                onClick={() => setProgressView('gantt')}
-                style={{ background: progressView === 'gantt' ? 'rgba(16,185,129,0.2)' : 'transparent', color: COLORS.text, border: 'none', padding: '0.35rem 0.6rem', cursor: 'pointer', fontSize: '0.72rem' }}
-              >
-                Custom Gantt
-              </button>
-            </div>
-          </div>
-          <ChartWrapper option={progressView === 'burnup' ? burnupOption : customGanttOption} height={420} />
-          <DataTable
-            headers={['Entity Name', 'Baseline Hours', 'Added Scope Hours', 'Actual Hours', 'Remaining Hours', 'SPI / CPI Trend']}
-            rows={entityRows.map((r) => {
-              const spi = r.totalWork > 0 ? r.baselineHours / r.totalWork : 1;
-              const cpi = r.actualCost > 0 ? (r.baselineBudget / r.actualCost) : 1;
-              const trend = spi >= 1 && cpi >= 1 ? '↑ Improving' : spi >= 0.9 && cpi >= 0.9 ? '→ Stable' : '↓ Declining';
-              return {
-                key: r.id,
-                cells: [r.name, fmtHours(r.baselineHours), fmtHours(r.addedScope), fmtHours(r.actualHours), fmtHours(r.remaining), trend],
-              };
-            })}
-          />
-        </div>
-      ),
-    },
-    {
-      id: 'forecast',
-      title: 'Section 2: Forecast Reliability',
-      question: 'Can we trust the forecasted completion dates?',
-      explanation:
-        'Measures prediction stability. Frequently changing forecast dates and concentrated delay volume signal weak predictability and higher schedule risk.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={forecastTrendOption} height={380} />
-          <ChartWrapper option={forecastStackedOption} height={380} />
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DataTable
-              headers={['Entity Name', 'Baseline End Date', 'Current Forecast Date', 'Days Variance', '# of Forecast Changes', 'Delay Category (Systemic vs. Isolated)']}
-              rows={entityRows.map((r) => {
-                const baselineEnd = r.plannedEnd || new Date();
-                const forecastEnd = new Date((r.plannedEnd || new Date()).getTime() + (r.forecastChanges * 2 + (r.delayCategory === 'Systemic' ? 7 : 2)) * 86400000);
-                const variance = daysBetween(baselineEnd, forecastEnd);
-                return {
-                  key: r.id,
-                  cells: [
-                    r.name,
-                    baselineEnd.toLocaleDateString(),
-                    forecastEnd.toLocaleDateString(),
-                    variance,
-                    r.forecastChanges,
-                    r.delayCategory,
-                  ],
-                };
-              })}
-            />
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: 'efficiency',
-      title: 'Section 3: Resource Efficiency and Productivity',
-      question: 'How efficiently are resources converting hours into completed work?',
-      explanation:
-        'Tracks conversion of paid capacity into earned value, identifies effective FTE loss from inefficiency, and monitors productivity behavior over time.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={waterfallOption} height={380} />
-          <ChartWrapper option={evActualOption} height={380} />
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DataTable
-              headers={['Team / Role', 'Available Hours', 'Logged Hours', 'Earned Value Hours', 'Efficiency % (Earned / Logged)', 'Effective FTE Loss']}
-              rows={model.roles.map((r) => ({
-                key: r.role,
-                cells: [
-                  r.role,
-                  fmtHours(r.available),
-                  fmtHours(r.logged),
-                  fmtHours(r.earned),
-                  fmtPct(r.logged > 0 ? (r.earned / r.logged) * 100 : 0),
-                  r.fteLoss.toFixed(2),
-                ],
-              }))}
-            />
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: 'overrun',
-      title: 'Section 4: Cost and Hours Overrun Risk',
-      question: 'Which areas have the highest overrun risk and what is the financial impact?',
-      explanation:
-        'Highlights entities exceeding baseline budget and hours so leadership can quickly identify overrun concentration and whether overrun velocity is accelerating.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={quadrantOption} height={380} />
-          <ChartWrapper option={eacTrendOption} height={380} />
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DataTable
-              headers={['Entity Name', 'Baseline Budget / Hours', 'Added Scope Hours', 'Actuals to Date', 'EAC (Projected Final Cost)', 'Variance %']}
-              rows={entityRows.map((r) => ({
-                key: r.id,
-                cells: [
-                  r.name,
-                  `${fmtMoney(r.baselineBudget)} / ${fmtHours(r.baselineHours)}`,
-                  fmtHours(r.addedScope),
-                  fmtMoney(r.actualCost),
-                  fmtMoney(r.eac),
-                  fmtPct(r.variancePct),
-                ],
-              }))}
-            />
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: 'quality',
-      title: 'Section 5: Quality Impact on Performance',
-      question: 'How much rework is occurring, and what is the cost impact?',
-      explanation:
-        'Measures hours and financial cost of quality failures, trends rework over time, and indicates whether QC is catching issues early.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={paretoOption} height={380} />
-          <ChartWrapper option={reworkAreaOption} height={380} />
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DataTable
-              headers={['Defect Category', 'Rework Hours Logged', 'Cost Impact (Hours * Blended Rate)', 'Detection Phase (Peer Review, QA, Client)']}
-              rows={model.defects.map((d0, idx) => ({
-                key: `${d0.category}-${idx}`,
-                cells: [d0.category, fmtHours(d0.reworkHours), fmtMoney(d0.costImpact), d0.detection],
-              }))}
-            />
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: 'capacity',
-      title: 'Section 6: Resource Capacity vs Demand',
-      question: 'Do we have enough staff to complete current and future work?',
-      explanation:
-        'Forecasts work demand against roster capacity to identify shortages and hiring/reallocation needs before delivery impact occurs.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem' }}>
-          <ChartWrapper option={capacityDemandOption} height={380} />
-          <DataTable
-            headers={['Role / Discipline', 'Time Period', 'Capacity Hours', 'Demand Hours', 'Utilization %', 'Shortage / Surplus FTE']}
-            rows={model.roleCapacityDemandRows.slice(0, 80).map((r) => ({
-              key: r.key,
-              cells: [r.role, r.month, fmtHours(r.capacity), fmtHours(r.demand), fmtPct(r.utilization), r.shortageFte.toFixed(2)],
-            }))}
-          />
-        </div>
-      ),
-    },
-    {
-      id: 'risk',
-      title: 'Section 7: Predictability and Risk Exposure',
-      question: 'Are we in control of our risks, or reacting too late to problems?',
-      explanation:
-        'Evaluates risk identification timing, corrective action quality, and concentration of exposure so leadership can focus on the highest-impact risks first.',
-      content: (
-        <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-          <ChartWrapper option={riskHeatmapOption} height={380} />
-          <ChartWrapper option={riskDetectScatter} height={380} />
-          <div style={{ gridColumn: '1 / -1' }}>
-            <DataTable
-              headers={['Entity / Risk Description', 'Probability & Impact', 'Exposure Score', 'Time to Detect (Days) / Corrective Action Status', 'Mitigation Success Rate (Y/N)']}
-              rows={model.risks.map((r) => ({
-                key: r.id,
-                cells: [
-                  `${r.entity}: ${r.description}`,
-                  `P${r.probability} / I${r.impact}`,
-                  r.exposure,
-                  `${r.detectDays} / ${r.corrective}`,
-                  r.mitigationSuccess,
-                ],
-              }))}
-            />
-          </div>
-        </div>
-      ),
-    },
-  ];
+  const hasAnyData = milestones.length > 0 || taskEfficiencyRows.length > 0 || hours.length > 0;
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 90px)', padding: '1.1rem 1.2rem 2rem', display: 'grid', gap: '0.8rem', background: COLORS.bg }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+    <div style={{ minHeight: 'calc(100vh - 90px)', padding: '1rem 1.1rem 2rem', display: 'grid', gap: '0.8rem' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, color: COLORS.text, fontSize: '1.8rem', fontWeight: 900 }}>Mo&apos;s Page</h1>
-          <p style={{ margin: '0.3rem 0 0', color: COLORS.muted, fontSize: '0.78rem', lineHeight: 1.55 }}>
-            Executive health, forecast reliability, productivity, overrun, quality, capacity, and risk controls in one context-aware page.
-          </p>
+          <h1 style={{ margin: 0, color: C.text, fontSize: '1.65rem', fontWeight: 900 }}>Mo&apos;s Page</h1>
+          <p style={{ margin: '0.3rem 0 0', color: C.muted, fontSize: '0.8rem' }}>Dashboard is DB-backed only and respects global hierarchy/time filters.</p>
         </div>
-        <div style={{ color: COLORS.muted, fontSize: '0.72rem', display: 'grid', gap: 6, justifyItems: 'end' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <label style={{ fontSize: '0.66rem' }}>Axes</label>
-            <select
-              value={axisDetail}
-              onChange={(e) => setAxisDetail(e.target.value as 'standard' | 'detailed')}
-              style={{ background: 'rgba(0,0,0,0.45)', border: `1px solid ${COLORS.border}`, color: COLORS.text, borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem' }}
-            >
-              <option value="detailed">Detailed</option>
-              <option value="standard">Standard</option>
-            </select>
-            <label style={{ fontSize: '0.66rem' }}>Entities</label>
-            <select
-              value={String(entityViewSize)}
-              onChange={(e) => setEntityViewSize(Number(e.target.value) as 12 | 24 | 40)}
-              style={{ background: 'rgba(0,0,0,0.45)', border: `1px solid ${COLORS.border}`, color: COLORS.text, borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem' }}
-            >
-              <option value="12">Top 12</option>
-              <option value="24">Top 24</option>
-              <option value="40">Top 40</option>
-            </select>
-          </div>
-          <span>{model.projects.length.toLocaleString()} entities in scope</span>
-          <span>{model.tasks.length.toLocaleString()} tasks</span>
-          <span>{model.units.length.toLocaleString()} units • {model.phases.length.toLocaleString()} phases</span>
+        <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 36 }}>
+          <button onClick={() => setTab('dashboard')} style={{ background: tab === 'dashboard' ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: 'none', padding: '0 0.9rem', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>Dashboard</button>
+          <button onClick={() => setTab('qa')} style={{ background: tab === 'qa' ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: 'none', padding: '0 0.9rem', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>Q&A</button>
         </div>
       </header>
 
-      {sections.map((section) => (
-        <AccordionSection key={section.id} {...section} />
-      ))}
+      {tab === 'dashboard' ? (
+        <>
+          {!hasAnyData && (
+            <EmptyState
+              title="No dashboard data in scope"
+              body="No records matched the current global hierarchy/time filters. Import or edit data in Data Management, then refresh this page."
+            />
+          )}
+
+          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1.2fr 1fr' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+              <h3 style={{ margin: '0 0 0.5rem', color: C.text, fontSize: '0.95rem' }}>Milestones</h3>
+              <ChartWrapper option={milestoneChartOption} height={280} />
+              <div style={{ marginTop: '0.6rem' }}>
+                <MosGlideTable
+                  columns={['Metric', 'Count']}
+                  rows={[
+                    ['Completed On Time', milestoneSummary.completedOnTime],
+                    ['Completed Delayed', milestoneSummary.completedDelayed],
+                    ['In Progress Forecasted On Time', milestoneSummary.inProgressOnTime],
+                    ['In Progress Forecasted Delayed', milestoneSummary.inProgressDelayed],
+                    ['Not Started Forecasted On Time', milestoneSummary.notStartedOnTime],
+                    ['Not Started Forecasted Delayed', milestoneSummary.notStartedDelayed],
+                  ]}
+                  height={250}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.8rem' }}>
+              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+                <h3 style={{ margin: '0 0 0.5rem', color: C.text, fontSize: '0.9rem' }}>Last period commitments</h3>
+                {lastCommitmentsDraft.map((line, idx) => (
+                  <textarea
+                    key={`last-${idx}`}
+                    value={line}
+                    onChange={(e) => setLastCommitmentsDraft((prev) => prev.map((p, i) => (i === idx ? e.target.value : p)))}
+                    rows={2}
+                    style={{ width: '100%', marginBottom: 8, background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
+                  />
+                ))}
+                <button onClick={() => setLastCommitmentsDraft((p) => [...p, ''])} style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: '0.35rem 0.6rem', cursor: 'pointer' }}>Add line</button>
+              </div>
+
+              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+                <h3 style={{ margin: '0 0 0.5rem', color: C.text, fontSize: '0.9rem' }}>This period commitments</h3>
+                {thisCommitmentsDraft.map((line, idx) => (
+                  <textarea
+                    key={`this-${idx}`}
+                    value={line}
+                    onChange={(e) => setThisCommitmentsDraft((prev) => prev.map((p, i) => (i === idx ? e.target.value : p)))}
+                    rows={2}
+                    style={{ width: '100%', marginBottom: 8, background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
+                  />
+                ))}
+                <button onClick={() => setThisCommitmentsDraft((p) => [...p, ''])} style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: '0.35rem 0.6rem', cursor: 'pointer' }}>Add line</button>
+              </div>
+
+              <button onClick={saveAllNotes} disabled={isSavingNotes} style={{ background: C.teal, color: '#000', border: 'none', borderRadius: 8, padding: '0.55rem 0.8rem', fontWeight: 700, cursor: 'pointer' }}>
+                {isSavingNotes ? 'Saving...' : 'Save Commitments & Hours Comments'}
+              </button>
+            </div>
+          </section>
+
+          <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.7rem' }}>
+            <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>
+              Period Hours Efficiency: <span style={{ color: C.teal }}>{periodHours.efficiency}%</span> | Added {Math.round(periodHours.added)} hrs | {periodHours.fte.toFixed(1)} FTE
+            </h3>
+            <ChartWrapper
+              option={{
+                tooltip: TT,
+                grid: { left: 70, right: 20, top: 12, bottom: 12, containLabel: true },
+                xAxis: { type: 'value', axisLabel: { color: C.muted } },
+                yAxis: { type: 'category', data: ['Plan', 'Actual', 'Reduced'], axisLabel: { color: C.text } },
+                series: [{ type: 'bar', data: [periodHours.plan, periodHours.actual, periodHours.reduced], itemStyle: { color: C.green } }],
+              }}
+              height={210}
+            />
+            <div>
+              <h4 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.82rem' }}>Hours comments</h4>
+              {hoursCommentsDraft.map((line, idx) => (
+                <textarea
+                  key={`h-${idx}`}
+                  value={line}
+                  onChange={(e) => setHoursCommentsDraft((prev) => prev.map((p, i) => (i === idx ? e.target.value : p)))}
+                  rows={2}
+                  style={{ width: '100%', marginBottom: 8, background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
+                />
+              ))}
+              <button onClick={() => setHoursCommentsDraft((p) => [...p, ''])} style={{ background: 'transparent', border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: '0.35rem 0.6rem', cursor: 'pointer' }}>Add line</button>
+            </div>
+          </section>
+
+          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: '0.4rem' }}>
+                <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Task Hours Efficiency</h3>
+                <button onClick={clearCrossFilters} style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.3rem 0.5rem', cursor: 'pointer', fontSize: '0.7rem' }}>Clear visual filters</button>
+              </div>
+              <ChartWrapper
+                option={taskEfficiencyOption}
+                height={420}
+                onClick={(p) => {
+                  const idx = Number(p.dataIndex);
+                  if (Number.isFinite(idx) && taskEfficiencyRows[idx]) {
+                    setSelectedTaskId(taskEfficiencyRows[idx].id);
+                  }
+                }}
+              />
+              <div style={{ marginTop: '0.6rem' }}>
+                <MosGlideTable
+                  columns={['Task', 'Baseline', 'Actual', 'Added', 'Comments']}
+                  rows={taskEfficiencyRows.slice(0, 25).map((r) => [r.name, Math.round(r.baseline), Math.round(r.actual), Math.round(r.added), r.comments])}
+                  height={280}
+                  onRowClick={(row) => setSelectedTaskId(taskEfficiencyRows[row]?.id || '')}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.8rem' }}>
+              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+                <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>Task Lifecycle Charge Code Breakdown</h3>
+                <p style={{ margin: '0 0 0.4rem', color: C.muted, fontSize: '0.74rem' }}>
+                  {selectedTask ? `Selected task: ${selectedTask.taskName || selectedTask.name || selectedTaskId}` : 'Select a task from Task Hours Efficiency'}
+                </p>
+                <ChartWrapper
+                  option={lifecycleOption}
+                  height={230}
+                  onClick={(p) => {
+                    if (p.name) setSelectedChargeCode(String(p.name));
+                  }}
+                  isEmpty={!taskChargeCodeRows.length}
+                />
+              </div>
+
+              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+                <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>
+                  Non-EX/QC Hours by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}
+                </h3>
+                <ChartWrapper
+                  option={pieOption}
+                  height={260}
+                  onClick={(p) => {
+                    if (p.name) setSelectedBucket(String(p.name));
+                  }}
+                  isEmpty={!pieRows.length}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+            <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Hierarchy Comments</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <select value={entityType} onChange={(e) => setEntityType(e.target.value as CommentEntity)} style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, borderRadius: 8, padding: '0.35rem 0.5rem' }}>
+                <option value="tasks">Tasks</option>
+                <option value="units">Units</option>
+                <option value="phases">Phases</option>
+                <option value="subTasks">Sub-Tasks</option>
+              </select>
+              <span style={{ color: C.muted, fontSize: '0.75rem', alignSelf: 'center' }}>Select a row below to edit comments.</span>
+            </div>
+            <MosGlideTable
+              columns={['Name', 'Comments']}
+              rows={commentEntities.map((r) => [r.name, r.comments])}
+              height={270}
+              onRowClick={(row) => {
+                const item = commentEntities[row];
+                if (!item) return;
+                setSelectedCommentEntityId(item.id);
+                setCommentDraft(item.comments);
+              }}
+            />
+            <textarea
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              rows={4}
+              placeholder="Edit selected entity comments..."
+              style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.5rem' }}
+            />
+            <button disabled={!selectedCommentEntityId || isSavingComments} onClick={saveComment} style={{ justifySelf: 'start', background: C.teal, color: '#000', border: 'none', borderRadius: 8, padding: '0.45rem 0.8rem', fontWeight: 700, cursor: 'pointer' }}>
+              {isSavingComments ? 'Saving...' : 'Save Comment'}
+            </button>
+          </section>
+        </>
+      ) : (
+        <section style={{ display: 'grid', gap: '0.8rem' }}>
+          <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
+            <h3 style={{ margin: 0, color: C.text }}>Q&A</h3>
+            <p style={{ color: C.muted, fontSize: '0.8rem', marginTop: '0.4rem' }}>
+              This section keeps the Mo page discussion context. Dashboard visuals and tables now provide live DB-backed operational tracking.
+            </p>
+          </div>
+
+          {[
+            {
+              q: 'Do we have a workflow/plan to complete deliverables?',
+              a: 'Use Milestones + commitments on the Dashboard. Enter commitments for last and current period, scoped by the global hierarchy filter.',
+            },
+            {
+              q: 'Are we ahead or behind plan?',
+              a: 'Task Hours Efficiency compares baseline vs actual and added hours per task, with comments editable from the hierarchy comments section.',
+            },
+            {
+              q: 'Where are hours being spent?',
+              a: 'Task Lifecycle Charge Code Breakdown shows charge-code distribution for the selected task. Pie chart shows non-EX/QC by next hierarchy level.',
+            },
+            {
+              q: 'How do filters apply?',
+              a: 'Global hierarchy and time filters constrain all data. Cross-visual clicks add local filters that can be cleared with Clear visual filters.',
+            },
+          ].map((item, idx) => (
+            <div key={idx} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
+              <div style={{ color: C.teal, fontSize: '0.78rem', fontWeight: 700 }}>{item.q}</div>
+              <div style={{ color: C.text, fontSize: '0.84rem', marginTop: '0.35rem' }}>{item.a}</div>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

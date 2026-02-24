@@ -115,6 +115,7 @@ function createEmptyData(): SampleData {
     forecast: { months: [], baseline: [], actual: [], forecast: [] },
     snapshots: [],
     projectDocuments: [],
+    moPeriodNotes: [],
     customerContracts: [],
     workdayPhases: [],
     changeRequests: [],

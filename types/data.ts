@@ -1866,6 +1866,7 @@ export interface SampleData {
   snapshots: Snapshot[];
   visualSnapshots: VisualSnapshot[];
   projectDocuments: ProjectDocument[];
+  moPeriodNotes: MoPeriodNote[];
   customerContracts?: any[];
   workdayPhases?: any[];
   changeRequests: ChangeRequest[];
@@ -2156,6 +2157,27 @@ export interface ProjectDocument {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export type MoPeriodNoteType = 'last_commitment' | 'this_commitment' | 'hours_comment';
+export type MoPeriodGranularity = 'month' | 'quarter';
+
+export interface MoPeriodNote {
+  id: string;
+  noteType: MoPeriodNoteType;
+  periodGranularity: MoPeriodGranularity;
+  periodStart: string;
+  periodEnd: string;
+  portfolioId?: string | null;
+  customerId?: string | null;
+  siteId?: string | null;
+  projectId?: string | null;
+  content: string;
+  sortOrder?: number;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ============================================================================

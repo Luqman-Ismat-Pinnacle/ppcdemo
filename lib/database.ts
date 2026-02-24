@@ -128,6 +128,7 @@ async function fetchFromPostgreSQL() {
       projectDocuments,
       customerContracts,
       workdayPhases,
+      moPeriodNotes,
       taskDependencies,
       taskQuantityEntries,
       visualSnapshots,
@@ -159,6 +160,7 @@ async function fetchFromPostgreSQL() {
       safeQuery('SELECT * FROM project_documents ORDER BY uploaded_at DESC'),
       safeQuery('SELECT * FROM customer_contracts ORDER BY line_from_date DESC'),
       safeQuery('SELECT * FROM workday_phases ORDER BY project_id, unit, name'),
+      safeQuery('SELECT * FROM mo_period_notes ORDER BY period_start DESC, sort_order ASC'),
       safeQuery('SELECT * FROM task_dependencies'),
       safeQuery('SELECT * FROM task_quantity_entries ORDER BY date'),
       safeQuery('SELECT * FROM visual_snapshots ORDER BY snapshot_date DESC'),
@@ -197,6 +199,7 @@ async function fetchFromPostgreSQL() {
       projectDocuments: convertArrayToCamelCase(projectDocuments),
       customerContracts: convertArrayToCamelCase(customerContracts),
       workdayPhases: convertArrayToCamelCase(workdayPhases),
+      moPeriodNotes: convertArrayToCamelCase(moPeriodNotes),
       taskDependencies: convertArrayToCamelCase(taskDependencies),
       taskQuantityEntries: convertArrayToCamelCase(taskQuantityEntries),
     };
@@ -265,6 +268,7 @@ async function fetchFromSupabase() {
     projectHealth, projectLog, projectDocuments,
     customerContracts,
     workdayPhases,
+    moPeriodNotes,
     taskDependencies, taskQuantityEntries, visualSnapshots,
   ] = await Promise.all([
     supabaseClient.from('portfolios').select('*').order('name'),
@@ -293,6 +297,7 @@ async function fetchFromSupabase() {
     supabaseClient.from('project_documents').select('*').order('uploaded_at', { ascending: false }),
     supabaseClient.from('customer_contracts').select('*').order('line_from_date', { ascending: false }),
     supabaseClient.from('workday_phases').select('*').order('project_id'),
+    supabaseClient.from('mo_period_notes').select('*').order('period_start', { ascending: false }),
     supabaseClient.from('task_dependencies').select('*'),
     supabaseClient.from('task_quantity_entries').select('*').order('date'),
     supabaseClient.from('visual_snapshots').select('*').order('snapshot_date', { ascending: false }),
@@ -331,6 +336,7 @@ async function fetchFromSupabase() {
     projectDocuments: convertArrayFromSupabase(projectDocuments.data || []),
     customerContracts: convertArrayFromSupabase((customerContracts as { data?: unknown[] }).data || []),
     workdayPhases: convertArrayFromSupabase((workdayPhases as { data?: unknown[] }).data || []),
+    moPeriodNotes: convertArrayFromSupabase((moPeriodNotes as { data?: unknown[] }).data || []),
     taskDependencies: convertArrayFromSupabase(taskDependencies.data || []),
     taskQuantityEntries: convertArrayFromSupabase(taskQuantityEntries.data || []),
   };
