@@ -15,6 +15,7 @@ const corsHeaders = {
 // Helper: safe string extraction
 const safeString = (val: any): string => (val || '').toString().trim();
 const TRAILING_DATE_PATTERNS: RegExp[] = [
+    /\s*\([^)]*\)\s*$/i,
     /\s*\d{4}-\d{1,2}-\d{1,2}\s*$/i,
     /\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i,
     /\s*\d{1,2}-\d{1,2}-\d{2,4}\s*$/i,
@@ -43,7 +44,7 @@ const parseHourDescription = (description: string): { chargeCode: string; phases
     const normalized = stripDatesFromEnd(description);
     const parts = normalized.split('>').map((p) => p.trim()).filter(Boolean);
     return {
-        chargeCode: stripDatesFromEnd(parts[0] || normalized),
+        chargeCode: stripDatesFromEnd(normalized),
         phases: parts.length >= 2 ? (parts[1] || '') : '',
         task: stripDatesFromEnd(parts.length >= 3 ? parts.slice(2).join(' > ') : ''),
     };
@@ -269,14 +270,14 @@ serve(async (req) => {
                     date: dateOnly,
                     hours: hoursVal,
                     description: description.substring(0, 500), // Truncate if too long
-                    charge_code: (parsed.chargeCode || '').substring(0, 500) || null,
+                    charge_code: (parsed.chargeCode || '').substring(0, 255) || null,
                     charge_code_v2: (parsed.chargeCode || '').substring(0, 500) || null,
                     phases: (parsed.phases || '').substring(0, 255) || null,
                     task: (parsed.task || '').substring(0, 500) || null,
                     workday_phase_id: null,
                     // Workday phase/task names for matching to MPP tasks
-                    workday_phase: rawPhaseName,
-                    workday_task: rawTaskName,
+                    workday_phase: null,
+                    workday_task: null,
                     // Enhanced cost fields; reported_standard_cost_amt = Workday Reported_Standard_Cost_Amt for matching
                     billable_rate: billableRate,
                     billable_amount: billableAmount,

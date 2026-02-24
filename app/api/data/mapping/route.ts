@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
+import { parseHourDescription } from '@/lib/hours-description';
 let postgresMappingColumnsEnsured = false;
 
 function normalizeText(input: string | null | undefined): string {
@@ -38,7 +39,7 @@ async function ensurePostgresMappingColumns(): Promise<void> {
     ALTER TABLE hour_entries
     ADD COLUMN IF NOT EXISTS workday_phase_id VARCHAR(50),
     ADD COLUMN IF NOT EXISTS phases VARCHAR(255),
-    ADD COLUMN IF NOT EXISTS charge_code VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS charge_code VARCHAR(255),
     ADD COLUMN IF NOT EXISTS charge_code_v2 VARCHAR(500),
     ADD COLUMN IF NOT EXISTS task TEXT
   `);
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest) {
         const updates: Array<{ hourId: string; workdayPhaseId: string }> = [];
 
         for (const h of hours) {
-          const source = (h.phases || '').toString().trim();
+          const source = String(h.phases || parseHourDescription(String(h.description || '')).phases || '').trim();
           if (!source) continue;
 
           let best: { id: string; score: number } | null = null;
@@ -206,7 +207,7 @@ export async function POST(req: NextRequest) {
       let matched = 0;
       const updates: Array<{ hourId: string; workdayPhaseId: string }> = [];
       for (const h of hours || []) {
-        const source = String(h.phases || '').trim();
+        const source = String(h.phases || parseHourDescription(String(h.description || '')).phases || '').trim();
         if (!source) continue;
 
         let best: { id: string; score: number } | null = null;

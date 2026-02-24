@@ -133,17 +133,14 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
 
   if (tableName === 'hour_entries') {
     const parsed = parseHourDescription(String(formatted.description ?? ''));
-    if (parsed.chargeCode) {
-      formatted.charge_code = parsed.chargeCode.substring(0, 500);
-      // Keep charge_code_v2 in sync where used by legacy matchers.
-      formatted.charge_code_v2 = parsed.chargeCode.substring(0, 500);
-    }
-    if (parsed.phases) {
-      formatted.phases = parsed.phases.substring(0, 255);
-    }
-    if (parsed.task) {
-      formatted.task = parsed.task.substring(0, 500);
-    }
+    formatted.charge_code = parsed.chargeCode ? parsed.chargeCode.substring(0, 255) : null;
+    // Keep charge_code_v2 in sync where used by legacy matchers.
+    formatted.charge_code_v2 = parsed.chargeCode ? parsed.chargeCode.substring(0, 500) : null;
+    formatted.phases = parsed.phases ? parsed.phases.substring(0, 255) : null;
+    formatted.task = parsed.task ? parsed.task.substring(0, 500) : null;
+    // Legacy non-derived text columns are intentionally cleared.
+    formatted.workday_phase = null;
+    formatted.workday_task = null;
   }
 
   // project_documents: simplified schema has no document_id (use id only)
@@ -371,7 +368,7 @@ async function ensureHoursMappingColumns(): Promise<void> {
 
   await pgQuery(`
     ALTER TABLE hour_entries
-    ADD COLUMN IF NOT EXISTS charge_code VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS charge_code VARCHAR(255),
     ADD COLUMN IF NOT EXISTS charge_code_v2 VARCHAR(500),
     ADD COLUMN IF NOT EXISTS phases VARCHAR(255),
     ADD COLUMN IF NOT EXISTS task TEXT,

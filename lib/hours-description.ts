@@ -6,6 +6,7 @@
  */
 
 const TRAILING_DATE_PATTERNS: RegExp[] = [
+  /\s*\([^)]*\)\s*$/i,
   /\s*\d{4}-\d{1,2}-\d{1,2}\s*$/i,
   /\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i,
   /\s*\d{1,2}-\d{1,2}-\d{2,4}\s*$/i,
@@ -50,7 +51,7 @@ export function parseHourDescription(raw: string | null | undefined): ParsedHour
     .map((p) => p.trim())
     .filter(Boolean);
 
-  const chargeCode = stripDatesFromEnd(parts[0] || normalized);
+  const chargeCode = stripDatesFromEnd(normalized);
   const phases = parts.length >= 2 ? (parts[1] || '') : '';
   const taskRaw = parts.length >= 3 ? parts.slice(2).join(' > ') : '';
   const task = stripDatesFromEnd(taskRaw);

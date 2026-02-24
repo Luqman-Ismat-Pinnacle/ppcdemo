@@ -1,7 +1,7 @@
 -- Add derived Workday parsing columns to hour_entries and WD charge code to tasks.
 
 ALTER TABLE hour_entries
-  ADD COLUMN IF NOT EXISTS charge_code VARCHAR(500),
+  ADD COLUMN IF NOT EXISTS charge_code VARCHAR(255),
   ADD COLUMN IF NOT EXISTS charge_code_v2 VARCHAR(500),
   ADD COLUMN IF NOT EXISTS phases VARCHAR(255),
   ADD COLUMN IF NOT EXISTS task TEXT,
@@ -36,7 +36,7 @@ WITH parsed AS (
   SELECT
     id,
     regexp_replace(
-      COALESCE(description, ''),
+      regexp_replace(COALESCE(description, ''), '\\s*\\([^)]*\\)\\s*$', '', 'i'),
       '\\s*((\\d{4}[-/]\\d{1,2}[-/]\\d{1,2})|(\\d{1,2}[-/]\\d{1,2}[-/]\\d{2,4})|([A-Za-z]{3,9}\\.?\\s+\\d{1,2},?\\s+\\d{2,4})|(\\d{1,2}-[A-Za-z]{3,9}-\\d{2,4}))\\s*$',
       '',
       'i'
@@ -45,18 +45,20 @@ WITH parsed AS (
 )
 UPDATE hour_entries h
 SET
-  charge_code = NULLIF(TRIM(split_part(p.normalized, '>', 1)), ''),
-  charge_code_v2 = NULLIF(TRIM(split_part(p.normalized, '>', 1)), ''),
+  charge_code = NULLIF(TRIM(p.normalized), ''),
+  charge_code_v2 = NULLIF(TRIM(p.normalized), ''),
   phases = NULLIF(TRIM(split_part(p.normalized, '>', 2)), ''),
   task = NULLIF(
     TRIM(
       CASE
-        WHEN p.normalized LIKE '%>%>%' THEN regexp_replace(p.normalized, '^[^>]*>[^>]*>\\s*', '')
+        WHEN p.normalized ~ '^[^>]*>[^>]*>.*$' THEN regexp_replace(p.normalized, '^[^>]*>[^>]*>\\s*', '')
         ELSE ''
       END
     ),
     ''
-  )
+  ),
+  workday_phase = NULL,
+  workday_task = NULL
 FROM parsed p
 WHERE h.id = p.id
   AND COALESCE(h.description, '') <> '';

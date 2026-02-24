@@ -366,16 +366,14 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   };
 
   const parseLinkString = (raw: string) => {
-    const text = String(raw || '').trim();
+    const text = String(raw || '').trim().replace(/\s+/g, '');
     if (!text) return null;
-    const idMatch = text.match(/^([A-Za-z0-9_.-]+)/);
-    if (!idMatch) return null;
-    const relMatch = text.match(/\b(FS|SS|FF|SF)\b/i);
-    const lagMatch = text.match(/([+-]?\d+)/);
+    const match = text.match(/^([A-Za-z0-9_.-]+?)(FS|SS|FF|SF)?([+-]\d+)?$/i);
+    if (!match) return null;
     return {
-      id: idMatch[1],
-      relationship: normalizeRelationship(relMatch?.[1] || 'FS'),
-      lagDays: lagMatch ? Number(lagMatch[1]) || 0 : 0,
+      id: match[1],
+      relationship: normalizeRelationship(match[2] || 'FS'),
+      lagDays: match[3] ? Number(match[3]) || 0 : 0,
     };
   };
 
@@ -387,7 +385,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       task.predecessorIds ??
       task.predecessor_ids ??
       [];
-    const links = Array.isArray(rawLinks) ? rawLinks : [rawLinks];
+    const links = (Array.isArray(rawLinks) ? rawLinks : [rawLinks]).flatMap((link: any) =>
+      typeof link === 'string'
+        ? link.split(',').map((s) => s.trim()).filter(Boolean)
+        : [link]
+    );
     return links
       .map((link: any) => {
         if (typeof link === 'string') {
@@ -427,7 +429,11 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       task.successorIds ??
       task.successor_ids ??
       [];
-    const links = Array.isArray(rawLinks) ? rawLinks : [rawLinks];
+    const links = (Array.isArray(rawLinks) ? rawLinks : [rawLinks]).flatMap((link: any) =>
+      typeof link === 'string'
+        ? link.split(',').map((s) => s.trim()).filter(Boolean)
+        : [link]
+    );
     return links
       .map((link: any) => {
         if (typeof link === 'string') {
@@ -633,6 +639,14 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           relationship: (p.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF',
           lagDays: p.lagDays || 0,
         })),
+        successors: (Array.isArray(r.successors) ? r.successors : []).map((s: any) => ({
+          id: `${id}-${s.successorTaskId}`,
+          taskId: id,
+          successorTaskId: String(s.successorTaskId),
+          successorName: s.successorName || '',
+          relationship: (s.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF',
+          lagDays: s.lagDays || 0,
+        })),
       });
     }
   });
@@ -827,6 +841,23 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       .filter(Boolean);
 
     task.predecessors = normalizedPreds;
+    const succs = Array.isArray(task.successors) ? task.successors : [];
+    const normalizedSuccs = succs
+      .map((s: any) => {
+        const resolvedId = resolveTaskId(s.successorTaskId || s.successor_task_id, s.successorName || s.successor_name);
+        if (!resolvedId) return null;
+        const rel = String(s.relationship || s.relationshipType || s.relationship_type || 'FS').toUpperCase();
+        return {
+          ...s,
+          successorTaskId: resolvedId,
+          successorName: String(s.successorName || s.successor_name || ''),
+          relationship: rel === 'SS' || rel === 'FF' || rel === 'SF' ? rel : 'FS',
+          lagDays: Number(s.lagDays || s.lag_days || s.lag || 0) || 0,
+        };
+      })
+      .filter(Boolean);
+
+    task.successors = normalizedSuccs;
     const firstPred = normalizedPreds[0] as any;
     task.predecessorId = firstPred?.predecessorTaskId || null;
     task.predecessorRelationship = firstPred?.relationship || null;

@@ -879,6 +879,7 @@ export default function DocumentsPage() {
   const [mappingSearch, setMappingSearch] = useState('');
   const [draggedHourId, setDraggedHourId] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
 
   const mappingProjectOptions = useMemo(() => {
     return projectsWithPlan.map((p: any) => ({ id: String(p.id ?? p.projectId ?? ''), name: p.name || p.id || 'Unknown' }));
@@ -991,6 +992,7 @@ export default function DocumentsPage() {
   const handleAutoMatchWorkdayPhaseToHours = useCallback(async () => {
     if (!mappingProjectFilter) return;
     setMappingSaving(true);
+    setMappingResult(null);
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
@@ -999,6 +1001,11 @@ export default function DocumentsPage() {
       });
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.error || 'Failed');
+      setMappingResult({
+        matched: Number(result.matched || 0),
+        unmatched: Number(result.unmatched || 0),
+        considered: Number(result.considered || 0),
+      });
       addLog('success', `[Matching] Hours-to-Workday-phases complete: ${result.matched} matched, ${result.unmatched} unmatched`);
       await refreshData();
     } catch (err: any) {
@@ -1794,6 +1801,7 @@ export default function DocumentsPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                 <button
+                  type="button"
                   onClick={handleAutoMatchWorkdayPhaseToHours}
                   disabled={!mappingProjectFilter || mappingSaving}
                   style={{
@@ -1807,10 +1815,24 @@ export default function DocumentsPage() {
                     cursor: mappingProjectFilter && !mappingSaving ? 'pointer' : 'not-allowed',
                   }}
                 >
-                  {mappingSaving ? 'Matching...' : '2. Match Workday phase to hours phases'}
+                  {mappingSaving ? 'Matching...' : '2. Match Workday phases to hour phases'}
                 </button>
               </div>
             </div>
+
+            {mappingResult && (
+              <div style={{
+                marginBottom: '1rem',
+                padding: '0.7rem 0.9rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-secondary)',
+                fontSize: '0.82rem',
+                color: 'var(--text-primary)',
+              }}>
+                Match complete: {mappingResult.matched} matched, {mappingResult.unmatched} unmatched, {mappingResult.considered} considered.
+              </div>
+            )}
 
             {!mappingProjectFilter ? (
               <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -1821,7 +1843,7 @@ export default function DocumentsPage() {
               const unassignedHours = hoursByWorkdayPhaseForProject.get('unassigned') || [];
               const unassignedTasks = tasksByWorkdayPhaseForProject.get('unassigned') || [];
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.25rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
                   <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', background: 'var(--bg-card)' }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.65rem' }}>
                       3. Hours entries to Workday phases
@@ -1829,7 +1851,7 @@ export default function DocumentsPage() {
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.8rem' }}>
                       Unmatched: {unassignedHours.length} of {filteredProjectHours.length}. Drag hour cards into phase buckets.
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem', alignItems: 'start' }}>
                       <div
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={async (e) => {
@@ -1856,6 +1878,7 @@ export default function DocumentsPage() {
                               >
                                 <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(h.date || '').slice(0, 10)} · {h.hours ?? 0}h</div>
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(h.phases ?? parsed.phases ?? 'No phase text').toString()}</div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{(h.task ?? parsed.task ?? '').toString()}</div>
                               </div>
                             );
                           })}
@@ -1906,7 +1929,7 @@ export default function DocumentsPage() {
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.8rem' }}>
                       Unmatched: {unassignedTasks.length} of {tasksForSelectedProject.length}. Drag task cards into phase buckets.
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem', alignItems: 'start' }}>
                       <div
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={async (e) => {

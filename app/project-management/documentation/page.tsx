@@ -28,7 +28,6 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ContainerLoader from '@/components/ui/ContainerLoader';
-import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 
 const STORAGE_BUCKET = 'projectdoc';
 
@@ -111,22 +110,11 @@ export default function DocumentationPage() {
   const data = filteredData;
 
   const allProjects = useMemo(() => (data.projects || []) as any[], [data.projects]);
-  const projectOptions: DropdownOption[] = useMemo(
-    () =>
-      allProjects.map((p) => ({
-        id: p.id || p.projectId,
-        label: p.name || p.projectName || (p.id || p.projectId),
-        secondary: p.customerName || p.customer || '',
-      })),
-    [allProjects],
-  );
-
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [fileFilter, setFileFilter] = useState<FileFilter>('all');
-
-  const handleProjectChange = useCallback((opt: DropdownOption | null) => {
-    setSelectedProjectId(opt?.id ?? null);
-  }, []);
+  const uploadProjectId = useMemo(() => {
+    const ids = allProjects.map((p) => (p.id || p.projectId)).filter(Boolean);
+    return ids.length === 1 ? String(ids[0]) : null;
+  }, [allProjects]);
 
   const projectDocuments = useMemo(() => (data.projectDocuments || []) as any[], [data.projectDocuments]);
 
@@ -143,9 +131,7 @@ export default function DocumentationPage() {
         const projectId = (d.projectId || d.project_id || null) as string | null;
         const fileName = (d.fileName || d.file_name || '') as string;
         if (!fileName || !isPdfOrWord(fileName)) return null;
-        if (selectedProjectId) {
-          if (!projectId || projectId !== selectedProjectId) return null;
-        } else if (projectId && !visibleProjectIds.has(projectId)) {
+        if (projectId && !visibleProjectIds.has(projectId)) {
           // respect global project filters
           return null;
         }
@@ -173,7 +159,7 @@ export default function DocumentationPage() {
       byType[doc.documentType].push(doc);
     });
     return byType;
-  }, [allProjects, projectDocuments, selectedProjectId]);
+  }, [allProjects, projectDocuments]);
 
   const [metaById, setMetaById] = useState<Record<string, DocumentMeta>>({});
 
@@ -220,8 +206,8 @@ export default function DocumentationPage() {
   } as const;
 
   const handleUploadClick = (type: DocType) => {
-    if (!selectedProjectId) {
-      alert('Select a project first.');
+    if (!uploadProjectId) {
+      alert('Set the global hierarchy filter to a single project to upload documentation.');
       return;
     }
     fileInputs[type].current?.click();
@@ -229,13 +215,13 @@ export default function DocumentationPage() {
 
   const handleFileChange = async (type: DocType, evt: React.ChangeEvent<HTMLInputElement>) => {
     const file = evt.target.files?.[0];
-    if (!file || !selectedProjectId) return;
+    if (!file || !uploadProjectId) return;
     if (!isPdfOrWord(file.name)) {
       alert('Please upload a PDF or Word document.');
       return;
     }
 
-    const safeProjectId = selectedProjectId || 'unassigned';
+    const safeProjectId = uploadProjectId;
     const path = `docs/${safeProjectId}/${type}/${file.name}`;
 
     const { data: uploadData, error } = await storageApi.upload(path, file);
@@ -377,7 +363,7 @@ export default function DocumentationPage() {
               padding: '0.6rem 0.4rem',
             }}
           >
-            No {type} documents for the current filters. Select a project above and upload the first file.
+            No {type} documents for the current filters. Use global hierarchy filters, then upload the first file.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -480,38 +466,8 @@ export default function DocumentationPage() {
         </div>
         <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: 840 }}>
           Central workspace for DRD, Workflow, QMP, and SOP documents. Global filters (date and hierarchy) still
-          apply via the project list above; choose a project and manage each document type in its own section.
-        </div>
-      </div>
-
-      <div
-        style={{
-          borderRadius: 10,
-          border: '1px solid var(--border-color)',
-          background: 'var(--bg-card)',
-          padding: '0.8rem 1rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '1rem',
-        }}
-      >
-        <div>
-          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-            Project (respects global filters)
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Pick a project from the globally filtered list to see and manage its documentation.
-          </div>
-        </div>
-        <div style={{ minWidth: 260 }}>
-          <SearchableDropdown
-            placeholder="Select project..."
-            options={projectOptions}
-            selectedId={selectedProjectId}
-            onChange={handleProjectChange}
-            clearable
-          />
+          apply automatically. If a single project is selected in global filters, uploads go to that project;
+          otherwise this page shows documents for all filtered projects.
         </div>
       </div>
 

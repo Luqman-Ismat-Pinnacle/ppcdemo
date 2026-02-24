@@ -15,6 +15,7 @@ function safeString(val: unknown): string {
 }
 
 const TRAILING_DATE_PATTERNS: RegExp[] = [
+  /\s*\([^)]*\)\s*$/i,
   /\s*\d{4}-\d{1,2}-\d{1,2}\s*$/i,
   /\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i,
   /\s*\d{1,2}-\d{1,2}-\d{2,4}\s*$/i,
@@ -45,7 +46,7 @@ function parseHourDescription(description: string): { chargeCode: string; phases
   const normalized = stripDatesFromEnd(description);
   const parts = normalized.split('>').map((p) => p.trim()).filter(Boolean);
   return {
-    chargeCode: stripDatesFromEnd(parts[0] || normalized),
+    chargeCode: stripDatesFromEnd(normalized),
     phases: parts.length >= 2 ? (parts[1] || '') : '',
     task: stripDatesFromEnd(parts.length >= 3 ? parts.slice(2).join(' > ') : ''),
   };
@@ -491,13 +492,13 @@ async function syncHoursChunk(
         date: dateOnly,
         hours: hoursVal,
         description,
-        charge_code: parsed.chargeCode || null,
-        charge_code_v2: parsed.chargeCode || null,
+        charge_code: parsed.chargeCode ? parsed.chargeCode.substring(0, 255) : null,
+        charge_code_v2: parsed.chargeCode ? parsed.chargeCode.substring(0, 500) : null,
         phases: parsed.phases || null,
         task: parsed.task || null,
         workday_phase_id: null,
-        workday_phase: rawPhaseName,
-        workday_task: rawTaskName,
+        workday_phase: null,
+        workday_task: null,
         billable_rate: billableRate,
         billable_amount: billableAmount,
         standard_cost_rate: standardCostRate,
