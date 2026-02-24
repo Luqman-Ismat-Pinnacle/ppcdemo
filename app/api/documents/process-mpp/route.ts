@@ -349,6 +349,13 @@ export async function POST(req: NextRequest) {
               OR predecessor_task_id IN (SELECT id FROM tasks WHERE project_id = $1)`,
           [projectId]
         );
+        await client.query(
+          `UPDATE tasks
+           SET parent_task_id = NULL
+           WHERE parent_task_id IN (SELECT id FROM tasks WHERE project_id = $1)
+             AND COALESCE(project_id, '') <> $1`,
+          [projectId]
+        );
         await client.query('DELETE FROM tasks WHERE project_id = $1', [projectId]);
         await client.query('DELETE FROM units WHERE project_id = $1', [projectId]);
         // Unlink any tasks (e.g. from other projects) that reference phases we are about to delete
@@ -415,7 +422,6 @@ export async function POST(req: NextRequest) {
       summary,
       healthScore: (summary as any).healthScore,
       taskCount: tasks.length,
-      tasks,
     });
   } catch (error: unknown) {
     const message = getErrorMessage(error);

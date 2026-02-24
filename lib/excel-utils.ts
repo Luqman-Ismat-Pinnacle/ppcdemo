@@ -1053,7 +1053,7 @@ function getEntityHeaders(entityType: ExportableEntity): string[] {
     subTasks: ['id', 'taskId', 'parentTaskId', 'name', 'description', 'assignedResourceId', 'status', 'priority', 'baselineStartDate', 'baselineEndDate', 'actualStartDate', 'actualEndDate', 'percentComplete', 'baselineHours', 'actualHours', 'remainingHours', 'baselineCost', 'actualCost', 'remainingCost', 'comments'],
 
     // Hour Entries
-    hours: ['id', 'entryId', 'employeeId', 'projectId', 'phaseId', 'taskId', 'userStoryId', 'chargeCode', 'phases', 'task', 'workdayPhaseId', 'chargeType', 'date', 'hours', 'description'],
+    hours: ['id', 'entryId', 'employeeId', 'projectId', 'userStoryId', 'chargeCode', 'phases', 'task', 'workdayPhaseId', 'chargeType', 'date', 'hours', 'description'],
 
     // QC Tasks
     qctasks: ['id', 'qcTaskId', 'projectId', 'phaseId', 'taskId', 'name', 'description', 'status', 'assignedTo', 'dueDate', 'completedDate'],
@@ -1261,9 +1261,8 @@ function getExampleRow(entityType: ExportableEntity): any {
       id: 'HRS-001',
       entryId: 'HRS-001',
       employeeId: 'EMP-001',
-      taskId: 'TSK-001',
       projectId: 'PRJ-001',
-      phaseId: 'PHS-001',
+      userStoryId: '',
       chargeCode: 'EX > Unit A > Example Task',
       phases: 'Unit A',
       task: 'Example Task',

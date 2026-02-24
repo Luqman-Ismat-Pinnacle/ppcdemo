@@ -1426,11 +1426,9 @@ export default function DataManagementPage() {
         { key: 'entryId', header: 'Entry ID', type: 'text', editable: false, autoCalculated: false },
         { key: 'employeeId', header: 'Employee', type: 'employee', editable: true },
         { key: 'projectId', header: 'Project', type: 'project', editable: true },
-        { key: 'phaseId', header: 'Phase', type: 'phase', editable: true },
-        { key: 'taskId', header: 'Task', type: 'task', editable: true },
         { key: 'userStoryId', header: 'User Story', type: 'text', editable: true },
         { key: 'chargeCode', header: 'Charge Code', type: 'text', editable: false, tooltip: 'Derived from full description with trailing date suffix removed.' },
-        { key: 'phases', header: 'Phases', type: 'text', editable: false, tooltip: 'Derived from description between first and second \">\".' },
+        { key: 'phases', header: 'Phase', type: 'text', editable: false, tooltip: 'Derived from description between first and second \">\".' },
         { key: 'task', header: 'Task', type: 'text', editable: false, tooltip: 'Derived from description text after second \">\".' },
         { key: 'workdayPhaseId', header: 'Workday Phase', type: 'text', editable: true, tooltip: 'Mapped Workday phase bucket for this hour entry.' },
         { key: 'chargeType', header: 'Charge Type', type: 'text', editable: true, tooltip: 'EX=Execution, QC=Quality, CR=Customer Relations. From Workday charge_type column.' },
@@ -4031,7 +4029,6 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
 
 
 

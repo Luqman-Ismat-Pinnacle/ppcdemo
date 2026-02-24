@@ -538,6 +538,22 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     typeById.set(String(r.id), nodeType);
   });
 
+  const projectScope = String(projectIdOverride || 'unscoped').replace(/[^A-Za-z0-9_-]/g, '_');
+  const scopedIdByRawId = new Map<string, string>();
+  const makeScopedId = (rawId: string, nodeType: NodeType): string => {
+    const safeRaw = String(rawId || '').replace(/[^A-Za-z0-9_.-]/g, '_');
+    if (nodeType === 'unit') return `mpp-${projectScope}-unit-${safeRaw}`;
+    if (nodeType === 'phase') return `mpp-${projectScope}-phase-${safeRaw}`;
+    if (nodeType === 'task' || nodeType === 'sub_task') return `mpp-${projectScope}-task-${safeRaw}`;
+    return `mpp-${projectScope}-node-${safeRaw}`;
+  };
+  raw.forEach((r: any) => {
+    const rawId = String(r.id);
+    const nodeType = typeById.get(rawId) ?? 'task';
+    if (nodeType === 'project') return;
+    scopedIdByRawId.set(rawId, makeScopedId(rawId, nodeType));
+  });
+
   const phases: any[] = [];
   const units: any[] = [];
   const tasks: any[] = [];
@@ -549,7 +565,8 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     if (nodeType === 'project') {
       return;
     }
-    const id = String(r.id);
+    const rawId = String(r.id);
+    const id = scopedIdByRawId.get(rawId) || rawId;
     const baseTask = {
       id,
       name: r.name,
@@ -572,7 +589,8 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       totalSlack: r.totalSlack ?? 0,
       comments: r.comments || '',
       folder: String(r.folder ?? r.folderPath ?? '').trim(),
-      parent_id: r.parent_id != null ? String(r.parent_id) : null,
+      parent_id: r.parent_id != null ? (scopedIdByRawId.get(String(r.parent_id)) || String(r.parent_id)) : null,
+      raw_parent_id: r.parent_id != null ? String(r.parent_id) : null,
       is_summary: r.is_summary || false,
       projectId: projectIdOverride || '',
       createdAt: now,
@@ -688,7 +706,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     while (cursor && !seen.has(cursor)) {
       seen.add(cursor);
       const t = typeById.get(cursor);
-      if (t && targetTypes.includes(t)) return cursor;
+      if (t && targetTypes.includes(t)) return scopedIdByRawId.get(cursor) || cursor;
       const parent = rawById.get(cursor)?.parent_id;
       cursor = parent != null ? String(parent) : '';
     }
@@ -705,7 +723,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
 
   // 1:1 association pass using parent chain first, then folder path fallback.
   phases.forEach((phase: any) => {
-    const unitAncestorId = findAncestorByType(phase.parent_id ?? null, ['unit']);
+    const unitAncestorId = findAncestorByType(phase.raw_parent_id ?? phase.parent_id ?? null, ['unit']);
     if (unitAncestorId && unitById.has(unitAncestorId)) {
       phase.unitId = unitAncestorId;
       phase.unit_id = unitAncestorId;
@@ -761,9 +779,9 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   }
 
   tasks.forEach((task: any) => {
-    const phaseAncestorId = findAncestorByType(task.parent_id ?? null, ['phase']);
-    const unitAncestorId = findAncestorByType(task.parent_id ?? null, ['unit']);
-    const taskAncestorId = findAncestorByType(task.parent_id ?? null, ['task', 'sub_task']);
+    const phaseAncestorId = findAncestorByType(task.raw_parent_id ?? task.parent_id ?? null, ['phase']);
+    const unitAncestorId = findAncestorByType(task.raw_parent_id ?? task.parent_id ?? null, ['unit']);
+    const taskAncestorId = findAncestorByType(task.raw_parent_id ?? task.parent_id ?? null, ['task', 'sub_task']);
 
     if (phaseAncestorId && phaseById.has(phaseAncestorId)) {
       task.phaseId = phaseAncestorId;
@@ -803,21 +821,25 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
   });
 
   // Pass 3: Normalize predecessor links to task IDs present in this import.
-  const normalizeTaskId = (value: any) => String(value || '').trim().replace(/^wbs-(task|sub_task)-/, '');
-  const taskIdSet = new Set(tasks.map((t: any) => normalizeTaskId(t.id || t.taskId)));
+  const taskIdSet = new Set(tasks.map((t: any) => String(t.id || t.taskId || '').trim()).filter(Boolean));
+  const rawTaskIdToScoped = new Map<string, string>();
+  raw.forEach((r: any) => {
+    const rawId = String(r.id || '').trim();
+    const nodeType = typeById.get(rawId);
+    if (!rawId || (nodeType !== 'task' && nodeType !== 'sub_task')) return;
+    const scoped = scopedIdByRawId.get(rawId);
+    if (scoped) rawTaskIdToScoped.set(rawId, scoped);
+  });
   const taskIdByName = new Map<string, string>();
   tasks.forEach((t: any) => {
-    const id = normalizeTaskId(t.id || t.taskId);
+    const id = String(t.id || t.taskId || '').trim();
     const nameKey = String(t.name || t.taskName || '').trim().toLowerCase();
     if (id && nameKey && !taskIdByName.has(nameKey)) taskIdByName.set(nameKey, id);
   });
   const resolveTaskId = (candidateId: any, candidateName: any): string | null => {
-    const raw = normalizeTaskId(candidateId);
+    const raw = String(candidateId || '').trim();
     if (raw && taskIdSet.has(raw)) return raw;
-    const idWithoutPrefix = raw.replace(/^task-/, '');
-    if (idWithoutPrefix && taskIdSet.has(idWithoutPrefix)) return idWithoutPrefix;
-    const idWithPrefix = raw && !raw.startsWith('task-') ? `task-${raw}` : '';
-    if (idWithPrefix && taskIdSet.has(idWithPrefix)) return idWithPrefix;
+    if (raw && rawTaskIdToScoped.has(raw)) return rawTaskIdToScoped.get(raw)!;
     const nameKey = String(candidateName || '').trim().toLowerCase();
     if (nameKey && taskIdByName.has(nameKey)) return taskIdByName.get(nameKey)!;
     return null;
@@ -861,6 +883,14 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     const firstPred = normalizedPreds[0] as any;
     task.predecessorId = firstPred?.predecessorTaskId || null;
     task.predecessorRelationship = firstPred?.relationship || null;
+    delete task.raw_parent_id;
+  });
+
+  phases.forEach((phase: any) => {
+    delete phase.raw_parent_id;
+  });
+  units.forEach((unit: any) => {
+    delete unit.raw_parent_id;
   });
 
   result.phases = phases;

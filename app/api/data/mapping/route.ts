@@ -16,23 +16,6 @@ function normalizeText(input: string | null | undefined): string {
     .trim();
 }
 
-function scoreMatch(sourceRaw: string, candidateRaw: string): number {
-  const source = normalizeText(sourceRaw);
-  const candidate = normalizeText(candidateRaw);
-  if (!source || !candidate) return 0;
-  if (source === candidate) return 100;
-  if (source.includes(candidate) || candidate.includes(source)) return 60;
-
-  const sourceTokens = new Set(source.split(' ').filter(Boolean));
-  const candidateTokens = new Set(candidate.split(' ').filter(Boolean));
-  let overlap = 0;
-  for (const token of sourceTokens) {
-    if (candidateTokens.has(token)) overlap += 1;
-  }
-  const maxLen = Math.max(sourceTokens.size, candidateTokens.size, 1);
-  return Math.round((overlap / maxLen) * 50);
-}
-
 async function ensurePostgresMappingColumns(): Promise<void> {
   if (postgresMappingColumnsEnsured) return;
   await pgQuery(`
@@ -44,7 +27,11 @@ async function ensurePostgresMappingColumns(): Promise<void> {
     ADD COLUMN IF NOT EXISTS task TEXT
   `);
   await pgQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS wd_charge_code VARCHAR(255)`);
+  await pgQuery(`ALTER TABLE units ADD COLUMN IF NOT EXISTS workday_phase_id VARCHAR(50)`);
+  await pgQuery(`ALTER TABLE phases ADD COLUMN IF NOT EXISTS workday_phase_id VARCHAR(50)`);
   await pgQuery(`CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_phase_id ON hour_entries(workday_phase_id)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_units_workday_phase_id ON units(workday_phase_id)`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_phases_workday_phase_id ON phases(workday_phase_id)`);
   postgresMappingColumnsEnsured = true;
 }
 
@@ -102,6 +89,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, taskId, workdayPhaseId: workdayPhaseId || null });
     }
 
+    if (action === 'assignEntityToWorkdayPhase') {
+      const entityType = body.entityType as 'units' | 'phases' | 'tasks';
+      const entityId = body.entityId as string;
+      const workdayPhaseId = body.workdayPhaseId as string | null;
+      if (!entityType || !entityId || !['units', 'phases', 'tasks'].includes(entityType)) {
+        return NextResponse.json({ success: false, error: 'entityType (units|phases|tasks) and entityId required' }, { status: 400 });
+      }
+      if (isPostgresConfigured()) {
+        await pgQuery(`UPDATE ${entityType} SET workday_phase_id = $1, updated_at = NOW() WHERE id = $2`, [workdayPhaseId || null, entityId]);
+        return NextResponse.json({ success: true, entityType, entityId, workdayPhaseId: workdayPhaseId || null });
+      }
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      }
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { error } = await supabase.from(entityType).update({ workday_phase_id: workdayPhaseId || null }).eq('id', entityId);
+      if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, entityType, entityId, workdayPhaseId: workdayPhaseId || null });
+    }
+
     if (action === 'assignHourToWorkdayPhase') {
       const hourId = body.hourId as string;
       const workdayPhaseId = body.workdayPhaseId as string | null;
@@ -153,19 +163,9 @@ export async function POST(req: NextRequest) {
           const source = String(h.phases || parseHourDescription(String(h.description || '')).phases || '').trim();
           if (!source) continue;
 
-          let best: { id: string; score: number } | null = null;
-          for (const wp of workdayPhases) {
-            const s1 = scoreMatch(source, String(wp.name || ''));
-            const s2 = scoreMatch(source, String(wp.unit || ''));
-            const s3 = scoreMatch(source, `${wp.unit || ''} ${wp.name || ''}`);
-            const score = Math.max(s1, s2, s3);
-            if (!best || score > best.score) {
-              best = { id: String(wp.id), score };
-            }
-          }
-
-          if (best && best.score >= 35) {
-            updates.push({ hourId: String(h.id), workdayPhaseId: best.id });
+          const exact = workdayPhases.find((wp) => normalizeText(source) === normalizeText(String(wp.name || '')));
+          if (exact) {
+            updates.push({ hourId: String(h.id), workdayPhaseId: String(exact.id) });
             matched += 1;
           }
         }
@@ -210,19 +210,9 @@ export async function POST(req: NextRequest) {
         const source = String(h.phases || parseHourDescription(String(h.description || '')).phases || '').trim();
         if (!source) continue;
 
-        let best: { id: string; score: number } | null = null;
-        for (const wp of workdayPhases || []) {
-          const s1 = scoreMatch(source, String(wp.name || ''));
-          const s2 = scoreMatch(source, String(wp.unit || ''));
-          const s3 = scoreMatch(source, `${wp.unit || ''} ${wp.name || ''}`);
-          const score = Math.max(s1, s2, s3);
-          if (!best || score > best.score) {
-            best = { id: String(wp.id), score };
-          }
-        }
-
-        if (best && best.score >= 35) {
-          updates.push({ hourId: String(h.id), workdayPhaseId: best.id });
+        const exact = (workdayPhases || []).find((wp) => normalizeText(source) === normalizeText(String(wp.name || '')));
+        if (exact) {
+          updates.push({ hourId: String(h.id), workdayPhaseId: String(exact.id) });
           matched += 1;
         }
       }
