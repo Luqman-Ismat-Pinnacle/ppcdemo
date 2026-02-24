@@ -69,7 +69,7 @@ export default function MosGlideTable({
         kind: GridCellKind.Text,
         data: text,
         displayData: text,
-        allowOverlay: editable,
+        allowOverlay: true,
         readonly: !editable,
       };
     },
@@ -89,7 +89,10 @@ export default function MosGlideTable({
         verticalBorder
         overscrollX={120}
         theme={gridTheme}
-        onCellClicked={onRowClick ? (cell) => onRowClick(cell[1]) : undefined}
+        onCellClicked={onRowClick ? (cell) => {
+          if (editableColumns.includes(cell[0])) return;
+          onRowClick(cell[1]);
+        } : undefined}
         onCellEdited={onTextCellEdited ? (item, value: EditableGridCell) => {
           if (value.kind !== GridCellKind.Text) return;
           const [col, row] = item;

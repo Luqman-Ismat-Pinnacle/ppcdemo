@@ -247,48 +247,56 @@ export default function MosPage() {
   const taskBreakdownOption: EChartsOption = useMemo(() => {
     if (!taskBreakdownInput.length) return {};
 
-    const byDayByCode = new Map<string, Map<string, number>>();
-    const days = new Set<string>();
-    const codes = new Set<string>();
-
+    const grouped = new Map<string, number>();
     taskBreakdownInput.forEach((h) => {
       const day = toISODate(parseDate(h.date) || new Date());
       const code = String(h.chargeCode || h.charge_code || h.chargeType || h.charge_type || 'Other').trim() || 'Other';
-      days.add(day);
-      codes.add(code);
-      if (!byDayByCode.has(code)) byDayByCode.set(code, new Map());
-      const m = byDayByCode.get(code)!;
-      m.set(day, (m.get(day) || 0) + num(h.hours));
+      const k = `${day}|||${code}`;
+      grouped.set(k, (grouped.get(k) || 0) + num(h.hours));
     });
 
-    const sortedDays = Array.from(days).sort();
-    const sortedCodes = Array.from(codes).sort((a, b) => {
-      if (a === 'EX') return -1;
-      if (b === 'EX') return 1;
-      if (a === 'QC') return -1;
-      if (b === 'QC') return 1;
-      return a.localeCompare(b);
+    const segments = Array.from(grouped.entries())
+      .map(([key, hours]) => {
+        const [day, code] = key.split('|||');
+        return { day, code, hours };
+      })
+      .sort((a, b) => (a.day === b.day ? a.code.localeCompare(b.code) : a.day.localeCompare(b.day)));
+
+    if (!segments.length) return {};
+
+    const dateBreaks: Array<{ x: number; day: string }> = [];
+    let cumulative = 0;
+    let lastDay = '';
+    segments.forEach((s, idx) => {
+      if (idx > 0 && s.day !== lastDay) dateBreaks.push({ x: cumulative, day: s.day });
+      cumulative += s.hours;
+      lastDay = s.day;
     });
 
     return {
-      tooltip: TT,
+      tooltip: { ...TT, trigger: 'item' },
       legend: { top: 0, textStyle: { color: C.muted } },
-      grid: { left: 45, right: 20, top: 30, bottom: 60, containLabel: true },
+      grid: { left: 90, right: 20, top: 35, bottom: 20, containLabel: true },
       xAxis: {
-        type: 'category',
-        data: sortedDays,
-        axisLabel: { color: C.muted, rotate: 30 },
-        splitLine: { show: true, lineStyle: { type: 'dotted', color: 'rgba(255,255,255,0.18)' } },
+        type: 'value',
+        axisLabel: { color: C.muted },
+        splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.08)' } },
       },
-      yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
-      series: sortedCodes.map((code) => ({
+      yAxis: { type: 'category', data: ['Hours'], axisLabel: { color: C.text } },
+      series: segments.map((seg, i) => ({
         type: 'bar',
-        stack: 'hours',
-        name: code,
-        data: sortedDays.map((d) => byDayByCode.get(code)?.get(d) || 0),
+        stack: 'timeline',
+        name: seg.code,
+        data: [{ value: seg.hours, itemStyle: { opacity: selectedChargeCode && selectedChargeCode !== seg.code ? 0.35 : 1 } }],
+        markLine: i === 0 ? {
+          symbol: 'none',
+          lineStyle: { type: 'dotted', color: 'rgba(255,255,255,0.32)' },
+          label: { show: true, color: C.muted, formatter: (p: any) => String(p.data?.name || ''), fontSize: 10 },
+          data: dateBreaks.map((d) => ({ xAxis: d.x, name: d.day })),
+        } : undefined,
       })),
     };
-  }, [taskBreakdownInput]);
+  }, [taskBreakdownInput, selectedChargeCode]);
 
   const nonExQcOption: EChartsOption = useMemo(() => {
     const rows = hours.filter((h) => !isExcluded(h));
@@ -445,11 +453,18 @@ export default function MosPage() {
 
   const [lastCommitmentsDraft, setLastCommitmentsDraft] = useState('');
   const [thisCommitmentsDraft, setThisCommitmentsDraft] = useState('');
-  const [hoursCommentRows, setHoursCommentRows] = useState<Array<{ label: string; value: string; noteId: string }>>([
-    { label: 'Planned', value: '', noteId: '' },
-    { label: 'Actual', value: '', noteId: '' },
-    { label: 'Added', value: '', noteId: '' },
-  ]);
+  const periodBreakdownBaseRows = useMemo(() => {
+    const top = taskRows.slice(0, 12);
+    const out: Array<{ section: 'Planned' | 'Actual' | 'Reduced'; task: string; hours: number }> = [];
+    top.forEach((t) => {
+      out.push({ section: 'Planned', task: t.name, hours: Math.round(t.baseline) });
+      out.push({ section: 'Actual', task: t.name, hours: Math.round(t.actual) });
+      out.push({ section: 'Reduced', task: t.name, hours: Math.round(Math.max(0, t.baseline - t.actual)) });
+    });
+    return out;
+  }, [taskRows]);
+
+  const [hoursCommentRows, setHoursCommentRows] = useState<Array<{ value: string; noteId: string }>>([]);
 
   useEffect(() => {
     const getNote = (type: MoPeriodNoteType, start: string, end: string) =>
@@ -462,12 +477,11 @@ export default function MosPage() {
       .filter((n: any) => (n.noteType || n.note_type) === 'hours_comment' && (n.periodStart || n.period_start) === periods.currentStart && (n.periodEnd || n.period_end) === periods.currentEnd)
       .sort((a: any, b: any) => num(a.sortOrder || a.sort_order) - num(b.sortOrder || b.sort_order));
 
-    setHoursCommentRows([
-      { label: 'Planned', value: String(hrs[0]?.content || ''), noteId: String(hrs[0]?.id || '') },
-      { label: 'Actual', value: String(hrs[1]?.content || ''), noteId: String(hrs[1]?.id || '') },
-      { label: 'Added', value: String(hrs[2]?.content || ''), noteId: String(hrs[2]?.id || '') },
-    ]);
-  }, [scopedNotes, periods]);
+    setHoursCommentRows(periodBreakdownBaseRows.map((_, idx) => ({
+      value: String(hrs[idx]?.content || ''),
+      noteId: String(hrs[idx]?.id || ''),
+    })));
+  }, [scopedNotes, periods, periodBreakdownBaseRows]);
 
   const upsertPeriodNote = async (type: MoPeriodNoteType, content: string, periodStart: string, periodEnd: string, sortOrder = 0, explicitId?: string) => {
     const existing = scopedNotes.find((n: any) => {
@@ -634,15 +648,11 @@ export default function MosPage() {
             <div style={{ color: C.muted, fontSize: '0.76rem' }}>Reduced hours = `max(0, Plan - Actual)` for current filtered scope and period.</div>
             <ChartWrapper option={{ tooltip: TT, grid: { left: 80, right: 20, top: 12, bottom: 12, containLabel: true }, xAxis: { type: 'value', axisLabel: { color: C.muted } }, yAxis: { type: 'category', data: ['Plan', 'Actual', 'Reduced'], axisLabel: { color: C.text } }, series: [{ type: 'bar', data: [{ value: periodHours.plan, itemStyle: { color: '#3B82F6' } }, { value: periodHours.actual, itemStyle: { color: '#22C55E' } }, { value: periodHours.reduced, itemStyle: { color: '#F59E0B' } }] }] }} height={220} />
             <MosGlideTable
-              columns={['Metric', 'Hours', 'Comments']}
-              rows={[
-                ['Planned', Math.round(periodHours.plan), hoursCommentRows[0]?.value || ''],
-                ['Actual', Math.round(periodHours.actual), hoursCommentRows[1]?.value || ''],
-                ['Added', Math.round(periodHours.added), hoursCommentRows[2]?.value || ''],
-              ]}
-              editableColumns={[2]}
-              onTextCellEdited={(row, col, value) => { if (col === 2) void saveHoursComment(row, value); }}
-              height={210}
+              columns={['Section', 'Task', 'Hours', 'Comments']}
+              rows={periodBreakdownBaseRows.map((r, idx) => [r.section, r.task, r.hours, hoursCommentRows[idx]?.value || ''])}
+              editableColumns={[3]}
+              onTextCellEdited={(row, col, value) => { if (col === 3) void saveHoursComment(row, value); }}
+              height={320}
             />
           </section>
 
