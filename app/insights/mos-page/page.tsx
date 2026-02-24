@@ -171,11 +171,13 @@ export default function MosPage() {
   const taskRows = useMemo(() => {
     const rows = tasks
       .map((t) => {
-        const id = normalizeTaskId(t.id || t.taskId);
+        const sourceId = String(t.id || t.taskId || '');
+        const id = normalizeTaskId(sourceId);
         const baseline = num(t.baselineHours || t.baseline_hours || t.projectedHours || t.projected_hours);
         const actual = taskActualHours.get(id) ?? num(t.actualHours || t.actual_hours);
         const added = Math.max(0, actual - baseline);
         return {
+          sourceId,
           id,
           name: String(t.taskName || t.name || id),
           baseline,
@@ -299,38 +301,77 @@ export default function MosPage() {
   }, [taskBreakdownInput, selectedChargeCode]);
 
   const nonExQcOption: EChartsOption = useMemo(() => {
-    const rows = hours.filter((h) => !isExcluded(h));
+    const rows = hours.filter((h) => {
+      const type = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
+      return type !== 'EX' && type !== 'QC';
+    });
     if (!rows.length) return {};
 
-    const bucketSet = new Set<string>();
-    const codeSet = new Set<string>();
-    const matrix = new Map<string, Map<string, number>>();
+    const bucketMap = new Map<string, Map<string, Map<string, number>>>();
+    let total = 0;
 
     rows.forEach((h) => {
       const bucket = getBucket(h);
-      const code = String(h.chargeCode || h.charge_code || h.chargeType || h.charge_type || 'Other').trim() || 'Other';
-      bucketSet.add(bucket);
-      codeSet.add(code);
-      if (!matrix.has(code)) matrix.set(code, new Map());
-      const m = matrix.get(code)!;
-      m.set(bucket, (m.get(bucket) || 0) + num(h.hours));
+      const chargeType = String(h.chargeType || h.charge_type || 'Other').trim() || 'Other';
+      const chargeCode = String(h.chargeCode || h.charge_code || 'Uncoded').trim() || 'Uncoded';
+      const hourValue = num(h.hours);
+      total += hourValue;
+      if (!bucketMap.has(bucket)) bucketMap.set(bucket, new Map());
+      const typeMap = bucketMap.get(bucket)!;
+      if (!typeMap.has(chargeType)) typeMap.set(chargeType, new Map());
+      const codeMap = typeMap.get(chargeType)!;
+      codeMap.set(chargeCode, (codeMap.get(chargeCode) || 0) + hourValue);
     });
 
-    const buckets = Array.from(bucketSet).sort();
-    const codes = Array.from(codeSet).sort();
+    const sunburstData = Array.from(bucketMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([bucket, typeMap]) => {
+        const typeChildren = Array.from(typeMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([chargeType, codeMap]) => {
+            const codeChildren = Array.from(codeMap.entries())
+              .sort((a, b) => a[0].localeCompare(b[0]))
+              .map(([chargeCode, v]) => ({ name: chargeCode, value: Number(v.toFixed(2)) }));
+            return {
+              name: chargeType,
+              value: Number(codeChildren.reduce((s, c) => s + num(c.value), 0).toFixed(2)),
+              children: codeChildren,
+            };
+          });
+        return {
+          name: bucket,
+          value: Number(typeChildren.reduce((s, c) => s + num(c.value), 0).toFixed(2)),
+          children: typeChildren,
+        };
+      });
 
     return {
-      tooltip: TT,
-      legend: { top: 0, textStyle: { color: C.muted } },
-      grid: { left: 60, right: 20, top: 30, bottom: 50, containLabel: true },
-      xAxis: { type: 'category', data: buckets, axisLabel: { color: C.muted, rotate: 20 } },
-      yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
-      series: codes.map((code) => ({
-        type: 'bar',
-        stack: 'codes',
-        name: code,
-        data: buckets.map((b) => matrix.get(code)?.get(b) || 0),
-      })),
+      tooltip: {
+        ...TT,
+        trigger: 'item',
+        formatter: (p: any) => `${p.name}<br/>Hours: ${num(p.value).toFixed(2)}`,
+      },
+      series: [{
+        type: 'sunburst',
+        radius: [0, '95%'],
+        sort: null,
+        nodeClick: 'rootToNode',
+        itemStyle: { borderWidth: 1, borderColor: '#0f0f12' },
+        label: { color: '#ffffff', minAngle: 4 },
+        levels: [
+          {},
+          { r0: '0%', r: '28%', label: { rotate: 0 } },
+          { r0: '30%', r: '62%', label: { rotate: 'tangential' } },
+          { r0: '64%', r: '95%', label: { rotate: 'tangential', fontSize: 10 } },
+        ],
+        data: sunburstData,
+      }],
+      graphic: total <= 0 ? [{
+        type: 'text',
+        left: 'center',
+        top: 'middle',
+        style: { text: 'No Non-EX/QC hours in scope', fill: C.muted, fontSize: 13 },
+      }] : undefined,
     };
   }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units]);
 
@@ -539,11 +580,11 @@ export default function MosPage() {
 
   const saveTaskComment = async (row: number, value: string) => {
     const item = taskRows[row];
-    if (!item?.id) return;
+    if (!item?.sourceId) return;
     const res = await fetch('/api/data/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dataKey: 'tasks', operation: 'update', records: [{ id: item.id, comments: value }] }),
+      body: JSON.stringify({ dataKey: 'tasks', operation: 'update', records: [{ id: item.sourceId, comments: value }] }),
     });
     const result = await res.json();
     if (!result.success) return;
@@ -610,8 +651,8 @@ export default function MosPage() {
         <>
           {!hasAnyData && <EmptyState title="No dashboard data in scope" body="No records matched the current global hierarchy/time filters. Import/edit in Data Management and refresh." />}
 
-          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1.2fr 1fr' }}>
-            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem', display: 'grid', gap: '0.65rem' }}>
               <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>Milestones</h3>
               <ChartWrapper option={milestoneOption} height={280} onClick={(p) => p.name && setSelectedMilestoneBucket(String(p.name) as MilestoneBucket)} />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -631,12 +672,18 @@ export default function MosPage() {
               />
             </div>
 
-            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.5rem' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '1rem', display: 'grid', gap: '0.75rem' }}>
               <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>Commitments</h3>
-              <label style={{ color: C.muted, fontSize: '0.74rem' }}>Last period commitments</label>
-              <textarea value={lastCommitmentsDraft} onChange={(e) => setLastCommitmentsDraft(e.target.value)} rows={5} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
-              <label style={{ color: C.muted, fontSize: '0.74rem' }}>This period commitments</label>
-              <textarea value={thisCommitmentsDraft} onChange={(e) => setThisCommitmentsDraft(e.target.value)} rows={5} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+                <div style={{ display: 'grid', gap: '0.3rem' }}>
+                  <label style={{ color: C.muted, fontSize: '0.74rem' }}>Last period commitments</label>
+                  <textarea value={lastCommitmentsDraft} onChange={(e) => setLastCommitmentsDraft(e.target.value)} rows={6} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.55rem' }} />
+                </div>
+                <div style={{ display: 'grid', gap: '0.3rem' }}>
+                  <label style={{ color: C.muted, fontSize: '0.74rem' }}>This period commitments</label>
+                  <textarea value={thisCommitmentsDraft} onChange={(e) => setThisCommitmentsDraft(e.target.value)} rows={6} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.55rem' }} />
+                </div>
+              </div>
               <button onClick={saveCommitments} disabled={savingCommitments} style={{ justifySelf: 'start', background: C.teal, color: '#000', border: 'none', borderRadius: 7, padding: '0.3rem 0.55rem', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}>{savingCommitments ? 'Saving...' : 'Save Commitments'}</button>
             </div>
           </section>
@@ -656,7 +703,13 @@ export default function MosPage() {
             />
           </section>
 
-          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
+          <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
+            <h3 style={{ margin: '0 0 0.45rem', color: C.text, fontSize: '0.9rem' }}>Task Breakdown</h3>
+            <p style={{ margin: '0 0 0.5rem', color: C.muted, fontSize: '0.74rem' }}>{selectedTask ? `Selected task: ${selectedTask.taskName || selectedTask.name || selectedTaskId}` : 'Select a task from Task Hours Efficiency'}</p>
+            <ChartWrapper option={taskBreakdownOption} height={300} onClick={(p) => p.seriesName && setSelectedChargeCode(String(p.seriesName))} isEmpty={!taskBreakdownInput.length} />
+          </section>
+
+          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr' }}>
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Task Hours Efficiency</h3>
@@ -676,17 +729,12 @@ export default function MosPage() {
               />
             </div>
 
-            <div style={{ display: 'grid', gap: '0.8rem' }}>
-              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-                <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>Task Breakdown</h3>
-                <p style={{ margin: '0 0 0.4rem', color: C.muted, fontSize: '0.74rem' }}>{selectedTask ? `Selected task: ${selectedTask.taskName || selectedTask.name || selectedTaskId}` : 'Select a task from Task Hours Efficiency'}</p>
-                <ChartWrapper option={taskBreakdownOption} height={260} onClick={(p) => p.seriesName && setSelectedChargeCode(String(p.seriesName))} isEmpty={!taskBreakdownInput.length} />
-              </div>
-
-              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-                <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>Non-EX/QC Hours by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}</h3>
-                <ChartWrapper option={nonExQcOption} height={280} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => !isExcluded(h))} />
-              </div>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
+              <h3 style={{ margin: '0 0 0.45rem', color: C.text, fontSize: '0.9rem' }}>Non-EX/QC Hours Sunburst by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}</h3>
+              <ChartWrapper option={nonExQcOption} height={420} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => {
+                const type = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
+                return type !== 'EX' && type !== 'QC';
+              })} />
             </div>
           </section>
         </>

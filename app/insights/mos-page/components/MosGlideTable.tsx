@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import DataEditor, { EditableGridCell, GridCell, GridCellKind, GridColumn, Theme } from '@glideapps/glide-data-grid';
+import DataEditor, { EditableGridCell, GridCell, GridCellKind, GridColumn, Item, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 
 type CellValue = string | number | null | undefined;
@@ -38,6 +38,8 @@ const gridTheme: Partial<Theme> = {
   linkColor: '#10B981',
   cellHorizontalPadding: 10,
   cellVerticalPadding: 6,
+  headerFontStyle: '700 13px var(--font-montserrat, sans-serif)',
+  baseFontStyle: '600 13px var(--font-montserrat, sans-serif)',
 };
 
 export default function MosGlideTable({
@@ -50,6 +52,8 @@ export default function MosGlideTable({
   onTextCellEdited,
 }: MosGlideTableProps) {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [activeEditCell, setActiveEditCell] = useState<Item | null>(null);
+  const [savedCell, setSavedCell] = useState<Item | null>(null);
 
   const gridColumns = useMemo<GridColumn[]>(() => {
     return columns.map((name) => ({
@@ -76,6 +80,26 @@ export default function MosGlideTable({
     [rows, editableColumns]
   );
 
+  const drawCell = React.useCallback((args: any, drawContent: () => void) => {
+    const { ctx, rect, col, row } = args;
+    const isEditable = editableColumns.includes(col);
+    const isActiveEdit = isEditable && !!activeEditCell && activeEditCell[0] === col && activeEditCell[1] === row;
+    const isSaved = !!savedCell && savedCell[0] === col && savedCell[1] === row;
+
+    if (isSaved) {
+      ctx.fillStyle = 'rgba(16,185,129,0.26)';
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    } else if (isActiveEdit) {
+      ctx.fillStyle = 'rgba(59,130,246,0.18)';
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    } else if (isEditable) {
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    }
+
+    drawContent();
+  }, [editableColumns, activeEditCell, savedCell]);
+
   return (
     <div style={{ width: '100%', height, border: '1px solid #2f2f35', borderRadius: 10, overflow: 'hidden' }}>
       <DataEditor
@@ -84,11 +108,16 @@ export default function MosGlideTable({
         getCellContent={getCellContent}
         rowHeight={36}
         headerHeight={38}
+        drawCell={drawCell}
         smoothScrollX
         smoothScrollY
         verticalBorder
-        overscrollX={120}
+        overscrollX={0}
         theme={gridTheme}
+        onCellActivated={(cell) => {
+          if (editableColumns.includes(cell[0])) setActiveEditCell(cell);
+          else setActiveEditCell(null);
+        }}
         onCellClicked={onRowClick ? (cell) => {
           if (editableColumns.includes(cell[0])) return;
           onRowClick(cell[1]);
@@ -97,6 +126,8 @@ export default function MosGlideTable({
           if (value.kind !== GridCellKind.Text) return;
           const [col, row] = item;
           onTextCellEdited(row, col, value.data || '');
+          setSavedCell(item);
+          setTimeout(() => setSavedCell((prev) => (prev && prev[0] === item[0] && prev[1] === item[1] ? null : prev)), 800);
         } : undefined}
         onColumnResize={(column, newSize) => {
           const key = String(column.id || column.title || '');
