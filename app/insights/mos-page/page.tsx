@@ -137,6 +137,7 @@ export default function MosPage() {
   const sites = (filteredData.sites || []) as any[];
   const projects = (filteredData.projects || []) as any[];
   const units = (filteredData.units || []) as any[];
+  const employees = (filteredData.employees || []) as any[];
   const tasks = (filteredData.tasks || []) as any[];
   const milestones = ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]);
   const hours = (filteredData.hours || []) as any[];
@@ -168,6 +169,17 @@ export default function MosPage() {
     tasks.forEach((t) => m.set(normalizeTaskId(t.id || t.taskId), t));
     return m;
   }, [tasks]);
+  const employeeMetaById = useMemo(() => {
+    const m = new Map<string, { name: string; role: string }>();
+    employees.forEach((e: any) => {
+      const id = String(e.id || e.employeeId || e.employee_id || '');
+      if (!id) return;
+      const name = String(e.name || e.employeeName || id);
+      const role = String(e.role || e.title || e.jobTitle || e.job_title || e.position || '-');
+      m.set(id, { name, role });
+    });
+    return m;
+  }, [employees]);
 
   const taskActualHours = useMemo(() => {
     const m = new Map<string, number>();
@@ -262,12 +274,27 @@ export default function MosPage() {
 
     const grouped = new Map<string, number>();
     const dateGrouped = new Map<string, number>();
+    const segmentMeta = new Map<string, { employees: Set<string>; roles: Set<string>; entries: number }>();
     taskBreakdownInput.forEach((h) => {
       const chargeType = String(h.chargeType || h.charge_type || h.chargeCode || h.charge_code || 'Other').trim() || 'Other';
       const day = toISODate(parseDate(h.date) || new Date());
       const key = `${day}|||${chargeType}`;
       grouped.set(chargeType, (grouped.get(chargeType) || 0) + num(h.hours));
       dateGrouped.set(key, (dateGrouped.get(key) || 0) + num(h.hours));
+      const employeeId = String(h.employeeId || h.employee_id || '');
+      const meta = segmentMeta.get(key) || { employees: new Set<string>(), roles: new Set<string>(), entries: 0 };
+      if (employeeId && employeeMetaById.has(employeeId)) {
+        const emp = employeeMetaById.get(employeeId)!;
+        meta.employees.add(emp.name);
+        if (emp.role && emp.role !== '-') meta.roles.add(emp.role);
+      } else {
+        const fallbackName = String(h.employeeName || h.employee || '-');
+        const fallbackRole = String(h.role || h.employeeRole || h.employee_role || '-');
+        if (fallbackName && fallbackName !== '-') meta.employees.add(fallbackName);
+        if (fallbackRole && fallbackRole !== '-') meta.roles.add(fallbackRole);
+      }
+      meta.entries += 1;
+      segmentMeta.set(key, meta);
     });
 
     const chargeTypeTotals = Array.from(grouped.entries())
@@ -299,13 +326,24 @@ export default function MosPage() {
 
     const actualSeries = segments.map((seg, idx) => {
       const color = colorByChargeType.get(seg.code) || actualPalette[idx % actualPalette.length];
+      const metaKey = `${seg.date}|||${seg.code}`;
+      const meta = segmentMeta.get(metaKey);
       return {
         type: 'bar',
         stack: 'actual',
         name: seg.code,
         color,
         itemStyle: { color },
-        data: [0, seg.hours],
+        data: [0, {
+          value: seg.hours,
+          meta: {
+            date: seg.date,
+            chargeType: seg.code,
+            employees: meta ? Array.from(meta.employees).slice(0, 8) : [],
+            roles: meta ? Array.from(meta.roles).slice(0, 6) : [],
+            entryCount: meta?.entries || 0,
+          },
+        }],
         markLine: idx === 0 ? {
           symbol: 'none',
           lineStyle: { type: 'dotted', color: 'rgba(255,255,255,0.35)' },
@@ -316,7 +354,28 @@ export default function MosPage() {
     });
 
     return {
-      tooltip: { ...TT, trigger: 'item' },
+      tooltip: {
+        ...TT,
+        trigger: 'item',
+        formatter: (p: any) => {
+          if (p.seriesName === 'Baseline') {
+            return `<div><div style="font-weight:700;margin-bottom:4px;">Baseline</div><div>Hours: ${num(p.value).toFixed(2)}</div></div>`;
+          }
+          const m = p?.data?.meta || {};
+          const employees = Array.isArray(m.employees) && m.employees.length ? m.employees.join(', ') : '-';
+          const roles = Array.isArray(m.roles) && m.roles.length ? m.roles.join(', ') : '-';
+          return [
+            '<div>',
+            `<div style="font-weight:700;margin-bottom:4px;">${m.chargeType || p.seriesName || 'Actual'}</div>`,
+            `<div>Date: ${m.date || '-'}</div>`,
+            `<div>Hours: ${num(p.value).toFixed(2)}</div>`,
+            `<div>Entries: ${num(m.entryCount)}</div>`,
+            `<div>Employees: ${employees}</div>`,
+            `<div>Roles: ${roles}</div>`,
+            '</div>',
+          ].join('');
+        },
+      },
       legend: {
         top: 0,
         textStyle: { color: C.muted },
@@ -347,7 +406,7 @@ export default function MosPage() {
         style: { text: `Actual Total: ${actualTotal.toFixed(1)}h`, fill: C.muted, fontSize: 11 },
       }],
     };
-  }, [taskBreakdownInput, selectedTaskId, taskRows]);
+  }, [taskBreakdownInput, selectedTaskId, taskRows, employeeMetaById]);
 
   const nonExQcOption: EChartsOption = useMemo(() => {
     const rows = hours.filter((h) => {
@@ -372,8 +431,8 @@ export default function MosPage() {
       codeMap.set(chargeCode, (codeMap.get(chargeCode) || 0) + hourValue);
     });
 
-    const bucketColors = ['#2ED3C6', '#40E0D0', '#0EA5E9', '#3B82F6', '#14B8A6', '#22C55E', '#10B981', '#06B6D4', '#0284C7'];
-    const typeColors = ['#14B8A6', '#22C55E', '#40E0D0', '#38BDF8', '#2ED3C6', '#0EA5E9', '#34D399'];
+    const bucketColors = ['#22C55E', '#F59E0B', '#EF4444', '#84CC16', '#FACC15', '#DC2626', '#16A34A', '#EAB308', '#B91C1C'];
+    const typeColors = ['#16A34A', '#65A30D', '#FACC15', '#EAB308', '#F59E0B', '#DC2626', '#EF4444'];
     const sunburstData = Array.from(bucketMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([bucket, typeMap], bucketIdx) => {
@@ -403,7 +462,13 @@ export default function MosPage() {
       tooltip: {
         ...TT,
         trigger: 'item',
-        formatter: (p: any) => `${p.name}<br/>Hours: ${num(p.value).toFixed(2)}`,
+        formatter: (p: any) => [
+          '<div>',
+          `<div style="font-weight:700;margin-bottom:4px;">${p.name}</div>`,
+          `<div>Hours: ${num(p.value).toFixed(2)}</div>`,
+          p?.treePathInfo?.length ? `<div>Level: ${String(p.treePathInfo[p.treePathInfo.length - 1]?.name || '-')}</div>` : '',
+          '</div>',
+        ].join(''),
       },
       series: [{
         type: 'sunburst',
@@ -432,7 +497,7 @@ export default function MosPage() {
             r0: '63%',
             r: `${Math.min(98, outer)}%`,
             itemStyle: { borderWidth: 1 },
-            label: { rotate: 'tangential', fontSize: 10 },
+            label: { show: false },
           },
         ],
         data: sunburstData,
