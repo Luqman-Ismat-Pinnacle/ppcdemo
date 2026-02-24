@@ -98,4 +98,41 @@ async function runFullSync(hoursDaysBackOverride) {
   });
 }
 
-module.exports = { runFullSync };
+/**
+ * Hours-only sync for a single date range (e.g. one day). No employees/projects/customerContracts/workdayPhases.
+ * Use for backfill: call once per day with startDate/endDate to avoid timeouts.
+ */
+async function runHoursOnlySync(startDateStr, endDateStr) {
+  const start = new Date(startDateStr + 'T12:00:00Z');
+  const end = new Date(endDateStr + 'T12:00:00Z');
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    throw new Error('Invalid startDate/endDate; use YYYY-MM-DD');
+  }
+  const summary = {
+    hours: { chunksOk: 0, chunksFail: 0, totalHours: 0, totalFetched: 0, startDate: startDateStr, endDate: endDateStr, lastError: null },
+    matching: null,
+  };
+
+  return await withClient(async (client) => {
+    try {
+      const result = await syncHours(client, start, end);
+      summary.hours.chunksOk = 1;
+      summary.hours.totalFetched = result.fetched || 0;
+      summary.hours.totalHours = result.hours || 0;
+      console.log(`[WorkdaySync] Hours-only ${startDateStr} to ${endDateStr}: fetched=${result.fetched} upserted=${result.hours}`);
+    } catch (e) {
+      summary.hours.chunksFail = 1;
+      summary.hours.lastError = e.message || String(e);
+      console.error('[WorkdaySync] Hours-only failed:', e.message);
+      throw e;
+    }
+    try {
+      summary.matching = await runMatchingAndAggregation(client);
+    } catch (e) {
+      console.error('[WorkdaySync] Matching failed:', e.message);
+    }
+    return summary;
+  });
+}
+
+module.exports = { runFullSync, runHoursOnlySync };

@@ -42,6 +42,12 @@ yarn-error.log*
 # one-off export (do not commit)
 /feedback-export.json
 
+# script cache (employee reset FK definitions)
+scripts/.employee-fk-definitions.json
+
+# Workday sample pull (for debugging field names)
+scripts/workday-employees-sample.json
+
 # vercel
 .vercel
 

@@ -31,6 +31,20 @@ function mapRecord(r, i) {
   const role = r.Job_Profile || r.job_profile || r.JobProfile || r.Role || r.role || r.Roles || r.roles || null;
   const department = r.Cost_Center || r.cost_center || r.CostCenter || r.Department || r.department || r.Org_Unit || null;
 
+  const seniorManager = r.Sr_Project_Manager || r.sr_project_manager || r.srProjectManager || null;
+  const timeInJobProfile = r.Time_in_Job_Profile != null ? String(r.Time_in_Job_Profile) : (r.time_in_job_profile != null ? String(r.time_in_job_profile) : null);
+  const employeeCustomer = r.customerOnEmpProfile || r.Customer_On_Emp_Profile || r.customer_on_emp_profile || null;
+  const employeeSite = r.siteOnEmpProfile || r.Site_On_Emp_Profile || r.site_on_emp_profile || null;
+  let employeeProjects = null;
+  const rawProjects = r.projectNumberOnEmpProfile ?? r.Project_Number_On_Emp_Profile ?? r.project_number_on_emp_profile;
+  if (rawProjects != null) {
+    if (Array.isArray(rawProjects)) {
+      employeeProjects = rawProjects.map((p) => String(p)).filter(Boolean).join(', ');
+    } else {
+      employeeProjects = String(rawProjects).trim() || null;
+    }
+  }
+
   const activeStatus = r.Active_Status || r.active_status || r.ActiveStatus || r.Status;
   const terminationDate = r.termination_date || r.Termination_Date || r.TerminationDate;
   const isActive =
@@ -49,13 +63,18 @@ function mapRecord(r, i) {
     employee_type: employeeType ? String(employeeType) : null,
     role: role ? String(role) : null,
     department: department ? String(department) : null,
+    senior_manager: seniorManager ? String(seniorManager) : null,
+    time_in_job_profile: timeInJobProfile,
+    employee_customer: employeeCustomer ? String(employeeCustomer) : null,
+    employee_site: employeeSite ? String(employeeSite) : null,
+    employee_projects: employeeProjects,
     is_active: !!isActive,
   };
 }
 
 async function upsertEmployees(client, rows) {
   if (rows.length === 0) return 0;
-  const cols = ['id', 'employee_id', 'name', 'email', 'job_title', 'management_level', 'manager', 'employee_type', 'role', 'department', 'is_active'];
+  const cols = ['id', 'employee_id', 'name', 'email', 'job_title', 'management_level', 'manager', 'employee_type', 'role', 'department', 'senior_manager', 'time_in_job_profile', 'employee_customer', 'employee_site', 'employee_projects', 'is_active'];
   const setClause = cols.filter(c => c !== 'id').map(c => `${c} = EXCLUDED.${c}`).join(', ');
   const batchSize = config.sync.batchSize;
   let total = 0;

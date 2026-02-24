@@ -5,7 +5,7 @@
  */
 
 const config = require('./config');
-const { runFullSync } = require('./run-sync');
+const { runFullSync, runHoursOnlySync } = require('./run-sync');
 const { withClient } = require('./shared/db');
 const { getSchedule, shouldRunNow, markRun } = require('./schedule-check');
 const { syncCustomerContracts } = require('./sync/customer-contracts');
@@ -49,6 +49,25 @@ async function httpTrigger(context, req) {
       const result = await withClient((client) => syncCustomerContracts(client));
       res.body = { success: true, customerContracts: result };
       context.log('WorkdaySync HTTP: customer contracts done', JSON.stringify(result));
+      context.res = res;
+      return;
+    }
+    const startDate = req.body && typeof req.body.startDate === 'string' ? req.body.startDate : null;
+    const endDate = req.body && typeof req.body.endDate === 'string' ? req.body.endDate : null;
+    if (syncOnly === 'hours' && startDate && endDate) {
+      context.log('WorkdaySync HTTP: hours only', startDate, 'to', endDate);
+      const summary = await runHoursOnlySync(startDate, endDate);
+      res.body = {
+        success: (summary.hours.chunksFail || 0) === 0,
+        summary,
+        results: {
+          hours: {
+            success: summary.hours.chunksFail === 0,
+            summary: summary.hours,
+          },
+          matching: summary.matching != null ? { success: true, summary: summary.matching } : null,
+        },
+      };
       context.res = res;
       return;
     }

@@ -119,13 +119,6 @@ serve(async (req) => {
       );
     }
 
-    // Log sample record structure - show ALL keys for debugging
-    if (records.length > 0) {
-      const allKeys = Object.keys(records[0]);
-      console.log('[workday-employees] Sample record ALL keys (' + allKeys.length + '):', allKeys);
-      console.log('[workday-employees] Sample record VALUES:', JSON.stringify(records[0]).substring(0, 1000));
-    }
-
     // Map Workday fields to database schema
     // IMPORTANT: Workday API field names vary - check logs above to see actual field names
     const cleanedRecords: any[] = [];
@@ -204,6 +197,25 @@ serve(async (req) => {
                            r.Department || r.department || r.Org_Unit || null;
         if (department) fieldStats.hasDepartment++;
 
+        // Senior Manager (Workday: Sr_Project_Manager)
+        const seniorManager = r.Sr_Project_Manager || r.sr_project_manager || r.srProjectManager || null;
+        // Time in Job Profile (Workday: Time_in_Job_Profile)
+        const timeInJobProfile = r.Time_in_Job_Profile != null ? String(r.Time_in_Job_Profile) : (r.time_in_job_profile != null ? String(r.time_in_job_profile) : null);
+        // Employee's Customer (Workday: customerOnEmpProfile)
+        const employeeCustomer = r.customerOnEmpProfile || r.Customer_On_Emp_Profile || r.customer_on_emp_profile || null;
+        // Employee's Site (Workday: siteOnEmpProfile)
+        const employeeSite = r.siteOnEmpProfile || r.Site_On_Emp_Profile || r.site_on_emp_profile || null;
+        // Employee's Project(s) - multiple values (Workday: projectNumberOnEmpProfile)
+        let employeeProjects: string | null = null;
+        const rawProjects = r.projectNumberOnEmpProfile ?? r.Project_Number_On_Emp_Profile ?? r.project_number_on_emp_profile;
+        if (rawProjects != null) {
+          if (Array.isArray(rawProjects)) {
+            employeeProjects = rawProjects.map((p: any) => String(p)).filter(Boolean).join(', ');
+          } else {
+            employeeProjects = String(rawProjects).trim() || null;
+          }
+        }
+
         // Determine active status
         const activeStatus = r.Active_Status || r.active_status || r.ActiveStatus || r.Status;
         const terminationDate = r.termination_date || r.Termination_Date || r.TerminationDate;
@@ -227,6 +239,11 @@ serve(async (req) => {
           employee_type: employeeType,
           role: role,
           department: department,
+          senior_manager: seniorManager,
+          time_in_job_profile: timeInJobProfile,
+          employee_customer: employeeCustomer,
+          employee_site: employeeSite,
+          employee_projects: employeeProjects,
           is_active: isActive,
         });
       } catch (mapErr) {

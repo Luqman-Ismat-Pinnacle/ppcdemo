@@ -29,6 +29,19 @@ const generateSlug = (text: string): string => {
     return text.replace(/[^A-Za-z0-9]/g, '').substring(0, 20);
 };
 
+// Helper: YYYY-MM-DD for Postgres DATE (match Azure)
+const toDateOnly = (val: any): string | null => {
+    if (val == null) return null;
+    if (typeof val === 'string') {
+        const part = val.split('T')[0].split(' ')[0].trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(part)) return part;
+        const d = new Date(val);
+        if (!Number.isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    }
+    if (val instanceof Date && !Number.isNaN(val.getTime())) return val.toISOString().split('T')[0];
+    return null;
+};
+
 serve(async (req) => {
     console.log('[workday-hours] === Function Started ===');
 
@@ -195,9 +208,10 @@ serve(async (req) => {
                 finalTaskId = tasksToUpsert.get(taskKey).id;
             }
 
-            // D. Prepare Hour Entry with Cost Data
+            // D. Prepare Hour Entry with Cost Data (date as YYYY-MM-DD to match Azure)
             const hoursVal = parseFloat(r.Hours || '0');
-            const dateVal = r.Transaction_Date;
+            const dateOnly = toDateOnly(r.Transaction_Date ?? r.transaction_date ?? r.Date ?? r.date);
+            if (!dateOnly) continue;
             const description = safeString(r.Time_Type) || safeString(r.Billable_Transaction);
             
             // Cost fields from Project Labor Transactions
@@ -217,7 +231,7 @@ serve(async (req) => {
                     entry_id: workdayId,
                     employee_id: employeeId,
                     project_id: projectId,
-                    date: dateVal,
+                    date: dateOnly,
                     hours: hoursVal,
                     description: description.substring(0, 500), // Truncate if too long
                     // Workday phase/task names for matching to MPP tasks
@@ -256,33 +270,10 @@ serve(async (req) => {
         };
 
         // 6. Execute Upserts (Order matters for FKs)
-        // First, ensure the cost columns exist (run migration if needed)
-        try {
-            console.log('[workday-hours] Ensuring columns exist...');
-            await supabase.rpc('exec_sql', { 
-                sql: `ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS task_id VARCHAR(50);
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_rate NUMERIC(10, 2); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS billable_amount NUMERIC(10, 2); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS standard_cost_rate NUMERIC(10, 2); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS reported_standard_cost_amt NUMERIC(10, 2);
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_cost NUMERIC(10, 2); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS actual_revenue NUMERIC(10, 2); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS customer_billing_status VARCHAR(50); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(50); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS invoice_status VARCHAR(50); 
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS charge_type VARCHAR(10);
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS workday_phase VARCHAR(255);
-                      ALTER TABLE hour_entries ADD COLUMN IF NOT EXISTS workday_task VARCHAR(255);`
-            });
-        } catch (migrationError: any) {
-            console.log('[workday-hours] Migration note:', migrationError.message);
-            // Continue even if migration fails - columns might already exist
-        }
-
-        // NOTE: Employees are synced by workday-employees function, not here
-        // We used to upsert skeleton employees here but that was overwriting full employee data
-        // await upsertBatch('employees', Array.from(employeesToUpsert.values()));
-        
+        // NOTE: Employees/projects must exist (run workday-employees + workday-projects first). We only upsert phases, tasks, hour_entries.
+        // Upsert phases and tasks first (match Azure order), then hour_entries
+        await upsertBatch('phases', Array.from(phasesToUpsert.values()));
+        await upsertBatch('tasks', Array.from(tasksToUpsert.values()));
         await upsertBatch('hour_entries', Array.from(hoursToUpsert.values()));
 
         // 7. Finish
