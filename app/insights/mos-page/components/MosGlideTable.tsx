@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import DataEditor, { GridCell, GridCellKind, GridColumn, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 
@@ -11,6 +11,7 @@ interface MosGlideTableProps {
   rows: CellValue[][];
   height?: number;
   onRowClick?: (row: number) => void;
+  minColumnWidth?: number;
 }
 
 const gridTheme: Partial<Theme> = {
@@ -19,6 +20,8 @@ const gridTheme: Partial<Theme> = {
   textDark: '#f4f4f5',
   textMedium: '#d4d4d8',
   textLight: '#a1a1aa',
+  textHeader: '#ffffff',
+  textGroupHeader: '#ffffff',
   bgIconHeader: '#10B981',
   bgCell: '#111113',
   bgCellMedium: '#16161a',
@@ -35,14 +38,17 @@ const gridTheme: Partial<Theme> = {
   cellVerticalPadding: 6,
 };
 
-export default function MosGlideTable({ columns, rows, height = 320, onRowClick }: MosGlideTableProps) {
+export default function MosGlideTable({ columns, rows, height = 320, onRowClick, minColumnWidth = 140 }: MosGlideTableProps) {
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
   const gridColumns = useMemo<GridColumn[]>(() => {
     return columns.map((name) => ({
       id: name,
       title: name,
-      width: Math.max(120, Math.min(420, name.length * 12 + 90)),
+      width: columnWidths[name] || Math.max(minColumnWidth, Math.min(520, name.length * 12 + 100)),
+      grow: 1,
     }));
-  }, [columns]);
+  }, [columns, columnWidths, minColumnWidth]);
 
   const getCellContent = React.useCallback(
     ([col, row]: readonly [number, number]): GridCell => {
@@ -69,8 +75,14 @@ export default function MosGlideTable({ columns, rows, height = 320, onRowClick 
         smoothScrollX
         smoothScrollY
         verticalBorder
+        overscrollX={120}
         theme={gridTheme}
         onCellClicked={onRowClick ? (cell) => onRowClick(cell[1]) : undefined}
+        onColumnResize={(column, newSize) => {
+          const key = String(column.id || column.title || '');
+          if (!key) return;
+          setColumnWidths((prev) => ({ ...prev, [key]: Math.max(minColumnWidth, Math.round(newSize)) }));
+        }}
       />
     </div>
   );
