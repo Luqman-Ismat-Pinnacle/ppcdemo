@@ -14,6 +14,43 @@ function safeString(val: unknown): string {
   return (val != null ? String(val) : '').trim();
 }
 
+const TRAILING_DATE_PATTERNS: RegExp[] = [
+  /\s*\d{4}-\d{1,2}-\d{1,2}\s*$/i,
+  /\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i,
+  /\s*\d{1,2}-\d{1,2}-\d{2,4}\s*$/i,
+  /\s*\d{4}\/\d{1,2}\/\d{1,2}\s*$/i,
+  /\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{2,4}\s*$/i,
+  /\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{2,4}\s*$/i,
+  /\s*\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{2,4}\s*$/i,
+];
+
+function stripDatesFromEnd(input: string): string {
+  let out = (input || '').trim();
+  if (!out) return '';
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of TRAILING_DATE_PATTERNS) {
+      const next = out.replace(pattern, '').trimEnd();
+      if (next !== out) {
+        out = next;
+        changed = true;
+      }
+    }
+  }
+  return out.trim();
+}
+
+function parseHourDescription(description: string): { chargeCode: string; phases: string; task: string } {
+  const normalized = stripDatesFromEnd(description);
+  const parts = normalized.split('>').map((p) => p.trim()).filter(Boolean);
+  return {
+    chargeCode: stripDatesFromEnd(parts[0] || normalized),
+    phases: parts.length >= 2 ? (parts[1] || '') : '',
+    task: stripDatesFromEnd(parts.length >= 3 ? parts.slice(2).join(' > ') : ''),
+  };
+}
+
 function cleanProjectId(raw: string): string {
   if (!raw) return '';
   return String(raw).replace(/\s*\(Inactive\)\s*$/i, '').trim().substring(0, 50);
@@ -436,6 +473,7 @@ async function syncHoursChunk(
       continue;
     }
     const description = (safeString(r.Time_Type ?? r.Billable_Transaction ?? r.time_type) || safeString(r.Billable_Transaction ?? r.billable_transaction)).substring(0, 500);
+    const parsed = parseHourDescription(description);
     const billableRate = parseFloat(String(r.Billable_Rate ?? r.billable_rate ?? '0')) || 0;
     const billableAmount = parseFloat(String(r.Billable_Amount ?? r.billable_amount ?? '0')) || 0;
     const standardCostRate = parseFloat(String(r.Standard_Cost_Rate ?? r.standard_cost_rate ?? '0')) || 0;
@@ -453,6 +491,11 @@ async function syncHoursChunk(
         date: dateOnly,
         hours: hoursVal,
         description,
+        charge_code: parsed.chargeCode || null,
+        charge_code_v2: parsed.chargeCode || null,
+        phases: parsed.phases || null,
+        task: parsed.task || null,
+        workday_phase_id: null,
         workday_phase: rawPhaseName,
         workday_task: rawTaskName,
         billable_rate: billableRate,

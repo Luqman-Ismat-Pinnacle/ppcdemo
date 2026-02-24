@@ -11,6 +11,40 @@ type PgClient = InstanceType<typeof Client>;
 function safeString(val: unknown): string {
   return (val != null ? String(val) : '').trim();
 }
+const TRAILING_DATE_PATTERNS: RegExp[] = [
+  /\s*\d{4}-\d{1,2}-\d{1,2}\s*$/i,
+  /\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*$/i,
+  /\s*\d{1,2}-\d{1,2}-\d{2,4}\s*$/i,
+  /\s*\d{4}\/\d{1,2}\/\d{1,2}\s*$/i,
+  /\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{2,4}\s*$/i,
+  /\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{2,4}\s*$/i,
+  /\s*\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{2,4}\s*$/i,
+];
+function stripDatesFromEnd(input: string): string {
+  let out = (input || '').trim();
+  if (!out) return '';
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of TRAILING_DATE_PATTERNS) {
+      const next = out.replace(pattern, '').trimEnd();
+      if (next !== out) {
+        out = next;
+        changed = true;
+      }
+    }
+  }
+  return out.trim();
+}
+function parseHourDescription(description: string): { chargeCode: string; phases: string; task: string } {
+  const normalized = stripDatesFromEnd(description);
+  const parts = normalized.split('>').map((p) => p.trim()).filter(Boolean);
+  return {
+    chargeCode: stripDatesFromEnd(parts[0] || normalized),
+    phases: parts.length >= 2 ? (parts[1] || '') : '',
+    task: stripDatesFromEnd(parts.length >= 3 ? parts.slice(2).join(' > ') : ''),
+  };
+}
 function cleanProjectId(raw: string): string {
   if (!raw) return '';
   return String(raw).replace(/\s*\(Inactive\)\s*$/i, '').trim().substring(0, 50);
@@ -458,6 +492,7 @@ async function syncHoursChunkAzure(
     const dateOnly = toDateOnly(r.Transaction_Date ?? r.transaction_date ?? r.Date ?? r.date);
     if (!dateOnly) continue;
     const description = (safeString(r.Time_Type ?? r.Billable_Transaction) || safeString(r.Billable_Transaction)).substring(0, 500);
+    const parsed = parseHourDescription(description);
     const billableRate = parseFloat(String(r.Billable_Rate ?? '0')) || 0;
     const billableAmount = parseFloat(String(r.Billable_Amount ?? '0')) || 0;
     const standardCostRate = parseFloat(String(r.Standard_Cost_Rate ?? '0')) || 0;
@@ -475,6 +510,11 @@ async function syncHoursChunkAzure(
         date: dateOnly,
         hours: hoursVal,
         description,
+        charge_code: parsed.chargeCode || null,
+        charge_code_v2: parsed.chargeCode || null,
+        phases: parsed.phases || null,
+        task: parsed.task || null,
+        workday_phase_id: null,
         workday_phase: rawPhaseName,
         workday_task: rawTaskName,
         billable_rate: billableRate,
@@ -501,6 +541,7 @@ async function syncHoursChunkAzure(
   const taskCols = ['id', 'task_id', 'project_id', 'phase_id', 'name'];
   const hourCols = [
     'id', 'entry_id', 'employee_id', 'project_id', 'date', 'hours', 'description',
+    'charge_code', 'charge_code_v2', 'phases', 'task', 'workday_phase_id',
     'workday_phase', 'workday_task', 'billable_rate', 'billable_amount', 'standard_cost_rate',
     'reported_standard_cost_amt', 'actual_cost', 'actual_revenue',
     'customer_billing_status', 'invoice_number', 'invoice_status', 'charge_type',

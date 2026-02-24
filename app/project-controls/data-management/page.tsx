@@ -62,6 +62,7 @@ import { useUser } from '@/lib/user-context';
 import DatePicker from '@/components/ui/DatePicker';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
+import { parseHourDescription } from '@/lib/hours-description';
 
 // ============================================================================
 // TYPES
@@ -616,32 +617,19 @@ export default function DataManagementPage() {
     };
   }, [openFilterDropdown]);
 
-  // Strip date patterns from end of string (e.g. "Charge Code > Path 2024-01-15" -> "Charge Code > Path")
-  const stripDatesFromEnd = useCallback((s: string): string => {
-    if (!s || typeof s !== 'string') return s || '';
-    let trimmed = s.trimEnd();
-    // Match common date patterns at end: 2024-01-15, 01/15/2024, Jan 15 2024, 15-Jan-2024, etc.
-    const datePatterns = [
-      /\s*\d{4}-\d{2}-\d{2}\s*$/,           // 2024-01-15
-      /\s*\d{2}\/\d{2}\/\d{4}\s*$/,         // 01/15/2024
-      /\s*\d{2}-\d{2}-\d{4}\s*$/,           // 01-15-2024
-      /\s*\d{4}\/\d{2}\/\d{2}\s*$/,         // 2024/01/15
-      /\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*$/i,
-      /\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\s*$/i,
-      /\s*\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4}\s*$/i,
-    ];
-    for (const p of datePatterns) {
-      trimmed = trimmed.replace(p, '');
-    }
-    return trimmed.trimEnd();
-  }, []);
-
   // Helper: get cell value with snake_case fallback (for DB that returns snake_case)
   const getCellValue = useCallback((row: any, fieldKey: string): unknown => {
-    // Charge Code: show cleaned description (without trailing dates) for hours table
+    const parsedHours = parseHourDescription(String(row.description ?? ''));
+    // Charge Code: derive from description when available
     if (fieldKey === 'chargeCode') {
-      const source = String(row.description ?? row[fieldKey] ?? row.charge_code ?? '');
-      return source ? stripDatesFromEnd(source) : '';
+      return row[fieldKey] ?? row.charge_code ?? parsedHours.chargeCode ?? '';
+    }
+    // Derived hour-entry phases/task from description
+    if (fieldKey === 'phases') {
+      return row[fieldKey] ?? row.phases ?? parsedHours.phases ?? '';
+    }
+    if (fieldKey === 'task') {
+      return row[fieldKey] ?? row.task ?? parsedHours.task ?? '';
     }
     // Milestones: support both schema "name" and legacy "milestoneName"
     if (fieldKey === 'name' && (row.milestoneName !== undefined || row.milestone_name !== undefined)) {
@@ -652,7 +640,7 @@ export default function DataManagementPage() {
     if (camel !== undefined && camel !== null && camel !== '') return camel;
     const snake = fieldKey.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
     return row[snake];
-  }, [stripDatesFromEnd]);
+  }, []);
 
   // Get unique values for a column (for filter dropdown). For FK types, uses display names for better UX.
   const getUniqueValues = useCallback((fieldKey: string, data: any[], field?: FieldConfig): string[] => {
@@ -1254,6 +1242,7 @@ export default function DataManagementPage() {
         { key: 'predecessorRelationship', header: 'Pred Rel', type: 'select', editable: true, selectOptions: ['FS', 'SS', 'FF', 'SF'] },
         // Notes
         { key: 'comments', header: 'Comments', type: 'text', editable: true },
+        { key: 'wdChargeCode', header: 'WD Charge Code', type: 'text', editable: true, tooltip: 'Reserved for future Workday charge-code mapping. Keep blank for now.' },
       ],
       defaultNewRow: () => ({
         id: '', // Database will auto-generate
@@ -1328,6 +1317,7 @@ export default function DataManagementPage() {
         predecessorRelationship: null,
         // Notes
         comments: '',
+        wdChargeCode: '',
         notes: '',
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
@@ -1439,7 +1429,10 @@ export default function DataManagementPage() {
         { key: 'phaseId', header: 'Phase', type: 'phase', editable: true },
         { key: 'taskId', header: 'Task', type: 'task', editable: true },
         { key: 'userStoryId', header: 'User Story', type: 'text', editable: true },
-        { key: 'chargeCode', header: 'Charge Code', type: 'text', editable: true, tooltip: 'Workday charge code path (delimiter: ">"). Used for matching hours to tasks.' },
+        { key: 'chargeCode', header: 'Charge Code', type: 'text', editable: false, tooltip: 'Derived from description (first segment before \">\"), with trailing dates removed.' },
+        { key: 'phases', header: 'Phases', type: 'text', editable: false, tooltip: 'Derived from description between first and second \">\".' },
+        { key: 'task', header: 'Task', type: 'text', editable: false, tooltip: 'Derived from description text after second \">\".' },
+        { key: 'workdayPhaseId', header: 'Workday Phase', type: 'text', editable: true, tooltip: 'Mapped Workday phase bucket for this hour entry.' },
         { key: 'chargeType', header: 'Charge Type', type: 'text', editable: true, tooltip: 'EX=Execution, QC=Quality, CR=Customer Relations. From Workday charge_type column.' },
         { key: 'date', header: 'Date', type: 'date', editable: true },
         { key: 'hours', header: 'Hours', type: 'number', editable: true },
@@ -1458,6 +1451,9 @@ export default function DataManagementPage() {
         phaseId: null,
         userStoryId: null,
         chargeCode: '',
+        phases: '',
+        task: '',
+        workdayPhaseId: null,
         chargeType: '',
         date: new Date().toISOString().split('T')[0],
         hours: 0,
@@ -4035,8 +4031,6 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
-
 
 
 

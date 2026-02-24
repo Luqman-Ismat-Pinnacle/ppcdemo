@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 import { DATA_KEY_TO_TABLE } from '@/lib/supabase';
+import { parseHourDescription } from '@/lib/hours-description';
 
 type SyncOperation =
   | 'wipeAll'
@@ -37,6 +38,7 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 let parserSchemaEnsured = false;
+let hoursMappingSchemaEnsured = false;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -126,6 +128,21 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
   if (tableName === 'phases') {
     if (formatted.description == null && formatted.comments != null) {
       formatted.description = formatted.comments;
+    }
+  }
+
+  if (tableName === 'hour_entries') {
+    const parsed = parseHourDescription(String(formatted.description ?? ''));
+    if (parsed.chargeCode) {
+      formatted.charge_code = parsed.chargeCode.substring(0, 500);
+      // Keep charge_code_v2 in sync where used by legacy matchers.
+      formatted.charge_code_v2 = parsed.chargeCode.substring(0, 500);
+    }
+    if (parsed.phases) {
+      formatted.phases = parsed.phases.substring(0, 255);
+    }
+    if (parsed.task) {
+      formatted.task = parsed.task.substring(0, 500);
     }
   }
 
@@ -349,6 +366,23 @@ async function ensureMppParserSchemaColumns(): Promise<void> {
   parserSchemaEnsured = true;
 }
 
+async function ensureHoursMappingColumns(): Promise<void> {
+  if (hoursMappingSchemaEnsured) return;
+
+  await pgQuery(`
+    ALTER TABLE hour_entries
+    ADD COLUMN IF NOT EXISTS charge_code VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS charge_code_v2 VARCHAR(500),
+    ADD COLUMN IF NOT EXISTS phases VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS task TEXT,
+    ADD COLUMN IF NOT EXISTS workday_phase_id VARCHAR(50)
+  `);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS idx_hour_entries_workday_phase_id ON hour_entries(workday_phase_id)`);
+  await pgQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS wd_charge_code VARCHAR(255)`);
+
+  hoursMappingSchemaEnsured = true;
+}
+
 // ============================================================================
 // SUPABASE FALLBACK
 // ============================================================================
@@ -428,6 +462,9 @@ export async function POST(req: NextRequest) {
 
     if (usePostgres && (tableName === 'units' || tableName === 'phases' || tableName === 'tasks')) {
       await ensureMppParserSchemaColumns();
+    }
+    if (usePostgres && (tableName === 'hour_entries' || tableName === 'tasks')) {
+      await ensureHoursMappingColumns();
     }
 
     // ---- Operation: deleteByProjectId ----

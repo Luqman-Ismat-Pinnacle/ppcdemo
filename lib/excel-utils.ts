@@ -1047,13 +1047,13 @@ function getEntityHeaders(entityType: ExportableEntity): string[] {
     phases: ['id', 'phaseId', 'projectId', 'employeeId', 'name', 'sequence', 'methodology', 'description', 'startDate', 'endDate', 'baselineStartDate', 'baselineEndDate', 'actualStartDate', 'actualEndDate', 'percentComplete', 'baselineHours', 'actualHours', 'remainingHours', 'baselineCost', 'actualCost', 'remainingCost', 'evMethod', 'isActive'],
 
     // Tasks
-    tasks: ['id', 'taskId', 'phaseId', 'projectId', 'parentTaskId', 'wbsCode', 'name', 'description', 'assignedResourceId', 'assignedResourceName', 'assignedResourceType', 'assignedResource', 'startDate', 'endDate', 'plannedStartDate', 'plannedEndDate', 'baselineStartDate', 'baselineEndDate', 'actualStartDate', 'actualEndDate', 'daysRequired', 'percentComplete', 'baselineHours', 'actualHours', 'projectedRemainingHours', 'remainingHours', 'baselineCost', 'actualCost', 'remainingCost', 'baselineQty', 'actualQty', 'completedQty', 'baselineCount', 'baselineMetric', 'baselineUom', 'actualCount', 'completedCount', 'uom', 'userStoryId', 'sprintId', 'status', 'priority', 'evMethod', 'earlyStart', 'earlyFinish', 'lateStart', 'lateFinish', 'totalFloat', 'freeFloat', 'isCritical', 'isMilestone', 'isSubTask', 'predecessorId', 'predecessorRelationship', 'notes', 'comments'],
+    tasks: ['id', 'taskId', 'phaseId', 'projectId', 'parentTaskId', 'wbsCode', 'name', 'description', 'assignedResourceId', 'assignedResourceName', 'assignedResourceType', 'assignedResource', 'startDate', 'endDate', 'plannedStartDate', 'plannedEndDate', 'baselineStartDate', 'baselineEndDate', 'actualStartDate', 'actualEndDate', 'daysRequired', 'percentComplete', 'baselineHours', 'actualHours', 'projectedRemainingHours', 'remainingHours', 'baselineCost', 'actualCost', 'remainingCost', 'baselineQty', 'actualQty', 'completedQty', 'baselineCount', 'baselineMetric', 'baselineUom', 'actualCount', 'completedCount', 'uom', 'userStoryId', 'sprintId', 'status', 'priority', 'evMethod', 'earlyStart', 'earlyFinish', 'lateStart', 'lateFinish', 'totalFloat', 'freeFloat', 'isCritical', 'isMilestone', 'isSubTask', 'predecessorId', 'predecessorRelationship', 'notes', 'comments', 'wdChargeCode'],
 
     // Sub-Tasks (Subset of tasks)
     subTasks: ['id', 'taskId', 'parentTaskId', 'name', 'description', 'assignedResourceId', 'status', 'priority', 'baselineStartDate', 'baselineEndDate', 'actualStartDate', 'actualEndDate', 'percentComplete', 'baselineHours', 'actualHours', 'remainingHours', 'baselineCost', 'actualCost', 'remainingCost', 'comments'],
 
     // Hour Entries
-    hours: ['id', 'entryId', 'employeeId', 'projectId', 'phaseId', 'taskId', 'userStoryId', 'date', 'hours', 'description'],
+    hours: ['id', 'entryId', 'employeeId', 'projectId', 'phaseId', 'taskId', 'userStoryId', 'chargeCode', 'phases', 'task', 'workdayPhaseId', 'chargeType', 'date', 'hours', 'description'],
 
     // QC Tasks
     qctasks: ['id', 'qcTaskId', 'projectId', 'phaseId', 'taskId', 'name', 'description', 'status', 'assignedTo', 'dueDate', 'completedDate'],
@@ -1232,7 +1232,8 @@ function getExampleRow(entityType: ExportableEntity): any {
       actualCost: 2000,
       remainingCost: 2000,
       isCritical: false,
-      comments: ''
+      comments: '',
+      wdChargeCode: ''
     },
     subTasks: {
       id: 'SUB-001',
@@ -1263,6 +1264,11 @@ function getExampleRow(entityType: ExportableEntity): any {
       taskId: 'TSK-001',
       projectId: 'PRJ-001',
       phaseId: 'PHS-001',
+      chargeCode: 'EX > Unit A > Example Task',
+      phases: 'Unit A',
+      task: 'Example Task',
+      workdayPhaseId: '',
+      chargeType: 'EX',
       date: '2025-01-06',
       hours: 8,
       description: 'Worked on task'

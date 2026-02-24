@@ -469,6 +469,8 @@ export interface DBTask extends TrackingFields {
 
   // Workday Phase mapping (from Workday parent-phase report)
   workdayPhaseId?: string | null;
+  // Reserved for future Workday charge-code mapping
+  wdChargeCode?: string | null;
 
   // Metadata
   notes: string;
@@ -520,6 +522,9 @@ export interface DBHourEntry {
   phaseId: string | null;
   userStoryId: string | null;
   chargeCode: string;
+  phases?: string | null;
+  task?: string | null;
+  workdayPhaseId?: string | null;
   date: string;                   // YYYY-MM-DD
   hours: number;
   description: string;
