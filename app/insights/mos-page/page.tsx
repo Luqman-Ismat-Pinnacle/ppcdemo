@@ -7,7 +7,7 @@ import ChartWrapper from '@/components/charts/ChartWrapper';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
 import MosGlideTable from './components/MosGlideTable';
-import type { MoPeriodNote, MoPeriodGranularity, MoPeriodNoteType } from '@/types/data';
+import type { MoPeriodGranularity, MoPeriodNote, MoPeriodNoteType } from '@/types/data';
 
 const C = {
   text: '#f4f4f5',
@@ -19,7 +19,6 @@ const C = {
   amber: '#F59E0B',
   red: '#EF4444',
   green: '#22C55E',
-  slate: '#64748B',
 };
 
 const TT = {
@@ -35,8 +34,6 @@ const TT = {
 };
 
 type Tab = 'dashboard' | 'qa';
-type CommentEntity = 'tasks' | 'units' | 'phases' | 'subTasks';
-
 type MilestoneBucket =
   | 'Completed On Time'
   | 'Completed Delayed'
@@ -46,32 +43,24 @@ type MilestoneBucket =
   | 'Not Started Forecasted Delayed';
 
 const num = (v: unknown) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
 };
-
 const parseDate = (v: unknown): Date | null => {
-  const dt = new Date(String(v || ''));
-  return Number.isNaN(dt.getTime()) ? null : dt;
+  const d = new Date(String(v || ''));
+  return Number.isNaN(d.getTime()) ? null : d;
 };
-
-const normalizeTaskId = (v: unknown): string => String(v || '').trim().replace(/^wbs-(task|sub_task)-/i, '');
-const toISODate = (d: Date) => d.toISOString().slice(0, 10);
 const fmtDate = (v: unknown) => {
   const d = parseDate(v);
   return d ? d.toLocaleDateString() : '-';
 };
+const normalizeTaskId = (v: unknown) => String(v || '').trim().replace(/^wbs-(task|sub_task)-/i, '');
+const toISODate = (d: Date) => d.toISOString().slice(0, 10);
 
 function firstDayOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function lastDayOfMonth(d: Date): Date { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
-function firstDayOfQuarter(d: Date): Date {
-  const q = Math.floor(d.getMonth() / 3);
-  return new Date(d.getFullYear(), q * 3, 1);
-}
-function lastDayOfQuarter(d: Date): Date {
-  const q = Math.floor(d.getMonth() / 3);
-  return new Date(d.getFullYear(), q * 3 + 3, 0);
-}
+function firstDayOfQuarter(d: Date): Date { const q = Math.floor(d.getMonth() / 3); return new Date(d.getFullYear(), q * 3, 1); }
+function lastDayOfQuarter(d: Date): Date { const q = Math.floor(d.getMonth() / 3); return new Date(d.getFullYear(), q * 3 + 3, 0); }
 
 function derivePeriods(dateFilter: any): {
   granularity: MoPeriodGranularity;
@@ -94,7 +83,6 @@ function derivePeriods(dateFilter: any): {
     currentStart = parseDate(dateFilter.from) || firstDayOfMonth(now);
     currentEnd = parseDate(dateFilter.to) || lastDayOfMonth(now);
   } else {
-    granularity = 'month';
     currentStart = firstDayOfMonth(now);
     currentEnd = lastDayOfMonth(now);
   }
@@ -122,18 +110,14 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 export default function MosPage() {
-  const { filteredData, isLoading, hierarchyFilter, dateFilter, updateData, refreshData } = useData();
+  const { filteredData, isLoading, hierarchyFilter, dateFilter, updateData } = useData();
 
   const [tab, setTab] = useState<Tab>('dashboard');
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
-  const [selectedChargeCode, setSelectedChargeCode] = useState<string>('');
-  const [selectedBucket, setSelectedBucket] = useState<string>('');
+  const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [selectedChargeCode, setSelectedChargeCode] = useState('');
+  const [selectedBucket, setSelectedBucket] = useState('');
   const [selectedMilestoneBucket, setSelectedMilestoneBucket] = useState<MilestoneBucket>('Completed On Time');
-  const [entityType, setEntityType] = useState<CommentEntity>('tasks');
-  const [selectedCommentEntityId, setSelectedCommentEntityId] = useState<string>('');
-  const [commentDraft, setCommentDraft] = useState<string>('');
-  const [isSavingComments, setIsSavingComments] = useState(false);
-  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [savingCommitments, setSavingCommitments] = useState(false);
 
   const periods = useMemo(() => derivePeriods(dateFilter), [dateFilter]);
 
@@ -142,79 +126,76 @@ export default function MosPage() {
   const sites = (filteredData.sites || []) as any[];
   const projects = (filteredData.projects || []) as any[];
   const units = (filteredData.units || []) as any[];
-  const phases = (filteredData.phases || []) as any[];
   const tasks = (filteredData.tasks || []) as any[];
-  const subTasks = (filteredData.subTasks || []) as any[];
   const milestones = ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]);
   const hours = (filteredData.hours || []) as any[];
   const moPeriodNotes = (filteredData.moPeriodNotes || []) as MoPeriodNote[];
 
   const projectById = useMemo(() => {
-    const map = new Map<string, any>();
-    projects.forEach((p) => map.set(String(p.id || p.projectId), p));
-    return map;
+    const m = new Map<string, any>();
+    projects.forEach((x) => m.set(String(x.id || x.projectId), x));
+    return m;
   }, [projects]);
-
   const siteById = useMemo(() => {
-    const map = new Map<string, any>();
-    sites.forEach((s) => map.set(String(s.id || s.siteId), s));
-    return map;
+    const m = new Map<string, any>();
+    sites.forEach((x) => m.set(String(x.id || x.siteId), x));
+    return m;
   }, [sites]);
-
   const customerById = useMemo(() => {
-    const map = new Map<string, any>();
-    customers.forEach((c) => map.set(String(c.id || c.customerId), c));
-    return map;
+    const m = new Map<string, any>();
+    customers.forEach((x) => m.set(String(x.id || x.customerId), x));
+    return m;
   }, [customers]);
-
   const portfolioById = useMemo(() => {
-    const map = new Map<string, any>();
-    portfolios.forEach((p) => map.set(String(p.id || p.portfolioId), p));
-    return map;
+    const m = new Map<string, any>();
+    portfolios.forEach((x) => m.set(String(x.id || x.portfolioId), x));
+    return m;
   }, [portfolios]);
 
   const taskById = useMemo(() => {
-    const map = new Map<string, any>();
-    tasks.forEach((t) => map.set(normalizeTaskId(t.id || t.taskId), t));
-    return map;
+    const m = new Map<string, any>();
+    tasks.forEach((t) => m.set(normalizeTaskId(t.id || t.taskId), t));
+    return m;
   }, [tasks]);
 
   const taskActualHours = useMemo(() => {
-    const map = new Map<string, number>();
+    const m = new Map<string, number>();
     hours.forEach((h) => {
       const tid = normalizeTaskId(h.taskId || h.task_id);
       if (!tid) return;
-      map.set(tid, (map.get(tid) || 0) + num(h.hours));
+      m.set(tid, (m.get(tid) || 0) + num(h.hours));
     });
-    return map;
+    return m;
   }, [hours]);
 
-  const taskEfficiencyRows = useMemo(() => {
-    const rows = tasks.map((t) => {
-      const id = normalizeTaskId(t.id || t.taskId);
-      const baseline = num(t.baselineHours || t.baseline_hours || t.projectedHours || t.projected_hours);
-      const actual = taskActualHours.get(id) ?? num(t.actualHours || t.actual_hours);
-      const added = Math.max(0, actual - baseline);
-      return {
-        id,
-        name: String(t.taskName || t.name || id),
-        baseline,
-        actual,
-        added,
-        comments: String(t.comments || ''),
-      };
-    }).filter((r) => r.id && (r.baseline > 0 || r.actual > 0));
-    rows.sort((a, b) => (b.actual + b.baseline) - (a.actual + a.baseline));
-    return rows.slice(0, 50);
+  const taskRows = useMemo(() => {
+    const rows = tasks
+      .map((t) => {
+        const id = normalizeTaskId(t.id || t.taskId);
+        const baseline = num(t.baselineHours || t.baseline_hours || t.projectedHours || t.projected_hours);
+        const actual = taskActualHours.get(id) ?? num(t.actualHours || t.actual_hours);
+        const added = Math.max(0, actual - baseline);
+        return {
+          id,
+          name: String(t.taskName || t.name || id),
+          baseline,
+          actual,
+          added,
+          delta: actual - baseline,
+          comments: String(t.comments || ''),
+        };
+      })
+      .filter((r) => r.id && (r.baseline > 0 || r.actual > 0))
+      .sort((a, b) => (b.actual + b.baseline) - (a.actual + a.baseline));
+    return rows.slice(0, 60);
   }, [tasks, taskActualHours]);
 
   useEffect(() => {
-    if (!selectedTaskId && taskEfficiencyRows.length > 0) {
-      setSelectedTaskId(taskEfficiencyRows[0].id);
-    }
-  }, [selectedTaskId, taskEfficiencyRows]);
+    if (!selectedTaskId && taskRows.length > 0) setSelectedTaskId(taskRows[0].id);
+  }, [selectedTaskId, taskRows]);
 
   const selectedTask = useMemo(() => taskById.get(normalizeTaskId(selectedTaskId)), [taskById, selectedTaskId]);
+  const selectedTaskName = String(selectedTask?.taskName || selectedTask?.name || '').trim().toLowerCase();
 
   const hierarchyBucketLevel = useMemo(() => {
     const path = hierarchyFilter?.path || [];
@@ -225,45 +206,125 @@ export default function MosPage() {
     return 'unit';
   }, [hierarchyFilter]);
 
-  const getHourBucket = (h: any): string => {
+  const getBucket = (h: any) => {
     const pid = String(h.projectId || h.project_id || '');
     const project = projectById.get(pid);
     if (!project) return 'Unassigned';
+
     if (hierarchyBucketLevel === 'project') return String(project.name || project.projectName || pid);
 
-    const siteId = String(project.siteId || project.site_id || '');
-    const site = siteById.get(siteId);
+    const site = siteById.get(String(project.siteId || project.site_id || ''));
     if (hierarchyBucketLevel === 'site') return String(site?.name || 'Unassigned');
 
-    const customerId = String(site?.customerId || site?.customer_id || '');
-    const customer = customerById.get(customerId);
+    const customer = customerById.get(String(site?.customerId || site?.customer_id || ''));
     if (hierarchyBucketLevel === 'customer') return String(customer?.name || 'Unassigned');
 
-    const portfolioId = String(customer?.portfolioId || customer?.portfolio_id || '');
-    const portfolio = portfolioById.get(portfolioId);
+    const portfolio = portfolioById.get(String(customer?.portfolioId || customer?.portfolio_id || ''));
     if (hierarchyBucketLevel === 'portfolio') return String(portfolio?.name || 'Unassigned');
 
-    const taskId = normalizeTaskId(h.taskId || h.task_id);
-    const task = taskById.get(taskId);
-    const unitId = String(task?.unitId || task?.unit_id || '');
-    const unit = units.find((u: any) => String(u.id || u.unitId) === unitId);
+    const task = taskById.get(normalizeTaskId(h.taskId || h.task_id));
+    const unit = units.find((u: any) => String(u.id || u.unitId) === String(task?.unitId || task?.unit_id || ''));
     return String(unit?.name || 'Unassigned');
   };
 
-  const isExcludedCode = (h: any) => {
+  const isExcluded = (h: any) => {
     const code = String(h.chargeCode || h.charge_code || '').toUpperCase().trim();
-    const chargeType = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
-    return code === 'EX' || code === 'QC' || chargeType === 'EX' || chargeType === 'QC';
+    const type = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
+    return code === 'EX' || code === 'QC' || type === 'EX' || type === 'QC';
   };
 
-  const hoursForPie = useMemo(() => {
+  const taskBreakdownInput = useMemo(() => {
+    const selectedId = normalizeTaskId(selectedTaskId);
     return hours.filter((h) => {
-      if (isExcludedCode(h)) return false;
-      if (selectedChargeCode && String(h.chargeCode || h.charge_code || '') !== selectedChargeCode) return false;
-      if (selectedBucket && getHourBucket(h) !== selectedBucket) return false;
-      return true;
+      const hourTaskId = normalizeTaskId(h.taskId || h.task_id);
+      const hourTaskText = String(h.task || '').trim().toLowerCase();
+      if (hourTaskId && selectedId && hourTaskId === selectedId) return true;
+      if (selectedTaskName && hourTaskText && (hourTaskText === selectedTaskName || hourTaskText.includes(selectedTaskName))) return true;
+      return false;
     });
-  }, [hours, selectedChargeCode, selectedBucket, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units]);
+  }, [hours, selectedTaskId, selectedTaskName]);
+
+  const taskBreakdownOption: EChartsOption = useMemo(() => {
+    if (!taskBreakdownInput.length) return {};
+
+    const byDayByCode = new Map<string, Map<string, number>>();
+    const days = new Set<string>();
+    const codes = new Set<string>();
+
+    taskBreakdownInput.forEach((h) => {
+      const day = toISODate(parseDate(h.date) || new Date());
+      const code = String(h.chargeCode || h.charge_code || h.chargeType || h.charge_type || 'Other').trim() || 'Other';
+      days.add(day);
+      codes.add(code);
+      if (!byDayByCode.has(code)) byDayByCode.set(code, new Map());
+      const m = byDayByCode.get(code)!;
+      m.set(day, (m.get(day) || 0) + num(h.hours));
+    });
+
+    const sortedDays = Array.from(days).sort();
+    const sortedCodes = Array.from(codes).sort((a, b) => {
+      if (a === 'EX') return -1;
+      if (b === 'EX') return 1;
+      if (a === 'QC') return -1;
+      if (b === 'QC') return 1;
+      return a.localeCompare(b);
+    });
+
+    return {
+      tooltip: TT,
+      legend: { top: 0, textStyle: { color: C.muted } },
+      grid: { left: 45, right: 20, top: 30, bottom: 60, containLabel: true },
+      xAxis: {
+        type: 'category',
+        data: sortedDays,
+        axisLabel: { color: C.muted, rotate: 30 },
+        splitLine: { show: true, lineStyle: { type: 'dotted', color: 'rgba(255,255,255,0.18)' } },
+      },
+      yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
+      series: sortedCodes.map((code) => ({
+        type: 'bar',
+        stack: 'hours',
+        name: code,
+        data: sortedDays.map((d) => byDayByCode.get(code)?.get(d) || 0),
+      })),
+    };
+  }, [taskBreakdownInput]);
+
+  const nonExQcOption: EChartsOption = useMemo(() => {
+    const rows = hours.filter((h) => !isExcluded(h));
+    if (!rows.length) return {};
+
+    const bucketSet = new Set<string>();
+    const codeSet = new Set<string>();
+    const matrix = new Map<string, Map<string, number>>();
+
+    rows.forEach((h) => {
+      const bucket = getBucket(h);
+      const code = String(h.chargeCode || h.charge_code || h.chargeType || h.charge_type || 'Other').trim() || 'Other';
+      bucketSet.add(bucket);
+      codeSet.add(code);
+      if (!matrix.has(code)) matrix.set(code, new Map());
+      const m = matrix.get(code)!;
+      m.set(bucket, (m.get(bucket) || 0) + num(h.hours));
+    });
+
+    const buckets = Array.from(bucketSet).sort();
+    const codes = Array.from(codeSet).sort();
+
+    return {
+      tooltip: TT,
+      legend: { top: 0, textStyle: { color: C.muted } },
+      grid: { left: 60, right: 20, top: 30, bottom: 50, containLabel: true },
+      xAxis: { type: 'category', data: buckets, axisLabel: { color: C.muted, rotate: 20 } },
+      yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
+      series: codes.map((code) => ({
+        type: 'bar',
+        stack: 'codes',
+        name: code,
+        data: buckets.map((b) => matrix.get(code)?.get(b) || 0),
+      })),
+    };
+  }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units]);
 
   const milestoneRows = useMemo(() => {
     return milestones.map((m, idx) => {
@@ -280,54 +341,72 @@ export default function MosPage() {
       const isNotStarted = status.includes('not') || pct === 0;
 
       let bucket: MilestoneBucket;
-      if (isCompleted) {
-        bucket = delayed ? 'Completed Delayed' : 'Completed On Time';
-      } else if (isNotStarted) {
-        bucket = delayed ? 'Not Started Forecasted Delayed' : 'Not Started Forecasted On Time';
-      } else {
-        bucket = delayed ? 'In Progress Forecasted Delayed' : 'In Progress Forecasted On Time';
-      }
+      if (isCompleted) bucket = delayed ? 'Completed Delayed' : 'Completed On Time';
+      else if (isNotStarted) bucket = delayed ? 'Not Started Forecasted Delayed' : 'Not Started Forecasted On Time';
+      else bucket = delayed ? 'In Progress Forecasted Delayed' : 'In Progress Forecasted On Time';
 
       return {
-        key: String(m.id || m.milestoneId || `m-${idx}`),
+        id: String(m.id || m.milestoneId || `m-${idx}`),
         name: String(m.milestoneName || m.name || m.title || m.id || ''),
         status: String(m.status || '-'),
-        bucket,
         baselineStart,
         baselineEnd,
         actualStart,
         actualEnd,
         forecastEnd,
+        comments: String(m.comments || ''),
+        bucket,
       };
     }).filter((r) => r.name);
   }, [milestones]);
 
   const milestoneSummary = useMemo(() => {
-    const base = {
+    const s: Record<MilestoneBucket, number> = {
       'Completed On Time': 0,
       'Completed Delayed': 0,
       'In Progress Forecasted On Time': 0,
       'In Progress Forecasted Delayed': 0,
       'Not Started Forecasted On Time': 0,
       'Not Started Forecasted Delayed': 0,
-    } as Record<MilestoneBucket, number>;
-    milestoneRows.forEach((r) => { base[r.bucket] += 1; });
-    return base;
+    };
+    milestoneRows.forEach((r) => { s[r.bucket] += 1; });
+    return s;
   }, [milestoneRows]);
 
+  const bucketDefs: Array<{ label: MilestoneBucket; color: string }> = [
+    { label: 'Completed On Time', color: '#22C55E' },
+    { label: 'Completed Delayed', color: '#EF4444' },
+    { label: 'In Progress Forecasted On Time', color: '#14B8A6' },
+    { label: 'In Progress Forecasted Delayed', color: '#F59E0B' },
+    { label: 'Not Started Forecasted On Time', color: '#3B82F6' },
+    { label: 'Not Started Forecasted Delayed', color: '#A855F7' },
+  ];
+
+  const milestoneOption: EChartsOption = useMemo(() => ({
+    tooltip: TT,
+    grid: { left: 230, right: 20, top: 10, bottom: 10, containLabel: true },
+    xAxis: { type: 'value', axisLabel: { color: C.muted } },
+    yAxis: { type: 'category', data: bucketDefs.map((b) => b.label), axisLabel: { color: C.text, width: 220, overflow: 'truncate' } },
+    series: [{ type: 'bar', data: bucketDefs.map((b) => ({ value: milestoneSummary[b.label], itemStyle: { color: b.color } })) }],
+  }), [milestoneSummary]);
+
+  const milestoneDrill = useMemo(() => {
+    return milestoneRows.filter((r) => r.bucket === selectedMilestoneBucket);
+  }, [milestoneRows, selectedMilestoneBucket]);
+
   const periodHours = useMemo(() => {
-    const plan = taskEfficiencyRows.reduce((s, r) => s + r.baseline, 0);
-    const actual = taskEfficiencyRows.reduce((s, r) => s + r.actual, 0);
+    const plan = taskRows.reduce((s, r) => s + r.baseline, 0);
+    const actual = taskRows.reduce((s, r) => s + r.actual, 0);
     const added = Math.max(0, actual - plan);
     const reduced = Math.max(0, plan - actual);
-    const efficiency = plan > 0 ? Math.round((Math.min(plan, actual) / plan) * 100) : 0;
     const deltaHours = actual - plan;
     const deltaPct = plan > 0 ? (deltaHours / plan) * 100 : 0;
-    return { plan, actual, added, reduced, efficiency, deltaHours, deltaPct, fte: added / 160 };
-  }, [taskEfficiencyRows]);
+    const efficiency = plan > 0 ? Math.round((Math.min(plan, actual) / plan) * 100) : 0;
+    return { plan, actual, added, reduced, deltaHours, deltaPct, efficiency };
+  }, [taskRows]);
 
-  const taskEfficiencyOption: EChartsOption = useMemo(() => {
-    const top = taskEfficiencyRows.slice(0, 20);
+  const taskOption: EChartsOption = useMemo(() => {
+    const top = taskRows.slice(0, 20);
     if (!top.length) return {};
     return {
       tooltip: TT,
@@ -341,121 +420,66 @@ export default function MosPage() {
         { type: 'bar', name: 'Added Hours', data: top.map((r) => ({ value: r.added, itemStyle: { color: '#F59E0B' } })) },
       ],
     };
-  }, [taskEfficiencyRows]);
+  }, [taskRows]);
 
-  const taskChargeCodeRows = useMemo(() => {
-    if (!selectedTaskId) return [] as Array<{ code: string; hours: number }>;
-    const selected = normalizeTaskId(selectedTaskId);
-    const map = new Map<string, number>();
-    hours.forEach((h) => {
-      if (normalizeTaskId(h.taskId || h.task_id) !== selected) return;
-      const code = String(h.chargeCode || h.charge_code || h.chargeType || h.charge_type || 'Uncoded');
-      map.set(code, (map.get(code) || 0) + num(h.hours));
-    });
-    return Array.from(map.entries()).map(([code, value]) => ({ code, hours: value })).sort((a, b) => b.hours - a.hours);
-  }, [hours, selectedTaskId]);
-
-  const lifecycleOption: EChartsOption = useMemo(() => {
-    if (!taskChargeCodeRows.length) return {};
-    return {
-      tooltip: { ...TT, trigger: 'item' },
-      grid: { left: 50, right: 20, top: 20, bottom: 50, containLabel: true },
-      xAxis: { type: 'category', data: taskChargeCodeRows.map((r) => r.code), axisLabel: { color: C.muted, interval: 0, rotate: 25 } },
-      yAxis: { type: 'value', axisLabel: { color: C.muted }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } } },
-      series: [{ type: 'bar', name: 'Hours', data: taskChargeCodeRows.map((r) => ({ value: r.hours, itemStyle: { color: selectedChargeCode && selectedChargeCode !== r.code ? 'rgba(100,100,100,0.35)' : C.blue } })) }],
-    };
-  }, [taskChargeCodeRows, selectedChargeCode]);
-
-  const pieRows = useMemo(() => {
-    const map = new Map<string, number>();
-    hoursForPie.forEach((h) => {
-      const bucket = getHourBucket(h);
-      map.set(bucket, (map.get(bucket) || 0) + num(h.hours));
-    });
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [hoursForPie, hierarchyBucketLevel]);
-
-  const pieOption: EChartsOption = useMemo(() => {
-    if (!pieRows.length) return {};
-    return {
-      tooltip: { ...TT, trigger: 'item' },
-      legend: { bottom: 0, textStyle: { color: C.muted } },
-      series: [{ type: 'pie', radius: ['35%', '72%'], center: ['50%', '48%'], data: pieRows.map((r) => ({ ...r, itemStyle: { opacity: selectedBucket && selectedBucket !== r.name ? 0.35 : 1 } })), label: { color: C.text } }],
-    };
-  }, [pieRows, selectedBucket]);
-
-  const milestoneBuckets: Array<{ label: MilestoneBucket; value: number; color: string }> = [
-    { label: 'Completed On Time', value: milestoneSummary['Completed On Time'], color: '#22C55E' },
-    { label: 'Completed Delayed', value: milestoneSummary['Completed Delayed'], color: '#EF4444' },
-    { label: 'In Progress Forecasted On Time', value: milestoneSummary['In Progress Forecasted On Time'], color: '#14B8A6' },
-    { label: 'In Progress Forecasted Delayed', value: milestoneSummary['In Progress Forecasted Delayed'], color: '#F59E0B' },
-    { label: 'Not Started Forecasted On Time', value: milestoneSummary['Not Started Forecasted On Time'], color: '#3B82F6' },
-    { label: 'Not Started Forecasted Delayed', value: milestoneSummary['Not Started Forecasted Delayed'], color: '#A855F7' },
-  ];
-
-  const milestoneChartOption: EChartsOption = useMemo(() => {
-    return {
-      tooltip: TT,
-      grid: { left: 230, right: 20, top: 10, bottom: 10, containLabel: true },
-      xAxis: { type: 'value', axisLabel: { color: C.muted } },
-      yAxis: { type: 'category', data: milestoneBuckets.map((c) => c.label), axisLabel: { color: C.text, width: 220, overflow: 'truncate' } },
-      series: [{ type: 'bar', data: milestoneBuckets.map((c) => ({ value: c.value, itemStyle: { color: c.color } })) }],
-    };
-  }, [milestoneBuckets]);
-
-  const milestoneDrillRows = useMemo(() => {
-    return milestoneRows
-      .filter((r) => r.bucket === selectedMilestoneBucket)
-      .map((r) => [
-        r.name,
-        r.status,
-        fmtDate(r.baselineStart),
-        fmtDate(r.baselineEnd),
-        fmtDate(r.actualStart),
-        fmtDate(r.actualEnd),
-        fmtDate(r.forecastEnd),
-      ]);
-  }, [milestoneRows, selectedMilestoneBucket]);
-
+  const byName = (arr: any[], name: string) => arr.find((x) => String(x.name || '') === name);
   const noteScope = useMemo(() => {
-    const byName = (arr: any[], name: string) => arr.find((x) => String(x.name || '') === name);
     const path = hierarchyFilter?.path || [];
-    const portfolioId = hierarchyFilter?.portfolio || (path[0] ? String(byName(portfolios, path[0])?.id || '') : '');
-    const customerId = hierarchyFilter?.customer || (path[1] ? String(byName(customers, path[1])?.id || '') : '');
-    const siteId = hierarchyFilter?.site || (path[2] ? String(byName(sites, path[2])?.id || '') : '');
-    const projectId = hierarchyFilter?.project || (path[3] ? String(byName(projects, path[3])?.id || '') : '');
-    return { portfolioId: portfolioId || null, customerId: customerId || null, siteId: siteId || null, projectId: projectId || null };
+    return {
+      portfolioId: hierarchyFilter?.portfolio || (path[0] ? String(byName(portfolios, path[0])?.id || '') : '') || null,
+      customerId: hierarchyFilter?.customer || (path[1] ? String(byName(customers, path[1])?.id || '') : '') || null,
+      siteId: hierarchyFilter?.site || (path[2] ? String(byName(sites, path[2])?.id || '') : '') || null,
+      projectId: hierarchyFilter?.project || (path[3] ? String(byName(projects, path[3])?.id || '') : '') || null,
+    };
   }, [hierarchyFilter, portfolios, customers, sites, projects]);
 
-  const isSameScope = (n: any) => {
-    const pid = n.projectId || n.project_id || null;
-    const sid = n.siteId || n.site_id || null;
-    const cid = n.customerId || n.customer_id || null;
-    const pfid = n.portfolioId || n.portfolio_id || null;
-    return pid === noteScope.projectId && sid === noteScope.siteId && cid === noteScope.customerId && pfid === noteScope.portfolioId;
-  };
-
-  const scopedNotes = useMemo(() => moPeriodNotes.filter((n: any) => isSameScope(n)), [moPeriodNotes, noteScope]);
+  const scopedNotes = useMemo(() => {
+    return moPeriodNotes.filter((n: any) => {
+      const pid = n.projectId || n.project_id || null;
+      const sid = n.siteId || n.site_id || null;
+      const cid = n.customerId || n.customer_id || null;
+      const pfid = n.portfolioId || n.portfolio_id || null;
+      return pid === noteScope.projectId && sid === noteScope.siteId && cid === noteScope.customerId && pfid === noteScope.portfolioId;
+    });
+  }, [moPeriodNotes, noteScope]);
 
   const [lastCommitmentsDraft, setLastCommitmentsDraft] = useState('');
   const [thisCommitmentsDraft, setThisCommitmentsDraft] = useState('');
-  const [hoursCommentsDraft, setHoursCommentsDraft] = useState('');
+  const [hoursCommentRows, setHoursCommentRows] = useState<Array<{ label: string; value: string; noteId: string }>>([
+    { label: 'Planned', value: '', noteId: '' },
+    { label: 'Actual', value: '', noteId: '' },
+    { label: 'Added', value: '', noteId: '' },
+  ]);
 
   useEffect(() => {
-    const getContent = (type: MoPeriodNoteType, start: string, end: string) => {
-      const row = scopedNotes.find((n: any) => (n.noteType || n.note_type) === type && (n.periodStart || n.period_start) === start && (n.periodEnd || n.period_end) === end);
-      return String(row?.content || '');
-    };
+    const getNote = (type: MoPeriodNoteType, start: string, end: string) =>
+      scopedNotes.find((n: any) => (n.noteType || n.note_type) === type && (n.periodStart || n.period_start) === start && (n.periodEnd || n.period_end) === end);
 
-    setLastCommitmentsDraft(getContent('last_commitment', periods.lastStart, periods.lastEnd));
-    setThisCommitmentsDraft(getContent('this_commitment', periods.currentStart, periods.currentEnd));
-    setHoursCommentsDraft(getContent('hours_comment', periods.currentStart, periods.currentEnd));
+    setLastCommitmentsDraft(String(getNote('last_commitment', periods.lastStart, periods.lastEnd)?.content || ''));
+    setThisCommitmentsDraft(String(getNote('this_commitment', periods.currentStart, periods.currentEnd)?.content || ''));
+
+    const hrs = scopedNotes
+      .filter((n: any) => (n.noteType || n.note_type) === 'hours_comment' && (n.periodStart || n.period_start) === periods.currentStart && (n.periodEnd || n.period_end) === periods.currentEnd)
+      .sort((a: any, b: any) => num(a.sortOrder || a.sort_order) - num(b.sortOrder || b.sort_order));
+
+    setHoursCommentRows([
+      { label: 'Planned', value: String(hrs[0]?.content || ''), noteId: String(hrs[0]?.id || '') },
+      { label: 'Actual', value: String(hrs[1]?.content || ''), noteId: String(hrs[1]?.id || '') },
+      { label: 'Added', value: String(hrs[2]?.content || ''), noteId: String(hrs[2]?.id || '') },
+    ]);
   }, [scopedNotes, periods]);
 
-  const upsertNote = async (type: MoPeriodNoteType, content: string, periodStart: string, periodEnd: string) => {
-    const existing = scopedNotes.find((n: any) => (n.noteType || n.note_type) === type && (n.periodStart || n.period_start) === periodStart && (n.periodEnd || n.period_end) === periodEnd);
-    const record: MoPeriodNote = {
-      id: existing?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `monote-${Date.now()}-${type}`),
+  const upsertPeriodNote = async (type: MoPeriodNoteType, content: string, periodStart: string, periodEnd: string, sortOrder = 0, explicitId?: string) => {
+    const existing = scopedNotes.find((n: any) => {
+      const nt = n.noteType || n.note_type;
+      const ps = n.periodStart || n.period_start;
+      const pe = n.periodEnd || n.period_end;
+      const so = num(n.sortOrder || n.sort_order);
+      return nt === type && ps === periodStart && pe === periodEnd && so === sortOrder;
+    });
+
+    const rec: MoPeriodNote = {
+      id: explicitId || existing?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `monote-${Date.now()}-${Math.random()}`),
       noteType: type,
       periodGranularity: periods.granularity,
       periodStart,
@@ -465,70 +489,82 @@ export default function MosPage() {
       siteId: noteScope.siteId,
       projectId: noteScope.projectId,
       content,
-      sortOrder: 0,
-      updatedAt: new Date().toISOString(),
+      sortOrder,
       createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     const res = await fetch('/api/data/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dataKey: 'moPeriodNotes', records: [record] }),
+      body: JSON.stringify({ dataKey: 'moPeriodNotes', records: [rec] }),
     });
     const result = await res.json();
-    if (!result.success) throw new Error(result.error || `Failed to save ${type}`);
-    return record;
+    if (!result.success) throw new Error(result.error || 'Failed to save note');
+    return rec;
   };
 
-  const saveAllNotes = async () => {
-    setIsSavingNotes(true);
+  const saveCommitments = async () => {
+    setSavingCommitments(true);
     try {
-      const savedLast = await upsertNote('last_commitment', lastCommitmentsDraft, periods.lastStart, periods.lastEnd);
-      const savedThis = await upsertNote('this_commitment', thisCommitmentsDraft, periods.currentStart, periods.currentEnd);
-      const savedHours = await upsertNote('hours_comment', hoursCommentsDraft, periods.currentStart, periods.currentEnd);
-
+      const last = await upsertPeriodNote('last_commitment', lastCommitmentsDraft, periods.lastStart, periods.lastEnd, 0);
+      const current = await upsertPeriodNote('this_commitment', thisCommitmentsDraft, periods.currentStart, periods.currentEnd, 0);
       const remaining = moPeriodNotes.filter((n: any) => {
         const t = n.noteType || n.note_type;
         const ps = n.periodStart || n.period_start;
         const pe = n.periodEnd || n.period_end;
-        if (t === 'last_commitment' && ps === periods.lastStart && pe === periods.lastEnd && isSameScope(n)) return false;
-        if ((t === 'this_commitment' || t === 'hours_comment') && ps === periods.currentStart && pe === periods.currentEnd && isSameScope(n)) return false;
+        if (t === 'last_commitment' && ps === periods.lastStart && pe === periods.lastEnd) return false;
+        if (t === 'this_commitment' && ps === periods.currentStart && pe === periods.currentEnd) return false;
         return true;
       });
-
-      updateData({ moPeriodNotes: [...remaining, savedLast, savedThis, savedHours] as any });
+      updateData({ moPeriodNotes: [...remaining, last, current] as any });
     } finally {
-      setIsSavingNotes(false);
+      setSavingCommitments(false);
     }
   };
 
-  const commentEntities = useMemo(() => {
-    const src = entityType === 'tasks' ? tasks : entityType === 'units' ? units : entityType === 'phases' ? phases : subTasks;
-    return src
-      .map((r: any) => ({ id: String(r.id || r.taskId || r.unitId || r.phaseId || ''), name: String(r.taskName || r.name || ''), comments: String(r.comments || '') }))
-      .filter((r: any) => r.id && r.name)
-      .slice(0, 200);
-  }, [entityType, tasks, units, phases, subTasks]);
-
-  const saveComment = async () => {
-    if (!selectedCommentEntityId) return;
-    setIsSavingComments(true);
-    try {
-      const dataKey = entityType === 'subTasks' ? 'tasks' : entityType;
-      const res = await fetch('/api/data/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataKey, operation: 'update', records: [{ id: selectedCommentEntityId, comments: commentDraft }] }),
-      });
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to save comment');
-      await refreshData();
-    } finally {
-      setIsSavingComments(false);
-    }
+  const saveTaskComment = async (row: number, value: string) => {
+    const item = taskRows[row];
+    if (!item?.id) return;
+    const res = await fetch('/api/data/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataKey: 'tasks', operation: 'update', records: [{ id: item.id, comments: value }] }),
+    });
+    const result = await res.json();
+    if (!result.success) return;
+    updateData({ tasks: tasks.map((t: any) => normalizeTaskId(t.id || t.taskId) === item.id ? { ...t, comments: value } : t) as any });
   };
 
-  const clearCrossFilters = () => {
+  const saveMilestoneComment = async (row: number, value: string) => {
+    const item = milestoneDrill[row];
+    if (!item?.id) return;
+    const res = await fetch('/api/data/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataKey: 'milestonesTable', operation: 'update', records: [{ id: item.id, comments: value }] }),
+    });
+    const result = await res.json();
+    if (!result.success) return;
+    updateData({ milestonesTable: (filteredData.milestonesTable || []).map((m: any) => String(m.id || m.milestoneId) === item.id ? { ...m, comments: value } : m) as any });
+  };
+
+  const saveHoursComment = async (row: number, value: string) => {
+    const current = hoursCommentRows[row];
+    if (!current) return;
+    const saved = await upsertPeriodNote('hours_comment', value, periods.currentStart, periods.currentEnd, row, current.noteId || undefined);
+    setHoursCommentRows((prev) => prev.map((r, i) => i === row ? { ...r, value, noteId: saved.id } : r));
+    const rest = moPeriodNotes.filter((n: any) => {
+      const t = n.noteType || n.note_type;
+      const ps = n.periodStart || n.period_start;
+      const pe = n.periodEnd || n.period_end;
+      const so = num(n.sortOrder || n.sort_order);
+      return !(t === 'hours_comment' && ps === periods.currentStart && pe === periods.currentEnd && so === row);
+    });
+    updateData({ moPeriodNotes: [...rest, saved] as any });
+  };
+
+  const clearVisualFilters = () => {
     setSelectedChargeCode('');
     setSelectedBucket('');
   };
@@ -541,14 +577,14 @@ export default function MosPage() {
     );
   }
 
-  const hasAnyData = milestones.length > 0 || taskEfficiencyRows.length > 0 || hours.length > 0;
+  const hasAnyData = milestones.length > 0 || taskRows.length > 0 || hours.length > 0;
 
   return (
     <div style={{ minHeight: 'calc(100vh - 90px)', padding: '1rem 1.1rem 2rem', display: 'grid', gap: '0.8rem' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, color: C.text, fontSize: '1.65rem', fontWeight: 900 }}>Mo&apos;s Page</h1>
-          <p style={{ margin: '0.3rem 0 0', color: C.muted, fontSize: '0.8rem' }}>Dashboard is DB-backed only and respects global hierarchy/time filters.</p>
+          <p style={{ margin: '0.3rem 0 0', color: C.muted, fontSize: '0.8rem' }}>Dashboard is DB-backed and scoped by global hierarchy/time filters.</p>
         </div>
         <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 36 }}>
           <button onClick={() => setTab('dashboard')} style={{ background: tab === 'dashboard' ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: 'none', padding: '0 0.9rem', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>Dashboard</button>
@@ -558,43 +594,36 @@ export default function MosPage() {
 
       {tab === 'dashboard' ? (
         <>
-          {!hasAnyData && <EmptyState title="No dashboard data in scope" body="No records matched the current global hierarchy/time filters. Import or edit data in Data Management, then refresh this page." />}
+          {!hasAnyData && <EmptyState title="No dashboard data in scope" body="No records matched the current global hierarchy/time filters. Import/edit in Data Management and refresh." />}
 
           <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1.2fr 1fr' }}>
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
               <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>Milestones</h3>
-              <ChartWrapper
-                option={milestoneChartOption}
-                height={280}
-                onClick={(p) => {
-                  if (!p.name) return;
-                  setSelectedMilestoneBucket(String(p.name) as MilestoneBucket);
-                }}
-              />
+              <ChartWrapper option={milestoneOption} height={280} onClick={(p) => p.name && setSelectedMilestoneBucket(String(p.name) as MilestoneBucket)} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {bucketDefs.map((b) => (
+                  <button key={b.label} onClick={() => setSelectedMilestoneBucket(b.label)} style={{ background: selectedMilestoneBucket === b.label ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 7, padding: '0.25rem 0.5rem', cursor: 'pointer', fontSize: '0.72rem' }}>
+                    {b.label} ({milestoneSummary[b.label]})
+                  </button>
+                ))}
+              </div>
               <MosGlideTable
-                columns={['Section', 'Count']}
-                rows={milestoneBuckets.map((b) => [b.label, b.value])}
-                height={180}
-                onRowClick={(row) => setSelectedMilestoneBucket(milestoneBuckets[row]?.label || 'Completed On Time')}
-              />
-              <div style={{ color: C.muted, fontSize: '0.75rem' }}>Drilldown: {selectedMilestoneBucket}</div>
-              <MosGlideTable
-                columns={['Milestone', 'Status', 'BL Start', 'BL Finish', 'Actual Start', 'Actual Finish', 'Forecast Finish']}
-                rows={milestoneDrillRows}
-                height={260}
+                columns={['Milestone', 'Status', 'BL Start', 'BL Finish', 'Actual Start', 'Actual Finish', 'Forecast Finish', 'Comments']}
+                rows={milestoneDrill.map((r) => [r.name, r.status, fmtDate(r.baselineStart), fmtDate(r.baselineEnd), fmtDate(r.actualStart), fmtDate(r.actualEnd), fmtDate(r.forecastEnd), r.comments])}
+                editableColumns={[7]}
+                onTextCellEdited={(row, col, value) => { if (col === 7) void saveMilestoneComment(row, value); }}
+                height={300}
+                minColumnWidth={120}
               />
             </div>
 
-            <div style={{ display: 'grid', gap: '0.8rem' }}>
-              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-                <h3 style={{ margin: '0 0 0.5rem', color: C.text, fontSize: '0.9rem' }}>Last period commitments</h3>
-                <textarea value={lastCommitmentsDraft} onChange={(e) => setLastCommitmentsDraft(e.target.value)} rows={6} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
-              </div>
-              <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-                <h3 style={{ margin: '0 0 0.5rem', color: C.text, fontSize: '0.9rem' }}>This period commitments</h3>
-                <textarea value={thisCommitmentsDraft} onChange={(e) => setThisCommitmentsDraft(e.target.value)} rows={6} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
-              </div>
-              <button onClick={saveAllNotes} disabled={isSavingNotes} style={{ background: C.teal, color: '#000', border: 'none', borderRadius: 8, padding: '0.55rem 0.8rem', fontWeight: 700, cursor: 'pointer' }}>{isSavingNotes ? 'Saving...' : 'Save Commitments & Hours Comments'}</button>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>Commitments</h3>
+              <label style={{ color: C.muted, fontSize: '0.74rem' }}>Last period commitments</label>
+              <textarea value={lastCommitmentsDraft} onChange={(e) => setLastCommitmentsDraft(e.target.value)} rows={5} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
+              <label style={{ color: C.muted, fontSize: '0.74rem' }}>This period commitments</label>
+              <textarea value={thisCommitmentsDraft} onChange={(e) => setThisCommitmentsDraft(e.target.value)} rows={5} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
+              <button onClick={saveCommitments} disabled={savingCommitments} style={{ justifySelf: 'start', background: C.teal, color: '#000', border: 'none', borderRadius: 7, padding: '0.3rem 0.55rem', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}>{savingCommitments ? 'Saving...' : 'Save Commitments'}</button>
             </div>
           </section>
 
@@ -602,118 +631,61 @@ export default function MosPage() {
             <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>
               Period Hours Efficiency: <span style={{ color: C.blue }}>{periodHours.efficiency}%</span> | Plan {Math.round(periodHours.plan)}h | Actual {Math.round(periodHours.actual)}h | Added {Math.round(periodHours.added)}h | Delta {Math.round(periodHours.deltaHours)}h ({periodHours.deltaPct.toFixed(1)}%)
             </h3>
-            <div style={{ color: C.muted, fontSize: '0.76rem' }}>Reduced hours = max(0, Plan - Actual). It represents planned hours not consumed in the current scope/time window.</div>
-            <ChartWrapper
-              option={{
-                tooltip: TT,
-                grid: { left: 80, right: 20, top: 12, bottom: 12, containLabel: true },
-                xAxis: { type: 'value', axisLabel: { color: C.muted } },
-                yAxis: { type: 'category', data: ['Plan', 'Actual', 'Reduced'], axisLabel: { color: C.text } },
-                series: [{ type: 'bar', data: [{ value: periodHours.plan, itemStyle: { color: '#3B82F6' } }, { value: periodHours.actual, itemStyle: { color: '#22C55E' } }, { value: periodHours.reduced, itemStyle: { color: '#F59E0B' } }] }],
-              }}
-              height={220}
+            <div style={{ color: C.muted, fontSize: '0.76rem' }}>Reduced hours = `max(0, Plan - Actual)` for current filtered scope and period.</div>
+            <ChartWrapper option={{ tooltip: TT, grid: { left: 80, right: 20, top: 12, bottom: 12, containLabel: true }, xAxis: { type: 'value', axisLabel: { color: C.muted } }, yAxis: { type: 'category', data: ['Plan', 'Actual', 'Reduced'], axisLabel: { color: C.text } }, series: [{ type: 'bar', data: [{ value: periodHours.plan, itemStyle: { color: '#3B82F6' } }, { value: periodHours.actual, itemStyle: { color: '#22C55E' } }, { value: periodHours.reduced, itemStyle: { color: '#F59E0B' } }] }] }} height={220} />
+            <MosGlideTable
+              columns={['Metric', 'Hours', 'Comments']}
+              rows={[
+                ['Planned', Math.round(periodHours.plan), hoursCommentRows[0]?.value || ''],
+                ['Actual', Math.round(periodHours.actual), hoursCommentRows[1]?.value || ''],
+                ['Added', Math.round(periodHours.added), hoursCommentRows[2]?.value || ''],
+              ]}
+              editableColumns={[2]}
+              onTextCellEdited={(row, col, value) => { if (col === 2) void saveHoursComment(row, value); }}
+              height={210}
             />
-            <div>
-              <h4 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.82rem' }}>Hours comments</h4>
-              <textarea value={hoursCommentsDraft} onChange={(e) => setHoursCommentsDraft(e.target.value)} rows={4} style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }} />
-            </div>
           </section>
 
           <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr 1fr' }}>
-            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: '0.4rem', alignItems: 'center' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Task Hours Efficiency</h3>
-                <button onClick={clearCrossFilters} style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.3rem 0.5rem', cursor: 'pointer', fontSize: '0.7rem' }}>Clear visual filters</button>
+                <button onClick={clearVisualFilters} style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.3rem 0.5rem', cursor: 'pointer', fontSize: '0.7rem' }}>Clear visual filters</button>
               </div>
-              <ChartWrapper
-                option={taskEfficiencyOption}
-                height={420}
-                onClick={(p) => {
-                  const idx = Number(p.dataIndex);
-                  const row = taskEfficiencyRows[idx];
-                  if (row) setSelectedTaskId(row.id);
-                }}
-              />
+              <ChartWrapper option={taskOption} height={420} onClick={(p) => {
+                const idx = Number(p.dataIndex);
+                if (Number.isFinite(idx) && taskRows[idx]) setSelectedTaskId(taskRows[idx].id);
+              }} />
               <MosGlideTable
                 columns={['Task', 'Baseline', 'Actual', 'Added', 'Delta', 'Comments']}
-                rows={taskEfficiencyRows.slice(0, 30).map((r) => [r.name, Math.round(r.baseline), Math.round(r.actual), Math.round(r.added), Math.round(r.actual - r.baseline), r.comments])}
-                height={300}
-                onRowClick={(row) => setSelectedTaskId(taskEfficiencyRows[row]?.id || '')}
+                rows={taskRows.slice(0, 35).map((r) => [r.name, Math.round(r.baseline), Math.round(r.actual), Math.round(r.added), Math.round(r.delta), r.comments])}
+                editableColumns={[5]}
+                onTextCellEdited={(row, col, value) => { if (col === 5) void saveTaskComment(row, value); }}
+                onRowClick={(row) => setSelectedTaskId(taskRows[row]?.id || '')}
+                height={320}
               />
             </div>
 
             <div style={{ display: 'grid', gap: '0.8rem' }}>
               <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-                <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>Task Lifecycle Charge Code Breakdown</h3>
+                <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>Task Breakdown</h3>
                 <p style={{ margin: '0 0 0.4rem', color: C.muted, fontSize: '0.74rem' }}>{selectedTask ? `Selected task: ${selectedTask.taskName || selectedTask.name || selectedTaskId}` : 'Select a task from Task Hours Efficiency'}</p>
-                <ChartWrapper
-                  option={lifecycleOption}
-                  height={230}
-                  onClick={(p) => {
-                    if (p.name) setSelectedChargeCode(String(p.name));
-                  }}
-                  isEmpty={!taskChargeCodeRows.length}
-                />
+                <ChartWrapper option={taskBreakdownOption} height={260} onClick={(p) => p.seriesName && setSelectedChargeCode(String(p.seriesName))} isEmpty={!taskBreakdownInput.length} />
               </div>
 
               <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
                 <h3 style={{ margin: '0 0 0.4rem', color: C.text, fontSize: '0.9rem' }}>Non-EX/QC Hours by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}</h3>
-                <ChartWrapper
-                  option={pieOption}
-                  height={260}
-                  onClick={(p) => {
-                    if (p.name) setSelectedBucket(String(p.name));
-                  }}
-                  isEmpty={!pieRows.length}
-                />
+                <ChartWrapper option={nonExQcOption} height={280} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => !isExcluded(h))} />
               </div>
             </div>
-          </section>
-
-          <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
-            <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Hierarchy Comments</h3>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <select value={entityType} onChange={(e) => setEntityType(e.target.value as CommentEntity)} style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${C.border}`, color: C.text, borderRadius: 8, padding: '0.35rem 0.5rem' }}>
-                <option value="tasks">Tasks</option>
-                <option value="units">Units</option>
-                <option value="phases">Phases</option>
-                <option value="subTasks">Sub-Tasks</option>
-              </select>
-              <span style={{ color: C.muted, fontSize: '0.75rem', alignSelf: 'center' }}>Select a row below to edit comments.</span>
-            </div>
-            <MosGlideTable
-              columns={['Name', 'Comments']}
-              rows={commentEntities.map((r) => [r.name, r.comments])}
-              height={270}
-              onRowClick={(row) => {
-                const item = commentEntities[row];
-                if (!item) return;
-                setSelectedCommentEntityId(item.id);
-                setCommentDraft(item.comments);
-              }}
-            />
-            <textarea value={commentDraft} onChange={(e) => setCommentDraft(e.target.value)} rows={4} placeholder="Edit selected entity comments..." style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.5rem' }} />
-            <button disabled={!selectedCommentEntityId || isSavingComments} onClick={saveComment} style={{ justifySelf: 'start', background: C.teal, color: '#000', border: 'none', borderRadius: 8, padding: '0.45rem 0.8rem', fontWeight: 700, cursor: 'pointer' }}>{isSavingComments ? 'Saving...' : 'Save Comment'}</button>
           </section>
         </>
       ) : (
         <section style={{ display: 'grid', gap: '0.8rem' }}>
           <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
             <h3 style={{ margin: 0, color: C.text }}>Q&A</h3>
-            <p style={{ color: C.muted, fontSize: '0.8rem', marginTop: '0.4rem' }}>This section keeps the Mo page discussion context. Dashboard visuals and tables now provide live DB-backed operational tracking.</p>
+            <p style={{ color: C.muted, fontSize: '0.8rem', marginTop: '0.4rem' }}>This section keeps the Mo page discussion context. Dashboard visuals/tables provide live DB-backed tracking.</p>
           </div>
-
-          {[
-            { q: 'Do we have a workflow/plan to complete deliverables?', a: 'Use Milestones + commitments on the Dashboard. Enter commitments for last and current period, scoped by the global hierarchy filter.' },
-            { q: 'Are we ahead or behind plan?', a: 'Task Hours Efficiency compares baseline vs actual and added hours per task, with comments editable from the hierarchy comments section.' },
-            { q: 'Where are hours being spent?', a: 'Task Lifecycle Charge Code Breakdown shows charge-code distribution for the selected task. Pie chart shows non-EX/QC by next hierarchy level.' },
-            { q: 'How do filters apply?', a: 'Global hierarchy and time filters constrain all data. Cross-visual clicks add local filters that can be cleared with Clear visual filters.' },
-          ].map((item, idx) => (
-            <div key={idx} style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
-              <div style={{ color: C.teal, fontSize: '0.78rem', fontWeight: 700 }}>{item.q}</div>
-              <div style={{ color: C.text, fontSize: '0.84rem', marginTop: '0.35rem' }}>{item.a}</div>
-            </div>
-          ))}
         </section>
       )}
     </div>

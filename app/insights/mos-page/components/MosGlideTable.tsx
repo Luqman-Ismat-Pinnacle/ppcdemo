@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import DataEditor, { GridCell, GridCellKind, GridColumn, Theme } from '@glideapps/glide-data-grid';
+import DataEditor, { EditableGridCell, GridCell, GridCellKind, GridColumn, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 
 type CellValue = string | number | null | undefined;
@@ -12,6 +12,8 @@ interface MosGlideTableProps {
   height?: number;
   onRowClick?: (row: number) => void;
   minColumnWidth?: number;
+  editableColumns?: number[];
+  onTextCellEdited?: (row: number, col: number, value: string) => void;
 }
 
 const gridTheme: Partial<Theme> = {
@@ -38,7 +40,15 @@ const gridTheme: Partial<Theme> = {
   cellVerticalPadding: 6,
 };
 
-export default function MosGlideTable({ columns, rows, height = 320, onRowClick, minColumnWidth = 140 }: MosGlideTableProps) {
+export default function MosGlideTable({
+  columns,
+  rows,
+  height = 320,
+  onRowClick,
+  minColumnWidth = 140,
+  editableColumns = [],
+  onTextCellEdited,
+}: MosGlideTableProps) {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
   const gridColumns = useMemo<GridColumn[]>(() => {
@@ -54,14 +64,16 @@ export default function MosGlideTable({ columns, rows, height = 320, onRowClick,
     ([col, row]: readonly [number, number]): GridCell => {
       const raw = rows[row]?.[col];
       const text = raw == null ? '' : String(raw);
+      const editable = editableColumns.includes(col);
       return {
         kind: GridCellKind.Text,
         data: text,
         displayData: text,
-        allowOverlay: false,
+        allowOverlay: editable,
+        readonly: !editable,
       };
     },
-    [rows]
+    [rows, editableColumns]
   );
 
   return (
@@ -78,6 +90,11 @@ export default function MosGlideTable({ columns, rows, height = 320, onRowClick,
         overscrollX={120}
         theme={gridTheme}
         onCellClicked={onRowClick ? (cell) => onRowClick(cell[1]) : undefined}
+        onCellEdited={onTextCellEdited ? (item, value: EditableGridCell) => {
+          if (value.kind !== GridCellKind.Text) return;
+          const [col, row] = item;
+          onTextCellEdited(row, col, value.data || '');
+        } : undefined}
         onColumnResize={(column, newSize) => {
           const key = String(column.id || column.title || '');
           if (!key) return;
