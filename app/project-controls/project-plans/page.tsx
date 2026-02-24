@@ -173,6 +173,8 @@ export default function DocumentsPage() {
   // Project selection modal state
   const [showHierarchyModal, setShowHierarchyModal] = useState(false);
   const [assignPortfolioId, setAssignPortfolioId] = useState('');
+  const [disconnectDrafts, setDisconnectDrafts] = useState<Record<string, string>>({});
+  const [savingDisconnectKey, setSavingDisconnectKey] = useState<string | null>(null);
 
   // Check if the selected project has a portfolio; build portfolio options
   // Use full data (not filtered) so ALL active portfolios are available for reassignment
@@ -199,6 +201,137 @@ export default function DocumentsPage() {
     const portfolio = portfolios.find((p: any) => (p.id || p.portfolioId) === portfolioId);
     return !portfolio || portfolio.isActive === false || portfolio.is_active === false;
   }, [workdayProjectId, data?.projects, data?.portfolios]);
+
+  type HierarchyDisconnect = {
+    key: string;
+    issueType: string;
+    entityType: 'customer' | 'site' | 'project';
+    entityId: string;
+    entityName: string;
+    field: 'portfolioId' | 'customerId' | 'siteId';
+    currentValue: string | null;
+    options: DropdownOption[];
+    scopeHint: string;
+  };
+
+  const customerOptions: DropdownOption[] = useMemo(() => {
+    return (data?.customers || []).map((c: any) => ({
+      id: String(c.id || c.customerId || ''),
+      name: c.name || c.customerName || c.id || 'Unnamed customer',
+      secondary: String(c.portfolioId ?? c.portfolio_id ?? '') || 'No portfolio',
+    })).filter((c) => c.id);
+  }, [data?.customers]);
+
+  const siteOptions: DropdownOption[] = useMemo(() => {
+    return (data?.sites || []).map((s: any) => ({
+      id: String(s.id || s.siteId || ''),
+      name: s.name || s.siteName || s.id || 'Unnamed site',
+      secondary: String(s.customerId ?? s.customer_id ?? '') || 'No customer',
+    })).filter((s) => s.id);
+  }, [data?.sites]);
+
+  const hierarchyDisconnects: HierarchyDisconnect[] = useMemo(() => {
+    const portfolios = data?.portfolios || [];
+    const customers = data?.customers || [];
+    const sites = data?.sites || [];
+    const projects = data?.projects || [];
+    const activePortfolioIdSet = new Set(
+      portfolios
+        .filter((p: any) => p.isActive !== false && p.is_active !== false && p.active !== false)
+        .map((p: any) => String(p.id || p.portfolioId || ''))
+        .filter(Boolean)
+    );
+    const customerMap = new Map(customers.map((c: any) => [String(c.id || c.customerId || ''), c]));
+    const siteMap = new Map(sites.map((s: any) => [String(s.id || s.siteId || ''), s]));
+    const disconnects: HierarchyDisconnect[] = [];
+
+    customers.forEach((customer: any) => {
+      const id = String(customer.id || customer.customerId || '');
+      if (!id) return;
+      const portfolioId = String(customer.portfolioId ?? customer.portfolio_id ?? '');
+      if (!portfolioId || !activePortfolioIdSet.has(portfolioId)) {
+        disconnects.push({
+          key: `customer:${id}:portfolio`,
+          issueType: 'Customer missing active portfolio',
+          entityType: 'customer',
+          entityId: id,
+          entityName: customer.name || customer.customerName || id,
+          field: 'portfolioId',
+          currentValue: portfolioId || null,
+          options: portfolioOptions,
+          scopeHint: 'Assign an active portfolio',
+        });
+      }
+    });
+
+    sites.forEach((site: any) => {
+      const id = String(site.id || site.siteId || '');
+      if (!id) return;
+      const customerId = String(site.customerId ?? site.customer_id ?? '');
+      if (!customerId || !customerMap.has(customerId)) {
+        disconnects.push({
+          key: `site:${id}:customer`,
+          issueType: 'Site missing customer',
+          entityType: 'site',
+          entityId: id,
+          entityName: site.name || site.siteName || id,
+          field: 'customerId',
+          currentValue: customerId || null,
+          options: customerOptions,
+          scopeHint: 'Assign the parent customer',
+        });
+      }
+    });
+
+    projects.forEach((project: any) => {
+      const id = String(project.id || project.projectId || '');
+      if (!id) return;
+      const customerId = String(project.customerId ?? project.customer_id ?? '');
+      const siteId = String(project.siteId ?? project.site_id ?? '');
+      const portfolioId = String(project.portfolioId ?? project.portfolio_id ?? '');
+      if (!customerId || !customerMap.has(customerId)) {
+        disconnects.push({
+          key: `project:${id}:customer`,
+          issueType: 'Project missing customer',
+          entityType: 'project',
+          entityId: id,
+          entityName: project.name || project.projectName || id,
+          field: 'customerId',
+          currentValue: customerId || null,
+          options: customerOptions,
+          scopeHint: 'Assign the parent customer',
+        });
+      }
+      if (!siteId || !siteMap.has(siteId)) {
+        disconnects.push({
+          key: `project:${id}:site`,
+          issueType: 'Project missing site',
+          entityType: 'project',
+          entityId: id,
+          entityName: project.name || project.projectName || id,
+          field: 'siteId',
+          currentValue: siteId || null,
+          options: siteOptions,
+          scopeHint: 'Assign the parent site',
+        });
+      }
+      if (!portfolioId || !activePortfolioIdSet.has(portfolioId)) {
+        disconnects.push({
+          key: `project:${id}:portfolio`,
+          issueType: 'Project missing active portfolio',
+          entityType: 'project',
+          entityId: id,
+          entityName: project.name || project.projectName || id,
+          field: 'portfolioId',
+          currentValue: portfolioId || null,
+          options: portfolioOptions,
+          scopeHint: 'Assign an active portfolio',
+        });
+      }
+    });
+
+    return disconnects;
+  }, [data?.portfolios, data?.customers, data?.sites, data?.projects, portfolioOptions, customerOptions, siteOptions]);
 
   const addLog = useCallback((type: ProcessingLog['type'], message: string) => {
     const method = type === 'error' ? 'error' : type === 'warning' ? 'warn' : 'log';
@@ -507,13 +640,13 @@ export default function DocumentsPage() {
 
     try {
       // Upload to Azure Blob Storage via API
-      const { data, error } = await storageApi.upload(storagePath, selectedFile);
+      const { data: uploadData, error } = await storageApi.upload(storagePath, selectedFile);
 
       if (error) {
         throw new Error(error.message);
       }
 
-      const savedStoragePath = data.path ?? storagePath;
+      const savedStoragePath = uploadData?.path ?? storagePath;
       pushLog('success', `[Storage] File uploaded: ${savedStoragePath}`);
 
       // Update file status (use path returned by storage so it matches DB for setCurrentMpp/updateDocumentHealth)
@@ -618,6 +751,8 @@ export default function DocumentsPage() {
       setSelectedFile(null);
       setWorkdayProjectId('');
       if (fileInputRef.current) fileInputRef.current.value = '';
+      await refreshData();
+      await loadStoredFiles();
 
     } catch (error: any) {
       pushLog('error', `[Storage] Upload failed: ${error.message}`);
@@ -626,7 +761,7 @@ export default function DocumentsPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects, data?.projectDocuments, refreshData]);
+  }, [selectedFile, workdayProjectId, addLog, selectedProjectMissingPortfolio, assignPortfolioId, data?.portfolios, data?.projects, data?.projectDocuments, refreshData, loadStoredFiles]);
 
   // Process file via server-side transactional import (single atomic upsert path)
   const handleProcess = useCallback(async (fileId: string) => {
@@ -861,6 +996,42 @@ export default function DocumentsPage() {
       addLog('error', `[Download] ${err.message}`);
     }
   }, [addLog]);
+
+  const handleFixHierarchyDisconnect = useCallback(async (disconnect: HierarchyDisconnect) => {
+    const nextValue = (disconnectDrafts[disconnect.key] ?? '').trim();
+    if (!nextValue) {
+      addLog('warning', `Select a value to fix: ${disconnect.issueType}`);
+      return;
+    }
+    setSavingDisconnectKey(disconnect.key);
+    try {
+      const dataKey = disconnect.entityType === 'customer' ? 'customers' : disconnect.entityType === 'site' ? 'sites' : 'projects';
+      const updateRecord: Record<string, string> = { id: disconnect.entityId };
+      updateRecord[disconnect.field] = nextValue;
+      const res = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataKey,
+          operation: 'update',
+          records: [updateRecord],
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to update hierarchy');
+      addLog('success', `${disconnect.entityType} updated: ${disconnect.entityName}`);
+      await refreshData();
+      setDisconnectDrafts((prev) => {
+        const next = { ...prev };
+        delete next[disconnect.key];
+        return next;
+      });
+    } catch (err: any) {
+      addLog('error', err.message || 'Hierarchy update failed');
+    } finally {
+      setSavingDisconnectKey(null);
+    }
+  }, [disconnectDrafts, addLog, refreshData]);
 
   const workdayPhasesByProject = useMemo(() => {
     const phases = data?.workdayPhases || filteredData?.workdayPhases || [];
@@ -1215,6 +1386,63 @@ export default function DocumentsPage() {
                     ))
                   )}
                 </ul>
+                <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.9rem' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+                    Hierarchy Disconnects ({hierarchyDisconnects.length})
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.7rem' }}>
+                    Fix missing parent links (portfolio/customer/site) and save directly to the database.
+                  </div>
+                  {hierarchyDisconnects.length === 0 ? (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No hierarchy disconnects detected.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '320px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                      {hierarchyDisconnects.map((disconnect) => {
+                        const draftValue = disconnectDrafts[disconnect.key] ?? '';
+                        const selectedValue = draftValue || disconnect.currentValue || null;
+                        const isSaving = savingDisconnectKey === disconnect.key;
+                        return (
+                          <div key={disconnect.key} style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '0.65rem', background: 'var(--bg-secondary)' }}>
+                            <div style={{ fontSize: '0.77rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
+                              {disconnect.issueType}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
+                              {disconnect.entityName} ({disconnect.entityType}) · {disconnect.scopeHint}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.45rem', alignItems: 'center' }}>
+                              <SearchableDropdown
+                                value={selectedValue}
+                                options={disconnect.options}
+                                onChange={(id) => setDisconnectDrafts((prev) => ({ ...prev, [disconnect.key]: id || '' }))}
+                                placeholder={`Select ${disconnect.field === 'portfolioId' ? 'portfolio' : disconnect.field === 'customerId' ? 'customer' : 'site'}...`}
+                                searchable={true}
+                                width="100%"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleFixHierarchyDisconnect(disconnect)}
+                                disabled={isSaving || !(disconnectDrafts[disconnect.key] ?? '').trim()}
+                                style={{
+                                  padding: '0.42rem 0.7rem',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  background: !isSaving && (disconnectDrafts[disconnect.key] ?? '').trim() ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                                  color: !isSaving && (disconnectDrafts[disconnect.key] ?? '').trim() ? '#000' : 'var(--text-muted)',
+                                  cursor: !isSaving && (disconnectDrafts[disconnect.key] ?? '').trim() ? 'pointer' : 'not-allowed',
+                                  minWidth: '64px',
+                                }}
+                              >
+                                {isSaving ? 'Saving...' : 'Fix'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2185,43 +2413,46 @@ export default function DocumentsPage() {
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => {
+                  if (isUploading) return;
                   setShowHierarchyModal(false);
                   setWorkdayProjectId('');
                   setAssignPortfolioId('');
                 }}
+                disabled={isUploading}
                 style={{
                   padding: '0.5rem 1rem',
                   backgroundColor: 'var(--bg-tertiary)',
                   border: '1px solid var(--border-color)',
                   borderRadius: '4px',
                   color: 'var(--text-secondary)',
-                  cursor: 'pointer',
+                  cursor: isUploading ? 'not-allowed' : 'pointer',
+                  opacity: isUploading ? 0.65 : 1,
                 }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleUploadWithHierarchy}
-                disabled={!workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
+                disabled={isUploading || !workdayProjectId || (selectedProjectMissingPortfolio && !assignPortfolioId)}
                 style={{
                   padding: '0.5rem 1rem',
                   backgroundColor:
-                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                    !isUploading && workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
                       ? 'var(--pinnacle-teal)'
                       : 'var(--bg-tertiary)',
                   border: 'none',
                   borderRadius: '4px',
                   color:
-                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                    !isUploading && workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
                       ? '#000'
                       : 'var(--text-muted)',
                   cursor:
-                    workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
+                    !isUploading && workdayProjectId && (!selectedProjectMissingPortfolio || assignPortfolioId)
                       ? 'pointer'
                       : 'not-allowed',
                 }}
               >
-                Upload
+                {isUploading ? 'Uploading...' : 'Upload'}
               </button>
             </div>
           </div>

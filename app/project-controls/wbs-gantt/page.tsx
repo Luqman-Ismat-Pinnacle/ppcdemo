@@ -300,12 +300,12 @@ export default function WBSGanttPage() {
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
       cellHorizontalPadding: 14,
       cellVerticalPadding: 10,
-      headerFontStyle: '800 19px var(--font-montserrat, sans-serif)',
+      headerFontStyle: '900 20px var(--font-montserrat, sans-serif)',
       headerIconSize: 24,
-      baseFontStyle: '800 18px var(--font-montserrat, sans-serif)',
-      markerFontStyle: '800 16px var(--font-mono, monospace)',
+      baseFontStyle: '900 19px var(--font-montserrat, sans-serif)',
+      markerFontStyle: '900 17px var(--font-mono, monospace)',
       fontFamily: 'var(--font-montserrat, sans-serif)',
-      editorFontSize: '18px',
+      editorFontSize: '19px',
       lineHeight: 1.4,
       horizontalBorderColor: pick('--border-color', '#334155'),
       headerBottomBorderColor: pick('--border-color', '#334155'),
@@ -808,7 +808,7 @@ export default function WBSGanttPage() {
     if (def.id === 'type') {
       const badgeColor = TYPE_COLOR[r.type] || '#6b7280';
       const label = r.type.replace('_', ' ').toUpperCase();
-      ctx.font = '800 16px var(--font-montserrat, sans-serif)';
+      ctx.font = '900 17px var(--font-montserrat, sans-serif)';
       const textWidth = Math.min(rect.width - 10, ctx.measureText(label).width + 8);
       const badgeW = Math.max(36, textWidth + 4);
       const badgeX = rect.x + 5;
@@ -873,7 +873,7 @@ export default function WBSGanttPage() {
     }
 
     const isNameOrWbs = def.id === 'name' || def.id === 'wbs';
-    ctx.font = '800 18px var(--font-montserrat, sans-serif)';
+    ctx.font = '900 19px var(--font-montserrat, sans-serif)';
     ctx.fillStyle = color;
     ctx.textBaseline = 'middle';
     ctx.textAlign = isNameOrWbs ? 'left' : 'center';
@@ -1169,7 +1169,7 @@ export default function WBSGanttPage() {
   }, [hoursBreakdownRow, fullData.tasks, fullData.hours, fullData.phases, fullData.units]);
 
   return (
-    <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem' }}>
+    <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem', overscrollBehavior: 'none' }}>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>WBS Gantt</h1>
@@ -1321,7 +1321,7 @@ export default function WBSGanttPage() {
         </div>
       )}
 
-      <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.46)' }}>
+      <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.46)', overscrollBehavior: 'none' }}>
         {isLoading ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ContainerLoader message="Loading WBS Gantt..." minHeight={400} />
@@ -1354,6 +1354,8 @@ export default function WBSGanttPage() {
               drawHeader={drawHeader}
               smoothScrollX
               smoothScrollY={false}
+              overscrollX={0}
+              overscrollY={0}
               width={leftPanel.size.width}
               height={leftPanel.size.height}
               theme={gridTheme}

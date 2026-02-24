@@ -699,31 +699,31 @@ export function DataProvider({ children }: DataProviderProps) {
     const activePortfolioIds = new Set(
       (filtered.portfolios || [])
         .filter((p: any) => p.isActive !== false && p.is_active !== false && p.active !== false)
-        .map((p: any) => p.id || p.portfolioId)
+        .map((p: any) => String(p.id || p.portfolioId || ''))
+        .filter(Boolean)
     );
     if (filtered.portfolios && activePortfolioIds.size >= 0) {
       filtered.portfolios = (filtered.portfolios as any[]).filter((p: any) =>
-        activePortfolioIds.has(p.id || p.portfolioId)
+        activePortfolioIds.has(String(p.id || p.portfolioId || ''))
       );
     }
     if (filtered.projects && activePortfolioIds.size > 0) {
       filtered.projects = (filtered.projects as any[]).filter((p: any) => {
         const pid = p.portfolioId ?? p.portfolio_id;
-        // Keep project if it has no portfolio mapping to avoid blanking whole app due partial hierarchy load.
-        return !pid || activePortfolioIds.has(pid);
+        return !!pid && activePortfolioIds.has(String(pid));
       });
     }
     if (filtered.customers && activePortfolioIds.size > 0) {
       filtered.customers = (filtered.customers as any[]).filter((c: any) => {
         const pid = c.portfolioId ?? c.portfolio_id;
-        return !pid || activePortfolioIds.has(pid);
+        return !!pid && activePortfolioIds.has(String(pid));
       });
     }
-    const activeCustomerIds = new Set((filtered.customers || []).map((c: any) => c.id || c.customerId));
-    if (filtered.sites && activeCustomerIds.size > 0) {
+    const activeCustomerIds = new Set((filtered.customers || []).map((c: any) => c.id || c.customerId).filter(Boolean));
+    if (filtered.sites) {
       filtered.sites = (filtered.sites as any[]).filter((s: any) => {
         const cid = s.customerId ?? s.customer_id;
-        return cid && activeCustomerIds.has(cid);
+        return !!cid && activeCustomerIds.has(cid);
       });
     }
 
@@ -782,20 +782,41 @@ export function DataProvider({ children }: DataProviderProps) {
     // Filter WBS tree: only active portfolios, exclude empty portfolios (no children), then deep-clone and renumber
     if (filtered.wbsData?.items?.length) {
       const isPortfolio = (item: any) => item.itemType === 'portfolio' || item.type === 'portfolio';
-      const wbsFiltered = (filtered.wbsData.items as any[]).filter((item: any) => {
-        if (!isPortfolio(item)) return true;
-        const portfolioId = (item.id || '').replace(/^wbs-portfolio-/, '');
-        if (activePortfolioIds.size > 0 && portfolioId && !activePortfolioIds.has(portfolioId)) return false;
-        // Hide portfolio if it has nothing in it (no children)
-        if (!item.children || item.children.length === 0) return false;
-        return true;
-      });
-      const cloneItem = (item: any): any => {
-        const c = { ...item };
-        if (c.children?.length) c.children = c.children.map((ch: any) => cloneItem(ch));
-        return c;
+      const validCustomerIds = new Set((filtered.customers || []).map((c: any) => String(c.id || c.customerId || '')).filter(Boolean));
+      const validSiteIds = new Set((filtered.sites || []).map((s: any) => String(s.id || s.siteId || '')).filter(Boolean));
+      const validProjectIds = new Set((filtered.projects || []).map((p: any) => String(p.id || p.projectId || '')).filter(Boolean));
+      const normalizeNodeId = (value: unknown, prefix: RegExp): string => String(value || '').replace(prefix, '').trim();
+      const pruneWbsNode = (item: any): any | null => {
+        const nodeId = String(item?.id || '');
+        const nodeType = String(item?.itemType || item?.type || '').toLowerCase();
+        const children = Array.isArray(item?.children)
+          ? item.children.map((child: any) => pruneWbsNode(child)).filter(Boolean)
+          : [];
+
+        if (nodeType === 'portfolio' || isPortfolio(item)) {
+          const portfolioId = normalizeNodeId(nodeId, /^wbs-portfolio-/);
+          if (activePortfolioIds.size > 0 && portfolioId && !activePortfolioIds.has(portfolioId)) return null;
+          if (!children.length) return null;
+          return { ...item, children };
+        }
+        if (nodeType === 'customer') {
+          const customerId = normalizeNodeId(nodeId, /^wbs-customer-/).split('-cust-')[0];
+          if (customerId && !validCustomerIds.has(customerId)) return null;
+        }
+        if (nodeType === 'site') {
+          const siteId = normalizeNodeId(nodeId, /^wbs-site-/).split('-cust-')[0];
+          if (siteId && !validSiteIds.has(siteId)) return null;
+        }
+        if (nodeType === 'project') {
+          const projectId = normalizeNodeId(nodeId, /^wbs-project-/);
+          if (projectId && !validProjectIds.has(projectId)) return null;
+        }
+
+        return { ...item, children };
       };
-      const wbsItems = wbsFiltered.map((item: any) => cloneItem(item));
+      const wbsItems = (filtered.wbsData.items as any[])
+        .map((item: any) => pruneWbsNode(item))
+        .filter(Boolean);
       const reindexWBS = (itemList: any[], prefix = '') => {
         itemList.forEach((item: any, idx: number) => {
           item.wbsCode = prefix ? `${prefix}.${idx + 1}` : `${idx + 1}`;
