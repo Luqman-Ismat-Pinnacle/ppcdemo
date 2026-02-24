@@ -261,24 +261,66 @@ export default function MosPage() {
     if (!taskBreakdownInput.length) return {};
 
     const grouped = new Map<string, number>();
+    const dateGrouped = new Map<string, number>();
     taskBreakdownInput.forEach((h) => {
-      const code = String(h.chargeType || h.charge_type || h.chargeCode || h.charge_code || 'Other').trim() || 'Other';
-      const k = `${code}`;
-      grouped.set(k, (grouped.get(k) || 0) + num(h.hours));
+      const chargeType = String(h.chargeType || h.charge_type || h.chargeCode || h.charge_code || 'Other').trim() || 'Other';
+      const day = toISODate(parseDate(h.date) || new Date());
+      const key = `${day}|||${chargeType}`;
+      grouped.set(chargeType, (grouped.get(chargeType) || 0) + num(h.hours));
+      dateGrouped.set(key, (dateGrouped.get(key) || 0) + num(h.hours));
     });
 
-    const segments = Array.from(grouped.entries())
+    const chargeTypeTotals = Array.from(grouped.entries())
       .map(([code, hours]) => ({ code, hours: Number(hours.toFixed(2)) }))
       .sort((a, b) => b.hours - a.hours);
-    if (!segments.length) return {};
+    if (!chargeTypeTotals.length) return {};
+    const segments = Array.from(dateGrouped.entries())
+      .map(([key, hours]) => {
+        const [date, code] = key.split('|||');
+        return { date, code, hours: Number(hours.toFixed(2)) };
+      })
+      .sort((a, b) => (a.date === b.date ? a.code.localeCompare(b.code) : a.date.localeCompare(b.date)));
+
+    const dateBreaks: Array<{ x: number; day: string }> = [];
+    let cumulative = 0;
+    let lastDay = '';
+    segments.forEach((s, idx) => {
+      if (idx > 0 && s.date !== lastDay) dateBreaks.push({ x: cumulative, day: s.date });
+      cumulative += s.hours;
+      lastDay = s.date;
+    });
+
     const selectedRow = taskRows.find((t) => t.id === normalizeTaskId(selectedTaskId));
     const baseline = Number((selectedRow?.baseline || 0).toFixed(2));
-    const actualTotal = Number(segments.reduce((s, x) => s + x.hours, 0).toFixed(2));
+    const actualTotal = Number(chargeTypeTotals.reduce((s, x) => s + x.hours, 0).toFixed(2));
     const actualPalette = ['#22C55E', '#4ADE80', '#16A34A', '#65A30D', '#84CC16', '#14532D', '#15803D'];
+    const colorByChargeType = new Map<string, string>();
+    chargeTypeTotals.forEach((x, i) => colorByChargeType.set(x.code, actualPalette[i % actualPalette.length]));
+
+    const actualSeries = segments.map((seg, idx) => {
+      const color = colorByChargeType.get(seg.code) || actualPalette[idx % actualPalette.length];
+      return {
+        type: 'bar',
+        stack: 'actual',
+        name: seg.code,
+        itemStyle: { color },
+        data: [0, seg.hours],
+        markLine: idx === 0 ? {
+          symbol: 'none',
+          lineStyle: { type: 'dotted', color: 'rgba(255,255,255,0.35)' },
+          label: { show: true, color: C.muted, formatter: (p: any) => String(p.data?.name || ''), fontSize: 10 },
+          data: dateBreaks.map((d) => ({ xAxis: d.x, name: d.day })),
+        } : undefined,
+      };
+    });
 
     return {
       tooltip: { ...TT, trigger: 'item' },
-      legend: { top: 0, textStyle: { color: C.muted } },
+      legend: {
+        top: 0,
+        textStyle: { color: C.muted },
+        data: ['Baseline', ...chargeTypeTotals.map((x) => x.code)],
+      },
       grid: { left: 120, right: 20, top: 35, bottom: 20, containLabel: true },
       xAxis: {
         type: 'value',
@@ -291,14 +333,10 @@ export default function MosPage() {
           type: 'bar',
           stack: 'baseline',
           name: 'Baseline',
-          data: [{ value: baseline, itemStyle: { color: '#3B82F6' } }, 0],
+          itemStyle: { color: '#3B82F6' },
+          data: [baseline, 0],
         },
-        ...segments.map((seg, i) => ({
-          type: 'bar',
-          stack: 'actual',
-          name: `Actual • ${seg.code}`,
-          data: [0, { value: seg.hours, itemStyle: { color: actualPalette[i % actualPalette.length], opacity: selectedChargeCode && selectedChargeCode !== seg.code ? 0.35 : 1 } }],
-        })),
+        ...actualSeries,
       ],
       graphic: [{
         type: 'text',
@@ -307,7 +345,7 @@ export default function MosPage() {
         style: { text: `Actual Total: ${actualTotal.toFixed(1)}h`, fill: C.muted, fontSize: 11 },
       }],
     };
-  }, [taskBreakdownInput, selectedChargeCode, selectedTaskId, taskRows]);
+  }, [taskBreakdownInput, selectedTaskId, taskRows]);
 
   const nonExQcOption: EChartsOption = useMemo(() => {
     const rows = hours.filter((h) => {
@@ -367,16 +405,33 @@ export default function MosPage() {
       },
       series: [{
         type: 'sunburst',
+        colorMappingBy: 'id',
         radius: [0, `${outer}%`],
         sort: null,
         nodeClick: 'rootToNode',
-        itemStyle: { borderWidth: 1, borderColor: '#0f0f12' },
+        emphasis: { focus: 'ancestor' },
+        itemStyle: { borderWidth: 2, borderColor: '#0f0f12' },
         label: { color: '#ffffff', minAngle: 4 },
         levels: [
           {},
-          { r0: '0%', r: '30%', label: { rotate: 0 } },
-          { r0: '31%', r: '66%', label: { rotate: 'tangential' } },
-          { r0: '67%', r: `${Math.min(98, outer)}%`, label: { rotate: 'tangential', fontSize: 10 } },
+          {
+            r0: '0%',
+            r: '25%',
+            itemStyle: { borderWidth: 2 },
+            label: { rotate: 0, fontWeight: 700 },
+          },
+          {
+            r0: '26%',
+            r: '62%',
+            itemStyle: { borderWidth: 2 },
+            label: { rotate: 'radial' },
+          },
+          {
+            r0: '63%',
+            r: `${Math.min(98, outer)}%`,
+            itemStyle: { borderWidth: 1 },
+            label: { rotate: 'tangential', fontSize: 10 },
+          },
         ],
         data: sunburstData,
       }],

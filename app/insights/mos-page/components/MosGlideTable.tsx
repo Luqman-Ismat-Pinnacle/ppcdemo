@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import DataEditor, { EditableGridCell, GridCell, GridCellKind, GridColumn, Item, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 
@@ -51,18 +51,36 @@ export default function MosGlideTable({
   editableColumns = [],
   onTextCellEdited,
 }: MosGlideTableProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [hostWidth, setHostWidth] = useState(0);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [activeEditCell, setActiveEditCell] = useState<Item | null>(null);
   const [savedCell, setSavedCell] = useState<Item | null>(null);
 
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const measure = () => setHostWidth(Math.max(0, Math.floor(el.getBoundingClientRect().width)));
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   const gridColumns = useMemo<GridColumn[]>(() => {
+    const usable = Math.max(0, hostWidth - 2);
+    const equalWidth = columns.length > 0 ? Math.floor(usable / columns.length) : minColumnWidth;
     return columns.map((name) => ({
       id: name,
       title: name,
-      width: columnWidths[name] || Math.max(minColumnWidth, Math.min(520, name.length * 12 + 100)),
+      width: columnWidths[name] || Math.max(minColumnWidth, equalWidth || Math.min(520, name.length * 12 + 100)),
       grow: 1,
     }));
-  }, [columns, columnWidths, minColumnWidth]);
+  }, [columns, columnWidths, minColumnWidth, hostWidth]);
 
   const getCellContent = React.useCallback(
     ([col, row]: readonly [number, number]): GridCell => {
@@ -101,7 +119,7 @@ export default function MosGlideTable({
   }, [editableColumns, activeEditCell, savedCell]);
 
   return (
-    <div style={{ width: '100%', height, border: '1px solid #2f2f35', borderRadius: 10, overflow: 'hidden' }}>
+    <div ref={hostRef} style={{ width: '100%', height, border: '1px solid #2f2f35', borderRadius: 10, overflow: 'hidden' }}>
       <DataEditor
         columns={gridColumns}
         rows={rows.length}
