@@ -6,7 +6,7 @@
  * Provides dropdown-based navigation organized into three categories:
  * - **Project Controls**: Project Plans, Resourcing, Data Management
  * - **Insights**: Overview (with Variance & Milestones), Tasks (Hours & QC), Documents
- * - **Project Management**: Sprint Planning, Forecasting, QC Log
+ * - **Project Management**: Sprint Planning, Forecasting, Documentation, QC Log
  * 
  * Note: WBS & Gantt is the home/landing page (accessible via logo click)
  * 
@@ -59,6 +59,7 @@ const navigation: NavDropdown[] = [
       { label: 'Sprint Planning', href: '/project-management/sprint' },
       { divider: true },
       { label: 'Forecasting', href: '/project-management/forecast' },
+      { label: 'Documentation', href: '/project-management/documentation' },
       { label: 'QC Log', href: '/project-management/qc-log' },
     ],
   },

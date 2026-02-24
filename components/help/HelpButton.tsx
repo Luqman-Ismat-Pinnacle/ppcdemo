@@ -44,6 +44,7 @@ const ROUTE_TO_HELP_ID: Record<string, string> = {
   '/project-controls/project-plans': 'project-plans',
   '/project-management/forecast': 'forecast',
   '/project-management/sprint': 'sprint',
+  '/project-management/documentation': 'documents',
   '/project-management/qc-log': 'qc-log',
   '/feedback': 'feedback',
 };

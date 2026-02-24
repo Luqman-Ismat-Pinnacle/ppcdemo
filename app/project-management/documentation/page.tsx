@@ -25,7 +25,7 @@
  * to avoid schema changes and integrate with existing data-sync APIs.
  */
 
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
@@ -33,6 +33,7 @@ import SearchableDropdown, { type DropdownOption } from '@/components/ui/Searcha
 const STORAGE_BUCKET = 'projectdoc';
 
 type DocType = 'DRD' | 'Workflow' | 'QMP' | 'SOP';
+type FileFilter = 'all' | 'pdf' | 'word';
 
 type DocumentMeta = {
   dueDate: string | null;
@@ -109,7 +110,7 @@ export default function DocumentationPage() {
   const { filteredData, isLoading } = useData();
   const data = filteredData;
 
-  const allProjects = (data.projects || []) as any[];
+  const allProjects = useMemo(() => (data.projects || []) as any[], [data.projects]);
   const projectOptions: DropdownOption[] = useMemo(
     () =>
       allProjects.map((p) => ({
@@ -121,12 +122,13 @@ export default function DocumentationPage() {
   );
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [fileFilter, setFileFilter] = useState<FileFilter>('all');
 
   const handleProjectChange = useCallback((opt: DropdownOption | null) => {
     setSelectedProjectId(opt?.id ?? null);
   }, []);
 
-  const projectDocuments = (data.projectDocuments || []) as any[];
+  const projectDocuments = useMemo(() => (data.projectDocuments || []) as any[], [data.projectDocuments]);
 
   const docsByType: Record<DocType, ProjectDocumentRow[]> = useMemo(() => {
     const visibleProjectIds = new Set(
@@ -176,7 +178,7 @@ export default function DocumentationPage() {
   const [metaById, setMetaById] = useState<Record<string, DocumentMeta>>({});
 
   // Initialize meta from description when documents change
-  useMemo(() => {
+  useEffect(() => {
     const next: Record<string, DocumentMeta> = {};
     (['DRD', 'Workflow', 'QMP', 'SOP'] as DocType[]).forEach((type) => {
       docsByType[type].forEach((doc) => {
@@ -184,7 +186,7 @@ export default function DocumentationPage() {
       });
     });
     setMetaById(next);
-  }, [docsByType.DRD, docsByType.Workflow, docsByType.QMP, docsByType.SOP]);
+  }, [docsByType]);
 
   const updateMeta = useCallback(
     async (doc: ProjectDocumentRow, partial: Partial<DocumentMeta>) => {
@@ -287,7 +289,12 @@ export default function DocumentationPage() {
   }
 
   const renderSection = (type: DocType, description: string) => {
-    const rows = docsByType[type];
+    const rows = docsByType[type].filter((doc) => {
+      if (fileFilter === 'all') return true;
+      const lower = (doc.fileName || '').toLowerCase();
+      if (fileFilter === 'pdf') return lower.endsWith('.pdf');
+      return lower.endsWith('.doc') || lower.endsWith('.docx');
+    });
 
     return (
       <section
@@ -323,7 +330,7 @@ export default function DocumentationPage() {
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{description}</div>
           </div>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={() => handleUploadClick(type)}
@@ -340,6 +347,18 @@ export default function DocumentationPage() {
             >
               Upload {type}
             </button>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                padding: '0.2rem 0.55rem',
+                borderRadius: 999,
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-secondary)',
+              }}
+            >
+              {rows.length} file{rows.length !== 1 ? 's' : ''}
+            </span>
             <input
               ref={fileInputs[type]}
               type="file"
@@ -369,8 +388,8 @@ export default function DocumentationPage() {
                   <th style={{ minWidth: 120 }}>Uploaded</th>
                   <th style={{ minWidth: 140 }}>Due Date</th>
                   <th style={{ minWidth: 140 }}>Status</th>
-                  <th style={{ minWidth: 140 }}>Client Signoff Required?</th>
-                  <th style={{ minWidth: 140 }}>Client Signoff Complete?</th>
+                  <th style={{ minWidth: 170 }}>Client Signoff Required?</th>
+                  <th style={{ minWidth: 170 }}>Client Signoff Complete?</th>
                 </tr>
               </thead>
               <tbody>
@@ -379,10 +398,7 @@ export default function DocumentationPage() {
                   return (
                     <tr key={doc.id}>
                       <td>
-                        <a
-                          href={`/api/documents/download?id=${encodeURIComponent(doc.id)}`}
-                          style={{ color: 'var(--link-color)', textDecoration: 'none', fontWeight: 500 }}
-                        >
+                        <a href={`/api/documents/download?id=${encodeURIComponent(doc.id)}`} style={{ color: 'var(--link-color)', textDecoration: 'none', fontWeight: 600 }}>
                           {doc.name}
                         </a>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{doc.fileName}</div>
@@ -431,11 +447,10 @@ export default function DocumentationPage() {
                         />
                       </td>
                       <td>
-                        <input
-                          type="checkbox"
-                          checked={meta.clientSignoffComplete}
-                          onChange={(e) => updateMeta(doc, { clientSignoffComplete: e.target.checked })}
-                        />
+                        <input type="checkbox" checked={meta.clientSignoffComplete} onChange={(e) => updateMeta(doc, { clientSignoffComplete: e.target.checked })} />
+                        {meta.clientSignoffRequired && !meta.clientSignoffComplete && (
+                          <div style={{ fontSize: '0.68rem', color: '#f59e0b', marginTop: 4 }}>Pending</div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -500,6 +515,78 @@ export default function DocumentationPage() {
         </div>
       </div>
 
+      <div
+        style={{
+          borderRadius: 10,
+          border: '1px solid var(--border-color)',
+          background: 'var(--bg-card)',
+          padding: '0.8rem 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+            File Type Filter
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Narrow all sections to PDF or Word documents.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {([
+            { key: 'all', label: 'All Files' },
+            { key: 'pdf', label: 'PDF Only' },
+            { key: 'word', label: 'Word Only' },
+          ] as const).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setFileFilter(opt.key)}
+              style={{
+                borderRadius: 999,
+                border: '1px solid var(--border-color)',
+                padding: '0.35rem 0.8rem',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                background: fileFilter === opt.key ? 'var(--pinnacle-teal)' : 'var(--bg-secondary)',
+                color: fileFilter === opt.key ? '#000' : 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem' }}>
+        {(['DRD', 'Workflow', 'QMP', 'SOP'] as DocType[]).map((type) => {
+          const list = docsByType[type].filter((doc) => {
+            if (fileFilter === 'all') return true;
+            const lower = (doc.fileName || '').toLowerCase();
+            if (fileFilter === 'pdf') return lower.endsWith('.pdf');
+            return lower.endsWith('.doc') || lower.endsWith('.docx');
+          });
+          const pendingSignoff = list.filter((d) => {
+            const m = metaById[d.id] ?? DEFAULT_META;
+            return m.clientSignoffRequired && !m.clientSignoffComplete;
+          }).length;
+          return (
+            <div key={`summary-${type}`} style={{ borderRadius: 10, border: '1px solid var(--border-color)', background: 'var(--bg-card)', padding: '0.7rem 0.85rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{type}</div>
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{list.length} Docs</div>
+              <div style={{ fontSize: '0.72rem', color: pendingSignoff > 0 ? '#f59e0b' : 'var(--text-secondary)' }}>
+                {pendingSignoff} Pending Client Signoff
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {renderSection(
         'DRD',
         'Data Requirement Document (DRD) – defines data sources, structures, and validation rules for the project.',
@@ -519,4 +606,3 @@ export default function DocumentationPage() {
     </div>
   );
 }
-
