@@ -118,6 +118,17 @@ export default function MosPage() {
   const [selectedBucket, setSelectedBucket] = useState('');
   const [selectedMilestoneBucket, setSelectedMilestoneBucket] = useState<MilestoneBucket>('Completed On Time');
   const [savingCommitments, setSavingCommitments] = useState(false);
+  const [sunburstZoom, setSunburstZoom] = useState(1);
+  const [selectedMilestoneRow, setSelectedMilestoneRow] = useState<number | null>(null);
+  const [milestoneCommentDraft, setMilestoneCommentDraft] = useState('');
+  const [savingMilestoneComment, setSavingMilestoneComment] = useState(false);
+  const [selectedTaskRow, setSelectedTaskRow] = useState<number | null>(null);
+  const [taskCommentDraft, setTaskCommentDraft] = useState('');
+  const [savingTaskComment, setSavingTaskComment] = useState(false);
+  const [selectedPeriodSection, setSelectedPeriodSection] = useState<'Planned' | 'Actual' | 'Reduced' | null>(null);
+  const [selectedPeriodRow, setSelectedPeriodRow] = useState<number | null>(null);
+  const [periodCommentDraft, setPeriodCommentDraft] = useState('');
+  const [savingPeriodComment, setSavingPeriodComment] = useState(false);
 
   const periods = useMemo(() => derivePeriods(dateFilter), [dateFilter]);
 
@@ -251,54 +262,52 @@ export default function MosPage() {
 
     const grouped = new Map<string, number>();
     taskBreakdownInput.forEach((h) => {
-      const day = toISODate(parseDate(h.date) || new Date());
-      const code = String(h.chargeCode || h.charge_code || h.chargeType || h.charge_type || 'Other').trim() || 'Other';
-      const k = `${day}|||${code}`;
+      const code = String(h.chargeType || h.charge_type || h.chargeCode || h.charge_code || 'Other').trim() || 'Other';
+      const k = `${code}`;
       grouped.set(k, (grouped.get(k) || 0) + num(h.hours));
     });
 
     const segments = Array.from(grouped.entries())
-      .map(([key, hours]) => {
-        const [day, code] = key.split('|||');
-        return { day, code, hours };
-      })
-      .sort((a, b) => (a.day === b.day ? a.code.localeCompare(b.code) : a.day.localeCompare(b.day)));
-
+      .map(([code, hours]) => ({ code, hours: Number(hours.toFixed(2)) }))
+      .sort((a, b) => b.hours - a.hours);
     if (!segments.length) return {};
-
-    const dateBreaks: Array<{ x: number; day: string }> = [];
-    let cumulative = 0;
-    let lastDay = '';
-    segments.forEach((s, idx) => {
-      if (idx > 0 && s.day !== lastDay) dateBreaks.push({ x: cumulative, day: s.day });
-      cumulative += s.hours;
-      lastDay = s.day;
-    });
+    const selectedRow = taskRows.find((t) => t.id === normalizeTaskId(selectedTaskId));
+    const baseline = Number((selectedRow?.baseline || 0).toFixed(2));
+    const actualTotal = Number(segments.reduce((s, x) => s + x.hours, 0).toFixed(2));
+    const actualPalette = ['#22C55E', '#4ADE80', '#16A34A', '#65A30D', '#84CC16', '#14532D', '#15803D'];
 
     return {
       tooltip: { ...TT, trigger: 'item' },
       legend: { top: 0, textStyle: { color: C.muted } },
-      grid: { left: 90, right: 20, top: 35, bottom: 20, containLabel: true },
+      grid: { left: 120, right: 20, top: 35, bottom: 20, containLabel: true },
       xAxis: {
         type: 'value',
         axisLabel: { color: C.muted },
         splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.08)' } },
       },
-      yAxis: { type: 'category', data: ['Hours'], axisLabel: { color: C.text } },
-      series: segments.map((seg, i) => ({
-        type: 'bar',
-        stack: 'timeline',
-        name: seg.code,
-        data: [{ value: seg.hours, itemStyle: { opacity: selectedChargeCode && selectedChargeCode !== seg.code ? 0.35 : 1 } }],
-        markLine: i === 0 ? {
-          symbol: 'none',
-          lineStyle: { type: 'dotted', color: 'rgba(255,255,255,0.32)' },
-          label: { show: true, color: C.muted, formatter: (p: any) => String(p.data?.name || ''), fontSize: 10 },
-          data: dateBreaks.map((d) => ({ xAxis: d.x, name: d.day })),
-        } : undefined,
-      })),
+      yAxis: { type: 'category', data: ['Baseline', 'Actual'], axisLabel: { color: C.text } },
+      series: [
+        {
+          type: 'bar',
+          stack: 'baseline',
+          name: 'Baseline',
+          data: [{ value: baseline, itemStyle: { color: '#3B82F6' } }, 0],
+        },
+        ...segments.map((seg, i) => ({
+          type: 'bar',
+          stack: 'actual',
+          name: `Actual • ${seg.code}`,
+          data: [0, { value: seg.hours, itemStyle: { color: actualPalette[i % actualPalette.length], opacity: selectedChargeCode && selectedChargeCode !== seg.code ? 0.35 : 1 } }],
+        })),
+      ],
+      graphic: [{
+        type: 'text',
+        right: 8,
+        top: 8,
+        style: { text: `Actual Total: ${actualTotal.toFixed(1)}h`, fill: C.muted, fontSize: 11 },
+      }],
     };
-  }, [taskBreakdownInput, selectedChargeCode]);
+  }, [taskBreakdownInput, selectedChargeCode, selectedTaskId, taskRows]);
 
   const nonExQcOption: EChartsOption = useMemo(() => {
     const rows = hours.filter((h) => {
@@ -323,27 +332,32 @@ export default function MosPage() {
       codeMap.set(chargeCode, (codeMap.get(chargeCode) || 0) + hourValue);
     });
 
+    const bucketColors = ['#3B82F6', '#22C55E', '#F59E0B', '#A855F7', '#EC4899', '#14B8A6', '#E11D48', '#84CC16', '#0EA5E9'];
+    const typeColors = ['#4ADE80', '#FBBF24', '#60A5FA', '#C084FC', '#F472B6', '#2DD4BF', '#A3E635'];
     const sunburstData = Array.from(bucketMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([bucket, typeMap]) => {
+      .map(([bucket, typeMap], bucketIdx) => {
         const typeChildren = Array.from(typeMap.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([chargeType, codeMap]) => {
+          .map(([chargeType, codeMap], typeIdx) => {
             const codeChildren = Array.from(codeMap.entries())
               .sort((a, b) => a[0].localeCompare(b[0]))
               .map(([chargeCode, v]) => ({ name: chargeCode, value: Number(v.toFixed(2)) }));
             return {
               name: chargeType,
               value: Number(codeChildren.reduce((s, c) => s + num(c.value), 0).toFixed(2)),
+              itemStyle: { color: typeColors[typeIdx % typeColors.length] },
               children: codeChildren,
             };
           });
         return {
           name: bucket,
           value: Number(typeChildren.reduce((s, c) => s + num(c.value), 0).toFixed(2)),
+          itemStyle: { color: bucketColors[bucketIdx % bucketColors.length] },
           children: typeChildren,
         };
       });
+    const outer = Math.max(70, Math.min(120, 95 * sunburstZoom));
 
     return {
       tooltip: {
@@ -353,16 +367,16 @@ export default function MosPage() {
       },
       series: [{
         type: 'sunburst',
-        radius: [0, '95%'],
+        radius: [0, `${outer}%`],
         sort: null,
         nodeClick: 'rootToNode',
         itemStyle: { borderWidth: 1, borderColor: '#0f0f12' },
         label: { color: '#ffffff', minAngle: 4 },
         levels: [
           {},
-          { r0: '0%', r: '28%', label: { rotate: 0 } },
-          { r0: '30%', r: '62%', label: { rotate: 'tangential' } },
-          { r0: '64%', r: '95%', label: { rotate: 'tangential', fontSize: 10 } },
+          { r0: '0%', r: '30%', label: { rotate: 0 } },
+          { r0: '31%', r: '66%', label: { rotate: 'tangential' } },
+          { r0: '67%', r: `${Math.min(98, outer)}%`, label: { rotate: 'tangential', fontSize: 10 } },
         ],
         data: sunburstData,
       }],
@@ -373,7 +387,7 @@ export default function MosPage() {
         style: { text: 'No Non-EX/QC hours in scope', fill: C.muted, fontSize: 13 },
       }] : undefined,
     };
-  }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units]);
+  }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units, sunburstZoom]);
 
   const milestoneRows = useMemo(() => {
     return milestones.map((m, idx) => {
@@ -505,24 +519,13 @@ export default function MosPage() {
     return out;
   }, [taskRows]);
 
-  const [hoursCommentRows, setHoursCommentRows] = useState<Array<{ value: string; noteId: string }>>([]);
-
   useEffect(() => {
     const getNote = (type: MoPeriodNoteType, start: string, end: string) =>
       scopedNotes.find((n: any) => (n.noteType || n.note_type) === type && (n.periodStart || n.period_start) === start && (n.periodEnd || n.period_end) === end);
 
     setLastCommitmentsDraft(String(getNote('last_commitment', periods.lastStart, periods.lastEnd)?.content || ''));
     setThisCommitmentsDraft(String(getNote('this_commitment', periods.currentStart, periods.currentEnd)?.content || ''));
-
-    const hrs = scopedNotes
-      .filter((n: any) => (n.noteType || n.note_type) === 'hours_comment' && (n.periodStart || n.period_start) === periods.currentStart && (n.periodEnd || n.period_end) === periods.currentEnd)
-      .sort((a: any, b: any) => num(a.sortOrder || a.sort_order) - num(b.sortOrder || b.sort_order));
-
-    setHoursCommentRows(periodBreakdownBaseRows.map((_, idx) => ({
-      value: String(hrs[idx]?.content || ''),
-      noteId: String(hrs[idx]?.id || ''),
-    })));
-  }, [scopedNotes, periods, periodBreakdownBaseRows]);
+  }, [scopedNotes, periods]);
 
   const upsertPeriodNote = async (type: MoPeriodNoteType, content: string, periodStart: string, periodEnd: string, sortOrder = 0, explicitId?: string) => {
     const existing = scopedNotes.find((n: any) => {
@@ -604,20 +607,89 @@ export default function MosPage() {
     updateData({ milestonesTable: (filteredData.milestonesTable || []).map((m: any) => String(m.id || m.milestoneId) === item.id ? { ...m, comments: value } : m) as any });
   };
 
-  const saveHoursComment = async (row: number, value: string) => {
-    const current = hoursCommentRows[row];
-    if (!current) return;
-    const saved = await upsertPeriodNote('hours_comment', value, periods.currentStart, periods.currentEnd, row, current.noteId || undefined);
-    setHoursCommentRows((prev) => prev.map((r, i) => i === row ? { ...r, value, noteId: saved.id } : r));
+  const periodSortOrderFor = (section: 'Planned' | 'Actual' | 'Reduced', row: number) => {
+    if (section === 'Planned') return row;
+    if (section === 'Actual') return 1000 + row;
+    return 2000 + row;
+  };
+
+  const periodCommentBySortOrder = useMemo(() => {
+    const map = new Map<number, { id: string; content: string }>();
+    scopedNotes
+      .filter((n: any) => (n.noteType || n.note_type) === 'hours_comment' && (n.periodStart || n.period_start) === periods.currentStart && (n.periodEnd || n.period_end) === periods.currentEnd)
+      .forEach((n: any) => {
+        map.set(num(n.sortOrder || n.sort_order), {
+          id: String(n.id || ''),
+          content: String(n.content || ''),
+        });
+      });
+    return map;
+  }, [scopedNotes, periods.currentStart, periods.currentEnd]);
+
+  const saveHoursComment = async (section: 'Planned' | 'Actual' | 'Reduced', row: number, value: string) => {
+    const sortOrder = periodSortOrderFor(section, row);
+    const current = periodCommentBySortOrder.get(sortOrder);
+    const saved = await upsertPeriodNote('hours_comment', value, periods.currentStart, periods.currentEnd, sortOrder, current?.id || undefined);
     const rest = moPeriodNotes.filter((n: any) => {
       const t = n.noteType || n.note_type;
       const ps = n.periodStart || n.period_start;
       const pe = n.periodEnd || n.period_end;
       const so = num(n.sortOrder || n.sort_order);
-      return !(t === 'hours_comment' && ps === periods.currentStart && pe === periods.currentEnd && so === row);
+      return !(t === 'hours_comment' && ps === periods.currentStart && pe === periods.currentEnd && so === sortOrder);
     });
     updateData({ moPeriodNotes: [...rest, saved] as any });
   };
+
+  const periodRowsBySection = useMemo(() => {
+    const detailRows: Array<{ section: 'Planned' | 'Actual' | 'Reduced'; task: string; hours: number; employee: string; resource: string; project: string }> = [];
+    const taskMap = new Map(taskRows.map((t) => [normalizeTaskId(t.id), t]));
+    const projectNameById = new Map(projects.map((p: any) => [String(p.id || p.projectId || ''), String(p.name || p.projectName || '')]));
+
+    taskRows.slice(0, 12).forEach((row) => {
+      const taskRec = taskById.get(normalizeTaskId(row.id));
+      const resource = String(taskRec?.assignedResourceName || taskRec?.assignedResource || '-');
+      const project = String(projectNameById.get(String(taskRec?.projectId || taskRec?.project_id || '')) || '-');
+      detailRows.push({ section: 'Planned', task: row.name, hours: Math.round(row.baseline), employee: resource, resource, project });
+      detailRows.push({ section: 'Reduced', task: row.name, hours: Math.round(Math.max(0, row.baseline - row.actual)), employee: resource, resource, project });
+    });
+
+    hours.forEach((h) => {
+      const tid = normalizeTaskId(h.taskId || h.task_id);
+      const task = taskMap.get(tid);
+      if (!task) return;
+      const taskRec = taskById.get(tid);
+      detailRows.push({
+        section: 'Actual',
+        task: task.name,
+        hours: num(h.hours),
+        employee: String(h.employeeName || h.employee || h.employeeId || h.employee_id || '-'),
+        resource: String(taskRec?.assignedResourceName || taskRec?.assignedResource || '-'),
+        project: String(projectNameById.get(String(h.projectId || h.project_id || taskRec?.projectId || '')) || '-'),
+      });
+    });
+
+    return {
+      Planned: detailRows.filter((r) => r.section === 'Planned' && r.hours > 0),
+      Actual: detailRows.filter((r) => r.section === 'Actual' && r.hours > 0),
+      Reduced: detailRows.filter((r) => r.section === 'Reduced' && r.hours > 0),
+    };
+  }, [taskRows, hours, projects, taskById]);
+
+  useEffect(() => {
+    if (selectedMilestoneRow == null) return;
+    setMilestoneCommentDraft(String(milestoneDrill[selectedMilestoneRow]?.comments || ''));
+  }, [selectedMilestoneRow, milestoneDrill]);
+
+  useEffect(() => {
+    if (selectedTaskRow == null) return;
+    setTaskCommentDraft(String(taskRows[selectedTaskRow]?.comments || ''));
+  }, [selectedTaskRow, taskRows]);
+
+  useEffect(() => {
+    if (selectedPeriodRow == null || !selectedPeriodSection) return;
+    const key = periodSortOrderFor(selectedPeriodSection, selectedPeriodRow);
+    setPeriodCommentDraft(String(periodCommentBySortOrder.get(key)?.content || ''));
+  }, [selectedPeriodRow, selectedPeriodSection, periodCommentBySortOrder]);
 
   const clearVisualFilters = () => {
     setSelectedChargeCode('');
@@ -663,13 +735,34 @@ export default function MosPage() {
                 ))}
               </div>
               <MosGlideTable
-                columns={['Milestone', 'Status', 'BL Start', 'BL Finish', 'Actual Start', 'Actual Finish', 'Forecast Finish', 'Comments']}
-                rows={milestoneDrill.map((r) => [r.name, r.status, fmtDate(r.baselineStart), fmtDate(r.baselineEnd), fmtDate(r.actualStart), fmtDate(r.actualEnd), fmtDate(r.forecastEnd), r.comments])}
-                editableColumns={[7]}
-                onTextCellEdited={(row, col, value) => { if (col === 7) void saveMilestoneComment(row, value); }}
+                columns={['Milestone', 'Status', 'BL Start', 'BL Finish', 'Actual Start', 'Actual Finish', 'Forecast Finish']}
+                rows={milestoneDrill.map((r) => [r.name, r.status, fmtDate(r.baselineStart), fmtDate(r.baselineEnd), fmtDate(r.actualStart), fmtDate(r.actualEnd), fmtDate(r.forecastEnd)])}
+                onRowClick={(row) => setSelectedMilestoneRow(row)}
                 height={300}
                 minColumnWidth={120}
               />
+              {selectedMilestoneRow != null && milestoneDrill[selectedMilestoneRow] && (
+                <div style={{ marginTop: '0.35rem', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.6rem', background: 'rgba(0,0,0,0.24)' }}>
+                  <div style={{ color: C.text, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                    Comment: {milestoneDrill[selectedMilestoneRow].name}
+                  </div>
+                  <textarea
+                    value={milestoneCommentDraft}
+                    onChange={(e) => setMilestoneCommentDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        void (async () => {
+                          setSavingMilestoneComment(true);
+                          try { await saveMilestoneComment(selectedMilestoneRow, milestoneCommentDraft); } finally { setSavingMilestoneComment(false); }
+                        })();
+                      }
+                    }}
+                    rows={3}
+                    style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: '#ffffff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
+                  />
+                </div>
+              )}
             </div>
 
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '1rem', display: 'grid', gap: '0.75rem' }}>
@@ -693,14 +786,65 @@ export default function MosPage() {
               Period Hours Efficiency: <span style={{ color: C.blue }}>{periodHours.efficiency}%</span> | Plan {Math.round(periodHours.plan)}h | Actual {Math.round(periodHours.actual)}h | Added {Math.round(periodHours.added)}h | Delta {Math.round(periodHours.deltaHours)}h ({periodHours.deltaPct.toFixed(1)}%)
             </h3>
             <div style={{ color: C.muted, fontSize: '0.76rem' }}>Reduced hours = `max(0, Plan - Actual)` for current filtered scope and period.</div>
-            <ChartWrapper option={{ tooltip: TT, grid: { left: 80, right: 20, top: 12, bottom: 12, containLabel: true }, xAxis: { type: 'value', axisLabel: { color: C.muted } }, yAxis: { type: 'category', data: ['Plan', 'Actual', 'Reduced'], axisLabel: { color: C.text } }, series: [{ type: 'bar', data: [{ value: periodHours.plan, itemStyle: { color: '#3B82F6' } }, { value: periodHours.actual, itemStyle: { color: '#22C55E' } }, { value: periodHours.reduced, itemStyle: { color: '#F59E0B' } }] }] }} height={220} />
-            <MosGlideTable
-              columns={['Section', 'Task', 'Hours', 'Comments']}
-              rows={periodBreakdownBaseRows.map((r, idx) => [r.section, r.task, r.hours, hoursCommentRows[idx]?.value || ''])}
-              editableColumns={[3]}
-              onTextCellEdited={(row, col, value) => { if (col === 3) void saveHoursComment(row, value); }}
-              height={320}
+            <ChartWrapper
+              option={{
+                tooltip: TT,
+                grid: { left: 80, right: 20, top: 12, bottom: 12, containLabel: true },
+                xAxis: { type: 'value', axisLabel: { color: C.muted } },
+                yAxis: { type: 'category', data: ['Plan', 'Actual', 'Reduced'], axisLabel: { color: C.text } },
+                series: [{
+                  type: 'bar',
+                  data: [
+                    { value: periodHours.plan, itemStyle: { color: '#3B82F6' } },
+                    { value: periodHours.actual, itemStyle: { color: '#22C55E' } },
+                    { value: periodHours.reduced, itemStyle: { color: '#F59E0B' } },
+                  ],
+                }],
+              }}
+              height={220}
+              onClick={(p) => {
+                const label = String(p.name || '');
+                if (label === 'Plan') setSelectedPeriodSection('Planned');
+                if (label === 'Actual') setSelectedPeriodSection('Actual');
+                if (label === 'Reduced') setSelectedPeriodSection('Reduced');
+                setSelectedPeriodRow(null);
+              }}
             />
+            {selectedPeriodSection && (
+              <>
+                <div style={{ color: C.text, fontSize: '0.82rem', fontWeight: 700 }}>
+                  {selectedPeriodSection} details
+                </div>
+                <MosGlideTable
+                  columns={['Task', 'Hours', 'Employee', 'Resource', 'Project']}
+                  rows={(periodRowsBySection[selectedPeriodSection] || []).map((r) => [r.task, Math.round(r.hours), r.employee, r.resource, r.project])}
+                  onRowClick={(row) => setSelectedPeriodRow(row)}
+                  height={340}
+                />
+                {selectedPeriodRow != null && (periodRowsBySection[selectedPeriodSection] || [])[selectedPeriodRow] && (
+                  <div style={{ marginTop: '0.35rem', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.6rem', background: 'rgba(0,0,0,0.24)' }}>
+                    <div style={{ color: C.text, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                      Comment: {(periodRowsBySection[selectedPeriodSection] || [])[selectedPeriodRow].task}
+                    </div>
+                    <textarea
+                      value={periodCommentDraft}
+                      onChange={(e) => setPeriodCommentDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                        void (async () => {
+                          setSavingPeriodComment(true);
+                          try { await saveHoursComment(selectedPeriodSection, selectedPeriodRow, periodCommentDraft); } finally { setSavingPeriodComment(false); }
+                        })();
+                      }
+                    }}
+                      rows={3}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: '#ffffff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </section>
 
           <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
@@ -720,18 +864,45 @@ export default function MosPage() {
                 if (Number.isFinite(idx) && taskRows[idx]) setSelectedTaskId(taskRows[idx].id);
               }} />
               <MosGlideTable
-                columns={['Task', 'Baseline', 'Actual', 'Added', 'Delta', 'Comments']}
-                rows={taskRows.slice(0, 35).map((r) => [r.name, Math.round(r.baseline), Math.round(r.actual), Math.round(r.added), Math.round(r.delta), r.comments])}
-                editableColumns={[5]}
-                onTextCellEdited={(row, col, value) => { if (col === 5) void saveTaskComment(row, value); }}
-                onRowClick={(row) => setSelectedTaskId(taskRows[row]?.id || '')}
+                columns={['Task', 'Baseline', 'Actual', 'Added', 'Delta']}
+                rows={taskRows.slice(0, 35).map((r) => [r.name, Math.round(r.baseline), Math.round(r.actual), Math.round(r.added), Math.round(r.delta)])}
+                onRowClick={(row) => { setSelectedTaskId(taskRows[row]?.id || ''); setSelectedTaskRow(row); }}
                 height={320}
               />
+              {selectedTaskRow != null && taskRows[selectedTaskRow] && (
+                <div style={{ marginTop: '0.35rem', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.6rem', background: 'rgba(0,0,0,0.24)' }}>
+                  <div style={{ color: C.text, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                    Comment: {taskRows[selectedTaskRow].name}
+                  </div>
+                  <textarea
+                    value={taskCommentDraft}
+                    onChange={(e) => setTaskCommentDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        void (async () => {
+                          setSavingTaskComment(true);
+                          try { await saveTaskComment(selectedTaskRow, taskCommentDraft); } finally { setSavingTaskComment(false); }
+                        })();
+                      }
+                    }}
+                    rows={3}
+                    style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: '#ffffff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
+                  />
+                </div>
+              )}
             </div>
 
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
-              <h3 style={{ margin: '0 0 0.45rem', color: C.text, fontSize: '0.9rem' }}>Non-EX/QC Hours Sunburst by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}</h3>
-              <ChartWrapper option={nonExQcOption} height={420} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => {
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: '0.45rem' }}>
+                <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Non-EX/QC Hours Sunburst by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}</h3>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setSunburstZoom((z) => Math.max(0.8, Number((z - 0.1).toFixed(2))))} style={{ background: 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.15rem 0.5rem', cursor: 'pointer' }}>-</button>
+                  <button onClick={() => setSunburstZoom(1)} style={{ background: 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.15rem 0.5rem', cursor: 'pointer', fontSize: '0.72rem' }}>Reset</button>
+                  <button onClick={() => setSunburstZoom((z) => Math.min(1.25, Number((z + 0.1).toFixed(2))))} style={{ background: 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.15rem 0.5rem', cursor: 'pointer' }}>+</button>
+                </div>
+              </div>
+              <ChartWrapper option={nonExQcOption} height={620} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => {
                 const type = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
                 return type !== 'EX' && type !== 'QC';
               })} />
