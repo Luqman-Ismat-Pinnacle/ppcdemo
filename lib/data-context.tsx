@@ -1155,14 +1155,8 @@ export function DataProvider({ children }: DataProviderProps) {
         const validProjectIds = new Set(
           filtered.projects?.map((p: any) => p.id || p.projectId) || []
         );
-        const validTaskIds = new Set(
-          filtered.tasks?.map((t: any) => t.id || t.taskId) || []
-        );
         filtered.hours = filtered.hours.filter((h: any) => {
           if (validProjectIds.size > 0 && h.projectId && !validProjectIds.has(h.projectId)) {
-            return false;
-          }
-          if (validTaskIds.size > 0 && h.taskId && !validTaskIds.has(h.taskId)) {
             return false;
           }
           return true;

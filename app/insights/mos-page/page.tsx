@@ -70,6 +70,20 @@ function derivePeriods(dateFilter: any): {
   lastEnd: string;
 } {
   const now = new Date();
+  if (dateFilter?.type === 'custom' && dateFilter?.from && dateFilter?.to) {
+    const currentStart = parseDate(dateFilter.from) || firstDayOfMonth(now);
+    const currentEnd = parseDate(dateFilter.to) || lastDayOfMonth(now);
+    const durationDays = Math.max(1, Math.round((currentEnd.getTime() - currentStart.getTime()) / 86400000) + 1);
+    const lastEnd = new Date(currentStart.getTime() - 86400000);
+    const lastStart = new Date(lastEnd.getTime() - (durationDays - 1) * 86400000);
+    return {
+      granularity: 'month',
+      currentStart: toISODate(currentStart),
+      currentEnd: toISODate(currentEnd),
+      lastStart: toISODate(lastStart),
+      lastEnd: toISODate(lastEnd),
+    };
+  }
   let granularity: MoPeriodGranularity = 'month';
   let currentStart: Date;
   let currentEnd: Date;
@@ -78,10 +92,6 @@ function derivePeriods(dateFilter: any): {
     granularity = 'quarter';
     currentStart = firstDayOfQuarter(now);
     currentEnd = lastDayOfQuarter(now);
-  } else if (dateFilter?.type === 'custom' && dateFilter?.from && dateFilter?.to) {
-    granularity = 'month';
-    currentStart = parseDate(dateFilter.from) || firstDayOfMonth(now);
-    currentEnd = parseDate(dateFilter.to) || lastDayOfMonth(now);
   } else {
     currentStart = firstDayOfMonth(now);
     currentEnd = lastDayOfMonth(now);
@@ -186,12 +196,15 @@ export default function MosPage() {
 
   const taskActualHours = useMemo(() => {
     const m = new Map<string, number>();
+    const byName = new Map<string, number>();
     hours.forEach((h) => {
       const tid = normalizeTaskId(h.taskId || h.task_id);
       if (!tid) return;
       m.set(tid, (m.get(tid) || 0) + num(h.hours));
+      const taskText = String(h.task || '').trim().toLowerCase();
+      if (taskText) byName.set(taskText, (byName.get(taskText) || 0) + num(h.hours));
     });
-    return m;
+    return { byId: m, byName };
   }, [hours]);
 
   const taskRows = useMemo(() => {
@@ -200,7 +213,10 @@ export default function MosPage() {
         const sourceId = String(t.id || t.taskId || '');
         const id = normalizeTaskId(sourceId);
         const baseline = num(t.baselineHours || t.baseline_hours || t.projectedHours || t.projected_hours);
-        const actual = taskActualHours.get(id) ?? num(t.actualHours || t.actual_hours);
+        const nameKey = String(t.taskName || t.name || '').trim().toLowerCase();
+        const actualFromId = taskActualHours.byId.get(id) || 0;
+        const actualFromName = nameKey ? (taskActualHours.byName.get(nameKey) || 0) : 0;
+        const actual = Math.max(actualFromId, actualFromName, num(t.actualHours || t.actual_hours));
         const added = Math.max(0, actual - baseline);
         return {
           sourceId,
@@ -215,7 +231,7 @@ export default function MosPage() {
       })
       .filter((r) => r.id && (r.baseline > 0 || r.actual > 0))
       .sort((a, b) => (b.actual + b.baseline) - (a.actual + a.baseline));
-    return rows.slice(0, 60);
+    return rows;
   }, [tasks, taskActualHours]);
 
   useEffect(() => {
@@ -778,6 +794,7 @@ export default function MosPage() {
   const periodRowsBySection = useMemo(() => {
     const detailRows: Array<{ section: 'Planned' | 'Actual' | 'Reduced'; task: string; hours: number; employee: string; resource: string; project: string }> = [];
     const taskMap = new Map(taskRows.map((t) => [normalizeTaskId(t.id), t]));
+    const taskByName = new Map(taskRows.map((t) => [String(t.name || '').trim().toLowerCase(), t]));
     const projectNameById = new Map(projects.map((p: any) => [String(p.id || p.projectId || ''), String(p.name || p.projectName || '')]));
 
     taskRows.slice(0, 12).forEach((row) => {
@@ -790,7 +807,8 @@ export default function MosPage() {
 
     hours.forEach((h) => {
       const tid = normalizeTaskId(h.taskId || h.task_id);
-      const task = taskMap.get(tid);
+      const byText = String(h.task || '').trim().toLowerCase();
+      const task = taskMap.get(tid) || (byText ? taskByName.get(byText) : undefined);
       if (!task) return;
       const taskRec = taskById.get(tid);
       detailRows.push({
@@ -1097,8 +1115,7 @@ export default function MosPage() {
       ) : (
         <section style={{ display: 'grid', gap: '0.8rem' }}>
           <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
-            <h3 style={{ margin: 0, color: C.text }}>Q&A</h3>
-            <p style={{ color: C.muted, fontSize: '0.8rem', marginTop: '0.4rem' }}>This section keeps the Mo page discussion context. Dashboard visuals/tables provide live DB-backed tracking.</p>
+            <h3 style={{ margin: 0, color: C.text }}>Under Development</h3>
           </div>
         </section>
       )}
