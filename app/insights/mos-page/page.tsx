@@ -122,13 +122,16 @@ export default function MosPage() {
   const [selectedMilestoneRow, setSelectedMilestoneRow] = useState<number | null>(null);
   const [milestoneCommentDraft, setMilestoneCommentDraft] = useState('');
   const [savingMilestoneComment, setSavingMilestoneComment] = useState(false);
+  const [milestoneCommentSaved, setMilestoneCommentSaved] = useState(false);
   const [selectedTaskRow, setSelectedTaskRow] = useState<number | null>(null);
   const [taskCommentDraft, setTaskCommentDraft] = useState('');
   const [savingTaskComment, setSavingTaskComment] = useState(false);
+  const [taskCommentSaved, setTaskCommentSaved] = useState(false);
   const [selectedPeriodSection, setSelectedPeriodSection] = useState<'Planned' | 'Actual' | 'Reduced' | null>(null);
   const [selectedPeriodRow, setSelectedPeriodRow] = useState<number | null>(null);
   const [periodCommentDraft, setPeriodCommentDraft] = useState('');
   const [savingPeriodComment, setSavingPeriodComment] = useState(false);
+  const [periodCommentSaved, setPeriodCommentSaved] = useState(false);
 
   const periods = useMemo(() => derivePeriods(dateFilter), [dateFilter]);
 
@@ -800,17 +803,20 @@ export default function MosPage() {
   useEffect(() => {
     if (selectedMilestoneRow == null) return;
     setMilestoneCommentDraft(String(milestoneDrill[selectedMilestoneRow]?.comments || ''));
+    setMilestoneCommentSaved(false);
   }, [selectedMilestoneRow, milestoneDrill]);
 
   useEffect(() => {
     if (selectedTaskRow == null) return;
     setTaskCommentDraft(String(taskRows[selectedTaskRow]?.comments || ''));
+    setTaskCommentSaved(false);
   }, [selectedTaskRow, taskRows]);
 
   useEffect(() => {
     if (selectedPeriodRow == null || !selectedPeriodSection) return;
     const key = periodSortOrderFor(selectedPeriodSection, selectedPeriodRow);
     setPeriodCommentDraft(String(periodCommentBySortOrder.get(key)?.content || ''));
+    setPeriodCommentSaved(false);
   }, [selectedPeriodRow, selectedPeriodSection, periodCommentBySortOrder]);
 
   const clearVisualFilters = () => {
@@ -833,7 +839,6 @@ export default function MosPage() {
       <header style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ margin: 0, color: C.text, fontSize: '1.65rem', fontWeight: 900 }}>Mo&apos;s Page</h1>
-          <p style={{ margin: '0.3rem 0 0', color: C.muted, fontSize: '0.8rem' }}>Dashboard is DB-backed and scoped by global hierarchy/time filters.</p>
         </div>
         <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 36 }}>
           <button onClick={() => setTab('dashboard')} style={{ background: tab === 'dashboard' ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: 'none', padding: '0 0.9rem', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>Dashboard</button>
@@ -876,13 +881,29 @@ export default function MosPage() {
                         e.preventDefault();
                         void (async () => {
                           setSavingMilestoneComment(true);
-                          try { await saveMilestoneComment(selectedMilestoneRow, milestoneCommentDraft); } finally { setSavingMilestoneComment(false); }
+                          try {
+                            await saveMilestoneComment(selectedMilestoneRow, milestoneCommentDraft);
+                            setMilestoneCommentSaved(true);
+                          } finally { setSavingMilestoneComment(false); }
                         })();
                       }
                     }}
                     rows={3}
                     style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: '#ffffff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
                   />
+                  <button
+                    onClick={async () => {
+                      setSavingMilestoneComment(true);
+                      try {
+                        await saveMilestoneComment(selectedMilestoneRow, milestoneCommentDraft);
+                        setMilestoneCommentSaved(true);
+                      } finally { setSavingMilestoneComment(false); }
+                    }}
+                    disabled={savingMilestoneComment}
+                    style={{ marginTop: '0.45rem', background: C.teal, color: '#000', border: 'none', borderRadius: 7, padding: '0.3rem 0.55rem', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+                  >
+                    {savingMilestoneComment ? 'Saving...' : milestoneCommentSaved ? 'Saved' : 'Save Comment'}
+                  </button>
                 </div>
               )}
             </div>
@@ -954,15 +975,31 @@ export default function MosPage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
-                        void (async () => {
-                          setSavingPeriodComment(true);
-                          try { await saveHoursComment(selectedPeriodSection, selectedPeriodRow, periodCommentDraft); } finally { setSavingPeriodComment(false); }
-                        })();
-                      }
-                    }}
+                          void (async () => {
+                            setSavingPeriodComment(true);
+                            try {
+                              await saveHoursComment(selectedPeriodSection, selectedPeriodRow, periodCommentDraft);
+                              setPeriodCommentSaved(true);
+                            } finally { setSavingPeriodComment(false); }
+                          })();
+                        }
+                      }}
                       rows={3}
                       style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: '#ffffff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
                     />
+                    <button
+                      onClick={async () => {
+                        setSavingPeriodComment(true);
+                        try {
+                          await saveHoursComment(selectedPeriodSection, selectedPeriodRow, periodCommentDraft);
+                          setPeriodCommentSaved(true);
+                        } finally { setSavingPeriodComment(false); }
+                      }}
+                      disabled={savingPeriodComment}
+                      style={{ marginTop: '0.45rem', background: C.teal, color: '#000', border: 'none', borderRadius: 7, padding: '0.3rem 0.55rem', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+                    >
+                      {savingPeriodComment ? 'Saving...' : periodCommentSaved ? 'Saved' : 'Save Comment'}
+                    </button>
                   </div>
                 )}
               </>
@@ -1004,13 +1041,29 @@ export default function MosPage() {
                         e.preventDefault();
                         void (async () => {
                           setSavingTaskComment(true);
-                          try { await saveTaskComment(selectedTaskRow, taskCommentDraft); } finally { setSavingTaskComment(false); }
+                          try {
+                            await saveTaskComment(selectedTaskRow, taskCommentDraft);
+                            setTaskCommentSaved(true);
+                          } finally { setSavingTaskComment(false); }
                         })();
                       }
                     }}
                     rows={3}
                     style={{ width: '100%', background: 'rgba(0,0,0,0.35)', color: '#ffffff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '0.45rem' }}
                   />
+                  <button
+                    onClick={async () => {
+                      setSavingTaskComment(true);
+                      try {
+                        await saveTaskComment(selectedTaskRow, taskCommentDraft);
+                        setTaskCommentSaved(true);
+                      } finally { setSavingTaskComment(false); }
+                    }}
+                    disabled={savingTaskComment}
+                    style={{ marginTop: '0.45rem', background: C.teal, color: '#000', border: 'none', borderRadius: 7, padding: '0.3rem 0.55rem', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+                  >
+                    {savingTaskComment ? 'Saving...' : taskCommentSaved ? 'Saved' : 'Save Comment'}
+                  </button>
                 </div>
               )}
             </div>
