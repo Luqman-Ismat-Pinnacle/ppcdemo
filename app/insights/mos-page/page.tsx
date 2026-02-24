@@ -386,6 +386,10 @@ export default function MosPage() {
         data: ['Baseline', ...chargeTypeTotals.map((x) => x.code)],
       },
       grid: { left: 120, right: 20, top: 35, bottom: 20, containLabel: true },
+      dataZoom: [
+        { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+        { type: 'slider', xAxisIndex: 0, height: 14, bottom: 2, borderColor: 'rgba(63,63,70,0.9)', fillerColor: 'rgba(16,185,129,0.25)', handleStyle: { color: '#10B981' } },
+      ],
       xAxis: {
         type: 'value',
         axisLabel: { color: C.muted },
@@ -436,6 +440,7 @@ export default function MosPage() {
 
     const bucketColors = ['#22C55E', '#F59E0B', '#EF4444', '#84CC16', '#FACC15', '#DC2626', '#16A34A', '#EAB308', '#B91C1C'];
     const typeColors = ['#16A34A', '#65A30D', '#FACC15', '#EAB308', '#F59E0B', '#DC2626', '#EF4444'];
+    const outerRingYellow = ['#FACC15', '#EAB308', '#F59E0B', '#FDE047', '#CA8A04', '#FBBF24', '#D97706'];
     const sunburstData = Array.from(bucketMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([bucket, typeMap], bucketIdx) => {
@@ -444,7 +449,11 @@ export default function MosPage() {
           .map(([chargeType, codeMap], typeIdx) => {
             const codeChildren = Array.from(codeMap.entries())
               .sort((a, b) => a[0].localeCompare(b[0]))
-              .map(([chargeCode, v]) => ({ name: chargeCode, value: Number(v.toFixed(2)) }));
+              .map(([chargeCode, v], codeIdx) => ({
+                name: chargeCode,
+                value: Number(v.toFixed(2)),
+                itemStyle: { color: outerRingYellow[codeIdx % outerRingYellow.length] },
+              }));
             return {
               name: chargeType,
               value: Number(codeChildren.reduce((s, c) => s + num(c.value), 0).toFixed(2)),
@@ -501,6 +510,7 @@ export default function MosPage() {
             r: `${Math.min(98, outer)}%`,
             itemStyle: { borderWidth: 1 },
             label: { show: false },
+            emphasis: { label: { show: false } },
           },
         ],
         data: sunburstData,
