@@ -123,6 +123,8 @@ export default function MosGlideTable({
       <DataEditor
         columns={gridColumns}
         rows={rows.length}
+        width={Math.max(1, hostWidth)}
+        height={height}
         getCellContent={getCellContent}
         rowHeight={36}
         headerHeight={38}

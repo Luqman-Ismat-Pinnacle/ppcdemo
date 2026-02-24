@@ -293,7 +293,7 @@ export default function MosPage() {
     const selectedRow = taskRows.find((t) => t.id === normalizeTaskId(selectedTaskId));
     const baseline = Number((selectedRow?.baseline || 0).toFixed(2));
     const actualTotal = Number(chargeTypeTotals.reduce((s, x) => s + x.hours, 0).toFixed(2));
-    const actualPalette = ['#22C55E', '#4ADE80', '#16A34A', '#65A30D', '#84CC16', '#14532D', '#15803D'];
+    const actualPalette = ['#22C55E', '#14B8A6', '#2ED3C6', '#40E0D0', '#0EA5E9', '#3B82F6', '#10B981'];
     const colorByChargeType = new Map<string, string>();
     chargeTypeTotals.forEach((x, i) => colorByChargeType.set(x.code, actualPalette[i % actualPalette.length]));
 
@@ -303,6 +303,7 @@ export default function MosPage() {
         type: 'bar',
         stack: 'actual',
         name: seg.code,
+        color,
         itemStyle: { color },
         data: [0, seg.hours],
         markLine: idx === 0 ? {
@@ -319,6 +320,7 @@ export default function MosPage() {
       legend: {
         top: 0,
         textStyle: { color: C.muted },
+        icon: 'roundRect',
         data: ['Baseline', ...chargeTypeTotals.map((x) => x.code)],
       },
       grid: { left: 120, right: 20, top: 35, bottom: 20, containLabel: true },
@@ -370,8 +372,8 @@ export default function MosPage() {
       codeMap.set(chargeCode, (codeMap.get(chargeCode) || 0) + hourValue);
     });
 
-    const bucketColors = ['#3B82F6', '#22C55E', '#F59E0B', '#A855F7', '#EC4899', '#14B8A6', '#E11D48', '#84CC16', '#0EA5E9'];
-    const typeColors = ['#4ADE80', '#FBBF24', '#60A5FA', '#C084FC', '#F472B6', '#2DD4BF', '#A3E635'];
+    const bucketColors = ['#2ED3C6', '#40E0D0', '#0EA5E9', '#3B82F6', '#14B8A6', '#22C55E', '#10B981', '#06B6D4', '#0284C7'];
+    const typeColors = ['#14B8A6', '#22C55E', '#40E0D0', '#38BDF8', '#2ED3C6', '#0EA5E9', '#34D399'];
     const sunburstData = Array.from(bucketMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([bucket, typeMap], bucketIdx) => {
