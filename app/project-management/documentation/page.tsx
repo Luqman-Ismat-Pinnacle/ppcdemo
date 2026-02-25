@@ -3,7 +3,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
-import { useAuth } from '@/lib/auth-context';
+import { useUser } from '@/lib/user-context';
 
 type DocType = 'DRD' | 'Workflow' | 'QMP' | 'SOP';
 type FileFilter = 'all' | 'pdf' | 'word';
@@ -112,7 +112,7 @@ async function callDocsApi(payload: Record<string, unknown>) {
 
 export default function DocumentationPage() {
   const { filteredData, isLoading, refreshData, hierarchyFilter } = useData();
-  const { user } = useAuth();
+  const { user } = useUser();
   const [fileFilter, setFileFilter] = useState<FileFilter>('all');
   const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
   const [savingKey, setSavingKey] = useState<string>('');
@@ -128,7 +128,9 @@ export default function DocumentationPage() {
   } as const;
   const fileInputByRecord = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const ownerName = user?.user_metadata?.name || user?.email || 'System';
+  const actorName = user?.name || 'System';
+  const actorEmail = user?.email || '';
+  const auditActor = actorEmail || actorName || 'System';
 
   const records = useMemo(() => ((filteredData.projectDocumentRecords || []) as any[]).map(mapRecord), [filteredData.projectDocumentRecords]);
   const versions = useMemo(() => ((filteredData.projectDocumentVersions || []) as any[]).map(mapVersion), [filteredData.projectDocumentVersions]);
@@ -181,13 +183,14 @@ export default function DocumentationPage() {
         status: draft.status ?? record.status ?? 'Not Started',
         clientSignoffRequired: draft.clientSignoffRequired ?? record.clientSignoffRequired ?? false,
         clientSignoffComplete: draft.clientSignoffComplete ?? record.clientSignoffComplete ?? false,
-        updatedBy: ownerName,
+        actorName,
+        actorEmail,
       });
       await refreshData();
     } finally {
       setSavingKey('');
     }
-  }, [metaDraft, ownerName, refreshData]);
+  }, [actorEmail, actorName, metaDraft, refreshData]);
 
   const saveVersionNotes = useCallback(async (versionId: string, fallbackNotes: string | null | undefined) => {
     const notes = notesDraft[versionId] ?? fallbackNotes ?? '';
@@ -207,7 +210,7 @@ export default function DocumentationPage() {
         action: 'createDocumentRecord',
         docType,
         name: `${docType} Document`,
-        owner: ownerName,
+        owner: actorName,
         projectId: hierarchyFilter?.project || null,
         portfolioId: hierarchyFilter?.portfolio || null,
         customerId: hierarchyFilter?.customer || null,
@@ -215,12 +218,14 @@ export default function DocumentationPage() {
         status: 'Not Started',
         clientSignoffRequired: false,
         clientSignoffComplete: false,
+        actorName,
+        actorEmail,
       });
       await refreshData();
     } finally {
       setSavingKey('');
     }
-  }, [hierarchyFilter?.customer, hierarchyFilter?.portfolio, hierarchyFilter?.project, hierarchyFilter?.site, ownerName, refreshData]);
+  }, [actorEmail, actorName, hierarchyFilter?.customer, hierarchyFilter?.portfolio, hierarchyFilter?.project, hierarchyFilter?.site, refreshData]);
 
   const uploadForRecord = useCallback(async (record: DocRecord, file: File) => {
     if (!isPdfOrWord(file.name)) {
@@ -242,8 +247,10 @@ export default function DocumentationPage() {
         blobPath: uploadData.path,
         mimeType: file.type || null,
         fileSize: file.size,
-        uploadedBy: ownerName,
+        uploadedBy: auditActor,
         notes: '',
+        actorName,
+        actorEmail,
       });
 
       await refreshData();
@@ -252,7 +259,7 @@ export default function DocumentationPage() {
     } finally {
       setUploadingRecordId('');
     }
-  }, [hierarchyFilter?.project, ownerName, refreshData]);
+  }, [actorEmail, actorName, auditActor, hierarchyFilter?.project, refreshData]);
 
   const handleDeleteLatest = useCallback(async (recordId: string) => {
     if (!confirm('Delete latest version for this document?')) return;

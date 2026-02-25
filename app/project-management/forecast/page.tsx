@@ -34,6 +34,18 @@ import {
 import { CPMEngine } from '@/lib/cpm-engine';
 import type { EChartsOption } from 'echarts';
 
+function toNumber(value: unknown, fallback: number = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  if (value && typeof value === 'object' && 'value' in (value as Record<string, unknown>)) {
+    return toNumber((value as Record<string, unknown>).value, fallback);
+  }
+  return fallback;
+}
+
 // ===== INFO ICON FOR TOOLTIPS =====
 function InfoIcon() {
   return (
@@ -384,7 +396,7 @@ function CascadeImpactChart({ milestones, tasks }: { milestones: any[]; tasks: a
         backgroundColor: 'rgba(22,27,34,0.95)',
         borderColor: 'var(--border-color)',
         textStyle: { color: '#fff', fontSize: 11 },
-        formatter: (params: any) => `<b>${params.name}</b><br/>Delay Impact: ${params.value?.toFixed(1)} days`
+        formatter: (params: any) => `<b>${params.name}</b><br/>Delay Impact: ${toNumber(params?.value).toFixed(1)} days`
       },
       series: [{
         type: 'sunburst',
@@ -496,7 +508,7 @@ function ScenarioWaterfall({ forecastResult, bac }: { forecastResult: ForecastRe
         textStyle: { color: '#fff', fontSize: 11 },
         formatter: (params: any) => {
           const d = params[0];
-          return `<b>${d.name}</b><br/>Value: $${(d.value / 1000).toFixed(0)}K`;
+          return `<b>${d.name}</b><br/>Value: $${(toNumber(d?.value) / 1000).toFixed(0)}K`;
         }
       },
       grid: { left: 80, right: 40, top: 40, bottom: 60 },
@@ -530,7 +542,7 @@ function ScenarioWaterfall({ forecastResult, bac }: { forecastResult: ForecastRe
           color: 'var(--text-secondary)',
           fontSize: 11,
           fontWeight: 600,
-          formatter: (params: any) => `$${(params.value / 1000).toFixed(0)}K`
+          formatter: (params: any) => `$${(toNumber(params?.value) / 1000).toFixed(0)}K`
         }
       }]
     };
@@ -813,7 +825,7 @@ function ProfitMarginSection({
         formatter: (params: any) => {
           let html = `<b>${params[0].axisValue}</b><br/>`;
           params.forEach((p: any) => {
-            const val = p.seriesName === 'Margin %' ? `${p.value.toFixed(1)}%` : formatCurrency(p.value);
+            const val = p.seriesName === 'Margin %' ? `${toNumber(p.value).toFixed(1)}%` : formatCurrency(toNumber(p.value));
             html += `${p.marker} ${p.seriesName}: ${val}<br/>`;
           });
           return html;
@@ -920,7 +932,7 @@ function ProfitMarginSection({
         fontSize: 10,
         fontWeight: 600,
         color: 'var(--text-secondary)',
-        formatter: (p: any) => p.value >= 0 ? `$${(p.value/1000).toFixed(0)}K` : `-$${(Math.abs(p.value)/1000).toFixed(0)}K`
+        formatter: (p: any) => toNumber(p?.value) >= 0 ? `$${(toNumber(p?.value)/1000).toFixed(0)}K` : `-$${(Math.abs(toNumber(p?.value))/1000).toFixed(0)}K`
       }
     }]
   }), [calculations]);
@@ -1356,10 +1368,11 @@ export default function ForecastPage() {
   const poAmount = projectState.bac * 1.1;
 
   // Format currency
-  const formatCurrency = (v: number) => {
-    if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
-    if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
-    return `$${v.toFixed(0)}`;
+  const formatCurrency = (v: unknown) => {
+    const safeValue = toNumber(v, 0);
+    if (safeValue >= 1000000) return `$${(safeValue / 1000000).toFixed(1)}M`;
+    if (safeValue >= 1000) return `$${(safeValue / 1000).toFixed(0)}K`;
+    return `$${safeValue.toFixed(0)}`;
   };
 
   if (isLoading) {
@@ -1452,7 +1465,7 @@ export default function ForecastPage() {
         <KPICard 
           label="Spent to Date" 
           value={formatCurrency(projectState?.ac || 0)} 
-          subValue={`${poAmount > 0 ? (((projectState?.ac || 0) / poAmount) * 100).toFixed(0) : 0}% of PO`}
+          subValue={`${poAmount > 0 ? ((toNumber(projectState?.ac, 0) / toNumber(poAmount, 1)) * 100).toFixed(0) : 0}% of PO`}
           color="#3B82F6" 
           trend={(projectState?.cpi || 1) >= 1 ? 'up' : 'down'}
         />
@@ -1471,9 +1484,9 @@ export default function ForecastPage() {
         />
         <KPICard 
           label="CPI" 
-          value={(projectState?.cpi || 1).toFixed(2)} 
-          subValue={(projectState?.cpi || 1) >= 1 ? 'On Track' : 'Over Spending'}
-          color={(projectState?.cpi || 1) >= 1 ? '#10B981' : '#EF4444'}
+          value={toNumber(projectState?.cpi, 1).toFixed(2)} 
+          subValue={toNumber(projectState?.cpi, 1) >= 1 ? 'On Track' : 'Over Spending'}
+          color={toNumber(projectState?.cpi, 1) >= 1 ? '#10B981' : '#EF4444'}
         />
         <KPICard 
           label="Critical Tasks" 
@@ -1637,7 +1650,7 @@ export default function ForecastPage() {
                   fontSize: '0.75rem',
                   color: '#3B82F6'
                 }}>
-                  TCPI to BAC: {forecastResult?.tcpi?.toBac?.toFixed(2) || '-'}
+                  TCPI to BAC: {forecastResult?.tcpi?.toBac != null ? toNumber(forecastResult.tcpi.toBac).toFixed(2) : '-'}
         </div>
           </div>
             </SectionCard>

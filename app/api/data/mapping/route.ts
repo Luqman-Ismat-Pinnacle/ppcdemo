@@ -166,11 +166,20 @@ export async function POST(req: NextRequest) {
 
     if (action === 'matchWorkdayPhaseToHoursPhases') {
       const projectId = body.projectId as string;
+      const rematchAll = Boolean(body.rematchAll);
       if (!projectId) {
         return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
       }
 
       if (isPostgresConfigured()) {
+        if (rematchAll) {
+          await pgQuery(
+            `UPDATE hour_entries
+             SET workday_phase_id = NULL, updated_at = NOW()
+             WHERE project_id = $1`,
+            [projectId],
+          );
+        }
         const hoursRes = await pgQuery(
           `SELECT id, COALESCE(phases, '') AS phases, COALESCE(description, '') AS description
            FROM hour_entries
@@ -220,6 +229,10 @@ export async function POST(req: NextRequest) {
       }
       const { createClient } = await import('@supabase/supabase-js');
       const supabase = createClient(supabaseUrl, supabaseKey);
+
+      if (rematchAll) {
+        await supabase.from('hour_entries').update({ workday_phase_id: null }).eq('project_id', projectId);
+      }
 
       const { data: hours, error: hoursErr } = await supabase
         .from('hour_entries')

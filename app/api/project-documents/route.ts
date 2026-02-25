@@ -29,6 +29,12 @@ function toBool(value: unknown): boolean {
   return s === 'true' || s === '1' || s === 'yes';
 }
 
+function resolveActor(body: Record<string, unknown>): string {
+  const actorEmail = asString(body.actorEmail);
+  const actorName = asString(body.actorName);
+  return actorEmail || actorName || 'System';
+}
+
 async function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -42,6 +48,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
+    const actorIdentity = resolveActor(body as Record<string, unknown>);
     const action = asString(body.action) as Action;
 
     if (!action) {
@@ -109,11 +116,12 @@ export async function POST(req: NextRequest) {
 
     if (action === 'createDocumentRecord') {
       const id = asString(body.id) || mkId('DOCREC');
+      const owner = asString(body.owner) || asString(body.actorName) || actorIdentity;
       const payload = {
         id,
         doc_type: asString(body.docType),
         name: asString(body.name) || 'Untitled',
-        owner: asString(body.owner) || 'System',
+        owner,
         project_id: asNullableString(body.projectId),
         portfolio_id: asNullableString(body.portfolioId),
         customer_id: asNullableString(body.customerId),
@@ -122,8 +130,8 @@ export async function POST(req: NextRequest) {
         status: asString(body.status) || 'Not Started',
         client_signoff_required: toBool(body.clientSignoffRequired),
         client_signoff_complete: toBool(body.clientSignoffComplete),
-        created_by: asNullableString(body.owner) || 'System',
-        updated_by: asNullableString(body.owner) || 'System',
+        created_by: actorIdentity,
+        updated_by: actorIdentity,
       };
       if (!payload.doc_type) return NextResponse.json({ success: false, error: 'docType required' }, { status: 400 });
 
@@ -160,7 +168,7 @@ export async function POST(req: NextRequest) {
       if (!recordId || !fileName || !blobPath) {
         return NextResponse.json({ success: false, error: 'recordId, fileName, blobPath required' }, { status: 400 });
       }
-      const uploadedBy = asString(body.uploadedBy) || 'System';
+      const uploadedBy = asString(body.uploadedBy) || actorIdentity;
       const notes = asNullableString(body.notes);
       const mimeType = asNullableString(body.mimeType);
       const fileUrl = asNullableString(body.fileUrl);
@@ -290,7 +298,7 @@ export async function POST(req: NextRequest) {
         status: asNullableString(body.status),
         client_signoff_required: body.clientSignoffRequired,
         client_signoff_complete: body.clientSignoffComplete,
-        updated_by: asNullableString(body.updatedBy),
+        updated_by: asNullableString(body.updatedBy) || actorIdentity,
       } as Record<string, unknown>;
       const keys = Object.keys(updates).filter((k) => updates[k] !== undefined);
       if (!keys.length) return NextResponse.json({ success: true });
@@ -329,4 +337,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error?.message || 'Unknown error' }, { status: 500 });
   }
 }
-
