@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import ContainerLoader from '@/components/ui/ContainerLoader';
@@ -148,16 +148,16 @@ export default function MosPage() {
 
   const periods = useMemo(() => derivePeriods(dateFilter), [dateFilter]);
 
-  const portfolios = (filteredData.portfolios || []) as any[];
-  const customers = (filteredData.customers || []) as any[];
-  const sites = (filteredData.sites || []) as any[];
-  const projects = (filteredData.projects || []) as any[];
-  const units = (filteredData.units || []) as any[];
-  const employees = (filteredData.employees || []) as any[];
-  const tasks = (filteredData.tasks || []) as any[];
-  const milestones = ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]);
-  const hours = (filteredData.hours || []) as any[];
-  const moPeriodNotes = (filteredData.moPeriodNotes || []) as MoPeriodNote[];
+  const portfolios = useMemo(() => (filteredData.portfolios || []) as any[], [filteredData.portfolios]);
+  const customers = useMemo(() => (filteredData.customers || []) as any[], [filteredData.customers]);
+  const sites = useMemo(() => (filteredData.sites || []) as any[], [filteredData.sites]);
+  const projects = useMemo(() => (filteredData.projects || []) as any[], [filteredData.projects]);
+  const units = useMemo(() => (filteredData.units || []) as any[], [filteredData.units]);
+  const employees = useMemo(() => (filteredData.employees || []) as any[], [filteredData.employees]);
+  const tasks = useMemo(() => (filteredData.tasks || []) as any[], [filteredData.tasks]);
+  const milestones = useMemo(() => ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]), [filteredData.milestones, filteredData.milestonesTable]);
+  const hours = useMemo(() => (filteredData.hours || []) as any[], [filteredData.hours]);
+  const moPeriodNotes = useMemo(() => (filteredData.moPeriodNotes || []) as MoPeriodNote[], [filteredData.moPeriodNotes]);
 
   const projectById = useMemo(() => {
     const m = new Map<string, any>();
@@ -253,7 +253,7 @@ export default function MosPage() {
     return 'unit';
   }, [hierarchyFilter]);
 
-  const getBucket = (h: any) => {
+  const getBucket = useCallback((h: any) => {
     const pid = String(h.projectId || h.project_id || '');
     const project = projectById.get(pid);
     if (!project) return 'Unassigned';
@@ -272,13 +272,13 @@ export default function MosPage() {
     const task = taskById.get(normalizeTaskId(h.taskId || h.task_id));
     const unit = units.find((u: any) => String(u.id || u.unitId) === String(task?.unitId || task?.unit_id || ''));
     return String(unit?.name || 'Unassigned');
-  };
+  }, [projectById, hierarchyBucketLevel, siteById, customerById, portfolioById, taskById, units]);
 
-  const isExcluded = (h: any) => {
+  const isExcluded = useCallback((h: any) => {
     const code = String(h.chargeCode || h.charge_code || '').toUpperCase().trim();
     const type = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
     return code === 'EX' || code === 'QC' || type === 'EX' || type === 'QC';
-  };
+  }, []);
 
   const taskBreakdownInput = useMemo(() => {
     const selectedId = normalizeTaskId(selectedTaskId);
@@ -541,7 +541,7 @@ export default function MosPage() {
         style: { text: 'No Non-EX/QC hours in scope', fill: C.muted, fontSize: 13 },
       }] : undefined,
     };
-  }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units, sunburstZoom]) as EChartsOption;
+  }, [hours, sunburstZoom, getBucket]) as EChartsOption;
 
   const milestoneRows = useMemo(() => {
     return milestones.map((m, idx) => {
@@ -590,14 +590,14 @@ export default function MosPage() {
     return s;
   }, [milestoneRows]);
 
-  const bucketDefs: Array<{ label: MilestoneBucket; color: string }> = [
+  const bucketDefs = useMemo<Array<{ label: MilestoneBucket; color: string }>>(() => ([
     { label: 'Completed On Time', color: '#22C55E' },
     { label: 'Completed Delayed', color: '#EF4444' },
     { label: 'In Progress Forecasted On Time', color: '#14B8A6' },
     { label: 'In Progress Forecasted Delayed', color: '#F59E0B' },
     { label: 'Not Started Forecasted On Time', color: '#3B82F6' },
     { label: 'Not Started Forecasted Delayed', color: '#A855F7' },
-  ];
+  ]), []);
 
   const milestoneOption: EChartsOption = useMemo(() => ({
     tooltip: TT,
@@ -605,7 +605,7 @@ export default function MosPage() {
     xAxis: { type: 'value', axisLabel: { color: C.muted } },
     yAxis: { type: 'category', data: bucketDefs.map((b) => b.label), axisLabel: { color: C.text, width: 220, overflow: 'truncate' } },
     series: [{ type: 'bar', data: bucketDefs.map((b) => ({ value: milestoneSummary[b.label], itemStyle: { color: b.color } })) }],
-  }), [milestoneSummary]);
+  }), [milestoneSummary, bucketDefs]);
 
   const milestoneDrill = useMemo(() => {
     return milestoneRows.filter((r) => r.bucket === selectedMilestoneBucket);
@@ -660,16 +660,6 @@ export default function MosPage() {
 
   const [lastCommitmentsDraft, setLastCommitmentsDraft] = useState('');
   const [thisCommitmentsDraft, setThisCommitmentsDraft] = useState('');
-  const periodBreakdownBaseRows = useMemo(() => {
-    const top = taskRows.slice(0, 12);
-    const out: Array<{ section: 'Planned' | 'Actual' | 'Reduced'; task: string; hours: number }> = [];
-    top.forEach((t) => {
-      out.push({ section: 'Planned', task: t.name, hours: Math.round(t.baseline) });
-      out.push({ section: 'Actual', task: t.name, hours: Math.round(t.actual) });
-      out.push({ section: 'Reduced', task: t.name, hours: Math.round(Math.max(0, t.baseline - t.actual)) });
-    });
-    return out;
-  }, [taskRows]);
 
   useEffect(() => {
     const getNote = (type: MoPeriodNoteType, start: string, end: string) =>
@@ -1038,7 +1028,10 @@ export default function MosPage() {
 
           <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.9rem' }}>
             <h3 style={{ margin: '0 0 0.45rem', color: C.text, fontSize: '0.9rem' }}>Task Breakdown</h3>
-            <p style={{ margin: '0 0 0.5rem', color: C.muted, fontSize: '0.74rem' }}>{selectedTask ? `Selected task: ${selectedTask.taskName || selectedTask.name || selectedTaskId}` : 'Select a task from Task Hours Efficiency'}</p>
+            <p style={{ margin: '0 0 0.5rem', color: C.muted, fontSize: '0.74rem' }}>
+              {selectedTask ? `Selected task: ${selectedTask.taskName || selectedTask.name || selectedTaskId}` : 'Select a task from Task Hours Efficiency'}
+              {selectedChargeCode ? ` | Charge segment: ${selectedChargeCode}` : ''}
+            </p>
             <ChartWrapper option={taskBreakdownOption} height={300} onClick={(p) => p.seriesName && setSelectedChargeCode(String(p.seriesName))} isEmpty={!taskBreakdownInput.length} />
           </section>
 
@@ -1100,17 +1093,17 @@ export default function MosPage() {
 
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: '0.45rem' }}>
-                <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Non-EX/QC Hours Sunburst by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}</h3>
+                <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>
+                  Non-EX/QC Hours Sunburst by {hierarchyBucketLevel[0].toUpperCase() + hierarchyBucketLevel.slice(1)}
+                  {selectedBucket ? ` | Selected: ${selectedBucket}` : ''}
+                </h3>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button onClick={() => setSunburstZoom((z) => Math.max(0.8, Number((z - 0.1).toFixed(2))))} style={{ background: 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.15rem 0.5rem', cursor: 'pointer' }}>-</button>
                   <button onClick={() => setSunburstZoom(1)} style={{ background: 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.15rem 0.5rem', cursor: 'pointer', fontSize: '0.72rem' }}>Reset</button>
                   <button onClick={() => setSunburstZoom((z) => Math.min(1.25, Number((z + 0.1).toFixed(2))))} style={{ background: 'transparent', color: C.text, border: `1px solid ${C.border}`, borderRadius: 6, padding: '0.15rem 0.5rem', cursor: 'pointer' }}>+</button>
                 </div>
               </div>
-              <ChartWrapper option={nonExQcOption} height={620} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => {
-                const type = String(h.chargeType || h.charge_type || '').toUpperCase().trim();
-                return type !== 'EX' && type !== 'QC';
-              })} />
+              <ChartWrapper option={nonExQcOption} height={620} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => !isExcluded(h))} />
             </div>
           </section>
         </>
