@@ -24,6 +24,7 @@ import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
 import { VariancePeriod, MetricsHistory } from '@/lib/variance-engine';
 import { autoRecordMetricsIfNeeded } from '@/lib/metrics-recorder';
 import { filterActiveEmployees, filterActiveProjects } from '@/lib/active-filters';
+import { normalizeRuntimeData } from '@/lib/data-normalization';
 
 const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
 const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -323,8 +324,9 @@ export function DataProvider({ children }: DataProviderProps) {
       });
     }
 
-    const transformedData = transformData(mergedData);
-    const finalData = { ...createEmptyData(), ...mergedData, ...transformedData };
+    const normalized = normalizeRuntimeData(mergedData);
+    const transformedData = transformData(normalized);
+    const finalData = { ...createEmptyData(), ...normalized, ...transformedData };
     setData(finalData);
     memoryBootstrapCache = { savedAt: Date.now(), data: finalData };
 
@@ -471,8 +473,9 @@ export function DataProvider({ children }: DataProviderProps) {
         return merged;
       }
       // Re-apply transformations when raw data changes
-      const transformedData = transformData(merged);
-      return { ...merged, ...transformedData };
+      const normalized = normalizeRuntimeData(merged);
+      const transformedData = transformData(normalized);
+      return { ...merged, ...normalized, ...transformedData };
     });
     broadcastDataUpdated('context-update');
   };
@@ -523,9 +526,10 @@ export function DataProvider({ children }: DataProviderProps) {
 
       if (Object.keys(mergedData).length > 0) {
         // Apply transformations to build computed views
-        const transformedData = transformData(mergedData);
+        const normalized = normalizeRuntimeData(mergedData);
+        const transformedData = transformData(normalized);
         // Replace all data, not merge, to ensure fresh state
-        setData({ ...createEmptyData(), ...mergedData, ...transformedData });
+        setData({ ...createEmptyData(), ...normalized, ...transformedData });
         logger.debug('Refreshed data from database:', Object.keys(mergedData).map(k => {
           const value = (mergedData as Record<string, unknown>)[k];
           const length = Array.isArray(value) ? value.length : (value ? 1 : 0);

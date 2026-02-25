@@ -122,6 +122,52 @@ const DROPDOWN_FIXED_WIDTH = '190px';
 const SELECT_FIXED_WIDTH = '150px';
 const BOOLEAN_SELECT_WIDTH = '120px';
 
+interface ComputedFieldLineage {
+  field: string;
+  formulaId: string;
+  stage: 'normalization' | 'transform' | 'page-kpi';
+  sourceTables: string[];
+  requiredFields: string[];
+}
+
+const COMPUTED_FIELD_LINEAGE: ComputedFieldLineage[] = [
+  {
+    field: 'Portfolio Health Score',
+    formulaId: 'HEALTH_SCORE_V1',
+    stage: 'page-kpi',
+    sourceTables: ['tasks', 'projects', 'hour_entries'],
+    requiredFields: ['tasks.baseline_hours', 'tasks.actual_hours', 'tasks.percent_complete', 'hour_entries.hours'],
+  },
+  {
+    field: 'CPI',
+    formulaId: 'CPI_V1',
+    stage: 'page-kpi',
+    sourceTables: ['tasks', 'hour_entries'],
+    requiredFields: ['tasks.baseline_hours', 'tasks.percent_complete', 'hour_entries.hours'],
+  },
+  {
+    field: 'SPI',
+    formulaId: 'SPI_V1',
+    stage: 'page-kpi',
+    sourceTables: ['tasks', 'projects'],
+    requiredFields: ['tasks.baseline_hours', 'tasks.percent_complete'],
+  },
+  {
+    field: 'Hours Efficiency',
+    formulaId: 'EFFICIENCY_PCT_V1',
+    stage: 'transform',
+    sourceTables: ['tasks', 'hour_entries'],
+    requiredFields: ['tasks.actual_hours', 'tasks.projected_hours', 'hour_entries.hours'],
+  },
+  {
+    field: 'IEAC (CPI)',
+    formulaId: 'IEAC_CPI_V1',
+    stage: 'page-kpi',
+    sourceTables: ['projects', 'tasks', 'hour_entries'],
+    requiredFields: ['projects.baseline_cost', 'tasks.percent_complete', 'hour_entries.hours'],
+  },
+];
+
 // ============================================================================
 // HELPER COMPONENTS
 // ============================================================================
@@ -2460,6 +2506,41 @@ export default function DataManagementPage() {
     });
   }, []);
 
+  const sanitizeImportedRecords = useCallback((dataKey: string, records: Record<string, unknown>[]) => {
+    const section = sections.find(s => s.key === dataKey);
+    if (!section || records.length === 0) {
+      return { records, strippedFields: [] as string[] };
+    }
+
+    const allowed = new Set<string>([
+      section.idKey,
+      ...section.fields.map((f: FieldConfig) => f.key),
+      'id',
+      'createdAt',
+      'updatedAt',
+      'created_at',
+      'updated_at',
+      'isActive',
+      'is_active',
+      'active',
+    ]);
+
+    const stripped = new Set<string>();
+    const sanitized = records.map((row) => {
+      const next: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (allowed.has(key)) {
+          next[key] = value;
+        } else {
+          stripped.add(key);
+        }
+      }
+      return next;
+    });
+
+    return { records: sanitized, strippedFields: Array.from(stripped).sort() };
+  }, [sections]);
+
   // ============================================================================
   // SUPABASE SYNC
   // ============================================================================
@@ -2749,11 +2830,26 @@ export default function DataManagementPage() {
         const text = await file.text();
         const jsonData = JSON.parse(text);
         const parsedData = convertProjectPlanJSON(jsonData);
+        const sanitizedData: Record<string, unknown[]> = {};
+        for (const [key, records] of Object.entries(parsedData)) {
+          if (Array.isArray(records)) {
+            const { records: cleanRows, strippedFields } = sanitizeImportedRecords(key, records as Record<string, unknown>[]);
+            sanitizedData[key] = cleanRows;
+            if (strippedFields.length > 0) {
+              addToImportLog({
+                type: 'warning',
+                entity: key,
+                action: 'skip',
+                message: `Dropped legacy/unknown fields: ${strippedFields.join(', ')}`,
+              });
+            }
+          }
+        }
 
-        updateData(parsedData);
+        updateData(sanitizedData as any);
 
         if (supabaseEnabled) {
-          for (const [key, records] of Object.entries(parsedData)) {
+          for (const [key, records] of Object.entries(sanitizedData)) {
             if (Array.isArray(records) && records.length > 0 && DATA_KEY_TO_TABLE[key]) {
               await syncToSupabase(key, records as unknown as Record<string, unknown>[]);
             }
@@ -2765,10 +2861,26 @@ export default function DataManagementPage() {
         const result = await importFromExcel(file);
 
         if (result.success && Object.keys(result.data).length > 0) {
-          updateData(result.data);
+          const sanitizedData: Record<string, unknown[]> = {};
+          for (const [key, records] of Object.entries(result.data)) {
+            if (Array.isArray(records)) {
+              const { records: cleanRows, strippedFields } = sanitizeImportedRecords(key, records as Record<string, unknown>[]);
+              sanitizedData[key] = cleanRows;
+              if (strippedFields.length > 0) {
+                addToImportLog({
+                  type: 'warning',
+                  entity: key,
+                  action: 'skip',
+                  message: `Dropped legacy/unknown fields: ${strippedFields.join(', ')}`,
+                });
+              }
+            }
+          }
+
+          updateData(sanitizedData as any);
 
           if (supabaseEnabled) {
-            for (const [key, records] of Object.entries(result.data)) {
+            for (const [key, records] of Object.entries(sanitizedData)) {
               if (Array.isArray(records) && records.length > 0 && DATA_KEY_TO_TABLE[key]) {
                 await syncToSupabase(key, records as unknown as Record<string, unknown>[]);
               }
@@ -3996,6 +4108,32 @@ export default function DataManagementPage() {
     );
   }, [getRowId, getCurrentSection, getTableData, tableSortStates, sortByState, getSortValueForField, formatSortIndicator, getNextSortState, editedRows, newRows, selectedRows, handleAddRow, handleDeleteSelected, handleSaveChanges, handleSelectAll, handleRowSelect, renderCell, isSyncing, isLoading, supabaseEnabled, snapshotScope, snapshotScopeId, snapshotType, snapshotDate, snapshotVersionName, snapshotCreatedBy, snapshotNotes, projectOptions, handleCreateSnapshot, handleLockSnapshots, changeRequestStatusFilter, changeRequestFromDate, changeRequestToDate, changeControlSummary]);
 
+  const tableToDataKey = useMemo(() => {
+    const reverse: Record<string, string> = {};
+    Object.entries(DATA_KEY_TO_TABLE).forEach(([key, table]) => {
+      reverse[String(table)] = key;
+    });
+    return reverse;
+  }, []);
+
+  const selectedSourceTable = (DATA_KEY_TO_TABLE[selectedTable] as string | undefined) || selectedTable;
+  const lineageForSelected = useMemo(
+    () => COMPUTED_FIELD_LINEAGE.filter((lineage) => lineage.sourceTables.includes(selectedSourceTable)),
+    [selectedSourceTable]
+  );
+  const lineageWarnings = useMemo(() => {
+    return lineageForSelected
+      .filter((lineage) =>
+        lineage.sourceTables.some((table) => {
+          const dataKey = tableToDataKey[table];
+          if (!dataKey) return true;
+          const rows = (data as unknown as Record<string, unknown>)[dataKey];
+          return !Array.isArray(rows) || rows.length === 0;
+        })
+      )
+      .map((lineage) => `${lineage.field} has incomplete upstream data in one or more source tables.`);
+  }, [lineageForSelected, tableToDataKey, data]);
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -4073,6 +4211,34 @@ export default function DataManagementPage() {
         </select>
       </div>
 
+      {lineageForSelected.length > 0 && (
+        <div className="chart-card" style={{ marginBottom: '10px', padding: '10px 12px' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-muted)' }}>
+            Computed Field Lineage ({selectedSourceTable})
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {lineageForSelected.map((lineage) => (
+              <div key={`${lineage.field}-${lineage.formulaId}`} style={{ fontSize: '0.75rem' }}>
+                <strong>{lineage.field}</strong> <span style={{ color: 'var(--pinnacle-teal)' }}>{lineage.formulaId}</span>
+                <div style={{ color: 'var(--text-muted)' }}>
+                  Stage: {lineage.stage} | Sources: {lineage.sourceTables.join(', ')}
+                </div>
+                <div style={{ color: 'var(--text-muted)' }}>
+                  Required: {lineage.requiredFields.join(', ')}
+                </div>
+              </div>
+            ))}
+          </div>
+          {lineageWarnings.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'rgba(239,68,68,0.95)' }}>
+              {lineageWarnings.map((warning) => (
+                <div key={warning}>{warning}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table - overflow auto so table grows with rows, no inner vertical scroll; page scrolls */}
       <div className="chart-card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
         {renderTable()}
@@ -4082,11 +4248,6 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
-
-
-
-
 
 
 

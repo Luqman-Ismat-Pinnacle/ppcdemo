@@ -33,6 +33,9 @@ import {
 } from '@/lib/forecasting-engine';
 import { CPMEngine } from '@/lib/cpm-engine';
 import type { EChartsOption } from 'echarts';
+import { calcCpi, calcIeacCpi, calcSpi, calcTcpiToBac } from '@/lib/calculations/kpis';
+import type { MetricProvenance } from '@/lib/calculations/types';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 
 function toNumber(value: unknown, fallback: number = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -91,8 +94,8 @@ function SectionCard({ title, subtitle, children, headerRight, noPadding = false
 }
 
 // ===== KPI CARD =====
-function KPICard({ label, value, subValue, color, icon, trend }: {
-  label: string; value: string | number; subValue?: string; color: string; icon?: string; trend?: 'up' | 'down' | 'flat';
+function KPICard({ label, value, subValue, color, icon, trend, provenance }: {
+  label: string; value: string | number; subValue?: string; color: string; icon?: string; trend?: 'up' | 'down' | 'flat'; provenance?: MetricProvenance;
 }) {
   const trendColor = trend === 'up' ? '#10B981' : trend === 'down' ? '#EF4444' : '#6B7280';
   return (
@@ -104,7 +107,10 @@ function KPICard({ label, value, subValue, color, icon, trend }: {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.5rem' }}>{label}</div>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+        {label}
+        {provenance && <MetricProvenanceChip provenance={provenance} />}
+      </div>
       <div style={{ fontSize: '1.75rem', fontWeight: 800, color, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {value}
         {trend && (
@@ -1285,7 +1291,7 @@ export default function ForecastPage() {
   const hasData = (data.tasks?.length ?? 0) > 0 || (data.projects?.length ?? 0) > 0 || (data.hours?.length ?? 0) > 0;
 
   // Derive project state (no fallback values - use 0 when empty)
-  const projectState: ProjectState = useMemo(() => {
+  const projectState = useMemo(() => {
     const projects = data.projects || [];
     const hours = data.hours || [];
     const milestoneStatus = data.milestoneStatus || [];
@@ -1301,28 +1307,45 @@ export default function ForecastPage() {
                            (milestoneStatus.find(m => m.name === 'Completed')?.value || 0);
     const earnedValue = totalBudget * (percentComplete / 100);
     const plannedValue = totalBudget * 0.5; // Assume 50% planned at this point
-    const cpi = totalActual > 0 ? earnedValue / totalActual : 0;
-    const spi = plannedValue > 0 ? earnedValue / plannedValue : 0;
+    const cpiMetric = calcCpi(earnedValue, totalActual, 'forecast', 'current');
+    const spiMetric = calcSpi(earnedValue, plannedValue, 'forecast', 'current');
+    const cpi = cpiMetric.value;
+    const spi = spiMetric.value;
 
     return {
-      bac: totalBudget,
-      ac: totalActual,
-      ev: earnedValue,
-      pv: plannedValue,
-      cpi: cpi > 0 ? Math.max(0.5, Math.min(2.0, cpi)) : 0,
-      spi: spi > 0 ? Math.max(0.5, Math.min(2.0, spi)) : 0,
-      remainingDuration: 45
+      state: {
+        bac: totalBudget,
+        ac: totalActual,
+        ev: earnedValue,
+        pv: plannedValue,
+        cpi: cpi > 0 ? Math.max(0.5, Math.min(2.0, cpi)) : 0,
+        spi: spi > 0 ? Math.max(0.5, Math.min(2.0, spi)) : 0,
+        remainingDuration: 45
+      } as ProjectState,
+      provenance: {
+        cpi: cpiMetric.provenance,
+        spi: spiMetric.provenance,
+      } as Record<string, MetricProvenance>,
     };
   }, [data]);
 
   // Run forecast
   const forecastResult = useMemo(() => {
     try {
-      return runForecastSimulation(projectState, engineParams);
+      return runForecastSimulation(projectState.state, engineParams);
     } catch {
       return null;
     }
   }, [projectState, engineParams]);
+
+  const ieacProvenance = useMemo(
+    () => calcIeacCpi(projectState.state.bac, projectState.state.cpi, 'forecast', 'current').provenance,
+    [projectState.state.bac, projectState.state.cpi]
+  );
+  const tcpiProvenance = useMemo(
+    () => calcTcpiToBac(projectState.state.bac, projectState.state.ev, projectState.state.ac, 'forecast', 'current').provenance,
+    [projectState.state.bac, projectState.state.ev, projectState.state.ac]
+  );
 
   // Run CPM
   const cpmResult = useMemo(() => {
@@ -1365,7 +1388,7 @@ export default function ForecastPage() {
   }, [data.milestoneStatus]);
 
   // PO Amount (simulated from total budget + 10% contingency)
-  const poAmount = projectState.bac * 1.1;
+  const poAmount = projectState.state.bac * 1.1;
 
   // Format currency
   const formatCurrency = (v: unknown) => {
@@ -1464,10 +1487,10 @@ export default function ForecastPage() {
         />
         <KPICard 
           label="Spent to Date" 
-          value={formatCurrency(projectState?.ac || 0)} 
-          subValue={`${poAmount > 0 ? ((toNumber(projectState?.ac, 0) / toNumber(poAmount, 1)) * 100).toFixed(0) : 0}% of PO`}
+          value={formatCurrency(projectState.state.ac || 0)} 
+          subValue={`${poAmount > 0 ? ((toNumber(projectState.state.ac, 0) / toNumber(poAmount, 1)) * 100).toFixed(0) : 0}% of PO`}
           color="#3B82F6" 
-          trend={(projectState?.cpi || 1) >= 1 ? 'up' : 'down'}
+          trend={(projectState.state.cpi || 1) >= 1 ? 'up' : 'down'}
         />
         <KPICard 
           label="P50 Forecast" 
@@ -1484,9 +1507,10 @@ export default function ForecastPage() {
         />
         <KPICard 
           label="CPI" 
-          value={toNumber(projectState?.cpi, 1).toFixed(2)} 
-          subValue={toNumber(projectState?.cpi, 1) >= 1 ? 'On Track' : 'Over Spending'}
-          color={toNumber(projectState?.cpi, 1) >= 1 ? '#10B981' : '#EF4444'}
+          value={toNumber(projectState.state.cpi, 1).toFixed(2)} 
+          subValue={toNumber(projectState.state.cpi, 1) >= 1 ? 'On Track' : 'Over Spending'}
+          color={toNumber(projectState.state.cpi, 1) >= 1 ? '#10B981' : '#EF4444'}
+          provenance={projectState.provenance.cpi}
         />
         <KPICard 
           label="Critical Tasks" 
@@ -1501,7 +1525,7 @@ export default function ForecastPage() {
       {activeTab === 'margin' && (
         <ProfitMarginSection 
           poAmount={poAmount} 
-          actualCost={projectState.ac} 
+          actualCost={projectState.state.ac} 
           forecastCost={forecastResult?.monteCarloCost.p50 || 0}
           hours={data.hours || []}
           projects={data.projects || []}
@@ -1515,7 +1539,7 @@ export default function ForecastPage() {
           {/* Top Row: PO Gauge + FTE Capacity */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '1.5rem' }}>
             <SectionCard title="PO Budget Consumption" subtitle="Actual spend vs Purchase Order" accent="#10B981">
-              <POCostGauge po={poAmount} actualCost={projectState.ac} forecastCost={forecastResult?.monteCarloCost.p50 || 0} />
+              <POCostGauge po={poAmount} actualCost={projectState.state.ac} forecastCost={forecastResult?.monteCarloCost.p50 || 0} />
             </SectionCard>
             
             <SectionCard 
@@ -1561,7 +1585,7 @@ export default function ForecastPage() {
 
           {/* Bottom: Scenario Comparison */}
           <SectionCard title="Scenario Cost Comparison" subtitle="Baseline vs Monte Carlo forecasts" accent="#8B5CF6">
-            <ScenarioWaterfall forecastResult={forecastResult} bac={projectState.bac} />
+            <ScenarioWaterfall forecastResult={forecastResult} bac={projectState.state.bac} />
           </SectionCard>
         </div>
       )}
@@ -1626,7 +1650,7 @@ export default function ForecastPage() {
                   fontSize: '0.75rem',
                   color: '#10B981'
                 }}>
-                  {formatCurrency((forecastResult?.monteCarloCost.p10 || 0) - projectState.bac)} vs BAC
+                  {formatCurrency((forecastResult?.monteCarloCost.p10 || 0) - projectState.state.bac)} vs BAC
                 </div>
             </div>
             </SectionCard>
@@ -1648,9 +1672,12 @@ export default function ForecastPage() {
                   background: 'rgba(59,130,246,0.1)', 
                   borderRadius: '10px',
                   fontSize: '0.75rem',
-                  color: '#3B82F6'
+                  color: '#3B82F6',
+                  display: 'flex',
+                  alignItems: 'center',
                 }}>
                   TCPI to BAC: {forecastResult?.tcpi?.toBac != null ? toNumber(forecastResult.tcpi.toBac).toFixed(2) : '-'}
+                  <MetricProvenanceChip provenance={tcpiProvenance} />
         </div>
           </div>
             </SectionCard>
@@ -1671,7 +1698,7 @@ export default function ForecastPage() {
                   fontSize: '0.75rem',
                   color: '#EF4444'
                 }}>
-                  +{formatCurrency((forecastResult?.monteCarloCost.p90 || 0) - projectState.bac)} overrun risk
+                  +{formatCurrency((forecastResult?.monteCarloCost.p90 || 0) - projectState.state.bac)} overrun risk
         </div>
           </div>
             </SectionCard>
@@ -1741,7 +1768,10 @@ export default function ForecastPage() {
                 borderRadius: '12px',
                 borderLeft: '4px solid var(--pinnacle-teal)'
               }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>CPI Method (Status Quo)</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                  CPI Method (Status Quo)
+                  <MetricProvenanceChip provenance={ieacProvenance} />
+                </div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>
                   {formatCurrency(forecastResult?.ieac.cpi || 0)}
             </div>

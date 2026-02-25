@@ -40,6 +40,8 @@ import {
   sortByState,
 } from '@/lib/sort-utils';
 import { calculateMetricVariance, getComparisonDates, getMetricsForPeriod, getPeriodDisplayName } from '@/lib/variance-engine';
+import { calcEfficiencyPct } from '@/lib/calculations/kpis';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 
 /** View type for the combined stacked bar chart */
 type StackedViewType = 'chargeCode' | 'project' | 'role';
@@ -80,8 +82,15 @@ export default function HoursPage() {
     if (!data?.taskHoursEfficiency?.actualWorked?.length) return null;
     const totalActual = data.taskHoursEfficiency.actualWorked.reduce((a, b) => a + b, 0) || 0;
     const totalEstimated = data.taskHoursEfficiency.estimatedAdded?.reduce((a, b) => a + b, 0) || 0;
-    const total = totalActual + totalEstimated;
-    return total > 0 ? Math.round((totalActual / total) * 100) : null;
+    const metric = calcEfficiencyPct(totalActual, totalEstimated, 'hours-page', 'filtered-window');
+    return metric.value;
+  }, [data?.taskHoursEfficiency]);
+
+  const hoursMetricProvenance = useMemo(() => {
+    const totalActual = data?.taskHoursEfficiency?.actualWorked?.reduce((a: number, b: number) => a + (Number.isFinite(b) ? b : 0), 0) || 0;
+    const totalEstimated = data?.taskHoursEfficiency?.estimatedAdded?.reduce((a: number, b: number) => a + (Number.isFinite(b) ? b : 0), 0) || 0;
+    const efficiency = calcEfficiencyPct(totalActual, totalEstimated, 'hours-page', 'filtered-window').provenance;
+    return { efficiency };
   }, [data?.taskHoursEfficiency]);
 
   // Calculate quality hours percentage - from buildQualityHours qcPercentOverall or fallback
@@ -466,7 +475,10 @@ export default function HoursPage() {
             )}
           </div>
           <div className="metric-card accent-lime" style={{ minWidth: 120 }}>
-            <div className="metric-label">Efficiency</div>
+            <div className="metric-label" style={{ display: 'flex', alignItems: 'center' }}>
+              Efficiency
+              <MetricProvenanceChip provenance={hoursMetricProvenance.efficiency} />
+            </div>
             <div className="metric-value">{overallEfficiency !== null ? `${overallEfficiency}%` : '—'}</div>
             {varianceEnabled && varianceData.efficiency ? (
               <VarianceIndicator

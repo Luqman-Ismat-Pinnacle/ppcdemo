@@ -29,6 +29,9 @@ import {
   type MetricsHistory,
   type VariancePeriod,
 } from '@/lib/variance-engine';
+import { calcCpi, calcHealthScore, calcHoursVariancePct, calcSpi } from '@/lib/calculations/kpis';
+import type { MetricProvenance } from '@/lib/calculations/types';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 
 /* ================================================================== */
 /*  CONSTANTS                                                          */
@@ -1278,12 +1281,32 @@ export default function OverviewV2Page() {
   const portfolio = useMemo(() => {
     let totalBl = 0, totalAc = 0, totalEv = 0, tsHrs = 0, tsCost = 0;
     projectBreakdown.forEach(p => { totalBl += p.baselineHours; totalAc += p.actualHours; totalEv += p.baselineHours * (p.percentComplete / 100); tsHrs += p.timesheetHours; tsCost += p.timesheetCost; });
-    const spi = totalBl > 0 ? totalEv / totalBl : 1; const cpi = totalAc > 0 ? totalEv / totalAc : 1;
+    const spiMetric = calcSpi(totalEv, totalBl, aggregateBy, 'current');
+    const cpiMetric = calcCpi(totalEv, totalAc, aggregateBy, 'current');
     const avgPc = projectBreakdown.length > 0 ? Math.round(projectBreakdown.reduce((s, p) => s + p.percentComplete, 0) / projectBreakdown.length) : 0;
-    let hs = 100; if (spi < 0.85) hs -= 30; else if (spi < 0.95) hs -= 15; else if (spi < 1) hs -= 5; if (cpi < 0.85) hs -= 30; else if (cpi < 0.95) hs -= 15; else if (cpi < 1) hs -= 5;
-    const hrsVariance = totalBl > 0 ? Math.round(((totalAc - totalBl) / totalBl) * 100) : 0;
-    return { healthScore: Math.max(0, Math.min(100, hs)), spi: Math.round(spi * 100) / 100, cpi: Math.round(cpi * 100) / 100, percentComplete: avgPc, projectCount: projectBreakdown.length, totalHours: Math.round(totalAc), baselineHours: Math.round(totalBl), earnedHours: Math.round(totalEv), remainingHours: Math.round(Math.max(0, totalBl - totalAc)), timesheetHours: Math.round(tsHrs), timesheetCost: Math.round(tsCost), hrsVariance };
-  }, [projectBreakdown]);
+    const healthMetric = calcHealthScore(spiMetric.value, cpiMetric.value, aggregateBy, 'current');
+    const hoursVarianceMetric = calcHoursVariancePct(totalAc, totalBl, aggregateBy, 'current');
+    return {
+      healthScore: healthMetric.value,
+      spi: spiMetric.value,
+      cpi: cpiMetric.value,
+      percentComplete: avgPc,
+      projectCount: projectBreakdown.length,
+      totalHours: Math.round(totalAc),
+      baselineHours: Math.round(totalBl),
+      earnedHours: Math.round(totalEv),
+      remainingHours: Math.round(Math.max(0, totalBl - totalAc)),
+      timesheetHours: Math.round(tsHrs),
+      timesheetCost: Math.round(tsCost),
+      hrsVariance: hoursVarianceMetric.value,
+      provenance: {
+        health: healthMetric.provenance,
+        spi: spiMetric.provenance,
+        cpi: cpiMetric.provenance,
+        hoursVariance: hoursVarianceMetric.provenance,
+      } as Record<string, MetricProvenance>,
+    };
+  }, [projectBreakdown, aggregateBy]);
 
   // Milestones
   const allMilestones = useMemo(() => [...(data.milestones || []), ...(data.milestonesTable || [])], [data.milestones, data.milestonesTable]);
@@ -1329,13 +1352,19 @@ export default function OverviewV2Page() {
                 <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr', minHeight: 0 }}>
                   {/* ── Col 1: Health Score hero ── */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.25rem 0.75rem', borderRight: `1px solid ${C.border}`, background: `linear-gradient(180deg, ${hsColor}08, transparent)` }}>
-                    <div style={{ fontSize: '2.5rem', fontWeight: 900, color: hsColor, lineHeight: 1 }}>{portfolio.healthScore}</div>
-                    <div style={{ fontSize: '0.6rem', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 }}>Health</div>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 900, color: hsColor, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
+                      {portfolio.healthScore}
+                      <MetricProvenanceChip provenance={portfolio.provenance.health} />
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4, display: 'flex', alignItems: 'center' }}>
+                      Health
+                    </div>
                     <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 8 }}>
                       <div style={{ width: `${portfolio.healthScore}%`, height: '100%', background: hsColor, borderRadius: 2, transition: 'width 0.5s' }} />
                     </div>
-                    <div style={{ fontSize: '0.6rem', color: varColor(portfolio.hrsVariance), fontWeight: 700, marginTop: 6 }}>
+                    <div style={{ fontSize: '0.6rem', color: varColor(portfolio.hrsVariance), fontWeight: 700, marginTop: 6, display: 'flex', alignItems: 'center' }}>
                       {portfolio.hrsVariance > 0 ? '+' : ''}{portfolio.hrsVariance}% variance
+                      <MetricProvenanceChip provenance={portfolio.provenance.hoursVariance} />
                     </div>
                   </div>
 
