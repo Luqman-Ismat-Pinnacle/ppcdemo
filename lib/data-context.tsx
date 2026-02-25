@@ -101,6 +101,8 @@ function createEmptyData(): SampleData {
     forecast: { months: [], baseline: [], actual: [], forecast: [] },
     snapshots: [],
     projectDocuments: [],
+    projectDocumentRecords: [],
+    projectDocumentVersions: [],
     moPeriodNotes: [],
     customerContracts: [],
     workdayPhases: [],
@@ -1040,6 +1042,37 @@ export function DataProvider({ children }: DataProviderProps) {
         filtered.projectDocuments = filtered.projectDocuments.filter((d: any) => {
           const pid = d.projectId ?? d.project_id;
           return pid && validProjectIds.has(pid);
+        });
+      }
+      if (filtered.projectDocumentRecords) {
+        const validPortfolioIds = new Set(
+          filtered.portfolios?.map((p: any) => p.id || p.portfolioId) || []
+        );
+        const validCustomerIds = new Set(
+          filtered.customers?.map((c: any) => c.id || c.customerId) || []
+        );
+        const validSiteIds = new Set(
+          filtered.sites?.map((s: any) => s.id || s.siteId) || []
+        );
+        filtered.projectDocumentRecords = filtered.projectDocumentRecords.filter((d: any) => {
+          const portfolioId = d.portfolioId ?? d.portfolio_id;
+          const customerId = d.customerId ?? d.customer_id;
+          const siteId = d.siteId ?? d.site_id;
+          const projectId = d.projectId ?? d.project_id;
+          if (portfolioId && validPortfolioIds.size > 0 && !validPortfolioIds.has(portfolioId)) return false;
+          if (customerId && validCustomerIds.size > 0 && !validCustomerIds.has(customerId)) return false;
+          if (siteId && validSiteIds.size > 0 && !validSiteIds.has(siteId)) return false;
+          if (projectId && validProjectIds.size > 0 && !validProjectIds.has(projectId)) return false;
+          return true;
+        });
+      }
+      if (filtered.projectDocumentVersions && filtered.projectDocumentRecords) {
+        const validRecordIds = new Set(
+          filtered.projectDocumentRecords.map((d: any) => d.id).filter(Boolean)
+        );
+        filtered.projectDocumentVersions = filtered.projectDocumentVersions.filter((v: any) => {
+          const recordId = v.recordId ?? v.record_id;
+          return !!recordId && validRecordIds.has(recordId);
         });
       }
       if (filtered.moPeriodNotes) {

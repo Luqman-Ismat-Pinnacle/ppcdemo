@@ -1866,6 +1866,8 @@ export interface SampleData {
   snapshots: Snapshot[];
   visualSnapshots: VisualSnapshot[];
   projectDocuments: ProjectDocument[];
+  projectDocumentRecords: ProjectDocumentRecord[];
+  projectDocumentVersions: ProjectDocumentVersion[];
   moPeriodNotes: MoPeriodNote[];
   customerContracts?: any[];
   workdayPhases?: any[];
@@ -2157,6 +2159,43 @@ export interface ProjectDocument {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectDocumentRecord {
+  id: string;
+  portfolioId?: string | null;
+  customerId?: string | null;
+  siteId?: string | null;
+  projectId?: string | null;
+  docType: 'DRD' | 'Workflow' | 'QMP' | 'SOP';
+  name: string;
+  owner: string;
+  dueDate?: string | null;
+  status: string;
+  clientSignoffRequired: boolean;
+  clientSignoffComplete: boolean;
+  latestVersionId?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectDocumentVersion {
+  id: string;
+  recordId: string;
+  versionNumber: number;
+  fileName: string;
+  fileUrl?: string | null;
+  blobPath: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  uploadedAt?: string;
+  uploadedBy?: string | null;
+  notes?: string | null;
+  isLatest: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type MoPeriodNoteType = 'last_commitment' | 'this_commitment' | 'hours_comment';

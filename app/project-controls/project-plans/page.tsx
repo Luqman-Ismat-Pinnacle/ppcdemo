@@ -1050,6 +1050,7 @@ export default function DocumentsPage() {
   const [mappingProjectFilter, setMappingProjectFilter] = useState<string>('');
   const [mappingSearch, setMappingSearch] = useState('');
   const [draggedHourId, setDraggedHourId] = useState<string | null>(null);
+  const [draggedTaskIdForStep2, setDraggedTaskIdForStep2] = useState<string | null>(null);
   const [draggedEntityId, setDraggedEntityId] = useState<string | null>(null);
   const [mappingEntityType, setMappingEntityType] = useState<'units' | 'phases' | 'tasks'>('units');
   const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
@@ -1171,6 +1172,32 @@ export default function DocumentsPage() {
     return byPhase;
   }, [filteredProjectHours]);
 
+  const tasksByWorkdayPhaseForProject = useMemo(() => {
+    const byPhase = new Map<string | 'unassigned', any[]>();
+    byPhase.set('unassigned', []);
+    tasksForSelectedProject.forEach((t: any) => {
+      const wpId = t.workdayPhaseId ?? t.workday_phase_id;
+      const key = wpId ? String(wpId) : 'unassigned';
+      const list = byPhase.get(key) || [];
+      list.push(t);
+      byPhase.set(key, list);
+    });
+    return byPhase;
+  }, [tasksForSelectedProject]);
+
+  const hoursByTaskForSelectedProject = useMemo(() => {
+    const map = new Map<string, any[]>();
+    filteredProjectHours.forEach((h: any) => {
+      const tid = h.taskId ?? h.task_id;
+      if (!tid) return;
+      const key = String(tid);
+      const list = map.get(key) || [];
+      list.push(h);
+      map.set(key, list);
+    });
+    return map;
+  }, [filteredProjectHours]);
+
   const selectedEntities = useMemo(() => {
     if (mappingEntityType === 'units') return unitsForSelectedProject;
     if (mappingEntityType === 'phases') return phasesForSelectedProject;
@@ -1209,6 +1236,70 @@ export default function DocumentsPage() {
       setMappingSaving(false);
     }
   }, [addLog, refreshData]);
+
+  const handleAssignHourToTask = useCallback(async (hourId: string, taskId: string | null) => {
+    if (!hourId) return;
+    setMappingSaving(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assignHourToTask', hourId, taskId }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed');
+      addLog('success', taskId ? 'Hour entry linked to task' : 'Hour entry unlinked from task');
+      await refreshData();
+    } catch (err: any) {
+      addLog('error', err.message);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [addLog, refreshData]);
+
+  const handleAssignTaskToWorkdayPhase = useCallback(async (taskId: string, workdayPhaseId: string | null) => {
+    if (!taskId) return;
+    setMappingSaving(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assignTaskToWorkdayPhase', taskId, workdayPhaseId }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed');
+      addLog('success', 'Task assigned to Workday phase');
+      await refreshData();
+    } catch (err: any) {
+      addLog('error', err.message);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [addLog, refreshData]);
+
+  const handleAutoMatchHoursToTasksInBucket = useCallback(async (workdayPhaseId: string) => {
+    if (!mappingProjectFilter || !workdayPhaseId) return;
+    setMappingSaving(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'autoMatchHoursToTasksInWorkdayPhaseBucket',
+          projectId: mappingProjectFilter,
+          workdayPhaseId,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed');
+      addLog('success', `[Auto-Match] ${result.matched} matched in bucket, ${result.unmatched} unmatched`);
+      await refreshData();
+    } catch (err: any) {
+      addLog('error', err.message);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [mappingProjectFilter, addLog, refreshData]);
 
   const handleAutoMatchWorkdayPhaseToHours = useCallback(async () => {
     if (!mappingProjectFilter) return;
@@ -2160,78 +2251,190 @@ export default function DocumentsPage() {
 
                   <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', background: 'var(--bg-card)' }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.65rem' }}>
-                      2. Manual Hours Matching (unmatched)
+                      2. Manual Hours + Task Buckets
                     </div>
                     <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.8rem' }}>
-                      Unmatched: {unassignedHours.length} of {filteredProjectHours.length}. Drag hour cards into Workday phase buckets.
+                      Unmatched: {unassignedHours.length} of {filteredProjectHours.length}. Drag hour cards and task cards into Workday phase buckets. Then drag hour cards onto task cards to connect.
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem', alignItems: 'start' }}>
-                      <div
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={async (e) => {
-                          e.preventDefault();
-                          if (draggedHourId) await handleAssignHourToWorkdayPhase(draggedHourId, null);
-                          setDraggedHourId(null);
-                        }}
-                        style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem', background: 'var(--bg-tertiary)', minHeight: '140px' }}
-                      >
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                          Unmatched Hours ({unassignedHours.length})
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                          {unassignedHours.slice(0, 60).map((h: any) => {
-                            const parsed = parseHourDescription(String(h.description ?? ''));
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '0.85rem', alignItems: 'start' }}>
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.7rem', background: 'var(--bg-tertiary)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Hours by Workday Phase</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '0.75rem', alignItems: 'start' }}>
+                          <div
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={async (e) => {
+                              e.preventDefault();
+                              if (draggedHourId) await handleAssignHourToWorkdayPhase(draggedHourId, null);
+                              setDraggedHourId(null);
+                            }}
+                            style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem', background: 'var(--bg-tertiary)', minHeight: '140px' }}
+                          >
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                              Unmatched Hours ({unassignedHours.length})
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                              {unassignedHours.slice(0, 60).map((h: any) => {
+                                const parsed = parseHourDescription(String(h.description ?? ''));
+                                return (
+                                  <EnhancedTooltip key={h.id} content={buildHourTooltip(h)}>
+                                    <div
+                                      draggable
+                                      onDragStart={() => setDraggedHourId(String(h.id))}
+                                      onDragEnd={() => setDraggedHourId(null)}
+                                      style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.5rem', background: 'var(--bg-primary)', cursor: 'grab' }}
+                                    >
+                                      <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(h.date || '').slice(0, 10)} · {h.hours ?? 0}h</div>
+                                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(h.phases ?? parsed.phases ?? 'No phase text').toString()}</div>
+                                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{(h.task ?? parsed.task ?? '').toString()}</div>
+                                    </div>
+                                  </EnhancedTooltip>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {phases.map((wp: any) => {
+                            const hoursInPhase = hoursByWorkdayPhaseForProject.get(String(wp.id)) || [];
                             return (
-                              <EnhancedTooltip key={h.id} content={buildHourTooltip(h)}>
-                                <div
-                                  draggable
-                                  onDragStart={() => setDraggedHourId(String(h.id))}
-                                  onDragEnd={() => setDraggedHourId(null)}
-                                  style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.5rem', background: 'var(--bg-primary)', cursor: 'grab' }}
-                                >
-                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(h.date || '').slice(0, 10)} · {h.hours ?? 0}h</div>
-                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(h.phases ?? parsed.phases ?? 'No phase text').toString()}</div>
-                                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{(h.task ?? parsed.task ?? '').toString()}</div>
+                              <div
+                                key={`hours-${wp.id}`}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={async (e) => {
+                                  e.preventDefault();
+                                  if (draggedHourId) await handleAssignHourToWorkdayPhase(draggedHourId, String(wp.id));
+                                  setDraggedHourId(null);
+                                }}
+                                style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem', background: 'var(--bg-tertiary)', minHeight: '140px' }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+                                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {wp.unit ? `${wp.unit} → ` : ''}{wp.name || wp.id} ({hoursInPhase.length})
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAutoMatchHoursToTasksInBucket(String(wp.id))}
+                                    disabled={mappingSaving}
+                                    style={{
+                                      border: '1px solid var(--border-color)',
+                                      borderRadius: 999,
+                                      padding: '0.18rem 0.45rem',
+                                      background: 'var(--bg-secondary)',
+                                      color: 'var(--text-primary)',
+                                      fontSize: '0.66rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    Auto-Match
+                                  </button>
                                 </div>
-                              </EnhancedTooltip>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                                  {hoursInPhase.slice(0, 60).map((h: any) => (
+                                    <EnhancedTooltip key={h.id} content={buildHourTooltip(h)}>
+                                      <div
+                                        draggable
+                                        onDragStart={() => setDraggedHourId(String(h.id))}
+                                        onDragEnd={() => setDraggedHourId(null)}
+                                        style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.5rem', background: 'var(--bg-primary)', cursor: 'grab' }}
+                                      >
+                                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(h.date || '').slice(0, 10)} · {h.hours ?? 0}h</div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(h.id || '').toString()}</div>
+                                      </div>
+                                    </EnhancedTooltip>
+                                  ))}
+                                </div>
+                              </div>
                             );
                           })}
                         </div>
                       </div>
-                      {phases.map((wp: any) => {
-                        const hoursInPhase = hoursByWorkdayPhaseForProject.get(String(wp.id)) || [];
-                        return (
+
+                      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.7rem', background: 'var(--bg-tertiary)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Project Tasks by Workday Phase</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
                           <div
-                            key={`hours-${wp.id}`}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={async (e) => {
                               e.preventDefault();
-                              if (draggedHourId) await handleAssignHourToWorkdayPhase(draggedHourId, String(wp.id));
-                              setDraggedHourId(null);
+                              if (draggedTaskIdForStep2) await handleAssignTaskToWorkdayPhase(draggedTaskIdForStep2, null);
+                              setDraggedTaskIdForStep2(null);
                             }}
-                            style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem', background: 'var(--bg-tertiary)', minHeight: '140px' }}
+                            style={{ border: '2px dashed var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.65rem', background: 'var(--bg-tertiary)', minHeight: 96 }}
                           >
-                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-                              {wp.unit ? `${wp.unit} → ` : ''}{wp.name || wp.id} ({hoursInPhase.length})
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '0.35rem' }}>
+                              Unassigned Tasks ({(tasksByWorkdayPhaseForProject.get('unassigned') || []).length})
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                              {hoursInPhase.slice(0, 60).map((h: any) => (
-                                <EnhancedTooltip key={h.id} content={buildHourTooltip(h)}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                              {(tasksByWorkdayPhaseForProject.get('unassigned') || []).slice(0, 50).map((task: any) => (
+                                <EnhancedTooltip key={`task-u-${task.id}`} content={buildEntityTooltip(task, 'tasks')}>
                                   <div
                                     draggable
-                                    onDragStart={() => setDraggedHourId(String(h.id))}
-                                    onDragEnd={() => setDraggedHourId(null)}
-                                    style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.5rem', background: 'var(--bg-primary)', cursor: 'grab' }}
+                                    onDragStart={() => setDraggedTaskIdForStep2(String(task.id))}
+                                    onDragEnd={() => setDraggedTaskIdForStep2(null)}
+                                    onDragOver={(e) => e.preventDefault()}
+                                    onDrop={async (e) => {
+                                      e.preventDefault();
+                                      if (draggedHourId) await handleAssignHourToTask(draggedHourId, String(task.id));
+                                      setDraggedHourId(null);
+                                    }}
+                                    style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: '0.45rem', background: 'var(--bg-primary)', cursor: 'grab' }}
                                   >
-                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(h.date || '').slice(0, 10)} · {h.hours ?? 0}h</div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(h.id || '').toString()}</div>
+                                    <div style={{ fontSize: '0.77rem', fontWeight: 600, color: 'var(--text-primary)' }}>{task.name || task.taskName || task.id}</div>
+                                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{task.wbsCode || task.id} · Linked hours: {(hoursByTaskForSelectedProject.get(String(task.id)) || []).length}</div>
                                   </div>
                                 </EnhancedTooltip>
                               ))}
                             </div>
                           </div>
-                        );
-                      })}
+                          {phases.map((wp: any) => {
+                            const tasksInBucket = tasksByWorkdayPhaseForProject.get(String(wp.id)) || [];
+                            return (
+                              <div
+                                key={`tasks-${wp.id}`}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={async (e) => {
+                                  e.preventDefault();
+                                  if (draggedTaskIdForStep2) await handleAssignTaskToWorkdayPhase(draggedTaskIdForStep2, String(wp.id));
+                                  setDraggedTaskIdForStep2(null);
+                                }}
+                                style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.65rem', background: 'var(--bg-tertiary)', minHeight: 96 }}
+                              >
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 700, marginBottom: '0.35rem' }}>
+                                  {wp.name || wp.id} ({tasksInBucket.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                  {tasksInBucket.slice(0, 50).map((task: any) => {
+                                    const linkedHours = hoursByTaskForSelectedProject.get(String(task.id)) || [];
+                                    return (
+                                      <EnhancedTooltip key={`task-p-${task.id}`} content={buildEntityTooltip(task, 'tasks')}>
+                                        <div
+                                          draggable
+                                          onDragStart={() => setDraggedTaskIdForStep2(String(task.id))}
+                                          onDragEnd={() => setDraggedTaskIdForStep2(null)}
+                                          onDragOver={(e) => e.preventDefault()}
+                                          onDrop={async (e) => {
+                                            e.preventDefault();
+                                            if (draggedHourId) await handleAssignHourToTask(draggedHourId, String(task.id));
+                                            setDraggedHourId(null);
+                                          }}
+                                          style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: '0.45rem', background: 'var(--bg-primary)', cursor: 'grab' }}
+                                        >
+                                          <div style={{ fontSize: '0.77rem', fontWeight: 600, color: 'var(--text-primary)' }}>{task.name || task.taskName || task.id}</div>
+                                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{task.wbsCode || task.id} · Linked hours: {linkedHours.length}</div>
+                                          {linkedHours.slice(0, 3).map((h: any) => (
+                                            <div key={`${task.id}-${h.id}`} style={{ fontSize: '0.64rem', color: 'var(--pinnacle-teal)' }}>
+                                              {String(h.date || '').slice(0, 10)} → {h.id}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </EnhancedTooltip>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
 

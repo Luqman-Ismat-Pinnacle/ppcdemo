@@ -16,6 +16,36 @@ function normalizeText(input: string | null | undefined): string {
     .trim();
 }
 
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i += 1) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j += 1) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i += 1) {
+    for (let j = 1; j <= a.length; j += 1) {
+      const cost = b.charAt(i - 1) === a.charAt(j - 1) ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+function similarity(a: string, b: string): number {
+  const x = normalizeText(a);
+  const y = normalizeText(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  if (x.includes(y) || y.includes(x)) return 0.93;
+  const maxLen = Math.max(x.length, y.length);
+  return maxLen === 0 ? 0 : 1 - (levenshtein(x, y) / maxLen);
+}
+
 async function ensurePostgresMappingColumns(): Promise<void> {
   if (postgresMappingColumnsEnsured) return;
   await pgQuery(`
@@ -47,13 +77,13 @@ export async function POST(req: NextRequest) {
 
     if (action === 'assignHourToTask') {
       const hourId = body.hourId as string;
-      const taskId = body.taskId as string;
-      if (!hourId || !taskId) {
-        return NextResponse.json({ success: false, error: 'hourId and taskId required' }, { status: 400 });
+      const taskId = body.taskId as string | null;
+      if (!hourId) {
+        return NextResponse.json({ success: false, error: 'hourId required' }, { status: 400 });
       }
       if (isPostgresConfigured()) {
-        await pgQuery('UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2', [taskId, hourId]);
-        return NextResponse.json({ success: true, hourId, taskId });
+        await pgQuery('UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2', [taskId || null, hourId]);
+        return NextResponse.json({ success: true, hourId, taskId: taskId || null });
       }
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -62,9 +92,9 @@ export async function POST(req: NextRequest) {
       }
       const { createClient } = await import('@supabase/supabase-js');
       const supabase = createClient(supabaseUrl, supabaseKey);
-      const { error } = await supabase.from('hour_entries').update({ task_id: taskId }).eq('id', hourId);
+      const { error } = await supabase.from('hour_entries').update({ task_id: taskId || null }).eq('id', hourId);
       if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-      return NextResponse.json({ success: true, hourId, taskId });
+      return NextResponse.json({ success: true, hourId, taskId: taskId || null });
     }
 
     if (action === 'assignTaskToWorkdayPhase') {
@@ -228,6 +258,138 @@ export async function POST(req: NextRequest) {
         unmatched: Math.max((hours || []).length - matched, 0),
         considered: (hours || []).length,
       });
+    }
+
+    if (action === 'autoMatchHoursToTasksInWorkdayPhaseBucket') {
+      const projectId = body.projectId as string;
+      const workdayPhaseId = body.workdayPhaseId as string;
+      if (!projectId || !workdayPhaseId) {
+        return NextResponse.json({ success: false, error: 'projectId and workdayPhaseId required' }, { status: 400 });
+      }
+
+      if (isPostgresConfigured()) {
+        const hoursRes = await pgQuery(
+          `SELECT id, COALESCE(task, '') AS task_text, COALESCE(description, '') AS description
+           FROM hour_entries
+           WHERE project_id = $1 AND workday_phase_id = $2`,
+          [projectId, workdayPhaseId],
+        );
+        const tasksRes = await pgQuery(
+          `SELECT id, COALESCE(name, '') AS name, COALESCE(task_name, '') AS task_name
+           FROM tasks
+           WHERE project_id = $1 AND workday_phase_id = $2`,
+          [projectId, workdayPhaseId],
+        );
+        const hours = hoursRes.rows || [];
+        const tasks = tasksRes.rows || [];
+        let matched = 0;
+        let unmatched = 0;
+        let fuzzyMatched = 0;
+        for (const h of hours) {
+          const source = String(h.task_text || parseHourDescription(String(h.description || '')).task || '').trim();
+          if (!source) {
+            unmatched += 1;
+            continue;
+          }
+          const exact = tasks.find((t) =>
+            normalizeText(source) === normalizeText(String(t.name || t.task_name || ''))
+          );
+          if (exact) {
+            await pgQuery('UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2', [exact.id, h.id]);
+            matched += 1;
+            continue;
+          }
+          const ranked = tasks
+            .map((t) => ({ taskId: String(t.id), score: similarity(source, String(t.name || t.task_name || '')) }))
+            .sort((a, b) => b.score - a.score);
+          if (ranked[0] && ranked[0].score >= 0.88) {
+            await pgQuery('UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2', [ranked[0].taskId, h.id]);
+            matched += 1;
+            fuzzyMatched += 1;
+          } else {
+            unmatched += 1;
+          }
+        }
+        return NextResponse.json({ success: true, projectId, workdayPhaseId, matched, unmatched, considered: hours.length, fuzzyMatched });
+      }
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      }
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data: hours, error: hErr } = await supabase
+        .from('hour_entries')
+        .select('id, task, description')
+        .eq('project_id', projectId)
+        .eq('workday_phase_id', workdayPhaseId);
+      if (hErr) return NextResponse.json({ success: false, error: hErr.message }, { status: 500 });
+      const { data: tasks, error: tErr } = await supabase
+        .from('tasks')
+        .select('id, name, task_name')
+        .eq('project_id', projectId)
+        .eq('workday_phase_id', workdayPhaseId);
+      if (tErr) return NextResponse.json({ success: false, error: tErr.message }, { status: 500 });
+
+      let matched = 0;
+      let unmatched = 0;
+      let fuzzyMatched = 0;
+      for (const h of hours || []) {
+        const source = String(h.task || parseHourDescription(String(h.description || '')).task || '').trim();
+        if (!source) {
+          unmatched += 1;
+          continue;
+        }
+        const exact = (tasks || []).find((t) => normalizeText(source) === normalizeText(String(t.name || t.task_name || '')));
+        if (exact) {
+          await supabase.from('hour_entries').update({ task_id: exact.id }).eq('id', h.id);
+          matched += 1;
+          continue;
+        }
+        const ranked = (tasks || [])
+          .map((t) => ({ taskId: String(t.id), score: similarity(source, String(t.name || t.task_name || '')) }))
+          .sort((a, b) => b.score - a.score);
+        if (ranked[0] && ranked[0].score >= 0.88) {
+          await supabase.from('hour_entries').update({ task_id: ranked[0].taskId }).eq('id', h.id);
+          matched += 1;
+          fuzzyMatched += 1;
+        } else {
+          unmatched += 1;
+        }
+      }
+      return NextResponse.json({ success: true, projectId, workdayPhaseId, matched, unmatched, considered: (hours || []).length, fuzzyMatched });
+    }
+
+    if (action === 'bulkAssignHoursToTasks') {
+      const pairs = Array.isArray(body.pairs) ? body.pairs : [];
+      if (!pairs.length) {
+        return NextResponse.json({ success: true, updated: 0 });
+      }
+      if (isPostgresConfigured()) {
+        for (const pair of pairs) {
+          const hourId = String(pair.hourId || '');
+          const taskId = pair.taskId ? String(pair.taskId) : null;
+          if (!hourId) continue;
+          await pgQuery('UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2', [taskId, hourId]);
+        }
+        return NextResponse.json({ success: true, updated: pairs.length });
+      }
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        return NextResponse.json({ success: false, error: 'No database configured' }, { status: 500 });
+      }
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      for (const pair of pairs) {
+        const hourId = String(pair.hourId || '');
+        const taskId = pair.taskId ? String(pair.taskId) : null;
+        if (!hourId) continue;
+        await supabase.from('hour_entries').update({ task_id: taskId }).eq('id', hourId);
+      }
+      return NextResponse.json({ success: true, updated: pairs.length });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });

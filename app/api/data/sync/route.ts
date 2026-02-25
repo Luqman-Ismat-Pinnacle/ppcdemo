@@ -84,7 +84,10 @@ function cleanRecord(record: Record<string, unknown>, tableName: string): Record
         cleaned[key] = null;
       } else if (key.endsWith('Id') && trimmed === '') {
         cleaned[key] = null;
-      } else if (tableName === 'mo_period_notes' && key === 'content') {
+      } else if (
+        (tableName === 'mo_period_notes' && key === 'content')
+        || (tableName === 'project_document_versions' && (key === 'notes' || key === 'blobPath' || key === 'blob_path' || key === 'fileUrl' || key === 'file_url'))
+      ) {
         cleaned[key] = trimmed;
       } else {
         cleaned[key] = trimmed.length > 255 ? trimmed.substring(0, 255) : trimmed;

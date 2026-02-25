@@ -181,7 +181,9 @@ export type ExportableEntity =
   | 'milestones'
   | 'milestonesTable'
   | 'deliverables'
-  | 'projectHealth';
+  | 'projectHealth'
+  | 'projectDocumentRecords'
+  | 'projectDocumentVersions';
 
 // ============================================================================
 // SHEET NAME MAPPINGS
@@ -205,6 +207,8 @@ const ENTITY_TO_SHEET: Record<ExportableEntity, string> = {
   milestonesTable: 'Milestones',
   deliverables: 'Deliverables',
   projectHealth: 'Project Health',
+  projectDocumentRecords: 'Document Records',
+  projectDocumentVersions: 'Document Versions',
 };
 
 /**
@@ -230,6 +234,10 @@ const SHEET_TO_ENTITY: Record<string, ExportableEntity> = {
   'deliverables': 'deliverables',
   'projecthealth': 'projectHealth',
   'project health': 'projectHealth',
+  'documentrecords': 'projectDocumentRecords',
+  'document records': 'projectDocumentRecords',
+  'documentversions': 'projectDocumentVersions',
+  'document versions': 'projectDocumentVersions',
 };
 
 /**
@@ -250,6 +258,8 @@ const ENTITY_ID_FIELD: Record<ExportableEntity, string> = {
   milestonesTable: 'milestoneId',
   deliverables: 'deliverableId',
   projectHealth: 'projectId',
+  projectDocumentRecords: 'id',
+  projectDocumentVersions: 'id',
 };
 
 // ============================================================================
@@ -357,7 +367,7 @@ export function exportAllToExcel(
   const entities: ExportableEntity[] = [
     'employees', 'portfolios', 'customers', 'sites', 'projects', 'phases',
     'tasks', 'subTasks', 'qctasks', 'deliverables', 'milestonesTable', 'hours',
-    'projectHealth'
+    'projectHealth', 'projectDocumentRecords', 'projectDocumentVersions',
   ];
 
   // Export ALL entities - if data exists, export it; otherwise export template with headers
@@ -1008,7 +1018,7 @@ export function downloadFullTemplate(): void {
   const entities: ExportableEntity[] = [
     'employees', 'portfolios', 'customers', 'sites', 'projects', 'phases',
     'tasks', 'subTasks', 'qctasks', 'deliverables', 'milestonesTable',
-    'hours', 'projectHealth'
+    'hours', 'projectHealth', 'projectDocumentRecords', 'projectDocumentVersions'
   ];
 
   entities.forEach(entity => {
@@ -1067,6 +1077,8 @@ function getEntityHeaders(entityType: ExportableEntity): string[] {
 
     // Project Health
     projectHealth: ['id', 'projectId', 'healthScore', 'status', 'riskLevel'],
+    projectDocumentRecords: ['id', 'docType', 'name', 'owner', 'portfolioId', 'customerId', 'siteId', 'projectId', 'dueDate', 'status', 'clientSignoffRequired', 'clientSignoffComplete', 'latestVersionId', 'createdBy', 'updatedBy'],
+    projectDocumentVersions: ['id', 'recordId', 'versionNumber', 'fileName', 'fileUrl', 'blobPath', 'mimeType', 'fileSize', 'uploadedAt', 'uploadedBy', 'notes', 'isLatest'],
   };
 
   return headers[entityType];
@@ -1326,6 +1338,37 @@ function getExampleRow(entityType: ExportableEntity): any {
       status: 'Pass',
       healthScore: 95,
       riskLevel: 'Low'
+    },
+    projectDocumentRecords: {
+      id: 'DOCREC-001',
+      docType: 'DRD',
+      name: 'Data Requirement Document',
+      owner: 'System',
+      portfolioId: '',
+      customerId: '',
+      siteId: '',
+      projectId: 'PRJ-001',
+      dueDate: '',
+      status: 'Not Started',
+      clientSignoffRequired: false,
+      clientSignoffComplete: false,
+      latestVersionId: 'DOCVER-001',
+      createdBy: 'System',
+      updatedBy: 'System'
+    },
+    projectDocumentVersions: {
+      id: 'DOCVER-001',
+      recordId: 'DOCREC-001',
+      versionNumber: 1,
+      fileName: 'drd-v1.pdf',
+      fileUrl: '',
+      blobPath: 'docs/PRJ-001/DRD/drd-v1.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 1024,
+      uploadedAt: now,
+      uploadedBy: 'System',
+      notes: '',
+      isLatest: true
     },
   };
 

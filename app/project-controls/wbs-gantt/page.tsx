@@ -107,6 +107,12 @@ const readDate = (value: unknown, ...keys: string[]): Date | null => {
 };
 
 const normalizeTaskId = (value: string): string => String(value || '').trim().replace(/^wbs-(task|sub_task)-/i, '');
+const normalizePhaseId = (value: string): string => String(value || '').trim().replace(/^wbs-phase-/i, '');
+const normalizeUnitId = (value: string): string => String(value || '').trim().replace(/^wbs-unit-/i, '');
+const normalizeProjectId = (value: string): string => String(value || '').trim().replace(/^wbs-project-/i, '');
+const normalizeSiteId = (value: string): string => String(value || '').trim().replace(/^wbs-site-/i, '').split('-cust-')[0];
+const normalizeCustomerId = (value: string): string => String(value || '').trim().replace(/^wbs-customer-/i, '').split('-prf-')[0];
+const normalizePortfolioId = (value: string): string => String(value || '').trim().replace(/^wbs-portfolio-/i, '');
 
 const inferType = (item: Record<string, unknown>): string => {
   const id = readString(item, 'id').toLowerCase();
@@ -545,6 +551,114 @@ export default function WBSGanttPage() {
     return rows;
   }, [expandedIds, wbsRootItems, employeeNameById, predecessorMapByTaskId]);
 
+  const resolvedHourEntries = useMemo(() => {
+    const tasks = (fullData.tasks || []) as unknown[];
+    const phases = (fullData.phases || []) as unknown[];
+    const units = (fullData.units || []) as unknown[];
+    const projects = (fullData.projects || []) as unknown[];
+    const sites = (fullData.sites || []) as unknown[];
+    const customers = (fullData.customers || []) as unknown[];
+
+    const taskMap = new Map<string, { phaseId: string; unitId: string; projectId: string }>();
+    tasks.forEach((t) => {
+      const taskId = normalizeTaskId(readString(t, 'id', 'taskId', 'task_id'));
+      if (!taskId) return;
+      taskMap.set(taskId, {
+        phaseId: readString(t, 'phaseId', 'phase_id'),
+        unitId: readString(t, 'unitId', 'unit_id'),
+        projectId: readString(t, 'projectId', 'project_id'),
+      });
+    });
+
+    const phaseMap = new Map<string, { unitId: string; projectId: string }>();
+    phases.forEach((p) => {
+      const phaseId = readString(p, 'id', 'phaseId', 'phase_id');
+      if (!phaseId) return;
+      phaseMap.set(phaseId, {
+        unitId: readString(p, 'unitId', 'unit_id'),
+        projectId: readString(p, 'projectId', 'project_id'),
+      });
+    });
+
+    const unitMap = new Map<string, { projectId: string }>();
+    units.forEach((u) => {
+      const unitId = readString(u, 'id', 'unitId', 'unit_id');
+      if (!unitId) return;
+      unitMap.set(unitId, { projectId: readString(u, 'projectId', 'project_id') });
+    });
+
+    const projectToSite = new Map<string, string>();
+    projects.forEach((p) => {
+      const pid = readString(p, 'id', 'projectId', 'project_id');
+      if (!pid) return;
+      projectToSite.set(pid, readString(p, 'siteId', 'site_id'));
+    });
+    const siteToCustomer = new Map<string, string>();
+    sites.forEach((s) => {
+      const sid = readString(s, 'id', 'siteId', 'site_id');
+      if (!sid) return;
+      siteToCustomer.set(sid, readString(s, 'customerId', 'customer_id'));
+    });
+    const customerToPortfolio = new Map<string, string>();
+    customers.forEach((c) => {
+      const cid = readString(c, 'id', 'customerId', 'customer_id');
+      if (!cid) return;
+      customerToPortfolio.set(cid, readString(c, 'portfolioId', 'portfolio_id'));
+    });
+
+    return ((fullData.hours || []) as unknown[]).map((h) => {
+      const taskId = normalizeTaskId(readString(h, 'taskId', 'task_id'));
+      const fromTask = taskMap.get(taskId);
+      const phaseId = readString(h, 'phaseId', 'phase_id') || fromTask?.phaseId || '';
+      const fromPhase = phaseMap.get(phaseId);
+      const unitId = readString(h, 'unitId', 'unit_id') || fromTask?.unitId || fromPhase?.unitId || '';
+      const fromUnit = unitMap.get(unitId);
+      const projectId = readString(h, 'projectId', 'project_id') || fromTask?.projectId || fromPhase?.projectId || fromUnit?.projectId || '';
+      const siteId = projectToSite.get(projectId) || '';
+      const customerId = siteToCustomer.get(siteId) || '';
+      const portfolioId = customerToPortfolio.get(customerId) || '';
+      return {
+        raw: h,
+        taskId,
+        phaseId,
+        unitId,
+        projectId,
+        siteId,
+        customerId,
+        portfolioId,
+        hours: readNumber(h, 'hours', 'actualHours', 'totalHoursWorked'),
+        cost: readNumber(h, 'actualCost', 'actual_cost', 'reported_standard_cost_amt', 'reportedStandardCostAmt'),
+      };
+    });
+  }, [fullData.tasks, fullData.phases, fullData.units, fullData.projects, fullData.sites, fullData.customers, fullData.hours]);
+
+  const rollups = useMemo(() => {
+    const byTask = new Map<string, { hours: number; cost: number }>();
+    const byPhase = new Map<string, { hours: number; cost: number }>();
+    const byUnit = new Map<string, { hours: number; cost: number }>();
+    const byProject = new Map<string, { hours: number; cost: number }>();
+    const bySite = new Map<string, { hours: number; cost: number }>();
+    const byCustomer = new Map<string, { hours: number; cost: number }>();
+    const byPortfolio = new Map<string, { hours: number; cost: number }>();
+    const add = (map: Map<string, { hours: number; cost: number }>, key: string, hours: number, cost: number) => {
+      if (!key) return;
+      const curr = map.get(key) || { hours: 0, cost: 0 };
+      curr.hours += hours;
+      curr.cost += cost;
+      map.set(key, curr);
+    };
+    resolvedHourEntries.forEach((e) => {
+      add(byTask, e.taskId, e.hours, e.cost);
+      add(byPhase, e.phaseId, e.hours, e.cost);
+      add(byUnit, e.unitId, e.hours, e.cost);
+      add(byProject, e.projectId, e.hours, e.cost);
+      add(bySite, e.siteId, e.hours, e.cost);
+      add(byCustomer, e.customerId, e.hours, e.cost);
+      add(byPortfolio, e.portfolioId, e.hours, e.cost);
+    });
+    return { byTask, byPhase, byUnit, byProject, bySite, byCustomer, byPortfolio };
+  }, [resolvedHourEntries]);
+
   const visibleDefs = useMemo(() => ALL_COLUMNS.filter((c) => visibleColumnIds.has(c.id)), [visibleColumnIds]);
   const columns = useMemo<GridColumn[]>(
     () => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: Math.max(56, Math.round(columnWidths[c.id] || c.width)) })),
@@ -623,15 +737,33 @@ export default function WBSGanttPage() {
       const cpm = cpmByTaskId.get(taskId);
       const snapActualHours = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
       const snapActualCost = taskId ? getSnapshotValue('actualCost', { taskId }) : null;
+      const rowType = (r.type || '').toLowerCase();
+      const rowId = String(r.id || '');
+      const actualOverride = (() => {
+        if (rowType === 'task' || rowType === 'sub_task') return rollups.byTask.get(normalizeTaskId(rowId));
+        if (rowType === 'phase') return rollups.byPhase.get(normalizePhaseId(rowId));
+        if (rowType === 'unit') return rollups.byUnit.get(normalizeUnitId(rowId));
+        if (rowType === 'project') return rollups.byProject.get(normalizeProjectId(rowId));
+        if (rowType === 'site') return rollups.bySite.get(normalizeSiteId(rowId));
+        if (rowType === 'customer') return rollups.byCustomer.get(normalizeCustomerId(rowId));
+        if (rowType === 'portfolio') return rollups.byPortfolio.get(normalizePortfolioId(rowId));
+        return undefined;
+      })();
+      const actualHours = actualOverride?.hours ?? r.actualHours;
+      const actualCost = actualOverride?.cost ?? r.actualCost;
       return {
         ...r,
+        actualHours,
+        actualCost,
+        work: actualHours + r.remainingHours,
+        scheduleCost: actualCost + r.remainingCost,
         totalFloat: cpm?.totalFloat ?? r.totalFloat,
         isCritical: cpm?.isCritical ?? r.isCritical,
-        varianceHours: snapActualHours == null ? null : r.actualHours - snapActualHours,
-        varianceCost: snapActualCost == null ? null : r.actualCost - snapActualCost,
+        varianceHours: snapActualHours == null ? null : actualHours - snapActualHours,
+        varianceCost: snapActualCost == null ? null : actualCost - snapActualCost,
       };
     });
-  }, [baseFilteredRows, cpmByTaskId, getSnapshotValue]);
+  }, [baseFilteredRows, cpmByTaskId, getSnapshotValue, rollups]);
 
   const cpmStats = useMemo(() => {
     const rows = filteredRows.filter((r) => r.type === 'task' || r.type === 'sub_task');
@@ -894,7 +1026,7 @@ export default function WBSGanttPage() {
     const target = filteredRows[row];
     if (!def || !target) return;
 
-    if (def.id === 'acth' && (target.type === 'task' || target.type === 'sub_task' || target.type === 'phase' || target.type === 'unit')) {
+    if (def.id === 'acth' && (target.type === 'task' || target.type === 'sub_task' || target.type === 'phase' || target.type === 'unit' || target.type === 'project' || target.type === 'site' || target.type === 'customer' || target.type === 'portfolio')) {
       setHoursBreakdownRow(target);
       return;
     }
@@ -1122,51 +1254,36 @@ export default function WBSGanttPage() {
 
   const hoursBreakdown = useMemo(() => {
     if (!hoursBreakdownRow) return null;
-    const allTasks = (fullData.tasks || []) as unknown[];
-    const allHours = (fullData.hours || []) as unknown[];
-    const allPhases = (fullData.phases || []) as unknown[];
-    const allUnits = (fullData.units || []) as unknown[];
-    const taskId = normalizeTaskId(hoursBreakdownRow.taskId || hoursBreakdownRow.id);
-    const rowType = hoursBreakdownRow.type;
-
-    const taskRec = allTasks.find((t) => normalizeTaskId(readString(t, 'id', 'taskId', 'task_id')) === taskId);
-    const phaseId = rowType === 'phase'
-      ? readString({ id: hoursBreakdownRow.id }, 'id').replace(/^wbs-phase-/i, '')
-      : readString(taskRec, 'phaseId', 'phase_id');
-    const unitId = rowType === 'unit'
-      ? readString({ id: hoursBreakdownRow.id }, 'id').replace(/^wbs-unit-/i, '')
-      : readString(taskRec, 'unitId', 'unit_id');
-
-    const taskIdsInPhase = allTasks
-      .filter((t) => readString(t, 'phaseId', 'phase_id') === phaseId)
-      .map((t) => normalizeTaskId(readString(t, 'id', 'taskId', 'task_id')))
-      .filter(Boolean);
-    const taskIdsInUnit = allTasks
-      .filter((t) => readString(t, 'unitId', 'unit_id') === unitId)
-      .map((t) => normalizeTaskId(readString(t, 'id', 'taskId', 'task_id')))
-      .filter(Boolean);
-
-    const taskEntries = allHours.filter((h) => normalizeTaskId(readString(h, 'taskId', 'task_id')) === taskId);
-    const phaseEntries = allHours.filter((h) => taskIdsInPhase.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
-    const unitEntries = allHours.filter((h) => taskIdsInUnit.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
-
-    const sumHours = (arr: unknown[]) => arr.reduce((s, h) => s + readNumber(h, 'hours', 'actualHours', 'totalHoursWorked'), 0);
-    const sumCost = (arr: unknown[]) => arr.reduce((s, h) => s + readNumber(h, 'actualCost', 'actual_cost', 'reported_standard_cost_amt', 'reportedStandardCostAmt'), 0);
-    const phaseName = phaseId ? (allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId) ? readString(allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId), 'name') : phaseId) : '-';
-    const unitName = unitId ? (allUnits.find((u) => readString(u, 'id', 'unitId') === unitId) ? readString(allUnits.find((u) => readString(u, 'id', 'unitId') === unitId), 'name') : unitId) : '-';
-
+    const rowType = (hoursBreakdownRow.type || '').toLowerCase();
+    const rowId = String(hoursBreakdownRow.id || '');
+    const selectedEntries = resolvedHourEntries.filter((e) => {
+      if (rowType === 'task' || rowType === 'sub_task') return e.taskId === normalizeTaskId(rowId);
+      if (rowType === 'phase') return e.phaseId === normalizePhaseId(rowId);
+      if (rowType === 'unit') return e.unitId === normalizeUnitId(rowId);
+      if (rowType === 'project') return e.projectId === normalizeProjectId(rowId);
+      if (rowType === 'site') return e.siteId === normalizeSiteId(rowId);
+      if (rowType === 'customer') return e.customerId === normalizeCustomerId(rowId);
+      if (rowType === 'portfolio') return e.portfolioId === normalizePortfolioId(rowId);
+      return false;
+    });
+    const selectedHours = selectedEntries.reduce((s, e) => s + e.hours, 0);
+    const selectedCost = selectedEntries.reduce((s, e) => s + e.cost, 0);
+    const anyPhase = selectedEntries.find((e) => e.phaseId)?.phaseId || '';
+    const anyUnit = selectedEntries.find((e) => e.unitId)?.unitId || '';
+    const phaseRollup = anyPhase ? rollups.byPhase.get(anyPhase) : null;
+    const unitRollup = anyUnit ? rollups.byUnit.get(anyUnit) : null;
     return {
-      taskHours: sumHours(taskEntries),
-      phaseHours: sumHours(phaseEntries),
-      unitHours: sumHours(unitEntries),
-      taskCost: sumCost(taskEntries),
-      phaseCost: sumCost(phaseEntries),
-      unitCost: sumCost(unitEntries),
-      phaseName,
-      unitName,
-      entries: taskEntries.slice(0, 200),
+      taskHours: selectedHours,
+      phaseHours: phaseRollup?.hours || 0,
+      unitHours: unitRollup?.hours || 0,
+      taskCost: selectedCost,
+      phaseCost: phaseRollup?.cost || 0,
+      unitCost: unitRollup?.cost || 0,
+      phaseName: anyPhase || '-',
+      unitName: anyUnit || '-',
+      entries: selectedEntries.slice(0, 200).map((e) => e.raw),
     };
-  }, [hoursBreakdownRow, fullData.tasks, fullData.hours, fullData.phases, fullData.units]);
+  }, [hoursBreakdownRow, resolvedHourEntries, rollups]);
 
   return (
     <div className="page-panel" style={{ height: 'calc(100vh - 62px)', display: 'flex', flexDirection: 'column', gap: 8, padding: '0.5rem 0.75rem 0.5rem', overscrollBehavior: 'none' }}>
