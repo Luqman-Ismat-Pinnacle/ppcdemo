@@ -57,6 +57,13 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     dataSources: ['taskHoursEfficiency'],
     notes: 'Task efficiency on hours page.',
   },
+  {
+    id: 'TASK_EFFICIENCY_PCT_V1',
+    label: 'Task Efficiency %',
+    expression: '(Actual / Baseline) * 100',
+    dataSources: ['tasks', 'hours'],
+    notes: 'Task/scope burn efficiency against baseline hours.',
+  },
 ];
 
 export function getMetricDefinition(id: MetricDefinition['id']): MetricDefinition | undefined {

@@ -47,6 +47,19 @@ const targets = [
       /buildPeriodHoursSummary\(/,
     ],
   },
+  {
+    file: 'app/insights/tasks/page.tsx',
+    banned: [
+      /\(Number\(t\.actualHours\)\s*\|\|\s*0\)\s*\/\s*\(Number\(t\.baselineHours\)\s*\|\|\s*1\)/g,
+      /charge\.ex\s*>\s*0\s*&&\s*charge\.qc\s*===\s*0\s*&&\s*\(t\.percentComplete\s*\|\|\s*0\)\s*>\s*50/g,
+      /efficiency\s*>\s*1\.2\s*&&\s*daysToDeadline\s*<\s*3/g,
+    ],
+    required: [
+      /toTaskEfficiencyPct\(/,
+      /buildTaskDecisionFlags\(/,
+      /calcTaskEfficiencyPct\(/,
+    ],
+  },
 ];
 
 const violations = [];

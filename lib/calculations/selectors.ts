@@ -59,6 +59,12 @@ export interface PeriodHoursSummary {
   efficiency: number;
 }
 
+export interface TaskDecisionFlags {
+  needsQC: boolean;
+  needsSupport: boolean;
+  tag: 'Needs QC' | 'Needs Support' | '';
+}
+
 function asId(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -299,4 +305,36 @@ export function buildPeriodHoursSummary(rowsInput: TaskHoursLike[]): PeriodHours
   const deltaPct = plan > 0 ? (deltaHours / plan) * 100 : 0;
   const efficiency = plan > 0 ? Math.round((Math.min(plan, actual) / plan) * 100) : 0;
   return { plan, actual, added, reduced, deltaHours, deltaPct, efficiency };
+}
+
+/**
+ * Standardized task efficiency percentage used in task-level and aggregate views.
+ */
+export function toTaskEfficiencyPct(actualInput: unknown, baselineInput: unknown): number {
+  const actual = toNum(actualInput);
+  const baseline = toNum(baselineInput);
+  if (baseline <= 0) return 0;
+  return Math.round((actual / baseline) * 100);
+}
+
+/**
+ * Shared decision flags for task triage surfaces.
+ */
+export function buildTaskDecisionFlags(input: {
+  exHours: unknown;
+  qcHours: unknown;
+  percentComplete: unknown;
+  efficiencyPct: unknown;
+  daysToDeadline: unknown;
+}): TaskDecisionFlags {
+  const exHours = toNum(input.exHours);
+  const qcHours = toNum(input.qcHours);
+  const percentComplete = toNum(input.percentComplete);
+  const efficiencyPct = toNum(input.efficiencyPct);
+  const daysToDeadline = toNum(input.daysToDeadline);
+
+  const needsQC = exHours > 0 && qcHours === 0 && percentComplete > 50;
+  const needsSupport = efficiencyPct > 120 && daysToDeadline < 3;
+  const tag: TaskDecisionFlags['tag'] = needsQC ? 'Needs QC' : needsSupport ? 'Needs Support' : '';
+  return { needsQC, needsSupport, tag };
 }

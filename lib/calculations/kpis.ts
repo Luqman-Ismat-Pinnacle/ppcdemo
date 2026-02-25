@@ -176,3 +176,24 @@ export function calcEfficiencyPct(actualWorked: number, estimatedAdded: number, 
   ];
   return { value, provenance };
 }
+
+export function calcTaskEfficiencyPct(actual: number, baseline: number, scope: string, timeWindow: string): MetricOutput<number> {
+  const value = baseline > 0 ? round((actual / baseline) * 100, 0) : 0;
+  const provenance = baseProvenance(
+    {
+      id: 'TASK_EFFICIENCY_PCT_V1',
+      version: 'v1',
+      label: 'Task Efficiency %',
+      dataSources: ['tasks', 'hours'],
+      scope,
+      timeWindow,
+    },
+    '(Actual / Baseline) * 100',
+    [`Actual=${round(actual, 2)}`, `Baseline=${round(baseline, 2)}`, `Efficiency=${value}%`],
+  );
+  provenance.inputs = [
+    { key: 'actual_hours', label: 'Actual Hours', value: round(actual, 2) },
+    { key: 'baseline_hours', label: 'Baseline Hours', value: round(baseline, 2) },
+  ];
+  return { value, provenance };
+}

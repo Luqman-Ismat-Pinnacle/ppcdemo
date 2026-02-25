@@ -10,7 +10,8 @@ export type FormulaId =
   | 'IEAC_CPI_V1'
   | 'TCPI_BAC_V1'
   | 'UTILIZATION_PCT_V1'
-  | 'EFFICIENCY_PCT_V1';
+  | 'EFFICIENCY_PCT_V1'
+  | 'TASK_EFFICIENCY_PCT_V1';
 
 export interface MetricInputSnapshot {
   key: string;

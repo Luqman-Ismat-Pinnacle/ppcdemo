@@ -21,6 +21,9 @@ import ContainerLoader from '@/components/ui/ContainerLoader';
 import useCrossFilter, { CrossFilter } from '@/lib/hooks/useCrossFilter';
 import type { EChartsOption } from 'echarts';
 import { useRouter } from 'next/navigation';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import { calcTaskEfficiencyPct } from '@/lib/calculations/kpis';
+import { buildTaskDecisionFlags, toTaskEfficiencyPct } from '@/lib/calculations/selectors';
 
 // ===== THEME =====
 
@@ -216,14 +219,19 @@ const PriorityDemandScatter = ({ tasks, hours, onSelect }: { tasks: any[]; hours
       const id = t.taskId || t.id;
       const downstream = successorCount.get(id) || 0;
       const variance = (Number(t.actualHours) || 0) - (Number(t.baselineHours) || 0);
-      const efficiency = (Number(t.baselineHours) || 1) > 0 ? (Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1) : 1;
+      const efficiencyPct = toTaskEfficiencyPct(t.actualHours, t.baselineHours);
       const finishDate = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
       const daysToDeadline = Math.round((finishDate.getTime() - Date.now()) / (1000 * 3600 * 24));
       const charge = taskChargeHours.get(id) || { ex: 0, qc: 0 };
 
-      let needsTag = '';
-      if (charge.ex > 0 && charge.qc === 0 && (t.percentComplete || 0) > 50) needsTag = 'Needs QC';
-      else if (efficiency > 1.2 && daysToDeadline < 3) needsTag = 'Needs Support';
+      const flags = buildTaskDecisionFlags({
+        exHours: charge.ex,
+        qcHours: charge.qc,
+        percentComplete: t.percentComplete,
+        efficiencyPct,
+        daysToDeadline,
+      });
+      const needsTag = flags.tag;
 
       return {
         value: [downstream, Math.round(variance * 10) / 10],
@@ -440,21 +448,34 @@ const SprintIntegrationPanel = ({ tasks, hours, sprintFlags, onToggle }: {
 
     return tasks.filter(t => {
       const id = t.taskId || t.id;
-      const efficiency = (Number(t.baselineHours) || 1) > 0 ? (Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1) : 1;
+      const efficiencyPct = toTaskEfficiencyPct(t.actualHours, t.baselineHours);
       const finishDate = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
       const daysToDeadline = Math.round((finishDate.getTime() - Date.now()) / (1000 * 3600 * 24));
       const charge = taskChargeHours.get(id) || { ex: 0, qc: 0 };
 
-      const needsQC = charge.ex > 0 && charge.qc === 0 && (t.percentComplete || 0) > 50;
-      const needsSupport = efficiency > 1.2 && daysToDeadline < 3;
+      const flags = buildTaskDecisionFlags({
+        exHours: charge.ex,
+        qcHours: charge.qc,
+        percentComplete: t.percentComplete,
+        efficiencyPct,
+        daysToDeadline,
+      });
 
-      return needsQC || needsSupport || sprintFlags.has(id);
+      return flags.needsQC || flags.needsSupport || sprintFlags.has(id);
     }).map(t => {
       const id = t.taskId || t.id;
       const charge = taskChargeHours.get(id) || { ex: 0, qc: 0 };
-      const needsQC = charge.ex > 0 && charge.qc === 0 && (t.percentComplete || 0) > 50;
-      const efficiency = (Number(t.baselineHours) || 1) > 0 ? (Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1) : 1;
-      const tag = needsQC ? 'Needs QC' : efficiency > 1.2 ? 'Needs Support' : 'Flagged';
+      const finishDate = new Date(t.finishDate || t.baselineEndDate || t.dueDate || '2099-01-01');
+      const daysToDeadline = Math.round((finishDate.getTime() - Date.now()) / (1000 * 3600 * 24));
+      const efficiencyPct = toTaskEfficiencyPct(t.actualHours, t.baselineHours);
+      const flags = buildTaskDecisionFlags({
+        exHours: charge.ex,
+        qcHours: charge.qc,
+        percentComplete: t.percentComplete,
+        efficiencyPct,
+        daysToDeadline,
+      });
+      const tag = flags.tag || 'Flagged';
       return { ...t, tag, isFlagged: sprintFlags.has(id) };
     });
   }, [tasks, hours, sprintFlags]);
@@ -502,7 +523,7 @@ const TaskSelectorTable = ({ tasks, selectedId, onSelect, view }: {
 }) => {
   const sorted = useMemo(() => {
     const list = tasks.map(t => {
-      const efficiency = (Number(t.baselineHours) || 1) > 0 ? Math.round(((Number(t.actualHours) || 0) / (Number(t.baselineHours) || 1)) * 100) : 0;
+      const efficiency = toTaskEfficiencyPct(t.actualHours, t.baselineHours);
       return { ...t, efficiency };
     });
 
@@ -579,13 +600,15 @@ export default function TasksPage() {
     const totalActual = list.reduce((s, t) => s + (Number(t.actualHours) || 0), 0);
     const totalBaseline = list.reduce((s, t) => s + (Number(t.baselineHours) || 0), 0);
     const critical = list.filter(t => t.isCritical).length;
+    const efficiencyMetric = calcTaskEfficiencyPct(totalActual, totalBaseline, 'tasks-page', 'filtered-window');
     return {
       total: list.length,
       completed,
       progress: list.length > 0 ? Math.round((completed / list.length) * 100) : 0,
       hours: Math.round(totalActual),
       baseline: Math.round(totalBaseline),
-      efficiency: totalBaseline > 0 ? Math.round((totalActual / totalBaseline) * 100) : 0,
+      efficiency: efficiencyMetric.value,
+      efficiencyProvenance: efficiencyMetric.provenance,
       critical,
     };
   }, [crossFilteredTasks]);
@@ -638,7 +661,11 @@ export default function TasksPage() {
           <div style={{ fontSize: '0.82rem', color: C.textMuted, marginTop: 4 }}>360-degree task biographies for micro-decision making</div>
           <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.teal, fontWeight: 700 }}>{stats.hours.toLocaleString()}h</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Actual</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.blue, fontWeight: 700 }}>{stats.efficiency}%</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Efficiency</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: C.blue, fontWeight: 700 }}>{stats.efficiency}%</span>
+              <span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Efficiency</span>
+              <MetricProvenanceChip provenance={stats.efficiencyProvenance} />
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.purple, fontWeight: 700 }}>{stats.critical}</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Critical</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ color: C.green, fontWeight: 700 }}>{stats.progress}%</span><span style={{ color: C.textMuted, fontSize: '0.75rem' }}>Complete</span></div>
           </div>
