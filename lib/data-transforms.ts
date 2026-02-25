@@ -2019,7 +2019,7 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
   const tasks = data.tasks || [];
 
   if (hours.length === 0) {
-    return { weeks: [], byWorker: [], byPhase: [], byTask: [], byChargeType: [] };
+    return { weeks: [], byWorker: [], byPhase: [], byTask: [] };
   }
 
   // Build Maps for O(1) lookups instead of O(n) find() calls
@@ -2200,8 +2200,7 @@ export function buildLaborBreakdown(data: Partial<SampleData>, options?: { allHo
     weeks,
     byWorker: [...workerHours.values()],
     byPhase: [...phaseHours.values()],
-    byTask: [...taskHours.values()],
-    byChargeType: [...chargeTypeHours.values()]
+    byTask: [...taskHours.values()]
   };
 }
 

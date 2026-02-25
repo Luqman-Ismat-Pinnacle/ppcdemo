@@ -1872,36 +1872,6 @@ export default function DataManagementPage() {
       })
     },
     {
-      key: 'approvalRecords',
-      label: 'Approvals',
-      dataKey: 'approvalRecords',
-      idKey: 'id',
-      fields: [
-        { key: 'id', header: 'ID', type: 'text', editable: false, autoCalculated: false },
-        { key: 'projectId', header: 'Project', type: 'project', editable: true },
-        { key: 'entityType', header: 'Entity Type', type: 'select', editable: true, selectOptions: ['baselineSnapshot', 'forecastSnapshot', 'milestone', 'deliverable', 'qcGate'] },
-        { key: 'entityId', header: 'Entity ID', type: 'text', editable: true },
-        { key: 'approvalType', header: 'Approval Type', type: 'text', editable: true },
-        { key: 'status', header: 'Status', type: 'select', editable: true, selectOptions: ['pending', 'approved', 'rejected'] },
-        { key: 'approvedBy', header: 'Approved By', type: 'text', editable: true },
-        { key: 'approvedAt', header: 'Approved At', type: 'date', editable: true },
-        { key: 'notes', header: 'Notes', type: 'text', editable: true },
-      ],
-      defaultNewRow: () => ({
-        id: '', // Database will auto-generate
-        projectId: null,
-        entityType: 'baselineSnapshot',
-        entityId: '',
-        approvalType: 'Baseline Snapshot',
-        status: 'pending',
-        approvedBy: currentUserName,
-        approvedAt: new Date().toISOString().split('T')[0],
-        notes: '',
-        createdAt: getCurrentTimestamp(),
-        updatedAt: getCurrentTimestamp(),
-      })
-    },
-    {
       key: 'changeRequests',
       label: 'Change Requests',
       dataKey: 'changeRequests',
@@ -2252,7 +2222,10 @@ export default function DataManagementPage() {
         const options = getOptionsForType(field.type);
         const option = options.find((opt: any) => String(opt.id) === String(cellValue));
         cellValue = option?.name ?? cellValue;
-      } else if (field.type === 'date' && cellValue) {
+      } else if (
+        field.type === 'date' &&
+        (typeof cellValue === 'string' || typeof cellValue === 'number' || cellValue instanceof Date)
+      ) {
         try {
           cellValue = new Date(cellValue).toLocaleDateString();
         } catch {
@@ -2281,7 +2254,10 @@ export default function DataManagementPage() {
       const options = getOptionsForType(field.type);
       const option = options.find((opt: any) => opt.id === cellValue);
       if (option) cellValue = option.name;
-    } else if (field?.type === 'date' && cellValue) {
+    } else if (
+      field?.type === 'date' &&
+      (typeof cellValue === 'string' || typeof cellValue === 'number' || cellValue instanceof Date)
+    ) {
       try {
         cellValue = new Date(cellValue).toLocaleDateString();
       } catch {
@@ -2308,6 +2284,10 @@ export default function DataManagementPage() {
   const getSortValueForField = useCallback((row: Record<string, any>, field: FieldConfig): SortValue => {
     const value = getCellValue(row, field.key);
     if (value === null || value === undefined) return null;
+    const primitiveValue: SortValue =
+      value instanceof Date || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+        ? value
+        : String(value);
 
     switch (field.type) {
       case 'number':
@@ -2315,7 +2295,10 @@ export default function DataManagementPage() {
       case 'boolean':
         return Boolean(value);
       case 'date':
-        return value ? new Date(value) : null;
+        if (typeof value === 'string' || typeof value === 'number' || value instanceof Date) {
+          return value ? new Date(value) : null;
+        }
+        return null;
       case 'employee':
       case 'project':
       case 'customer':
@@ -2328,10 +2311,10 @@ export default function DataManagementPage() {
       case 'changeRequest': {
         const options = getOptionsForType(field.type);
         const option = options.find((opt: any) => opt.id === value);
-        return option?.name || value;
+        return option?.name || primitiveValue;
       }
       default:
-        return value;
+        return primitiveValue;
     }
   }, [getOptionsForType, getCellValue]);
 
@@ -2481,7 +2464,7 @@ export default function DataManagementPage() {
   // SUPABASE SYNC
   // ============================================================================
 
-  const syncToSupabase = useCallback(async (dataKey: string, records: Record<string, unknown>[]) => {
+  const syncToSupabase = useCallback(async (dataKey: string, records: object[]) => {
     if (!supabaseEnabled) {
       return { success: true, message: 'Local only' };
     }
@@ -2993,20 +2976,12 @@ export default function DataManagementPage() {
 
     // Date picker
     if (field.type === 'date') {
-      let dateValue: Date | undefined = undefined;
-      if (displayValue) {
-        if (typeof displayValue === 'string') {
-          // Parse YYYY-MM-DD as local date to prevent timezone shifts
-          const parts = displayValue.split('-');
-          if (parts.length === 3) {
-            dateValue = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-          } else {
-            dateValue = new Date(displayValue);
-          }
-        } else if (displayValue instanceof Date) {
-          dateValue = displayValue;
-        }
-      }
+      const dateValue =
+        typeof displayValue === 'string'
+          ? displayValue
+          : displayValue instanceof Date
+            ? displayValue.toISOString().split('T')[0]
+            : null;
 
       return (
         <div style={{ width: '100%', minWidth: '130px' }}>
@@ -4107,12 +4082,6 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
-
-
-
-
-
 
 
 

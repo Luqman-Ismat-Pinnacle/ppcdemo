@@ -165,7 +165,6 @@ export default function BudgetVarianceChart({
       height={height}
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
-      enableCompare={true}
       visualId="budget-variance"
       exportFilename="budget-variance"
       onClick={
@@ -181,4 +180,3 @@ export default function BudgetVarianceChart({
     />
   );
 }
-

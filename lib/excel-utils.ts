@@ -848,6 +848,8 @@ function cleanRowData(row: any, entityType: ExportableEntity): any {
       deliverables: 'DLB',
       employees: 'EMP',
       projectHealth: 'PRJ',
+      projectDocumentRecords: 'PDR',
+      projectDocumentVersions: 'PDV',
     };
     const prefix = prefixes[entityType] || 'GEN';
     const timestamp = Date.now().toString(36).toUpperCase();

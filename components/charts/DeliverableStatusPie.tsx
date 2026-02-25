@@ -105,7 +105,6 @@ export default function DeliverableStatusPie({
       height={height}
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
-      enableCompare={true}
       visualId="deliverable-status"
       exportFilename="deliverable-status"
       onClick={
@@ -120,4 +119,3 @@ export default function DeliverableStatusPie({
     />
   );
 }
-

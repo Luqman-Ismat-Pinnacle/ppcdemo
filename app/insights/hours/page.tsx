@@ -39,7 +39,7 @@ import {
   getNextSortState,
   sortByState,
 } from '@/lib/sort-utils';
-import { calculateMetricVariance, getPeriodDisplayName } from '@/lib/variance-engine';
+import { calculateMetricVariance, getComparisonDates, getMetricsForPeriod, getPeriodDisplayName } from '@/lib/variance-engine';
 
 /** View type for the combined stacked bar chart */
 type StackedViewType = 'chargeCode' | 'project' | 'role';
@@ -101,9 +101,12 @@ export default function HoursPage() {
 
   // Calculate variance using the new variance engine
   const varianceData = useMemo(() => {
-    const hoursVariance = calculateMetricVariance(metricsHistory, 'actual_hours', variancePeriod);
-    const efficiencyVariance = calculateMetricVariance(metricsHistory, 'cpi', variancePeriod);
-    const qcVariance = calculateMetricVariance(metricsHistory, 'qc_pass_rate', variancePeriod);
+    const comparison = getComparisonDates(variancePeriod);
+    const currentMetrics = getMetricsForPeriod(metricsHistory, comparison.current);
+    const previousMetrics = getMetricsForPeriod(metricsHistory, comparison.previous);
+    const hoursVariance = calculateMetricVariance('actualHours', currentMetrics, previousMetrics, comparison.periodLabel);
+    const efficiencyVariance = calculateMetricVariance('cpi', currentMetrics, previousMetrics, comparison.periodLabel);
+    const qcVariance = calculateMetricVariance('qcPassRate', currentMetrics, previousMetrics, comparison.periodLabel);
     
     return {
       totalHours: hoursVariance,
@@ -455,7 +458,6 @@ export default function HoursPage() {
                 metricName="Total Hours"
                 period={variancePeriod}
                 size="sm"
-                showInsights={true}
               />
             ) : (
               <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
@@ -473,8 +475,6 @@ export default function HoursPage() {
                 metricName="Efficiency"
                 period={variancePeriod}
                 size="sm"
-                showInsights={true}
-                positiveDirection="up"
               />
             ) : (
               <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>
@@ -492,9 +492,6 @@ export default function HoursPage() {
                 metricName="Quality Hours"
                 period={variancePeriod}
                 size="sm"
-                showInsights={true}
-                positiveDirection="up"
-                formatType="percent"
               />
             ) : (
               <div className="metric-change" style={{ opacity: 0.5, fontSize: '0.75rem' }}>

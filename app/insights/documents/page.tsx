@@ -39,6 +39,7 @@ export default function DocumentsPage() {
   }, []);
 
   const handleClearFilters = useCallback(() => setPageFilters([]), []);
+  const deliverableKeys = ['drd', 'workflow', 'sop', 'qmp'] as const;
 
   const filteredDeliverables = useMemo(() => {
     const list = data.deliverablesTracker || data.deliverables || [];
@@ -234,9 +235,9 @@ export default function DocumentsPage() {
 
       {/* Combined Percent + Pie cards (DRD, Workflow, SOP, QMP) */}
       <div className="dashboard-grid">
-        {['drd', 'workflow', 'sop', 'qmp'].map((key, idx) => {
+        {deliverableKeys.map((key, idx) => {
           const gauge = data.documentSignoffGauges?.[idx] || { name: key.charAt(0).toUpperCase() + key.slice(1), value: 0, color: '#40E0D0' };
-          const pieData = (data.deliverableByStatus as Record<string, { name: string; value: number; color: string }[]>)[key] || [];
+          const pieData = data.deliverableByStatus?.[key] || [];
           return (
             <ChartCard key={key} title={`${gauge.name} Status`} gridClass="grid-quarter">
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>

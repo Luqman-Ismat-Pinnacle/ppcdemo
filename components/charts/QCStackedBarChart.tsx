@@ -171,7 +171,6 @@ export default function QCStackedBarChart({
       height={height}
       enableExport
       enableFullscreen
-      enableCompare={true}
       visualId="qc-stacked-bar"
       exportFilename="qc-stacked-by-project"
       visualTitle="QC by Project"
@@ -187,4 +186,3 @@ export default function QCStackedBarChart({
     />
   );
 }
-

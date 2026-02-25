@@ -1,3 +1,6 @@
 import { handleProfile } from '@auth0/nextjs-auth0';
 
-export const GET = handleProfile;
+export async function GET(request) {
+  const profileHandler = handleProfile();
+  return profileHandler(request);
+}

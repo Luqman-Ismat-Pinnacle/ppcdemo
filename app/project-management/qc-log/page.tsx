@@ -638,7 +638,7 @@ export default function QCLogPage() {
 
   const commitEdit = (qc: QCTask) => {
     if (!editing) return;
-    const raw = (qc as Record<string, unknown>)[editing.field];
+    const raw = (qc as unknown as Record<string, unknown>)[editing.field];
     if (String(raw ?? '') !== editValue) {
       const numFields = [
         'qcHours',

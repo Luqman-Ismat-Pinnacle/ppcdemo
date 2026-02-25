@@ -140,7 +140,7 @@ export default function LaborBreakdownChart({
           },
         })),
         emphasis: {
-          focus: 'series',
+          focus: 'series' as const,
           itemStyle: {
             opacity: 1,
             shadowBlur: 12,
@@ -293,15 +293,18 @@ export default function LaborBreakdownChart({
         },
       },
       series,
-    };
+    } as EChartsOption;
   }, [chartMonths, chartData, categories, isFiltered, activeFilters, periodTotals]);
 
-  const handleClick = useCallback((params: { seriesName?: string; dataIndex?: number; value?: number }) => {
+  const handleClick = useCallback((params: { seriesName?: string; dataIndex?: number; value?: unknown }) => {
     if (onBarClick && params) {
+      const numericValue = typeof params.value === 'number'
+        ? params.value
+        : Number(params.value ?? 0);
       onBarClick({
         name: params.seriesName ?? '',
         dataIndex: params.dataIndex ?? 0,
-        value: params.value || 0
+        value: Number.isFinite(numericValue) ? numericValue : 0
       });
     }
   }, [onBarClick]);

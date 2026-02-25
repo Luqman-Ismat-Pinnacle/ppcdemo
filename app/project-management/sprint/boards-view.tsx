@@ -510,7 +510,6 @@ export default function BoardsView() {
             taskDescription: savedItem.taskDescription || savedItem.description || '',
             isSubTask: false,
             parentTaskId: null,
-            predecessorId: null,
             projectedHours: savedItem.projectedHours || 0,
             actualHours: savedItem.actualHours || 0,
             percentComplete: savedItem.percentComplete || 0,
@@ -1112,7 +1111,7 @@ export default function BoardsView() {
               Delete {deletingItem.workItemType}?
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              Are you sure you want to delete "{getWorkItemName(deletingItem)}"? This action cannot be undone.
+              Are you sure you want to delete &quot;{getWorkItemName(deletingItem)}&quot;? This action cannot be undone.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button

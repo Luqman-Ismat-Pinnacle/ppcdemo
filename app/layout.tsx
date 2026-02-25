@@ -15,7 +15,6 @@
  */
 
 import type { Metadata } from 'next';
-import { Suspense } from 'react';
 import { Montserrat, JetBrains_Mono } from 'next/font/google';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
@@ -29,7 +28,6 @@ import Auth0Provider from '@/components/providers/Auth0Provider';
 import AuthGuard from '@/components/auth/AuthGuard';
 import InactivityLogout from '@/components/auth/InactivityLogout';
 import Header from '@/components/layout/Header';
-import RouteTransitionLoader from '@/components/layout/RouteTransitionLoader';
 import SnapshotPopup from '@/components/snapshot/SnapshotPopup';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
@@ -62,35 +60,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${montserrat.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
-        {/* Background Image */}
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          zIndex: -1,
-          overflow: 'hidden',
-          backgroundImage: 'url("/Final Background.png")',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        }}>
-          {/* Theme-aware Overlay */}
+        {/* Global background system: layered gradient + texture + soft vignettes */}
+        <div className="app-background">
+          <div className="bg-noise" />
+          <div className="bg-vignette bg-vignette-left" />
+          <div className="bg-vignette bg-vignette-right" />
           <div className="video-overlay" />
-          {/* Bottom Right Blur Overlay */}
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            right: 0,
-            width: '400px',
-            height: '400px',
-            background: 'rgba(0,0,0,0.1)',
-            backdropFilter: 'blur(40px)',
-            WebkitBackdropFilter: 'blur(40px)',
-            maskImage: 'radial-gradient(circle at bottom right, black, transparent 70%)',
-            WebkitMaskImage: 'radial-gradient(circle at bottom right, black, transparent 70%)',
-            zIndex: 1
-          }} />
         </div>
         <ErrorBoundary>
           <Auth0Provider>
@@ -103,9 +78,6 @@ export default function RootLayout({
                         <SnapshotProvider>
                           <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
                             <Header />
-                            <Suspense fallback={null}>
-                              <RouteTransitionLoader />
-                            </Suspense>
                             <main className="main-content">
                               {children}
                             </main>

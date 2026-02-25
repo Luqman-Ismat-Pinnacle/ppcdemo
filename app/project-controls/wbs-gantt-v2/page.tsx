@@ -422,7 +422,8 @@ export default function WBSGanttV2Page() {
   }, [filteredData.tasks, fullData.tasks]);
 
   const wbsRootItems = useMemo(() => {
-    const raw = ((filteredData as Record<string, unknown>).wbsData as Record<string, unknown> | undefined)?.items;
+    const filteredDataRecord = filteredData as unknown as Record<string, unknown>;
+    const raw = (filteredDataRecord.wbsData as Record<string, unknown> | undefined)?.items;
     return Array.isArray(raw) ? raw : [];
   }, [filteredData]);
 
@@ -1149,7 +1150,8 @@ export default function WBSGanttV2Page() {
     const phaseEntries = allHours.filter((h) => taskIdsInPhase.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
     const unitEntries = allHours.filter((h) => taskIdsInUnit.includes(normalizeTaskId(readString(h, 'taskId', 'task_id'))));
 
-    const sumHours = (arr: unknown[]) => arr.reduce((s, h) => s + readNumber(h, 'hours', 'actualHours', 'totalHoursWorked'), 0);
+    const sumHours = (arr: unknown[]) =>
+      arr.reduce((s: number, h) => s + readNumber(h, 'hours', 'actualHours', 'totalHoursWorked'), 0);
     const phaseName = phaseId ? (allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId) ? readString(allPhases.find((p) => readString(p, 'id', 'phaseId') === phaseId), 'name') : phaseId) : '-';
     const unitName = unitId ? (allUnits.find((u) => readString(u, 'id', 'unitId') === unitId) ? readString(allUnits.find((u) => readString(u, 'id', 'unitId') === unitId), 'name') : unitId) : '-';
 
@@ -1466,13 +1468,15 @@ export default function WBSGanttV2Page() {
                         {barStart !== null && barEnd !== null && (
                           <>
                             {(() => {
-                              const slipped = row.baselineEnd && row.endDate && row.baselineEnd.getTime() < row.endDate.getTime();
+                              if (!row.baselineEnd || !row.endDate) return null;
+                              const baselineEnd = row.baselineEnd;
+                              const slipped = baselineEnd.getTime() < row.endDate.getTime();
                               if (!slipped) return null;
                               return (
                                 <Rect
-                                  x={Math.max(barStart, toX(row.baselineEnd))}
+                                  x={Math.max(barStart, toX(baselineEnd))}
                                   y={y + 7}
-                                  width={Math.max(2, barEnd - Math.max(barStart, toX(row.baselineEnd)))}
+                                  width={Math.max(2, barEnd - Math.max(barStart, toX(baselineEnd)))}
                                   height={ROW_HEIGHT - 14}
                                   fill={'rgba(245,158,11,0.25)'}
                                   stroke={'#f59e0b'}

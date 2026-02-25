@@ -76,14 +76,17 @@ export default function CapacityPage() {
     // Try to get current sprint from data
     const currentSprint = data.sprints?.find((s: any) => s.isCurrent);
     if (currentSprint) {
-      const start = new Date(currentSprint.startDate || currentSprint.start_date);
-      const end = new Date(currentSprint.endDate || currentSprint.end_date);
+      const sprintRecord = currentSprint as unknown as Record<string, unknown>;
+      const startValue = currentSprint.startDate || sprintRecord.start_date;
+      const endValue = currentSprint.endDate || sprintRecord.end_date;
+      const start = new Date(String(startValue ?? ''));
+      const end = new Date(String(endValue ?? ''));
       const workDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7) * 5);
       return {
         id: currentSprint.id,
         name: currentSprint.name,
-        startDate: currentSprint.startDate || currentSprint.start_date,
-        endDate: currentSprint.endDate || currentSprint.end_date,
+        startDate: String(startValue ?? ''),
+        endDate: String(endValue ?? ''),
         workDays: workDays || 10
       };
     }

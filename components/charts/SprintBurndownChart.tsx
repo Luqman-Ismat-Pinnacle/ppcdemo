@@ -109,6 +109,23 @@ export default function SprintBurndownChart({
     const remaining = chartData.daily.map(d => d.remaining);
     const ideal = chartData.daily.map(d => d.ideal);
     const scopeChanges = chartData.daily.map(d => d.scopeChange || null);
+    const scopeMarkers = chartData.daily
+      .map((d, idx) => d.scopeChange ? {
+        coord: [idx, d.remaining] as [number, number],
+        value: `+${d.scopeChange}`,
+        symbol: 'triangle',
+        symbolSize: 14,
+        itemStyle: { color: '#FF9800' },
+        label: {
+          show: true,
+          formatter: `+${d.scopeChange}`,
+          position: 'top',
+          color: '#FF9800',
+          fontSize: 10,
+          fontWeight: 'bold'
+        }
+      } : null)
+      .filter((point): point is NonNullable<typeof point> => point !== null);
     
     // Find today's index
     const today = new Date().toISOString().split('T')[0];
@@ -227,23 +244,7 @@ export default function SprintBurndownChart({
           },
           smooth: 0.3,
           markPoint: {
-            data: chartData.daily
-              .map((d, idx) => d.scopeChange ? {
-                coord: [idx, d.remaining],
-                value: `+${d.scopeChange}`,
-                symbol: 'triangle',
-                symbolSize: 14,
-                itemStyle: { color: '#FF9800' },
-                label: {
-                  show: true,
-                  formatter: `+${d.scopeChange}`,
-                  position: 'top',
-                  color: '#FF9800',
-                  fontSize: 10,
-                  fontWeight: 'bold'
-                }
-              } : null)
-              .filter(Boolean)
+            data: scopeMarkers
           },
           markLine: todayIndex >= 0 ? {
             silent: true,
@@ -262,7 +263,7 @@ export default function SprintBurndownChart({
           } : undefined
         }
       ]
-    };
+    } as EChartsOption;
   }, [chartData, unit]);
   
   // Calculate stats

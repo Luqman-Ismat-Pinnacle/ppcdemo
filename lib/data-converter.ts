@@ -1096,6 +1096,7 @@ export function convertProjectPlanJSON(data: Record<string, unknown>, projectIdO
           unitId: id,
           name: (u.name as string) || '',
           description: (u.description as string) || '',
+          phaseId: (u.phaseId as string) || (u.phase_id as string) || '',
           projectId: projectIdOverride || (u.projectId as string) || (u.project_id as string) || '',
           project_id: projectIdOverride || (u.projectId as string) || (u.project_id as string) || '',
           employeeId: (u.employeeId as string) || (u.employee_id as string) || null,

@@ -130,6 +130,7 @@ interface ChartWrapperProps {
   onClick?: (params: { name?: string; value?: unknown; dataIndex?: number; seriesName?: string; [key: string]: unknown }) => void;
   enableExport?: boolean;
   enableFullscreen?: boolean;
+  enableCompare?: boolean;
   enableVariance?: boolean;
   varianceData?: { current: number; previous: number; metricName?: string };
   exportFilename?: string;
@@ -168,6 +169,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
   onClick,
   enableExport = false,
   enableFullscreen = false,
+  enableCompare = false,
   enableVariance = false,
   varianceData,
   exportFilename = 'chart',
@@ -187,6 +189,7 @@ const ChartWrapper = React.memo(function ChartWrapper({
   const theme = themeCtx?.theme || 'dark';
   const setHeaderActions = useChartHeaderActions();
   const { varianceEnabled } = useData();
+  void enableCompare;
 
   /* ---- main chart ---- */
   useEffect(() => {

@@ -110,7 +110,15 @@ function buildGanttItems(
     
     // Get date range across all tasks
     const dates = empTasks
-      .flatMap(t => [t.startDate, t.endDate, t.baselineStartDate, t.baselineEndDate])
+      .flatMap((t) => {
+        const taskRecord = t as unknown as Record<string, unknown>;
+        return [
+          taskRecord.startDate,
+          taskRecord.endDate,
+          taskRecord.baselineStartDate,
+          taskRecord.baselineEndDate,
+        ];
+      })
       .filter((d): d is string => !!d)
       .map(d => new Date(d).getTime())
       .filter(d => !isNaN(d));
@@ -140,19 +148,20 @@ function buildGanttItems(
         const baseline = task.baselineHours || 0;
         const actual = task.actualHours || 0;
         const taskUtil = baseline > 0 ? Math.round((actual / baseline) * 100) : 0;
+        const taskRecord = task as unknown as Record<string, unknown>;
         
         items.push({
           id: `task-${taskId}`,
-          name: task.name || task.taskName || 'Unnamed Task',
+          name: (taskRecord.name as string | null | undefined) || task.taskName || 'Unnamed Task',
           type: 'task',
           level: 1,
-          startDate: task.startDate || task.baselineStartDate || null,
-          endDate: task.endDate || task.baselineEndDate || null,
+          startDate: (taskRecord.startDate as string | null | undefined) || (taskRecord.baselineStartDate as string | null | undefined) || null,
+          endDate: (taskRecord.endDate as string | null | undefined) || (taskRecord.baselineEndDate as string | null | undefined) || null,
           percentComplete: task.percentComplete || 0,
           baselineHours: baseline,
           actualHours: actual,
           utilization: taskUtil,
-          isCritical: task.isCritical || task.is_critical || false,
+          isCritical: task.isCritical || Boolean(taskRecord.is_critical) || false,
           parentId: `emp-${empId}`
         });
       });

@@ -453,7 +453,7 @@ export default function SnapshotPopup() {
                             {createdBy && <span>by {createdBy}</span>}
                             <span>{fmtHrs(hrs)} hrs · {fmtCost(cost)}</span>
                           </div>
-                          {notes && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic' }}>"{notes}"</div>}
+                          {notes && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic' }}>&quot;{notes}&quot;</div>}
                         </div>
                       </button>
                     );

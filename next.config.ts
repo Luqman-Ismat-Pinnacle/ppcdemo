@@ -24,14 +24,6 @@ const nextConfig = {
   // Performance optimizations
   compress: true,
 
-  // Ignore build errors for demo deployment
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
   // Image optimization
   images: {
     formats: ['image/avif', 'image/webp'],

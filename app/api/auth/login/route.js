@@ -1,6 +1,6 @@
 import { handleLogin } from '@auth0/nextjs-auth0';
 
-export const GET = (req, res) => {
+export async function GET(request) {
     try {
         const connection = process.env.AUTH0_CONNECTION;
         const audience = process.env.AUTH0_AUDIENCE;
@@ -22,11 +22,11 @@ export const GET = (req, res) => {
             authorizationParams.audience = audience;
         }
 
-        return handleLogin(req, res, {
+        return handleLogin(request, {
             authorizationParams,
         });
     } catch (error) {
         console.error(error);
         return new Response(error.message, { status: error.status || 500 });
     }
-};
+}

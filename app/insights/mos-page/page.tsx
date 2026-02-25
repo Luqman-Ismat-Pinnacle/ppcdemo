@@ -288,7 +288,7 @@ export default function MosPage() {
     });
   }, [hours, selectedTaskId, selectedTaskName]);
 
-  const taskBreakdownOption: EChartsOption = useMemo(() => {
+  const taskBreakdownOption = useMemo<EChartsOption>(() => {
     if (!taskBreakdownInput.length) return {};
 
     const grouped = new Map<string, number>();
@@ -428,7 +428,7 @@ export default function MosPage() {
         top: 8,
         style: { text: `Actual Total: ${actualTotal.toFixed(1)}h`, fill: C.muted, fontSize: 11 },
       }],
-    };
+    } as EChartsOption;
   }, [taskBreakdownInput, selectedTaskId, taskRows, employeeMetaById]);
 
   const nonExQcOption: EChartsOption = useMemo(() => {
@@ -502,7 +502,7 @@ export default function MosPage() {
         type: 'sunburst',
         colorMappingBy: 'id',
         radius: [0, `${outer}%`],
-        sort: null,
+        sort: 'desc',
         nodeClick: 'rootToNode',
         emphasis: { focus: 'ancestor' },
         itemStyle: { borderWidth: 2, borderColor: '#0f0f12' },
@@ -538,7 +538,7 @@ export default function MosPage() {
         style: { text: 'No Non-EX/QC hours in scope', fill: C.muted, fontSize: 13 },
       }] : undefined,
     };
-  }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units, sunburstZoom]);
+  }, [hours, hierarchyBucketLevel, projectById, siteById, customerById, portfolioById, taskById, units, sunburstZoom]) as EChartsOption;
 
   const milestoneRows = useMemo(() => {
     return milestones.map((m, idx) => {

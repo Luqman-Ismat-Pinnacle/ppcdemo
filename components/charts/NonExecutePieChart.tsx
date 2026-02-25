@@ -88,7 +88,6 @@ export default function NonExecutePieChart({
     <ChartWrapper
       option={option}
       height={height}
-      enableCompare={enableCompare}
       enableExport
       enableFullscreen
       visualId={visualId}
@@ -96,5 +95,4 @@ export default function NonExecutePieChart({
     />
   );
 }
-
 

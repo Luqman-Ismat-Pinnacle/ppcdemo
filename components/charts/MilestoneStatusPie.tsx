@@ -90,7 +90,6 @@ export default function MilestoneStatusPie({
       height={height}
       enableExport={enableExport}
       enableFullscreen={enableFullscreen}
-      enableCompare={true}
       visualId="milestone-status"
       exportFilename="milestone-status"
       visualTitle="Milestone Status"
@@ -107,4 +106,3 @@ export default function MilestoneStatusPie({
     />
   );
 }
-

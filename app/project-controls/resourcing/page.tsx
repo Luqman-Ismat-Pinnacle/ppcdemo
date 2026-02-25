@@ -63,7 +63,7 @@ function ResourcingPageLoading() {
 
 function ResourcingPageContent() {
   const searchParams = useSearchParams();
-  const { filteredData, fullData, dateFilter, hierarchyFilter, setData, refreshData, isLoading } = useData();
+  const { filteredData, data: fullData, dateFilter, hierarchyFilter, refreshData, isLoading } = useData();
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
@@ -146,7 +146,7 @@ function ResourcingPageContent() {
       const availableHours = Math.max(0, HOURS_PER_YEAR - workHours);
 
       const projectIds = [...new Set(empTasks.map((t: any) => t.projectId || t.project_id).filter(Boolean))];
-      const projects = projectIds.map(pid => {
+      const projects = projectIds.map((pid: any) => {
         const p = data.projects.find((pp: any) => pp.id === pid || pp.projectId === pid);
         return p ? { id: pid, name: p.name || p.projectName } : { id: pid, name: pid };
       });
@@ -172,9 +172,9 @@ function ResourcingPageContent() {
   // ── Projects with employees ───────────────────────────────────
   const projectsWithEmployees = useMemo(() =>
     data.projects.map((proj: any) => {
-      const pid = proj.id || proj.projectId;
+      const pid = String(proj.id || proj.projectId || '');
       const ptasks = data.tasks.filter((t: any) => (t.projectId || t.project_id) === pid);
-      const emps = employeeMetrics.filter(e => e.projectIds.includes(pid));
+      const emps = employeeMetrics.filter((e: any) => e.projectIds.includes(pid));
       const portId = proj.portfolioId || proj.portfolio_id;
       const port = data.portfolios.find((p: any) => (p.id || p.portfolioId) === portId || p.name === portId);
       return {
@@ -209,10 +209,10 @@ function ResourcingPageContent() {
     totalProjects: data.projects.length,
     totalPortfolios: data.portfolios.length,
     totalCapacity: employeeMetrics.length * HOURS_PER_YEAR,
-    totalAllocated: employeeMetrics.reduce((s, e) => s + e.allocatedHours, 0),
-    avgUtilization: employeeMetrics.length > 0 ? Math.round(employeeMetrics.reduce((s, e) => s + e.utilization, 0) / employeeMetrics.length) : 0,
-    overloaded: employeeMetrics.filter(e => e.status === 'overloaded').length,
-    available: employeeMetrics.filter(e => e.status === 'available').length,
+    totalAllocated: employeeMetrics.reduce((s: number, e: any) => s + e.allocatedHours, 0),
+    avgUtilization: employeeMetrics.length > 0 ? Math.round(employeeMetrics.reduce((s: number, e: any) => s + e.utilization, 0) / employeeMetrics.length) : 0,
+    overloaded: employeeMetrics.filter((e: any) => e.status === 'overloaded').length,
+    available: employeeMetrics.filter((e: any) => e.status === 'available').length,
     unassignedTasks: unassignedTasks.length,
     criticalTasks: unassignedTasks.filter((t: any) => getTaskCriticality(t).label === 'Critical').length,
   }), [employeeMetrics, data.projects, data.portfolios, unassignedTasks, getTaskCriticality]);
@@ -257,8 +257,8 @@ function ResourcingPageContent() {
     const empProjects = new Set(emp.projectIds || []);
 
     return projectsWithEmployees
-      .filter(p => !empProjects.has(p.id))
-      .map(proj => {
+      .filter((p: any) => !empProjects.has(p.id))
+      .map((proj: any) => {
         const projTasks = data.tasks.filter((t: any) => (t.projectId || t.project_id) === proj.id);
         const unassignedOnProj = projTasks.filter((t: any) => !t.assignedTo && !t.employeeId && !t.employee_id);
 
@@ -278,8 +278,8 @@ function ResourcingPageContent() {
           ...proj, roleMatch, criticalCount, totalUnassigned, demand, unassignedHours,
         };
       })
-      .filter(p => p.demand > 0)
-      .sort((a, b) => b.demand - a.demand)
+      .filter((p: any) => p.demand > 0)
+      .sort((a: any, b: any) => b.demand - a.demand)
       .slice(0, 5);
   }, [projectsWithEmployees, data.tasks, getTaskCriticality]);
 
@@ -344,9 +344,9 @@ function ResourcingPageContent() {
 
   /** Compute average utilization for a group of employee IDs */
   const getGroupUtilization = useCallback((empIds: Set<string>) => {
-    const emps = employeeMetrics.filter(e => empIds.has(e.id));
+    const emps = employeeMetrics.filter((e: any) => empIds.has(e.id));
     if (emps.length === 0) return 0;
-    return Math.round(emps.reduce((s, e) => s + e.utilization, 0) / emps.length);
+    return Math.round(emps.reduce((s: number, e: any) => s + e.utilization, 0) / emps.length);
   }, [employeeMetrics]);
 
   const buildManagerTree = useMemo((): any[] => {
@@ -354,14 +354,14 @@ function ResourcingPageContent() {
 
     // Build employee lookup by name (lowercase) for manager matching
     const empByName = new Map<string, any>();
-    employeeMetrics.forEach(emp => {
+    employeeMetrics.forEach((emp: any) => {
       empByName.set((emp.name || '').toLowerCase().trim(), emp);
     });
 
     // Find children of a given manager
     const getDirectReports = (managerName: string): any[] => {
       const mnLower = managerName.toLowerCase().trim();
-      return employeeMetrics.filter(emp => {
+      return employeeMetrics.filter((emp: any) => {
         const mgr = (emp.manager || '').toLowerCase().trim();
         return mgr === mnLower && (emp.name || '').toLowerCase().trim() !== mnLower;
       });
@@ -374,12 +374,12 @@ function ResourcingPageContent() {
       visited.add(emp.id);
 
       const reports = getDirectReports(emp.name);
-      const childNodes = reports.map(r => buildNode(r)).filter(Boolean);
+      const childNodes = reports.map((r: any) => buildNode(r)).filter(Boolean);
       const uc = getUtilColor(emp.utilization);
 
       // Compute group utilization for managers
       const groupUtil = childNodes.length > 0
-        ? Math.round([emp, ...reports].reduce((s, e) => s + e.utilization, 0) / (1 + reports.length))
+        ? Math.round([emp, ...reports].reduce((s: number, e: any) => s + e.utilization, 0) / (1 + reports.length))
         : emp.utilization;
 
       const node: any = {
@@ -398,17 +398,17 @@ function ResourcingPageContent() {
     };
 
     // Root employees: those whose manager field is empty, or whose manager name doesn't match any other employee
-    const roots = employeeMetrics.filter(emp => {
+    const roots = employeeMetrics.filter((emp: any) => {
       const mgr = (emp.manager || '').toLowerCase().trim();
       return !mgr || !empByName.has(mgr) || mgr === (emp.name || '').toLowerCase().trim();
     });
 
-    const rootNodes = roots.map(r => buildNode(r)).filter(Boolean);
+    const rootNodes = roots.map((r: any) => buildNode(r)).filter(Boolean);
 
     // Catch any employees missed (circular references, etc.)
-    const missedEmps = employeeMetrics.filter(e => !visited.has(e.id));
+    const missedEmps = employeeMetrics.filter((e: any) => !visited.has(e.id));
     if (missedEmps.length > 0) {
-      missedEmps.forEach(emp => {
+      missedEmps.forEach((emp: any) => {
         const node = buildNode(emp);
         if (node) rootNodes.push(node);
       });
@@ -430,12 +430,12 @@ function ResourcingPageContent() {
     }, 0);
 
   const treeLeafCounts = useMemo(() =>
-    treeData.map(p => ({ name: p.name, leaves: countLeaves([p]) })),
+    treeData.map((p: any) => ({ name: p.name, leaves: countLeaves([p]) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [treeData],
   );
 
-  const totalLeaves = treeLeafCounts.reduce((s, p) => s + p.leaves, 0);
+  const totalLeaves = treeLeafCounts.reduce((s: number, p: any) => s + p.leaves, 0);
   // For vertical TB layout — increase sibling spacing and adapt to zoom so labels don't overlap.
   const spacingScale = Math.max(1, 1 / Math.max(treeZoom, 0.75));
   const dynamicTreeWidth = Math.max(1500, Math.min(totalLeaves * 170 * spacingScale, 7600));
@@ -444,7 +444,7 @@ function ResourcingPageContent() {
   // ── Register global action bridge for tooltip clicks ──────────
   useEffect(() => {
     (window as any).__resourcingOpenEmployee = (empId: string) => {
-      const emp = employeeMetrics.find(e => e.id === empId);
+      const emp = employeeMetrics.find((e: any) => e.id === empId);
       if (emp) { setSelectedEmployee(emp); setShowEmployeeModal(true); }
     };
     return () => { delete (window as any).__resourcingOpenEmployee; };
@@ -626,7 +626,7 @@ function ResourcingPageContent() {
     [employeeMetrics]);
 
   const capacityChartOption: EChartsOption = useMemo(() => {
-    const cd = sortedEmployeesByUtil.map(e => ({ id: e.id, name: e.name, utilization: e.utilization, role: e.role, taskCount: e.taskCount, allocatedHours: e.allocatedHours, availableHours: e.availableHours }));
+    const cd = sortedEmployeesByUtil.map((e: any) => ({ id: e.id, name: e.name, utilization: e.utilization, role: e.role, taskCount: e.taskCount, allocatedHours: e.allocatedHours, availableHours: e.availableHours }));
     const chartHeight = Math.max(420, cd.length * 28);
     return {
       backgroundColor: 'transparent',
@@ -652,7 +652,7 @@ function ResourcingPageContent() {
   }, [sortedEmployeesByUtil]);
 
   const utilizationPieOption: EChartsOption = useMemo(() => {
-    const dist = { available: employeeMetrics.filter(e => e.status === 'available').length, optimal: employeeMetrics.filter(e => e.status === 'optimal').length, busy: employeeMetrics.filter(e => e.status === 'busy').length, overloaded: employeeMetrics.filter(e => e.status === 'overloaded').length };
+    const dist = { available: employeeMetrics.filter((e: any) => e.status === 'available').length, optimal: employeeMetrics.filter((e: any) => e.status === 'optimal').length, busy: employeeMetrics.filter((e: any) => e.status === 'busy').length, overloaded: employeeMetrics.filter((e: any) => e.status === 'overloaded').length };
     return {
       backgroundColor: 'transparent',
       tooltip: { trigger: 'item', backgroundColor: 'rgba(22,27,34,0.95)', borderColor: '#3f3f46', textStyle: { color: '#fff' } },
@@ -746,8 +746,19 @@ function ResourcingPageContent() {
   }, [roleCapacityDemand]);
 
   const runLeveling = useCallback(() => {
-    const inputs = deriveLevelingInputs({ tasks: data.tasks, employees: data.employees, hours: data.hours });
-    setLevelingResult(runResourceLeveling(inputs, DEFAULT_LEVELING_PARAMS));
+    const inputs = deriveLevelingInputs(
+      { tasks: data.tasks, employees: data.employees, hours: data.hours },
+      DEFAULT_LEVELING_PARAMS
+    );
+    setLevelingResult(
+      runResourceLeveling(
+        inputs.tasks,
+        inputs.resources,
+        inputs.project,
+        DEFAULT_LEVELING_PARAMS,
+        inputs.warnings
+      )
+    );
   }, [data.tasks, data.employees, data.hours]);
 
   // Capacity per role per week = active employees in that role × HOURS_PER_WEEK
@@ -889,7 +900,7 @@ function ResourcingPageContent() {
 
         // If there are additional comma-separated names from plan, add those too (as roles)
         if (resourceNames.length > 1) {
-          resourceNames.slice(1).forEach(rn => {
+          resourceNames.slice(1).forEach((rn: any) => {
             const rnLower = rn.toLowerCase();
             if (rnLower === (empIdToName.get(eid) || '').toLowerCase()) return; // skip the primary
             const rnRole = empNameToRole.get(rnLower) || rn || 'Unassigned';
@@ -899,7 +910,7 @@ function ResourcingPageContent() {
 
         const hrsPerPerson = hrsPerWeek / individuals.length;
 
-        individuals.forEach(ind => {
+        individuals.forEach((ind: any) => {
           let role = ind.role;
           if (!role || role === 'N/A') role = 'Unassigned';
 
@@ -926,7 +937,7 @@ function ResourcingPageContent() {
         // No employeeId — use resource names from project plan as roles
         const hrsPerPerson = hrsPerWeek / resourceNames.length;
 
-        resourceNames.forEach(rn => {
+        resourceNames.forEach((rn: any) => {
           // Use project plan resource as role (roles from MPP/plan)
           const role = rn?.trim() || 'Unassigned';
 
@@ -1024,9 +1035,9 @@ function ResourcingPageContent() {
 
     // Each individual role gets its own row
     const sortedRoles = [...roleWeekHours.entries()]
-      .map(([role, wm]) => ({ role, total: [...wm.values()].reduce((s, v) => s + v, 0) }))
+      .map(([role, wm]) => ({ role, total: [...wm.values()].reduce((s: number, v: number) => s + v, 0) }))
       .sort((a, b) => b.total - a.total)
-      .map(r => r.role);
+      .map((r: any) => r.role);
 
     const heatData: [number, number, number][] = [];
     const overlayData: Array<{ value: [number, number, number]; overload: boolean }> = [];
@@ -1136,8 +1147,8 @@ function ResourcingPageContent() {
     if (!heatmapSharedData) return [];
     const roles = new Set<string>();
     heatmapSharedData.roleWeekHours.forEach((_wm, role) => { if (role) roles.add(role); });
-    heatmapSharedData.empRoleMap.forEach(r => { if (r) roles.add(r); });
-    heatmapSharedData.empIdToRole.forEach(r => { if (r) roles.add(r); });
+    heatmapSharedData.empRoleMap.forEach((r: any) => { if (r) roles.add(r); });
+    heatmapSharedData.empIdToRole.forEach((r: any) => { if (r) roles.add(r); });
     data.employees.forEach((e: any) => {
       const role = e.jobTitle || e.role;
       if (role) roles.add(role);
@@ -1158,7 +1169,7 @@ function ResourcingPageContent() {
     empWeekHours.forEach((wm, key) => {
       const name = empNameMap.get(key) || key;
       const role = empRoleMap.get(key) || empIdToRole.get(key) || '';
-      const total = [...wm.values()].reduce((s, v) => s + v, 0);
+      const total = [...wm.values()].reduce((s: number, v: number) => s + v, 0);
       allEmpEntries.push({ key, name, role, total });
       addedKeys.add(key);
       addedKeys.add(name.toLowerCase());
@@ -1177,7 +1188,7 @@ function ResourcingPageContent() {
     // Apply role filter
     const filteredEntries = heatmapRoleFilter === 'all'
       ? allEmpEntries
-      : allEmpEntries.filter(e => e.role === heatmapRoleFilter);
+      : allEmpEntries.filter((e: any) => e.role === heatmapRoleFilter);
 
     // Sort: employees with hours first (desc), then alphabetical
     filteredEntries.sort((a, b) => {
@@ -1185,7 +1196,7 @@ function ResourcingPageContent() {
       return a.name.localeCompare(b.name);
     });
 
-    const empLabels = filteredEntries.map(e => e.name);
+    const empLabels = filteredEntries.map((e: any) => e.name);
 
     const heatData: [number, number, number][] = [];
     let maxVal = 0;
@@ -1557,7 +1568,7 @@ function ResourcingPageContent() {
               <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.75rem' }}>Utilization by Role</div>
               {(() => {
                 const roleMap = new Map<string, { total: number; count: number }>();
-                employeeMetrics.forEach(e => {
+                employeeMetrics.forEach((e: any) => {
                   const role = e.role || 'Unassigned';
                   const existing = roleMap.get(role) || { total: 0, count: 0 };
                   roleMap.set(role, { total: existing.total + e.utilization, count: existing.count + 1 });
@@ -1630,7 +1641,7 @@ function ResourcingPageContent() {
                 <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px', textAlign: 'center' }}><div style={{ fontSize: '2rem', fontWeight: 800 }}>{(levelingResult as any).tasksMoved || 0}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tasks to Shift</div></div>
                 <div style={{ padding: '1rem', background: 'var(--bg-secondary)', borderRadius: '10px' }}><div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>Recommendation</div><div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(levelingResult as any).summary}</div></div>
               </div>
-            ) : <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Click "Run Analysis" to get resource leveling recommendations</div>}
+            ) : <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Click &quot;Run Analysis&quot; to get resource leveling recommendations</div>}
           </div>
 
           {/* Employee Table with Search */}
@@ -1652,7 +1663,7 @@ function ResourcingPageContent() {
                 </tr></thead>
                 <tbody>
                   {employeeMetrics
-                    .filter(emp => {
+                    .filter((emp: any) => {
                       if (!analyticsSearch) return true;
                       const q = analyticsSearch.toLowerCase();
                       return emp.name.toLowerCase().includes(q) || (emp.role || '').toLowerCase().includes(q);

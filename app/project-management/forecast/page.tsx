@@ -1292,7 +1292,7 @@ export default function ForecastPage() {
     const tasks = data.tasks || [];
     
     // Calculate from real data only - no fallbacks
-    const totalBudget = projects.reduce((sum, p) => sum + (p.baselineCost || p.budgetCost || 0), 0) ||
+    const totalBudget = projects.reduce((sum, p) => sum + (p.baselineCost || 0), 0) ||
                         tasks.reduce((sum, t) => sum + ((t.baselineHours || 0) * 75), 0);
     const totalActual = hours.reduce((sum, h) => sum + ((h.hours || 0) * 75), 0) ||
                         tasks.reduce((sum, t) => sum + ((t.actualHours || 0) * 75), 0);

@@ -292,16 +292,21 @@ function azureFunctionSyncStream(hoursDaysBack: number): Response {
             if (!result) continue;
             const success = result.success !== false;
             const summary = result.summary || result;
-            if (step === 'hours' && result.summary?.lastError) {
-              pushLine(controller, { type: 'step', step, status: 'chunk_done', success: false, error: result.summary.lastError });
+            const summaryObj = isObject(result.summary) ? result.summary : {};
+            const summaryLastError = typeof summaryObj.lastError === 'string' ? summaryObj.lastError : undefined;
+            const summaryTotalHours = typeof summaryObj.totalHours === 'number' ? summaryObj.totalHours : undefined;
+            const summaryTotalFetched = typeof summaryObj.totalFetched === 'number' ? summaryObj.totalFetched : undefined;
+            const summaryChunksFail = typeof summaryObj.chunksFail === 'number' ? summaryObj.chunksFail : 0;
+            if (step === 'hours' && summaryLastError) {
+              pushLine(controller, { type: 'step', step, status: 'chunk_done', success: false, error: summaryLastError });
             }
             pushLine(controller, {
               type: 'step',
               step,
               status: 'done',
               result: { success, summary },
-              totalHours: step === 'hours' ? (result.summary?.totalHours ?? result.summary?.totalFetched) : undefined,
-              ...(step === 'hours' && result.summary?.chunksFail > 0 ? { error: result.summary.lastError } : {}),
+              totalHours: step === 'hours' ? (summaryTotalHours ?? summaryTotalFetched) : undefined,
+              ...(step === 'hours' && summaryChunksFail > 0 ? { error: summaryLastError } : {}),
             });
           }
         }
@@ -355,7 +360,7 @@ async function runPostgresMatching(): Promise<{ tasksMatched: number; unitsMatch
     unitsByProject.set(u.project_id, arr);
   });
 
-  const normalize = (s: string) => (s ?? '').toString().trim().toLowerCase();
+  const normalize = (s: string | null | undefined) => (s ?? '').toString().trim().toLowerCase();
   let tasksMatched = 0;
   let unitsMatched = 0;
   const updates: { id: string; task_id: string }[] = [];
@@ -403,7 +408,7 @@ function pushLine(controller: ReadableStreamDefaultController<Uint8Array>, obj: 
 }
 
 async function callEdgeFunction(
-  url: string, key: string, functionName: string, body: Record<string, unknown>,
+  url: string, key: string, functionName: string, body: unknown,
   options?: { retries?: number; timeoutMs?: number }
 ): Promise<EdgeFunctionResult> {
   const { retries = 2, timeoutMs = 120000 } = options || {};

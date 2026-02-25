@@ -60,7 +60,9 @@ export async function GET(req: NextRequest) {
     if (result.error || !result.data) {
       return NextResponse.json({ error: result.error || 'Download failed' }, { status: 500 });
     }
-    return new Response(result.data, {
+    const payload = new Uint8Array(result.data.length);
+    payload.set(result.data);
+    return new Response(payload, {
       headers: {
         'Content-Type': result.contentType,
         'Content-Disposition': `attachment; filename="${path.split('/').pop()}"`,

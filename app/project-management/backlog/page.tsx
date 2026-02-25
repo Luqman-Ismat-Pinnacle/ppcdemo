@@ -249,7 +249,7 @@ export default function BacklogPage() {
     }
   };
 
-  if (isLoading) {
+  if (dataLoading) {
     return (
       <div className="page-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
         <ContainerLoader message="Loading Backlog..." minHeight={200} />

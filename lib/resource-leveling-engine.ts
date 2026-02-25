@@ -701,7 +701,8 @@ function buildTasks(
     }
     // If no resources assigned, leave resourcesMap empty - task will be tracked as unassigned
 
-    const predecessorId = task.predecessorId || task.predecessor || null;
+    const taskRecord = task as unknown as Record<string, unknown>;
+    const predecessorId = task.predecessorId || (taskRecord.predecessor as string | null | undefined) || null;
     const predecessorIds = predecessorId && taskIndex.has(predecessorId) ? [predecessorId] : [];
     if (predecessorId && predecessorIds.length === 0) {
       warnings.push(`Task "${task.taskName || taskId}" has missing predecessor "${predecessorId}".`);

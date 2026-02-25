@@ -353,7 +353,6 @@ export default function BacklogView() {
             taskDescription: savedItem.taskDescription || savedItem.description || '',
             isSubTask: false,
             parentTaskId: null,
-            predecessorId: null,
             projectedHours: savedItem.projectedHours || 0,
             actualHours: savedItem.actualHours || 0,
             percentComplete: savedItem.percentComplete || 0,

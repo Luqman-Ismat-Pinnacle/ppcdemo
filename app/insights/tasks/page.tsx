@@ -561,7 +561,7 @@ export default function TasksPage() {
   const crossFilter = useCrossFilter();
   const router = useRouter();
   const [selectedTask, setSelectedTask] = useState<any>(null);
-  const viewMode: 'sprint' = 'sprint';
+  const viewMode = 'sprint' as const;
   const [sprintFlags, setSprintFlags] = useState<Set<string>>(new Set());
 
   const crossFilteredTasks = useMemo(() => {

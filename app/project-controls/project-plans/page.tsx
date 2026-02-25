@@ -195,11 +195,14 @@ export default function DocumentsPage() {
     const projects = data?.projects || [];
     const proj = projects.find((p: any) => (p.id || p.projectId) === workdayProjectId);
     if (!proj) return false;
-    const portfolioId = proj.portfolioId ?? proj.portfolio_id;
+    const projRecord = proj as unknown as Record<string, unknown>;
+    const portfolioId = (projRecord.portfolioId ?? projRecord.portfolio_id) as string | undefined;
     if (!portfolioId) return true;
     const portfolios = data?.portfolios || [];
     const portfolio = portfolios.find((p: any) => (p.id || p.portfolioId) === portfolioId);
-    return !portfolio || portfolio.isActive === false || portfolio.is_active === false;
+    if (!portfolio) return true;
+    const portfolioRecord = portfolio as unknown as Record<string, unknown>;
+    return portfolioRecord.isActive === false || portfolioRecord.is_active === false;
   }, [workdayProjectId, data?.projects, data?.portfolios]);
 
   type HierarchyDisconnect = {
@@ -585,7 +588,8 @@ export default function DocumentsPage() {
           if (!resultProj.success) {
             throw new Error(resultProj.error || 'Project update failed');
           }
-          const customerId = proj.customerId ?? proj.customer_id;
+          const projRecord = proj as unknown as Record<string, unknown>;
+          const customerId = (projRecord.customerId ?? projRecord.customer_id) as string | undefined;
           if (customerId) {
             const resCust = await fetch('/api/data/sync', {
               method: 'POST',
@@ -793,7 +797,9 @@ export default function DocumentsPage() {
           const byName = (d.fileName || d.file_name || d.name) === file.fileName;
           return byId || byPath || byName;
         });
-        return match ? (match.projectId || match.project_id || '') : '';
+        if (!match) return '';
+        const matchRecord = match as unknown as Record<string, unknown>;
+        return String(matchRecord.projectId ?? matchRecord.project_id ?? '');
       })();
 
       if (!projectId) {
@@ -801,9 +807,10 @@ export default function DocumentsPage() {
       }
 
       const project = (data?.projects || []).find((p: any) => String(p.id || p.projectId) === String(projectId));
-      const portfolioId = String(project?.portfolioId ?? project?.portfolio_id ?? assignPortfolioId ?? '');
-      const customerId = String(project?.customerId ?? project?.customer_id ?? '');
-      const siteId = String(project?.siteId ?? project?.site_id ?? '');
+      const projectRecord = project as unknown as Record<string, unknown> | undefined;
+      const portfolioId = String(projectRecord?.portfolioId ?? projectRecord?.portfolio_id ?? assignPortfolioId ?? '');
+      const customerId = String(projectRecord?.customerId ?? projectRecord?.customer_id ?? '');
+      const siteId = String(projectRecord?.siteId ?? projectRecord?.site_id ?? '');
 
       setProcessingStage({ step: 2, label: 'Running parser and DB upsert...', fileName: file.fileName });
       setUploadedFiles(prev => prev.map(f => f.id === fileId ? { ...f, status: 'syncing' as const } : f));
@@ -871,7 +878,9 @@ export default function DocumentsPage() {
         const byName = (d.fileName || d.file_name || d.name) === file.fileName;
         return byId || byPath || byName;
       });
-      return match ? (match.projectId || match.project_id || '') : '';
+      if (!match) return '';
+      const matchRecord = match as unknown as Record<string, unknown>;
+      return String(matchRecord.projectId ?? matchRecord.project_id ?? '');
     })();
 
     // 1. Delete the file from Azure Blob Storage
@@ -1896,7 +1905,7 @@ export default function DocumentsPage() {
                                     Full health report
                                   </button>
                                   {file.storagePath && (
-                                    <button onClick={() => window.open(`/project-controls/health-report?storagePath=${encodeURIComponent(file.storagePath)}&autoPrint=1`, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    <button onClick={() => window.open(`/project-controls/health-report?storagePath=${encodeURIComponent(file.storagePath ?? '')}&autoPrint=1`, '_blank')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2h9l3 3v17H6z" /><path d="M9 7h6" /><path d="M9 11h6" /><path d="M9 15h3" /></svg>
                                       Print / Save as PDF
                                     </button>

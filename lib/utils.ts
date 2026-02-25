@@ -76,7 +76,7 @@ export function formatNumber(value: number): string {
  * ```
  */
 export function formatPercent(value: number | null | undefined, decimals: number = 2): string {
-  if (value == null || value === '' || Number.isNaN(Number(value))) return '—';
+  if (value == null || Number.isNaN(Number(value))) return '—';
   return `${Number(value).toFixed(decimals)}%`;
 }
 
