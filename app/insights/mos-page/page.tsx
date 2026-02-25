@@ -8,6 +8,8 @@ import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
 import MosGlideTable from './components/MosGlideTable';
 import type { MoPeriodGranularity, MoPeriodNote, MoPeriodNoteType } from '@/types/data';
+import { calcHoursVariancePct } from '@/lib/calculations/kpis';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 
 const C = {
   text: '#f4f4f5',
@@ -619,6 +621,11 @@ export default function MosPage() {
     return { plan, actual, added, reduced, deltaHours, deltaPct, efficiency };
   }, [taskRows]);
 
+  const periodVarianceProvenance = useMemo(
+    () => calcHoursVariancePct(periodHours.actual, periodHours.plan, 'mos-page', `${periods.currentStart}..${periods.currentEnd}`).provenance,
+    [periodHours.actual, periodHours.plan, periods.currentStart, periods.currentEnd]
+  );
+
   const taskOption: EChartsOption = useMemo(() => {
     const top = taskRows.slice(0, 20);
     if (!top.length) return {};
@@ -955,6 +962,7 @@ export default function MosPage() {
           <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.7rem' }}>
             <h3 style={{ margin: 0, color: C.text, fontSize: '0.95rem' }}>
               Period Hours Efficiency: <span style={{ color: C.blue }}>{periodHours.efficiency}%</span> | Plan {Math.round(periodHours.plan)}h | Actual {Math.round(periodHours.actual)}h | Added {Math.round(periodHours.added)}h | Delta {Math.round(periodHours.deltaHours)}h ({periodHours.deltaPct.toFixed(1)}%)
+              <MetricProvenanceChip provenance={periodVarianceProvenance} />
             </h3>
             <div style={{ color: C.muted, fontSize: '0.76rem' }}>Reduced hours = `max(0, Plan - Actual)` for current filtered scope and period.</div>
             <ChartWrapper

@@ -34,6 +34,8 @@ import {
   ProjectState,
   DEFAULT_ENGINE_PARAMS,
 } from '@/lib/forecasting-engine';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import type { MetricProvenance } from '@/lib/calculations/types';
 
 // Generate unique ID
 const generateId = (prefix: string): string => {
@@ -133,6 +135,29 @@ export default function ProjectHealthPage() {
     if (Number.isFinite(manual)) return Math.max(0, Math.min(100, Math.round(manual)));
     return overallScore;
   }, [currentHealth, overallScore]);
+
+  const healthScoreProvenance = useMemo<MetricProvenance>(() => {
+    const evaluated = currentHealth?.checks.filter(c => c.passed !== null && !c.isMultiLine) || [];
+    const passed = evaluated.filter(c => c.passed === true).length;
+    const total = evaluated.length;
+    return {
+      id: 'HEALTH_SCORE_V1',
+      version: 'v1',
+      label: 'Project Health Score',
+      dataSources: ['project_health.checks'],
+      scope: selectedProjectId || 'project',
+      timeWindow: 'current',
+      inputs: [
+        { key: 'passed_checks', label: 'Passed Checks', value: passed },
+        { key: 'evaluated_checks', label: 'Evaluated Checks', value: total },
+      ],
+      trace: {
+        formula: '(Passed Checks / Evaluated Checks) * 100',
+        steps: [`Passed=${passed}`, `Evaluated=${total}`, `Score=${effectiveScore}%`],
+        computedAt: new Date().toISOString(),
+      },
+    };
+  }, [currentHealth, selectedProjectId, effectiveScore]);
 
   // Group checks by category
   const checksByCategory = useMemo(() => {
@@ -291,7 +316,10 @@ export default function ProjectHealthPage() {
                   'Only evaluated checks count towards score',
                 ]
               }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', cursor: 'help', borderBottom: '1px dotted' }}>Health Score:</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', cursor: 'help', borderBottom: '1px dotted', display: 'flex', alignItems: 'center' }}>
+                  Health Score:
+                  <MetricProvenanceChip provenance={healthScoreProvenance} />
+                </span>
               </EnhancedTooltip>
                 <span style={{
                 fontSize: '1.25rem',
