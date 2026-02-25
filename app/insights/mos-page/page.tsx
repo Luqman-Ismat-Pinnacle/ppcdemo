@@ -10,6 +10,7 @@ import MosGlideTable from './components/MosGlideTable';
 import type { MoPeriodGranularity, MoPeriodNote, MoPeriodNoteType } from '@/types/data';
 import { calcHoursVariancePct } from '@/lib/calculations/kpis';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import { buildPeriodHoursSummary } from '@/lib/calculations/selectors';
 
 const C = {
   text: '#f4f4f5',
@@ -611,14 +612,7 @@ export default function MosPage() {
   }, [milestoneRows, selectedMilestoneBucket]);
 
   const periodHours = useMemo(() => {
-    const plan = taskRows.reduce((s, r) => s + r.baseline, 0);
-    const actual = taskRows.reduce((s, r) => s + r.actual, 0);
-    const added = Math.max(0, actual - plan);
-    const reduced = Math.max(0, plan - actual);
-    const deltaHours = actual - plan;
-    const deltaPct = plan > 0 ? (deltaHours / plan) * 100 : 0;
-    const efficiency = plan > 0 ? Math.round((Math.min(plan, actual) / plan) * 100) : 0;
-    return { plan, actual, added, reduced, deltaHours, deltaPct, efficiency };
+    return buildPeriodHoursSummary(taskRows);
   }, [taskRows]);
 
   const periodVarianceProvenance = useMemo(

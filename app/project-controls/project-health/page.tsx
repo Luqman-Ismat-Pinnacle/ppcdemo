@@ -36,6 +36,7 @@ import {
 } from '@/lib/forecasting-engine';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import type { MetricProvenance } from '@/lib/calculations/types';
+import { buildHealthCheckScore } from '@/lib/calculations/selectors';
 
 // Generate unique ID
 const generateId = (prefix: string): string => {
@@ -120,14 +121,13 @@ export default function ProjectHealthPage() {
     return newHealth;
   }, [selectedProjectId, data.projectHealth, filteredData.projects]);
 
+  const healthScoreSummary = useMemo(
+    () => buildHealthCheckScore(currentHealth?.checks || []),
+    [currentHealth]
+  );
+
   // Calculate overall score
-  const overallScore = useMemo(() => {
-    if (!currentHealth) return 0;
-    const evaluated = currentHealth.checks.filter(c => c.passed !== null && !c.isMultiLine);
-    if (evaluated.length === 0) return 0;
-    const passed = evaluated.filter(c => c.passed === true).length;
-    return Math.round((passed / evaluated.length) * 100);
-  }, [currentHealth]);
+  const overallScore = healthScoreSummary.overallScore;
 
   const effectiveScore = useMemo(() => {
     if (!currentHealth) return overallScore;
@@ -137,9 +137,6 @@ export default function ProjectHealthPage() {
   }, [currentHealth, overallScore]);
 
   const healthScoreProvenance = useMemo<MetricProvenance>(() => {
-    const evaluated = currentHealth?.checks.filter(c => c.passed !== null && !c.isMultiLine) || [];
-    const passed = evaluated.filter(c => c.passed === true).length;
-    const total = evaluated.length;
     return {
       id: 'HEALTH_SCORE_V1',
       version: 'v1',
@@ -148,16 +145,21 @@ export default function ProjectHealthPage() {
       scope: selectedProjectId || 'project',
       timeWindow: 'current',
       inputs: [
-        { key: 'passed_checks', label: 'Passed Checks', value: passed },
-        { key: 'evaluated_checks', label: 'Evaluated Checks', value: total },
+        { key: 'passed_checks', label: 'Passed Checks', value: healthScoreSummary.passed },
+        { key: 'evaluated_checks', label: 'Evaluated Checks', value: healthScoreSummary.evaluated },
       ],
       trace: {
         formula: '(Passed Checks / Evaluated Checks) * 100',
-        steps: [`Passed=${passed}`, `Evaluated=${total}`, `Score=${effectiveScore}%`],
+        steps: [
+          `Passed=${healthScoreSummary.passed}`,
+          `Evaluated=${healthScoreSummary.evaluated}`,
+          `Pending=${healthScoreSummary.pending}`,
+          `Score=${effectiveScore}%`,
+        ],
         computedAt: new Date().toISOString(),
       },
     };
-  }, [currentHealth, selectedProjectId, effectiveScore]);
+  }, [selectedProjectId, effectiveScore, healthScoreSummary]);
 
   // Group checks by category
   const checksByCategory = useMemo(() => {

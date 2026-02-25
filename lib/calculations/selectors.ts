@@ -36,6 +36,29 @@ export interface PortfolioAggregate {
   provenance: Record<'health' | 'spi' | 'cpi' | 'hoursVariance', MetricProvenance>;
 }
 
+export interface HealthCheckSummary {
+  overallScore: number;
+  evaluated: number;
+  passed: number;
+  failed: number;
+  pending: number;
+}
+
+export interface TaskHoursLike {
+  baseline?: number | null;
+  actual?: number | null;
+}
+
+export interface PeriodHoursSummary {
+  plan: number;
+  actual: number;
+  added: number;
+  reduced: number;
+  deltaHours: number;
+  deltaPct: number;
+  efficiency: number;
+}
+
 function asId(value: unknown): string {
   return String(value ?? '').trim();
 }
@@ -231,4 +254,49 @@ export function buildPortfolioAggregate(projectBreakdown: ProjectBreakdownItem[]
       hoursVariance: hoursVarianceMetric.provenance,
     },
   };
+}
+
+/**
+ * Shared health score selector for the project health checks table.
+ * Excludes multi-line checks and unevaluated checks from score math.
+ */
+export function buildHealthCheckScore(checksInput: unknown[]): HealthCheckSummary {
+  const checks = Array.isArray(checksInput) ? checksInput : [];
+  let total = 0;
+  let evaluated = 0;
+  let passed = 0;
+  let failed = 0;
+
+  checks.forEach((raw) => {
+    const c = (raw || {}) as Record<string, unknown>;
+    if (Boolean(c.isMultiLine)) return;
+    total += 1;
+    const checkState = c.passed;
+    if (checkState === null || checkState === undefined) return;
+    evaluated += 1;
+    if (checkState === true) {
+      passed += 1;
+    } else if (checkState === false) {
+      failed += 1;
+    }
+  });
+
+  const pending = Math.max(0, total - passed - failed);
+  const overallScore = evaluated > 0 ? Math.round((passed / evaluated) * 100) : 0;
+  return { overallScore, evaluated, passed, failed, pending };
+}
+
+/**
+ * Shared period-hours selector for Mo's page period efficiency panel.
+ */
+export function buildPeriodHoursSummary(rowsInput: TaskHoursLike[]): PeriodHoursSummary {
+  const rows = Array.isArray(rowsInput) ? rowsInput : [];
+  const plan = rows.reduce((sum, row) => sum + toNum(row?.baseline), 0);
+  const actual = rows.reduce((sum, row) => sum + toNum(row?.actual), 0);
+  const added = Math.max(0, actual - plan);
+  const reduced = Math.max(0, plan - actual);
+  const deltaHours = actual - plan;
+  const deltaPct = plan > 0 ? (deltaHours / plan) * 100 : 0;
+  const efficiency = plan > 0 ? Math.round((Math.min(plan, actual) / plan) * 100) : 0;
+  return { plan, actual, added, reduced, deltaHours, deltaPct, efficiency };
 }

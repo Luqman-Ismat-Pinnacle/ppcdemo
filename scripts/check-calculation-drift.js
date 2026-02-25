@@ -27,6 +27,26 @@ const targets = [
       /const\s+healthMetric\s*=\s*calcHealthScore\(/g,
     ],
   },
+  {
+    file: 'app/project-controls/project-health/page.tsx',
+    banned: [
+      /Math\.round\(\(passed\s*\/\s*evaluated\.length\)\s*\*\s*100\)/g,
+      /checks\.filter\(c\s*=>\s*c\.passed\s*!==\s*null\s*&&\s*!c\.isMultiLine\)/g,
+    ],
+    required: [
+      /buildHealthCheckScore\(/,
+    ],
+  },
+  {
+    file: 'app/insights/mos-page/page.tsx',
+    banned: [
+      /taskRows\.reduce\(\(s,\s*r\)\s*=>\s*s\s*\+\s*r\.baseline,\s*0\)/g,
+      /taskRows\.reduce\(\(s,\s*r\)\s*=>\s*s\s*\+\s*r\.actual,\s*0\)/g,
+    ],
+    required: [
+      /buildPeriodHoursSummary\(/,
+    ],
+  },
 ];
 
 const violations = [];
@@ -40,8 +60,19 @@ for (const target of targets) {
     }
   }
 
-  if (!/buildProjectBreakdown\(/.test(content) || !/buildPortfolioAggregate\(/.test(content)) {
+  if (
+    target.file.startsWith('app/insights/overview') &&
+    (!/buildProjectBreakdown\(/.test(content) || !/buildPortfolioAggregate\(/.test(content))
+  ) {
     violations.push(`${target.file} must use buildProjectBreakdown() and buildPortfolioAggregate().`);
+  }
+
+  if (Array.isArray(target.required)) {
+    for (const pattern of target.required) {
+      if (!pattern.test(content)) {
+        violations.push(`${target.file} is missing required shared selector usage: ${pattern}`);
+      }
+    }
   }
 }
 
