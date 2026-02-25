@@ -8,7 +8,8 @@
     "start": "next start",
     "clean": "rm -rf .next node_modules package-lock.json && npm install --legacy-peer-deps",
     "lint": "eslint",
-    "lint:api": "eslint app/api"
+    "lint:api": "eslint app/api",
+    "check:calc-drift": "node scripts/check-calculation-drift.js"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^3.8.0",

@@ -29,8 +29,7 @@ import {
   type MetricsHistory,
   type VariancePeriod,
 } from '@/lib/variance-engine';
-import { calcCpi, calcHealthScore, calcHoursVariancePct, calcSpi } from '@/lib/calculations/kpis';
-import type { MetricProvenance } from '@/lib/calculations/types';
+import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 
 /* ================================================================== */
@@ -1265,48 +1264,15 @@ export default function OverviewV2Page() {
   const data = filteredData;
   const [aggregateBy, setAggregateBy] = useState<'project' | 'site'>('project');
 
-  const projectBreakdown = useMemo(() => {
-    const tasks = data.tasks || []; const projects = data.projects || []; const hours = data.hours || []; const sites = data.sites || [];
-    const nameMap = new Map<string, string>(); projects.forEach((p: any) => nameMap.set(p.id || p.projectId, p.name || p.projectName || p.id));
-    const siteMap = new Map<string, string>(); const projToSite = new Map<string, string>();
-    sites.forEach((s: any) => siteMap.set(s.id || s.siteId, s.name || 'Unknown Site'));
-    projects.forEach((p: any) => { const sid = p.siteId || p.site_id; if (sid && siteMap.has(sid)) projToSite.set(p.id || p.projectId, siteMap.get(sid)!); });
-    const planIds = new Set<string>(); tasks.forEach((t: any) => { const pid = t.projectId || t.project_id; if (pid) planIds.add(pid); });
-    const map = new Map<string, any>();
-    tasks.forEach((t: any) => { const pid = t.projectId || t.project_id || 'Unknown'; const key = aggregateBy === 'site' ? (projToSite.get(pid) || nameMap.get(pid) || pid) : pid; const name = aggregateBy === 'site' ? key : (nameMap.get(pid) || pid); if (!map.has(key)) map.set(key, { name, tasks: 0, completed: 0, baselineHours: 0, actualHours: 0, pcSum: 0, chargeTypes: {} as Record<string, number>, hoursActual: 0, hoursCost: 0 }); const e = map.get(key)!; e.tasks++; e.baselineHours += Number(t.baselineHours ?? t.budgetHours ?? 0) || 0; e.actualHours += Number(t.actualHours ?? 0) || 0; e.pcSum += Number(t.percentComplete ?? 0) || 0; if (String(t.status || '').toLowerCase().includes('complete') || (t.percentComplete || 0) >= 100) e.completed++; });
-    hours.forEach((h: any) => { const pid = h.projectId || h.project_id; if (!pid || !planIds.has(pid)) return; const key = aggregateBy === 'site' ? (projToSite.get(pid) || nameMap.get(pid) || pid) : pid; const e = map.get(key); if (!e) return; e.hoursActual += Number(h.hours ?? 0) || 0; e.hoursCost += Number(h.actualCost ?? h.actual_cost ?? 0) || 0; const ct = h.chargeType || h.charge_type || 'Other'; e.chargeTypes[ct] = (e.chargeTypes[ct] || 0) + (Number(h.hours ?? 0) || 0); });
-    return Array.from(map.entries()).map(([id, p]) => { const avgPc = p.tasks > 0 ? Math.round(p.pcSum / p.tasks) : 0; const earned = p.baselineHours * (avgPc / 100); return { id, name: p.name, tasks: p.tasks, completed: p.completed, baselineHours: Math.round(p.baselineHours), actualHours: Math.round(p.actualHours), remainingHours: Math.round(Math.max(0, p.baselineHours - p.actualHours)), timesheetHours: Math.round(p.hoursActual), timesheetCost: Math.round(p.hoursCost), chargeTypes: p.chargeTypes, spi: Math.round((p.baselineHours > 0 ? earned / p.baselineHours : 1) * 100) / 100, cpi: Math.round((p.actualHours > 0 ? earned / p.actualHours : 1) * 100) / 100, percentComplete: avgPc, variance: p.baselineHours > 0 ? Math.round(((p.actualHours - p.baselineHours) / p.baselineHours) * 100) : 0 }; }).filter(p => p.name !== 'Unknown' && p.tasks > 0).sort((a, b) => b.actualHours - a.actualHours);
-  }, [data.tasks, data.projects, data.hours, data.sites, aggregateBy]);
+  const projectBreakdown = useMemo(
+    () => buildProjectBreakdown(data.tasks || [], data.projects || [], data.hours || [], data.sites || [], aggregateBy),
+    [data.tasks, data.projects, data.hours, data.sites, aggregateBy]
+  );
 
-  const portfolio = useMemo(() => {
-    let totalBl = 0, totalAc = 0, totalEv = 0, tsHrs = 0, tsCost = 0;
-    projectBreakdown.forEach(p => { totalBl += p.baselineHours; totalAc += p.actualHours; totalEv += p.baselineHours * (p.percentComplete / 100); tsHrs += p.timesheetHours; tsCost += p.timesheetCost; });
-    const spiMetric = calcSpi(totalEv, totalBl, aggregateBy, 'current');
-    const cpiMetric = calcCpi(totalEv, totalAc, aggregateBy, 'current');
-    const avgPc = projectBreakdown.length > 0 ? Math.round(projectBreakdown.reduce((s, p) => s + p.percentComplete, 0) / projectBreakdown.length) : 0;
-    const healthMetric = calcHealthScore(spiMetric.value, cpiMetric.value, aggregateBy, 'current');
-    const hoursVarianceMetric = calcHoursVariancePct(totalAc, totalBl, aggregateBy, 'current');
-    return {
-      healthScore: healthMetric.value,
-      spi: spiMetric.value,
-      cpi: cpiMetric.value,
-      percentComplete: avgPc,
-      projectCount: projectBreakdown.length,
-      totalHours: Math.round(totalAc),
-      baselineHours: Math.round(totalBl),
-      earnedHours: Math.round(totalEv),
-      remainingHours: Math.round(Math.max(0, totalBl - totalAc)),
-      timesheetHours: Math.round(tsHrs),
-      timesheetCost: Math.round(tsCost),
-      hrsVariance: hoursVarianceMetric.value,
-      provenance: {
-        health: healthMetric.provenance,
-        spi: spiMetric.provenance,
-        cpi: cpiMetric.provenance,
-        hoursVariance: hoursVarianceMetric.provenance,
-      } as Record<string, MetricProvenance>,
-    };
-  }, [projectBreakdown, aggregateBy]);
+  const portfolio = useMemo(
+    () => buildPortfolioAggregate(projectBreakdown, aggregateBy),
+    [projectBreakdown, aggregateBy]
+  );
 
   // Milestones
   const allMilestones = useMemo(() => [...(data.milestones || []), ...(data.milestonesTable || [])], [data.milestones, data.milestonesTable]);
