@@ -2,6 +2,7 @@ import { handleLogin } from '@auth0/nextjs-auth0';
 
 export async function GET(request) {
     try {
+        const ctx = { params: {} };
         const connection = process.env.AUTH0_CONNECTION;
         const audience = process.env.AUTH0_AUDIENCE;
         const roleScope = process.env.AUTH0_ROLE_SCOPE;
@@ -22,7 +23,7 @@ export async function GET(request) {
             authorizationParams.audience = audience;
         }
 
-        return handleLogin(request, {
+        return handleLogin(request, ctx, {
             authorizationParams,
         });
     } catch (error) {

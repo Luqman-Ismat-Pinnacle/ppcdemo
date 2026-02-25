@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useLayoutEffect } from 'react';
 import DataEditor, { EditableGridCell, GridCell, GridCellKind, GridColumn, Item, Theme } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
 
@@ -57,16 +57,32 @@ export default function MosGlideTable({
   const [activeEditCell, setActiveEditCell] = useState<Item | null>(null);
   const [savedCell, setSavedCell] = useState<Item | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const measure = () => setHostWidth(Math.max(0, Math.floor(el.getBoundingClientRect().width)));
+    let rafId = 0;
+    let retries = 0;
+    const measure = () => {
+      const nextWidth = Math.max(0, Math.floor(el.getBoundingClientRect().width));
+      setHostWidth(nextWidth);
+      if (nextWidth === 0 && retries < 15) {
+        retries += 1;
+        rafId = window.requestAnimationFrame(measure);
+      }
+    };
     measure();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     if (ro) ro.observe(el);
+    const onVisible = () => {
+      retries = 0;
+      measure();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('resize', measure);
     return () => {
       if (ro) ro.disconnect();
+      if (rafId) window.cancelAnimationFrame(rafId);
+      document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('resize', measure);
     };
   }, []);
@@ -120,7 +136,13 @@ export default function MosGlideTable({
 
   return (
     <div ref={hostRef} style={{ width: '100%', height, border: '1px solid #2f2f35', borderRadius: 10, overflow: 'hidden' }}>
+      {hostWidth <= 0 ? (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a1a1aa', fontSize: 12 }}>
+          Loading table...
+        </div>
+      ) : (
       <DataEditor
+        key={`${columns.join('|')}::${rows.length}`}
         columns={gridColumns}
         rows={rows.length}
         width={Math.max(1, hostWidth)}
@@ -155,6 +177,7 @@ export default function MosGlideTable({
           setColumnWidths((prev) => ({ ...prev, [key]: Math.max(minColumnWidth, Math.round(newSize)) }));
         }}
       />
+      )}
     </div>
   );
 }
