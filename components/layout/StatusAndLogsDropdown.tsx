@@ -96,6 +96,31 @@ import type { ConnectionCheckResult, ConnectionStatus } from '@/lib/supabase';
 
 const REFRESH_INTERVAL = 30000;
 
+type AlertStatus = 'open' | 'acknowledged' | 'resolved';
+
+type AlertEvent = {
+  id: number;
+  severity: 'info' | 'warning' | 'critical';
+  eventType: string;
+  title: string | null;
+  message: string;
+  source: string | null;
+  status: AlertStatus;
+  createdAt: string;
+};
+
+function formatRelativeTime(value: string): string {
+  const elapsed = Date.now() - new Date(value).getTime();
+  if (elapsed < 0) return 'just now';
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function StatusAndLogsDropdown() {
   const { refreshData } = useData();
   const { engineLogs, changeLogs, addEngineLog, clearEngineLogs, clearChangeLogs } = useLogs();
@@ -123,6 +148,12 @@ export default function StatusAndLogsDropdown() {
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleLoaded, setScheduleLoaded] = useState(false);
   const [scheduleLastRun, setScheduleLastRun] = useState<string | null>(null);
+  const [alertsLoaded, setAlertsLoaded] = useState(false);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [alertsError, setAlertsError] = useState('');
+  const [alerts, setAlerts] = useState<AlertEvent[]>([]);
+  const [scanRunning, setScanRunning] = useState(false);
+  const [alertActioningId, setAlertActioningId] = useState<number | null>(null);
 
   const checkDbConnection = async () => {
     setDbChecking(true);
@@ -180,6 +211,74 @@ export default function StatusAndLogsDropdown() {
       setScheduleSaving(false);
     }
   };
+
+  const loadAlerts = async (showLoading = false) => {
+    if (showLoading) setAlertsLoading(true);
+    setAlertsError('');
+    try {
+      const res = await fetch('/api/alerts?status=open&limit=8', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to load alerts');
+      }
+      setAlerts(Array.isArray(data.alerts) ? data.alerts as AlertEvent[] : []);
+    } catch (err) {
+      setAlertsError(err instanceof Error ? err.message : 'Failed to load alerts');
+    } finally {
+      setAlertsLoaded(true);
+      if (showLoading) setAlertsLoading(false);
+    }
+  };
+
+  const updateAlertStatus = async (id: number, status: AlertStatus) => {
+    setAlertActioningId(id);
+    try {
+      const res = await fetch('/api/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not update alert');
+      }
+      await loadAlerts();
+    } catch (err) {
+      setAlertsError(err instanceof Error ? err.message : 'Could not update alert');
+    } finally {
+      setAlertActioningId(null);
+    }
+  };
+
+  const runAlertScan = async () => {
+    if (scanRunning) return;
+    setScanRunning(true);
+    setAlertsError('');
+    try {
+      const res = await fetch('/api/alerts/scan', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to run scan');
+      }
+      await loadAlerts();
+    } catch (err) {
+      setAlertsError(err instanceof Error ? err.message : 'Failed to run scan');
+    } finally {
+      setScanRunning(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'status') return;
+    if (!alertsLoaded) {
+      loadAlerts(true);
+      return;
+    }
+    const interval = setInterval(() => {
+      loadAlerts();
+    }, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [isOpen, activeTab, alertsLoaded]);
 
   const runSyncStep = async (type: string, payload: any = {}, onLog?: (msg: string) => void) => {
     const log = onLog ?? ((m: string) => setWorkdayLogs(prev => [`[${new Date().toLocaleTimeString()}] ${m}`, ...prev].slice(0, 50)));
@@ -375,6 +474,12 @@ export default function StatusAndLogsDropdown() {
 
   const formatLogTime = (v: string | undefined) => v ? new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
   const totalLogCount = engineLogs.length + changeLogs.length;
+  const openAlertCount = alerts.length;
+  const alertColor = alerts.some((a) => a.severity === 'critical')
+    ? 'var(--color-error)'
+    : openAlertCount > 0
+      ? 'var(--pinnacle-orange)'
+      : 'var(--pinnacle-teal)';
 
   return (
     <div ref={dropdownRef} className="status-and-logs-dropdown" style={{ position: 'relative' }}>
@@ -382,7 +487,7 @@ export default function StatusAndLogsDropdown() {
         className="nav-dropdown-trigger"
         onClick={() => setIsOpen(!isOpen)}
         style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        title="System Health & Logs"
+        title="System Health, Alerts & Logs"
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span
@@ -396,9 +501,18 @@ export default function StatusAndLogsDropdown() {
             }}
           />
           <span>System Health</span>
-            {totalLogCount > 0 && (
-            <span style={{ fontSize: '0.7rem', background: 'var(--pinnacle-teal)', color: '#000', padding: '2px 7px', borderRadius: '10px', fontWeight: 600 }}>
-              {totalLogCount}
+          {(totalLogCount > 0 || openAlertCount > 0) && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {openAlertCount > 0 && (
+                <span style={{ fontSize: '0.7rem', background: alertColor, color: '#000', padding: '2px 7px', borderRadius: '10px', fontWeight: 600 }}>
+                  {openAlertCount} alert{openAlertCount === 1 ? '' : 's'}
+                </span>
+              )}
+              {totalLogCount > 0 && (
+                <span style={{ fontSize: '0.7rem', background: 'var(--pinnacle-teal)', color: '#000', padding: '2px 7px', borderRadius: '10px', fontWeight: 600 }}>
+                  {totalLogCount} logs
+                </span>
+              )}
             </span>
           )}
         </span>
@@ -542,6 +656,118 @@ export default function StatusAndLogsDropdown() {
                       {workdayLogs.slice(0, 10).map((l, i) => (
                         <div key={i} style={{ marginBottom: '4px' }}>{humanizeLogLine(l)}</div>
                       ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Alerts */}
+                <section>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--pinnacle-teal)' }}>
+                      Alerts {openAlertCount > 0 ? `(${openAlertCount})` : ''}
+                    </div>
+                    <button
+                      onClick={runAlertScan}
+                      disabled={scanRunning}
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: '0.72rem',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        color: 'var(--text-primary)',
+                        cursor: scanRunning ? 'wait' : 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {scanRunning ? 'Scanning…' : 'Run scan'}
+                    </button>
+                  </div>
+                  {alertsError && (
+                    <div style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--color-error)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                      {alertsError}
+                    </div>
+                  )}
+                  {alertsLoading ? (
+                    <div style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Loading alerts…
+                    </div>
+                  ) : openAlertCount === 0 ? (
+                    <div style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      No open alerts.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '220px', overflow: 'auto', paddingRight: '2px' }}>
+                      {alerts.map((alert) => {
+                        const severityColor = alert.severity === 'critical'
+                          ? '#EF4444'
+                          : alert.severity === 'warning'
+                            ? '#F59E0B'
+                            : '#60A5FA';
+                        const displayTitle = alert.title || alert.eventType.replace(/\./g, ' ');
+                        return (
+                          <div
+                            key={alert.id}
+                            style={{
+                              padding: '10px 12px',
+                              background: 'var(--bg-tertiary)',
+                              border: `1px solid ${severityColor}40`,
+                              borderLeft: `3px solid ${severityColor}`,
+                              borderRadius: 'var(--radius-sm)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {displayTitle}
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                {formatRelativeTime(alert.createdAt)}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '8px' }}>
+                              {alert.message}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <div style={{ fontSize: '0.65rem', color: severityColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                                {alert.severity}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  onClick={() => updateAlertStatus(alert.id, 'acknowledged')}
+                                  disabled={alertActioningId === alert.id}
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.68rem',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border-color)',
+                                    background: 'var(--bg-secondary)',
+                                    color: 'var(--text-primary)',
+                                    cursor: alertActioningId === alert.id ? 'wait' : 'pointer',
+                                  }}
+                                >
+                                  Acknowledge
+                                </button>
+                                <button
+                                  onClick={() => updateAlertStatus(alert.id, 'resolved')}
+                                  disabled={alertActioningId === alert.id}
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.68rem',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: 'var(--pinnacle-teal)',
+                                    color: '#000',
+                                    fontWeight: 600,
+                                    cursor: alertActioningId === alert.id ? 'wait' : 'pointer',
+                                  }}
+                                >
+                                  Resolve
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
