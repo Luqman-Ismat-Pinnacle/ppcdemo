@@ -84,7 +84,7 @@ export default function RoleViewSwitcher() {
                   type="button"
                   onClick={() => {
                     setActiveRole(preset.key);
-                    router.push(preset.dashboardRoute);
+                    router.refresh();
                   }}
                   disabled={!canSwitchRoles && !selected}
                   title={preset.description}
