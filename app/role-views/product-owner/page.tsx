@@ -136,17 +136,15 @@ export default function ProductOwnerCommandCenterPage() {
               ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '0.75rem' }}>
-              <div id="system-health" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
-                <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Open Issues Queue</div>
-                {alerts.length === 0 ? (
-                  <div style={{ padding: '0.72rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>No open issues.</div>
-                ) : alerts.slice(0, 18).map((alert) => (
-                  <div key={alert.id} style={{ padding: '0.5rem 0.7rem', borderBottom: '1px solid var(--border-color)' }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: alert.severity === 'critical' ? '#EF4444' : alert.severity === 'warning' ? '#F59E0B' : 'var(--text-primary)' }}>{alert.title}</div>
-                    <div style={{ fontSize: '0.69rem', color: 'var(--text-secondary)' }}>{alert.message}</div>
-                  </div>
-                ))}
-              </div>
+              <Link href="/role-views/product-owner/system-health" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden', textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>System Health</div>
+                <div style={{ padding: '0.72rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  Open alerts, severity posture, and source-level incident visibility have moved into a dedicated page.
+                </div>
+                <div style={{ padding: '0 0.72rem 0.72rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  Open System Health →
+                </div>
+              </Link>
               <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
                 <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Open Features</div>
                 {openFeatures.length === 0 ? (

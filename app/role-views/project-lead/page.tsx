@@ -107,10 +107,10 @@ export default function ProjectLeadRoleViewPage() {
       subtitle="Delivery execution metrics, period efficiency, and near-term intervention queue."
       actions={(
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href="/role-views/project-lead/schedule" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Schedule</Link>
-          <Link href="/role-views/project-lead/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
-          <Link href="/role-views/project-lead/documents" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Documents</Link>
-          <Link href="/role-views/project-lead/report" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Report</Link>
+          <Link href="/role-views/project-lead/project-health" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Project Health</Link>
+          <Link href="/project-management/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
+          <Link href="#documents" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Documents</Link>
+          <Link href="#report" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Report</Link>
         </div>
       )}
     >
@@ -142,7 +142,7 @@ export default function ProjectLeadRoleViewPage() {
               ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '0.9rem' }}>
-              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem' }}>
+              <div id="team" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem' }}>
                 <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.6rem' }}>Execution Snapshot</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', fontSize: '0.82rem' }}>
                   <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
@@ -177,13 +177,22 @@ export default function ProjectLeadRoleViewPage() {
                         </div>
                         <div style={{ marginTop: 4, display: 'flex', gap: '0.45rem' }}>
                           <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Update Progress</Link>
-                          <Link href="/role-views/project-lead/team" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Reassign</Link>
+                          <Link href="/project-controls/resourcing" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Reassign</Link>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
+            </div>
+            <div id="week-ahead" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Week-ahead execution has been rolled into this command center and task queue; use WBS Gantt for direct scheduling actions.
+            </div>
+            <div id="documents" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Document workflow now routes through canonical pages. Open <Link href="/project-management/documentation" style={{ color: 'var(--text-primary)' }}>Documentation</Link> for upload/status operations.
+            </div>
+            <div id="report" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              Commitment/report submission has been consolidated into shared workflow surfaces and remains visible to SM/COO via commitments APIs.
             </div>
           </div>
         )}

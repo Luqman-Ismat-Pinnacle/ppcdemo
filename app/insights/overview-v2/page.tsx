@@ -1288,7 +1288,7 @@ export default function OverviewV2Page() {
   }
 
   return (
-    <div className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
+    <div id="coo-period-review" className="page-panel insights-page" style={{ paddingBottom: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
         <div>
           <div style={{ fontSize: '0.55rem', color: C.teal, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 1 }}>Meeting Command Center</div>

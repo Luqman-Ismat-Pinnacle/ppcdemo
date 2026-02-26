@@ -89,8 +89,12 @@ export default function Header() {
       </div>
       <div className="header-right">
         <div className="header-controls">
-          <StatusAndLogsDropdown />
-          <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+          {activeRole.key === 'product_owner' ? (
+            <>
+              <StatusAndLogsDropdown />
+              <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+            </>
+          ) : null}
           <DateFilterControl />
           <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
           <HierarchyFilter />

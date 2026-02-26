@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
 
@@ -152,10 +153,12 @@ export default function WorkstationAIPanel() {
   return (
     <aside className="workstation-ai-panel">
       <div className="workstation-ai-header">
-        <div className="workstation-ai-icon" aria-hidden>◌</div>
+        <div className="workstation-ai-icon" aria-hidden>
+          <Image src="/logo.png" alt="Pinnacle" width={22} height={22} />
+        </div>
         <div className="workstation-ai-title-wrap">
-          <div className="workstation-ai-title">Create a chat prompt</div>
-          <div className="workstation-ai-subtitle">{activeRole.label} Copilot</div>
+          <div className="workstation-ai-title">Pinnacle AI</div>
+          <div className="workstation-ai-subtitle">{activeRole.label} assistant</div>
         </div>
       </div>
 

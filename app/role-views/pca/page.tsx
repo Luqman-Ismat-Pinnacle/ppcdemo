@@ -112,7 +112,7 @@ export default function PcaRoleHomePage() {
         projectName: null,
         description: `${stats.overduePlans} project(s) have plan uploads overdue by >14 days`,
         metricValue: stats.overduePlans,
-        actionHref: '/role-views/pca/plan-uploads',
+        actionHref: '/project-controls/project-plans#pca-plan-uploads',
         actionLabel: 'Upload Plans',
       });
     }
@@ -125,7 +125,7 @@ export default function PcaRoleHomePage() {
         projectName: null,
         description: `${stats.unmappedHours} hour entries are still unmapped`,
         metricValue: stats.unmappedHours,
-        actionHref: '/role-views/pca/mapping',
+        actionHref: '/project-controls/mapping',
         actionLabel: 'Map Hours',
       });
     }
@@ -140,10 +140,10 @@ export default function PcaRoleHomePage() {
       actions={(
         <RoleWorkflowActionBar
           actions={[
-            { label: 'Open Upload + Parser', href: '/role-views/pca/plan-uploads', permission: 'uploadPlans' },
-            { label: 'Open Mapping Queue', href: '/role-views/pca/mapping', permission: 'editMapping' },
-            { label: 'Open Data Quality', href: '/role-views/pca/data-quality', permission: 'editMapping' },
-            { label: 'Open WBS', href: '/role-views/pca/wbs', permission: 'editWbs' },
+            { label: 'Open Upload + Parser', href: '/project-controls/project-plans#pca-plan-uploads', permission: 'uploadPlans' },
+            { label: 'Open Mapping Queue', href: '/project-controls/mapping', permission: 'editMapping' },
+            { label: 'Open Data Quality', href: '/role-views/pca#data-quality', permission: 'editMapping' },
+            { label: 'Open WBS', href: '/project-controls/wbs-gantt?lens=pca', permission: 'editWbs' },
           ]}
         />
       )}
@@ -166,7 +166,7 @@ export default function PcaRoleHomePage() {
               </div>
             </div>
 
-            <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div id="data-quality" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
               <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 Today&apos;s Priority Queue
               </div>

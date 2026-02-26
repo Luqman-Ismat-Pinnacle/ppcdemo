@@ -1579,6 +1579,8 @@ export default function DocumentsPage() {
       ) : (
       <>
       <div className="dashboard-grid" style={{ gap: '1.5rem' }}>
+        <div id="pcl-plans-mapping" />
+        <div id="pca-plan-uploads" />
 
         {/* Project plan status: how many have a plan, which do / don't */}
         <div className="chart-card grid-full">

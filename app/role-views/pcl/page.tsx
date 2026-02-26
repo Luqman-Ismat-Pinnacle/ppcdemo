@@ -149,10 +149,10 @@ export default function PclHomePage() {
       actions={(
         <RoleWorkflowActionBar
           actions={[
-            { label: 'Exceptions', href: '/role-views/pcl/exceptions', permission: 'triageExceptions' },
-            { label: 'Plans + Mapping', href: '/role-views/pcl/plans-mapping', permission: 'editMapping' },
-            { label: 'Resourcing', href: '/role-views/pcl/resourcing', permission: 'viewPortfolioCompliance' },
-            { label: 'WBS Risk Queue', href: '/role-views/pcl/wbs', permission: 'editWbs' },
+            { label: 'Exceptions', href: '/role-views/pcl#exceptions', permission: 'triageExceptions' },
+            { label: 'Plans + Mapping', href: '/project-controls/project-plans#pcl-plans-mapping', permission: 'editMapping' },
+            { label: 'Resourcing', href: '/project-controls/resourcing', permission: 'viewPortfolioCompliance' },
+            { label: 'WBS Risk Queue', href: '/project-controls/wbs-gantt?lens=pcl', permission: 'editWbs' },
           ]}
         />
       )}
@@ -202,8 +202,8 @@ export default function PclHomePage() {
               ]}
             />
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
-              <ComplianceMatrix rows={rows} />
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+              <div id="schedule-health"><ComplianceMatrix rows={rows} /></div>
+              <div id="exceptions" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
                 <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
                   Open Exceptions Queue
                 </div>

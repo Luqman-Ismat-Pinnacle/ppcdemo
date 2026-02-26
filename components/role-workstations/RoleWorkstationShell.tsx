@@ -36,16 +36,17 @@ export default function RoleWorkstationShell({
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const firstName = String(user?.name || '').trim().split(/\s+/)[0] || 'there';
+  const contextLine = `${activeRole.label} · ${now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`;
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.8rem' }}>
         <div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            {greeting}, {firstName} · {activeRole.label} · {now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+            {title}
           </div>
-          <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.45rem' }}>{title}</h1>
-          <div style={{ marginTop: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{subtitle}</div>
+          <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.45rem' }}>{greeting}, {firstName}</h1>
+          <div style={{ marginTop: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{contextLine} · {subtitle}</div>
         </div>
         <Link href="/role-views" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Back to role hub</Link>
       </div>

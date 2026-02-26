@@ -102,9 +102,9 @@ export default function SeniorManagerRoleViewPage() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href="/role-views/senior-manager/projects" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Projects</Link>
-          <Link href="/role-views/senior-manager/commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
-          <Link href="/role-views/senior-manager/wbs" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
+          <Link href="/role-views/senior-manager/portfolio-health" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Portfolio Health</Link>
+          <Link href="#commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
+          <Link href="/project-controls/wbs-gantt?lens=senior_manager" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
         </div>
       </div>
 
@@ -129,7 +129,7 @@ export default function SeniorManagerRoleViewPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.9rem', minHeight: 0 }}>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.85rem', minHeight: 280 }}>
+        <div id="team" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.85rem', minHeight: 280 }}>
           <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.55rem' }}>Escalation Queue</div>
           {riskProjects.length === 0 ? (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No high-risk projects in current scope.</div>
@@ -153,7 +153,7 @@ export default function SeniorManagerRoleViewPage() {
           )}
         </div>
 
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.85rem', maxHeight: 360, overflowY: 'auto' }}>
+        <div id="documents" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.85rem', maxHeight: 360, overflowY: 'auto' }}>
           <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.55rem' }}>Open Alerts</div>
           {alerts.length === 0 ? (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No open alerts.</div>
@@ -191,6 +191,9 @@ export default function SeniorManagerRoleViewPage() {
 
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
         Total Planned Hours: {aggregate.baselineHours.toLocaleString()} · Actual Hours: {aggregate.totalHours.toLocaleString()} · Timesheet Hours: {toNumber(aggregate.timesheetHours).toLocaleString()}
+      </div>
+      <div id="commitments" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+        Commitments and milestone triage are consolidated into this landing and portfolio health pages for single-surface decision making.
       </div>
         </div>
       )}

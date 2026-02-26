@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @fileoverview Role-native header navigation with primary links + tools drawer.
+ * @fileoverview Role-native header navigation with direct desktop links and mobile hamburger menu.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -14,29 +14,19 @@ import { fetchRoleUiCounts, type BadgeValue } from '@/lib/role-ui-data';
 
 function Badge({ value }: { value: BadgeValue }) {
   if (!value) return null;
-  return (
-    <span className="role-nav-badge">
-      {value}
-    </span>
-  );
+  return <span className="role-nav-badge">{value}</span>;
 }
 
 export default function Navigation() {
   const pathname = usePathname();
   const { activeRole } = useRoleView();
   const { user } = useUser();
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [badges, setBadges] = useState<Record<string, BadgeValue>>({});
-  const [toolCounts, setToolCounts] = useState<Record<string, number>>({});
 
-  const navConfig = useMemo(
-    () => ROLE_NAV_CONFIG[activeRole.key],
-    [activeRole.key],
-  );
+  const navConfig = useMemo(() => ROLE_NAV_CONFIG[activeRole.key], [activeRole.key]);
 
   useEffect(() => {
-    setToolsOpen(false);
     setMobileOpen(false);
   }, [pathname, activeRole.key]);
 
@@ -47,12 +37,8 @@ export default function Navigation() {
       try {
         const counts = await fetchRoleUiCounts(activeRole.key, user?.email, controller.signal);
         setBadges(counts.badges);
-        setToolCounts(counts.tools);
       } catch {
-        if (!controller.signal.aborted) {
-          setBadges({});
-          setToolCounts({});
-        }
+        if (!controller.signal.aborted) setBadges({});
       }
     }
 
@@ -64,36 +50,13 @@ export default function Navigation() {
 
   return (
     <nav className="role-nav" id="main-nav">
-      <div className="role-nav-desktop">
+      <div className="role-nav-desktop" role="menubar" aria-label={`${activeRole.label} navigation`}>
         {navConfig.primary.map((item) => (
           <Link key={item.href} href={item.href} className={`role-nav-link ${isActive(item.href) ? 'active' : ''}`}>
             <span>{item.label}</span>
             <Badge value={item.badgeKey ? badges[item.badgeKey] : null} />
           </Link>
         ))}
-        <div className="role-nav-tools-wrap">
-          <button
-            type="button"
-            className={`role-nav-tools-trigger ${toolsOpen ? 'active' : ''}`}
-            onClick={() => setToolsOpen((value) => !value)}
-            aria-expanded={toolsOpen}
-            aria-label="Open role tools"
-          >
-            Pages
-            <span style={{ opacity: 0.72 }}>({navConfig.tools.length})</span>
-          </button>
-          {toolsOpen ? (
-            <div className="role-nav-tools-panel">
-              {navConfig.tools.map((item) => (
-                <Link key={item.href} href={item.href} className={`role-nav-tool-item ${isActive(item.href) ? 'active' : ''}`}>
-                  <span>{item.label}</span>
-                  {item.countKey ? <span className="role-nav-tool-count">{toolCounts[item.countKey] ?? 0}</span> : null}
-                  {!item.countKey && item.badgeKey ? <Badge value={badges[item.badgeKey]} /> : null}
-                </Link>
-              ))}
-            </div>
-          ) : null}
-        </div>
       </div>
 
       <button
@@ -103,24 +66,15 @@ export default function Navigation() {
         aria-expanded={mobileOpen}
         aria-label="Open navigation menu"
       >
-        Pages
+        <span aria-hidden>☰</span>
       </button>
 
       {mobileOpen ? (
         <div className="role-nav-mobile-panel">
-          <div className="role-nav-mobile-section-title">Primary</div>
           {navConfig.primary.map((item) => (
             <Link key={item.href} href={item.href} className={`role-nav-mobile-item ${isActive(item.href) ? 'active' : ''}`}>
               <span>{item.label}</span>
               <Badge value={item.badgeKey ? badges[item.badgeKey] : null} />
-            </Link>
-          ))}
-          <div className="role-nav-mobile-section-title">Tools</div>
-          {navConfig.tools.map((item) => (
-            <Link key={item.href} href={item.href} className={`role-nav-mobile-item ${isActive(item.href) ? 'active' : ''}`}>
-              <span>{item.label}</span>
-              {item.countKey ? <span className="role-nav-tool-count">{toolCounts[item.countKey] ?? 0}</span> : null}
-              {!item.countKey && item.badgeKey ? <Badge value={badges[item.badgeKey]} /> : null}
             </Link>
           ))}
         </div>
