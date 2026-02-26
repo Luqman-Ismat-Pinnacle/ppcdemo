@@ -13,8 +13,7 @@
  * @module app/project-controls/resourcing/page
  */
 
-import React, { useMemo, useState, useCallback, Suspense, useRef, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useMemo, useState, useCallback, Suspense, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import ChartWrapper from '@/components/charts/ChartWrapper';
@@ -23,7 +22,6 @@ import {
   runResourceLeveling,
   deriveLevelingInputs,
   DEFAULT_LEVELING_PARAMS,
-  type LevelingParams,
   type LevelingResult,
 } from '@/lib/resource-leveling-engine';
 import { toTaskEfficiencyPct } from '@/lib/calculations/selectors';
@@ -65,12 +63,10 @@ function ResourcingPageLoading() {
 // ═══════════════════════════════════════════════════════════════════
 
 function ResourcingPageContent() {
-  const searchParams = useSearchParams();
-  const { filteredData, data: fullData, dateFilter, hierarchyFilter, refreshData, isLoading } = useData();
+  const { filteredData, data: fullData, hierarchyFilter, refreshData, isLoading } = useData();
 
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
-  const [heatmapView] = useState<'role'>('role');
   const [heatmapBucket, setHeatmapBucket] = useState<'week' | 'month' | 'quarter'>('week');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
@@ -78,7 +74,6 @@ function ResourcingPageContent() {
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [orgSearch, setOrgSearch] = useState('');
   const [analyticsSearch, setAnalyticsSearch] = useState('');
-  const heatmapRoleFilter = 'all';
   const [treeZoom, setTreeZoom] = useState(1);
 
   // ── Data ──────────────────────────────────────────────────────
@@ -344,19 +339,6 @@ function ResourcingPageContent() {
   }, [refreshData]);
 
   // ── Build ECharts Tree ────────────────────────────────────────
-  const makeEmpNode = useCallback((emp: any) => ({
-    name: emp.name, id: emp.id, emp, utilization: emp.utilization,
-    itemStyle: { color: getUtilColor(emp.utilization), borderColor: getUtilColor(emp.utilization) },
-    label: { backgroundColor: `${getUtilColor(emp.utilization)}15` },
-  }), []);
-
-  /** Compute average utilization for a group of employee IDs */
-  const getGroupUtilization = useCallback((empIds: Set<string>) => {
-    const emps = employeeMetrics.filter((e: any) => empIds.has(e.id));
-    if (emps.length === 0) return 0;
-    return Math.round(emps.reduce((s: number, e: any) => s + e.utilization, 0) / emps.length);
-  }, [employeeMetrics]);
-
   const buildManagerTree = useMemo((): any[] => {
     if (!employeeMetrics.length) return [];
 
@@ -1006,7 +988,7 @@ function ResourcingPageContent() {
     // Group weeks into month or quarter buckets
     const bucketKeyToIndex = new Map<string, number>();
     const bucketLabels: string[] = [];
-    displayWeeks.forEach((w, wi) => {
+    displayWeeks.forEach((w) => {
       const d = new Date(w.start);
       const y = d.getFullYear();
       const m = d.getMonth();
@@ -1149,140 +1131,6 @@ function ResourcingPageContent() {
       _dynamicHeight: dynamicHeight,
     } as any;
   }, [heatmapSharedData, heatmapBucketed, heatmapBucket, roleCapacityPerWeek]);
-
-  // Collect all unique roles for the filter dropdown
-  const allHeatmapRoles = useMemo(() => {
-    if (!heatmapSharedData) return [];
-    const roles = new Set<string>();
-    heatmapSharedData.roleWeekHours.forEach((_wm, role) => { if (role) roles.add(role); });
-    heatmapSharedData.empRoleMap.forEach((r: any) => { if (r) roles.add(r); });
-    heatmapSharedData.empIdToRole.forEach((r: any) => { if (r) roles.add(r); });
-    data.employees.forEach((e: any) => {
-      const role = e.jobTitle || e.role;
-      if (role) roles.add(role);
-    });
-    return [...roles].sort();
-  }, [heatmapSharedData, data.employees]);
-
-  // ── Heatmap by EMPLOYEE ──
-  const heatmapByEmployeeOption: EChartsOption | null = useMemo(() => {
-    if (!heatmapSharedData) return null;
-    const { displayWeeks, empWeekHours, empNameMap, empRoleMap, empIdToRole } = heatmapSharedData;
-
-    // Include ALL employees, even those without tasks
-    const allEmpEntries: { key: string; name: string; role: string; total: number }[] = [];
-    const addedKeys = new Set<string>();
-
-    // First add employees that appear in task data
-    empWeekHours.forEach((wm, key) => {
-      const name = empNameMap.get(key) || key;
-      const role = empRoleMap.get(key) || empIdToRole.get(key) || '';
-      const total = [...wm.values()].reduce((s: number, v: number) => s + v, 0);
-      allEmpEntries.push({ key, name, role, total });
-      addedKeys.add(key);
-      addedKeys.add(name.toLowerCase());
-    });
-
-    // Then add employees from the master list that weren't already included
-    data.employees.forEach((e: any) => {
-      const eid = e.id || e.employeeId;
-      const name = e.name || 'Unknown';
-      if (addedKeys.has(eid) || addedKeys.has(name.toLowerCase())) return;
-      const role = e.jobTitle || e.role || 'Unknown';
-      allEmpEntries.push({ key: eid, name, role, total: 0 });
-      addedKeys.add(eid);
-    });
-
-    // Apply role filter
-    const filteredEntries = heatmapRoleFilter === 'all'
-      ? allEmpEntries
-      : allEmpEntries.filter((e: any) => e.role === heatmapRoleFilter);
-
-    // Sort: employees with hours first (desc), then alphabetical
-    filteredEntries.sort((a, b) => {
-      if (a.total !== b.total) return b.total - a.total;
-      return a.name.localeCompare(b.name);
-    });
-
-    const empLabels = filteredEntries.map((e: any) => e.name);
-
-    const heatData: [number, number, number][] = [];
-    let maxVal = 0;
-    filteredEntries.forEach((emp, ei) => {
-      const weekMap = empWeekHours.get(emp.key);
-      displayWeeks.forEach((_, wi) => {
-        const val = Math.round(weekMap?.get(wi) || 0);
-        heatData.push([wi, ei, val]);
-        if (val > maxVal) maxVal = val;
-      });
-    });
-
-    const dynamicHeight = Math.max(520, filteredEntries.length * 32 + 140);
-
-    return {
-      backgroundColor: 'transparent',
-      tooltip: {
-        position: 'top', confine: true,
-        backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#3f3f46',
-        textStyle: { color: '#fff', fontSize: 11 },
-        extraCssText: 'border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:360px;white-space:normal;',
-        formatter: (params: any) => {
-          const [wi, ei, val] = params.data;
-          const emp = filteredEntries[ei];
-          const week = displayWeeks[wi]?.label;
-          const capacity = HOURS_PER_WEEK;
-          const demand = val;
-          const utilPct = capacity > 0 ? Math.round((demand / capacity) * 100) : 0;
-          const uc = getUtilColor(utilPct);
-          const statusLabel = utilPct > 100 ? 'Overloaded' : utilPct > 85 ? 'Busy' : utilPct > 50 ? 'Optimal' : demand === 0 ? 'No tasks' : 'Available';
-          const gap = demand - capacity;
-          const gapLabel = gap > 0 ? `+${fmt(gap)} over capacity` : gap < 0 ? `${fmt(Math.abs(gap))} under capacity` : 'At capacity';
-          return `<div style="padding:10px 12px">
-            <div style="font-weight:700;font-size:14px;margin-bottom:2px;color:#40E0D0">${emp.name}</div>
-            ${emp.role ? `<div style="font-size:11px;color:#9ca3af;margin-bottom:6px">${emp.role}</div>` : ''}
-            <div style="font-size:11px;color:#9ca3af;margin-bottom:8px">Week of ${week}</div>
-            <div style="background:rgba(64,224,208,0.08);border:1px solid rgba(64,224,208,0.25);border-radius:6px;padding:8px 10px;margin-bottom:8px">
-              <div style="font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Capacity vs Demand</div>
-              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
-                <span><span style="color:#9ca3af">Demand:</span> <strong style="color:#fff">${fmt(demand)} hrs</strong></span>
-                <span><span style="color:#9ca3af">Capacity:</span> <strong>${capacity} hrs</strong></span>
-              </div>
-              <div style="font-size:11px;margin-top:4px;color:${uc};font-weight:600">${gapLabel} (${utilPct}%)</div>
-            </div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
-              <span style="color:#9ca3af">Status</span><span style="font-weight:700;color:${uc}">${statusLabel}</span>
-            </div>
-          </div>`;
-        },
-      },
-      grid: { top: 60, left: 200, right: 60, bottom: 80 },
-      xAxis: {
-        type: 'category',
-        data: displayWeeks.map(w => w.label),
-        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
-      },
-      yAxis: {
-        type: 'category',
-        data: empLabels,
-        axisLabel: {
-          color: '#d4d4d8', fontSize: 11, interval: 0,
-          formatter: (v: string) => v.length > 28 ? v.substring(0, 26) + '...' : v,
-        },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-      },
-      visualMap: {
-        min: 0, max: Math.max(maxVal, HOURS_PER_WEEK),
-        calculable: true, orient: 'horizontal', left: 'center', bottom: 4,
-        itemWidth: 14, itemHeight: 120,
-        textStyle: { color: '#a1a1aa', fontSize: 9 },
-        inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
-      },
-      series: [{ type: 'heatmap', data: heatData, label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } } }],
-      _dynamicHeight: dynamicHeight,
-    } as any;
-  }, [heatmapSharedData, data.employees, heatmapRoleFilter]);
 
   // ── Loading state (container-level) ─────────────────────────────
   if (isLoading) {
