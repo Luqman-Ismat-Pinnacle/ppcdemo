@@ -12,6 +12,7 @@ import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown, type ProjectBreakdownItem } from '@/lib/calculations/selectors';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import ClientHealthGrid from '@/components/role-workstations/ClientHealthGrid';
+import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 
 type AlertRow = {
   id: number;
@@ -89,7 +90,9 @@ export default function SeniorManagerRoleViewPage() {
     : 0;
 
   return (
-    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
+    <WorkstationLayout
+      focus={(
+        <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Role View</div>
@@ -189,6 +192,8 @@ export default function SeniorManagerRoleViewPage() {
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
         Total Planned Hours: {aggregate.baselineHours.toLocaleString()} · Actual Hours: {aggregate.totalHours.toLocaleString()} · Timesheet Hours: {toNumber(aggregate.timesheetHours).toLocaleString()}
       </div>
-    </div>
+        </div>
+      )}
+    />
   );
 }

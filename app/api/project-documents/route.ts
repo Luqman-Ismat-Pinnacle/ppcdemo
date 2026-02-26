@@ -78,37 +78,45 @@ export async function POST(req: NextRequest) {
       const docType = asNullableString(body.docType);
 
       if (isPostgresConfigured()) {
-        const where: string[] = [];
-        const params: unknown[] = [];
-        const addWhere = (sql: string, value: unknown) => {
-          params.push(value);
-          where.push(`${sql} = $${params.length}`);
-        };
-        if (projectId) addWhere('project_id', projectId);
-        if (portfolioId) addWhere('portfolio_id', portfolioId);
-        if (customerId) addWhere('customer_id', customerId);
-        if (siteId) addWhere('site_id', siteId);
-        if (docType) addWhere('doc_type', docType);
+        try {
+          const where: string[] = [];
+          const params: unknown[] = [];
+          const addWhere = (sql: string, value: unknown) => {
+            params.push(value);
+            where.push(`${sql} = $${params.length}`);
+          };
+          if (projectId) addWhere('project_id', projectId);
+          if (portfolioId) addWhere('portfolio_id', portfolioId);
+          if (customerId) addWhere('customer_id', customerId);
+          if (siteId) addWhere('site_id', siteId);
+          if (docType) addWhere('doc_type', docType);
 
-        const recordsRes = await pgQuery(
-          `SELECT *
-           FROM project_document_records
-           ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-           ORDER BY doc_type, updated_at DESC`,
-          params,
-        );
-        const versionsRes = await pgQuery(
-          `SELECT *
-           FROM project_document_versions
-           WHERE record_id IN (
-             SELECT id
+          const recordsRes = await pgQuery(
+            `SELECT *
              FROM project_document_records
              ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-           )
-           ORDER BY record_id, version_number DESC`,
-          params,
-        );
-        return NextResponse.json({ success: true, records: recordsRes.rows || [], versions: versionsRes.rows || [] });
+             ORDER BY doc_type, updated_at DESC`,
+            params,
+          );
+          const versionsRes = await pgQuery(
+            `SELECT *
+             FROM project_document_versions
+             WHERE record_id IN (
+               SELECT id
+               FROM project_document_records
+               ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+             )
+             ORDER BY record_id, version_number DESC`,
+            params,
+          );
+          return NextResponse.json({ success: true, records: recordsRes.rows || [], versions: versionsRes.rows || [] });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message.toLowerCase() : '';
+          if (message.includes('does not exist') || message.includes('undefined table')) {
+            return NextResponse.json({ success: true, records: [], versions: [], warning: 'document tables not initialized' });
+          }
+          return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'Document list unavailable' }, { status: 503 });
+        }
       }
 
       const supabase = await getSupabase();

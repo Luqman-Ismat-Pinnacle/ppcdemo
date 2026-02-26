@@ -10,6 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
+import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import { useData } from '@/lib/data-context';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
@@ -147,39 +148,45 @@ export default function PcaRoleHomePage() {
         />
       )}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.65rem' }}>
-        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Unmapped Hours</div>
-          <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.unmappedHours}</div>
-        </div>
-        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Overdue Plan Uploads</div>
-          <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.overduePlans}</div>
-        </div>
-        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Data Issues</div>
-          <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.dataIssues}</div>
-        </div>
-      </div>
+      <WorkstationLayout
+        focus={(
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.65rem' }}>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Unmapped Hours</div>
+                <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.unmappedHours}</div>
+              </div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Overdue Plan Uploads</div>
+                <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.overduePlans}</div>
+              </div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Data Issues</div>
+                <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.dataIssues}</div>
+              </div>
+            </div>
 
-      <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
-        <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Today&apos;s Priority Queue
-        </div>
-        {loadingIssues ? (
-          <div style={{ padding: '0.8rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Loading queue...</div>
-        ) : queue.length === 0 ? (
-          <div style={{ padding: '0.8rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>No urgent items right now.</div>
-        ) : queue.map((item) => (
-          <div key={item.id} style={{ padding: '0.6rem 0.7rem', borderBottom: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '110px 1fr 120px', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontSize: '0.7rem', color: item.severity === 'critical' ? '#EF4444' : item.severity === 'warning' ? '#F59E0B' : 'var(--text-muted)' }}>
-              {item.queueType.replace('_', ' ')}
-            </span>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-primary)' }}>{item.description}</span>
-            <Link href={item.actionHref} style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', justifySelf: 'end' }}>{item.actionLabel}</Link>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+              <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Today&apos;s Priority Queue
+              </div>
+              {loadingIssues ? (
+                <div style={{ padding: '0.8rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Loading queue...</div>
+              ) : queue.length === 0 ? (
+                <div style={{ padding: '0.8rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>No urgent items right now.</div>
+              ) : queue.map((item) => (
+                <div key={item.id} style={{ padding: '0.6rem 0.7rem', borderBottom: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '110px 1fr 120px', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: item.severity === 'critical' ? '#EF4444' : item.severity === 'warning' ? '#F59E0B' : 'var(--text-muted)' }}>
+                    {item.queueType.replace('_', ' ')}
+                  </span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-primary)' }}>{item.description}</span>
+                  <Link href={item.actionHref} style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', justifySelf: 'end' }}>{item.actionLabel}</Link>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+        )}
+      />
     </RoleWorkstationShell>
   );
 }

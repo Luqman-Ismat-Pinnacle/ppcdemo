@@ -6,7 +6,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { ROLE_NAV_CONFIG } from '@/lib/role-navigation';
 import type { RoleViewKey } from '@/types/role-workstation';
 import RoleContextStrip from '@/components/role-workstations/RoleContextStrip';
@@ -27,7 +26,6 @@ export default function RoleWorkstationShell({
   actions?: React.ReactNode;
   requiredTier?: RoleEnhanceTier;
 }) {
-  const pathname = usePathname();
   const nav = ROLE_NAV_CONFIG[role];
   const enabled = isRoleEnhancementTierEnabled(requiredTier);
 
@@ -42,30 +40,6 @@ export default function RoleWorkstationShell({
         <Link href="/role-views" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Back to role hub</Link>
       </div>
       <RoleContextStrip role={role} />
-
-      <div style={{ display: 'flex', gap: '0.45rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
-        {nav.items.map((item) => {
-          const active = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                border: `1px solid ${active ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
-                background: active ? 'rgba(16,185,129,0.12)' : 'var(--bg-secondary)',
-                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                borderRadius: 999,
-                padding: '0.33rem 0.64rem',
-                whiteSpace: 'nowrap',
-                fontSize: '0.7rem',
-                textDecoration: 'none',
-              }}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
 
       {actions ? <div>{actions}</div> : null}
       {!enabled ? (

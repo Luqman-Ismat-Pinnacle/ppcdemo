@@ -2439,3 +2439,64 @@ button {
 .enhanced-page-loader {
   animation: loader-fade-in 0.4s ease;
 }
+
+/* Ambient workstation background */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.ambient-blob {
+  position: absolute;
+  width: 44vw;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  filter: blur(64px);
+  opacity: 0.2;
+  animation: ambientFloat 24s ease-in-out infinite;
+}
+
+.ambient-blob-a { top: -12%; left: -6%; background: var(--ambient-color-a, #10b981); }
+.ambient-blob-b { top: 22%; right: -12%; background: var(--ambient-color-b, #38bdf8); animation-delay: -7s; }
+.ambient-blob-c { bottom: -16%; left: 34%; background: var(--ambient-color-c, #f59e0b); animation-delay: -14s; }
+
+.ambient-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.24) 100%);
+}
+
+.ambient-grid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 28px 28px;
+  opacity: 0.35;
+}
+
+@keyframes ambientFloat {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(2vw, -2vh, 0) scale(1.08); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+[data-role-view='coo'] .ambient-bg { --ambient-color-a: #0ea5e9; --ambient-color-b: #22c55e; --ambient-color-c: #f59e0b; }
+[data-role-view='senior_manager'] .ambient-bg { --ambient-color-a: #14b8a6; --ambient-color-b: #84cc16; --ambient-color-c: #f97316; }
+[data-role-view='project_lead'] .ambient-bg { --ambient-color-a: #10b981; --ambient-color-b: #60a5fa; --ambient-color-c: #facc15; }
+[data-role-view='pcl'] .ambient-bg { --ambient-color-a: #06b6d4; --ambient-color-b: #22c55e; --ambient-color-c: #f59e0b; }
+[data-role-view='pca'] .ambient-bg { --ambient-color-a: #38bdf8; --ambient-color-b: #34d399; --ambient-color-c: #eab308; }
+[data-role-view='rda'] .ambient-bg { --ambient-color-a: #0ea5e9; --ambient-color-b: #2dd4bf; --ambient-color-c: #f97316; }
+[data-role-view='product_owner'] .ambient-bg { --ambient-color-a: #22c55e; --ambient-color-b: #0ea5e9; --ambient-color-c: #f59e0b; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob { animation: none; }
+}
+
+@media (max-width: 1080px) {
+  .workstation-split {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

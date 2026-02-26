@@ -6,6 +6,10 @@ Last updated: 2026-02-26
 Tracks implementation status for Role View Enhancement Plan v2.1.
 
 ## Completed
+- Security hardening:
+  - OpenAI integration now uses environment variables only (`OPENAI_API_KEY` / `OPENAI_MODEL`).
+  - Repository scan verified no `sk-` key patterns in tracked files.
+  - `.env*` ignore guard remains enforced in `.gitignore`.
 - Canonicalized legacy routes:
   - `/role-views/pca-workspace` -> `/role-views/pca/mapping`
   - `/role-views/pcl-exceptions` -> `/role-views/pcl/exceptions`
@@ -48,6 +52,23 @@ Tracks implementation status for Role View Enhancement Plan v2.1.
 - Access control update:
   - `angel.barras@pinnaclereliability.com` added as Product Owner full-access identity.
 - PCL command center now includes explicit resourcing action shortcut.
+- Phase 4 execution updates:
+  - Removed duplicate in-page workstation chip nav from `RoleWorkstationShell`; header is now the single primary role nav.
+  - Added header personalization block (greeting/date/current role).
+  - Added shared command-center split layout (`WorkstationLayout`) with integrated AI side panel.
+  - Added ambient background layer with role-aware color theming and reduced-motion support.
+  - Added SSE AI endpoints:
+    - `POST /api/ai/briefing`
+    - `POST /api/ai/query` (streamed)
+  - Added shared role context builder for AI grounding: `lib/ai-context.ts`.
+  - Added/updated command-center pages to use split layout:
+    - Product Owner, PCL, PCA, Project Lead, Senior Manager, COO, RDA.
+  - Added missing functional routes:
+    - `/role-views/rda/sprint`
+    - `/role-views/senior-manager/team`
+  - Added header nav badges (role-scoped counters/urgency markers).
+  - Product Owner-only switcher now honors identity-based Product Owner emails.
+  - Stabilized build/contracts by replacing legacy heavy WBS routes with canonical lightweight wrappers and redirects.
 
 ## Tier 1 Functionalization (Done)
 - PCA:

@@ -59,6 +59,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
       { label: 'My Project', href: '/role-views/project-lead' },
       { label: 'Schedule', href: '/role-views/project-lead/schedule' },
       { label: 'Team', href: '/role-views/project-lead/team' },
+      { label: 'Sprint', href: '/project-management/sprint' },
       { label: 'Week Ahead', href: '/role-views/project-lead/week-ahead' },
       { label: 'Report', href: '/role-views/project-lead/report' },
       { label: 'Forecast', href: '/role-views/project-lead/forecast' },
@@ -71,6 +72,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     items: [
       { label: 'Portfolio', href: '/role-views/senior-manager' },
       { label: 'Projects', href: '/role-views/senior-manager/projects' },
+      { label: 'Team', href: '/role-views/senior-manager/team' },
       { label: 'Milestones', href: '/role-views/senior-manager/milestones' },
       { label: 'Commitments', href: '/role-views/senior-manager/commitments' },
       { label: 'Documents', href: '/role-views/senior-manager/documents' },
@@ -81,19 +83,19 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     role: 'coo',
     title: 'COO Workstation',
     items: [
-      { label: 'Pulse', href: '/role-views/coo' },
+      { label: 'Portfolio', href: '/role-views/coo' },
       { label: 'Period Review', href: '/role-views/coo/period-review' },
       { label: 'Milestones', href: '/role-views/coo/milestones' },
       { label: 'Commitments', href: '/role-views/coo/commitments' },
       { label: 'AI Briefing', href: '/role-views/coo/ai' },
-      { label: 'WBS', href: '/role-views/coo/wbs' },
     ],
   },
   rda: {
     role: 'rda',
     title: 'RDA Workstation',
     items: [
-      { label: 'Home', href: '/role-views/rda' },
+      { label: 'My Work', href: '/role-views/rda' },
+      { label: 'Sprint', href: '/role-views/rda/sprint' },
       { label: 'Hours', href: '/role-views/rda/hours' },
       { label: 'Work', href: '/role-views/rda/work' },
       { label: 'Schedule', href: '/role-views/rda/schedule' },

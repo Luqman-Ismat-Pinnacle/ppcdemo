@@ -1,5 +1,5 @@
 /**
- * @fileoverview Role-aware AI query endpoint (SSE streaming).
+ * @fileoverview Role-aware proactive AI briefing endpoint (SSE).
  */
 
 import { NextRequest } from 'next/server';
@@ -32,30 +32,14 @@ function streamText(text: string): ReadableStream<Uint8Array> {
   });
 }
 
-async function fallbackAnswer(query: string, context: string): Promise<string> {
-  const lower = query.toLowerCase();
-  if (lower.includes('risk')) return `Risk posture: prioritize low-SPI/CPI projects and unresolved critical alerts. ${context}`;
-  if (lower.includes('cost')) return `Cost posture: review CPI outliers and IEAC deltas versus baseline. ${context}`;
-  if (lower.includes('schedule')) return `Schedule posture: focus on overdue open tasks and stalled dependencies. ${context}`;
-  return `Execution posture: monitor SPI/CPI drift, overdue tasks, and open exceptions. ${context}`;
-}
-
-async function fetchModelAnswer(input: {
-  role: string;
-  question: string;
-  context: string;
-  sessionHistory: Array<{ role: 'user' | 'assistant'; text: string }>;
-}): Promise<string> {
+async function buildBriefing(role: string, employeeId?: string | null): Promise<string> {
+  const context = await buildRoleContext(role, { employeeId });
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-  if (!apiKey) {
-    return fallbackAnswer(input.question, input.context);
-  }
 
-  const historyLines = input.sessionHistory
-    .slice(-8)
-    .map((entry) => `${entry.role.toUpperCase()}: ${entry.text}`)
-    .join('\n');
+  if (!apiKey) {
+    return `Daily briefing for ${role}: prioritize highest-risk items first. ${context}`;
+  }
 
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
@@ -68,14 +52,14 @@ async function fetchModelAnswer(input: {
       input: [
         {
           role: 'system',
-          content: `You are an operations copilot for role ${input.role}. Keep responses concise, concrete, and action-oriented. Context: ${input.context}`,
+          content: 'You are an operations briefing assistant. Give a concise, actionable briefing in 4-6 bullets.',
         },
         {
           role: 'user',
-          content: `Conversation:\n${historyLines || '(none)'}\n\nUser question: ${input.question}`,
+          content: `Generate today brief for role ${role}. Use context: ${context}`,
         },
       ],
-      max_output_tokens: 500,
+      max_output_tokens: 380,
     }),
   });
 
@@ -84,8 +68,7 @@ async function fetchModelAnswer(input: {
     throw new Error(payload?.error?.message || 'OpenAI request failed');
   }
 
-  const answer = String(payload?.output_text || '').trim();
-  return answer || fallbackAnswer(input.question, input.context);
+  return String(payload?.output_text || '').trim() || `Daily briefing for ${role}: ${context}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -99,44 +82,23 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const question = String(body.question || body.query || '').trim();
     const role = String(body.role || roleContext.roleKey || 'coo').trim();
     const employeeId = body.employeeId ? String(body.employeeId) : null;
-    const sessionHistory = Array.isArray(body.sessionHistory)
-      ? body.sessionHistory.filter((entry: unknown): entry is { role: 'user' | 'assistant'; text: string } => {
-        if (!entry || typeof entry !== 'object') return false;
-        const row = entry as { role?: unknown; text?: unknown };
-        return typeof row.text === 'string' && (row.role === 'user' || row.role === 'assistant');
-      })
-      : [];
 
-    if (!question) {
-      return new Response(JSON.stringify({ success: false, error: 'question is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const context = await buildRoleContext(role, { employeeId });
-    const answer = await fetchModelAnswer({
-      role,
-      question,
-      context,
-      sessionHistory,
-    });
+    const briefing = await buildBriefing(role, employeeId);
 
     const pool = getPool();
     if (pool) {
       await writeWorkflowAudit(pool, {
-        eventType: 'ai_query',
+        eventType: 'ai_briefing',
         roleKey: roleContext.roleKey,
         actorEmail: roleContext.actorEmail,
         entityType: 'ai',
-        payload: { role, questionLength: question.length, usedOpenAi: Boolean(process.env.OPENAI_API_KEY) },
+        payload: { role, employeeId: employeeId || null, usedOpenAi: Boolean(process.env.OPENAI_API_KEY) },
       });
     }
 
-    return new Response(streamText(answer), {
+    return new Response(streamText(briefing), {
       headers: {
         'Content-Type': 'text/event-stream',
         Connection: 'keep-alive',
@@ -145,7 +107,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    return new Response(streamText(`AI service error: ${message}`), {
+    return new Response(streamText(`Briefing unavailable: ${message}`), {
       status: 200,
       headers: {
         'Content-Type': 'text/event-stream',

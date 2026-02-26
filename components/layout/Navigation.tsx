@@ -1,134 +1,65 @@
 'use client';
 
 /**
- * @fileoverview Global role-native navigation.
- *
- * The active role selected in the toolbar controls the entire menu surface.
- * There is no separate "Role Views" section; role context is now the app shell.
+ * @fileoverview Header-primary role navigation with scoped badges.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 import type { RoleViewKey } from '@/types/role-workstation';
 
-interface NavItem {
+type NavItem = {
   label?: string;
   href?: string;
   divider?: boolean;
-}
+  badgeKey?: string;
+};
 
-interface NavDropdown {
+type NavDropdown = {
   label: string;
   items: NavItem[];
-}
+};
+
+type BadgeMap = Record<string, number | '!' | null>;
 
 const PRODUCT_OWNER_NAV: NavDropdown[] = [
   {
-    label: 'Command',
+    label: 'Command Center',
     items: [
-      { label: 'PO Command Center', href: '/role-views/product-owner' },
-      { label: 'PCL Command Center', href: '/role-views/pcl' },
-      { label: 'PCA Command Center', href: '/role-views/pca' },
-      { label: 'Project Lead Command Center', href: '/role-views/project-lead' },
-      { label: 'Senior Manager Command Center', href: '/role-views/senior-manager' },
-      { label: 'COO Command Center', href: '/role-views/coo' },
-      { label: 'RDA Command Center', href: '/role-views/rda' },
+      { label: 'Overview', href: '/role-views/product-owner' },
+      { label: 'Role Monitor', href: '/role-views/product-owner#role-monitor' },
+      { label: 'System Health', href: '/role-views/product-owner#system-health' },
+      { label: 'Feedback', href: '/project-management/qc-log' },
+      { label: 'Data Admin', href: '/project-controls/data-management' },
     ],
   },
   {
-    label: 'Project Controls',
+    label: 'Cross Role',
     items: [
-      { label: 'Project Plans', href: '/project-controls/project-plans' },
-      { label: 'Resourcing', href: '/project-controls/resourcing' },
-      { label: 'WBS / Gantt', href: '/project-controls/wbs-gantt' },
-      { divider: true },
-      { label: 'Data Management', href: '/project-controls/data-management' },
-    ],
-  },
-  {
-    label: 'Insights',
-    items: [
-      { label: 'Overview', href: '/insights/overview' },
-      { label: 'Tasks', href: '/insights/tasks' },
-      { label: "Mo's Page", href: '/insights/mos-page' },
-      { label: 'Hours', href: '/insights/hours' },
-      { label: 'Metric Provenance', href: '/insights/metric-provenance' },
-      { divider: true },
-      { label: 'Documents', href: '/insights/documents' },
-    ],
-  },
-  {
-    label: 'Project Management',
-    items: [
-      { label: 'Sprint Planning', href: '/project-management/sprint' },
-      { divider: true },
-      { label: 'Forecasting', href: '/project-management/forecast' },
-      { label: 'Documentation', href: '/project-management/documentation' },
-      { label: 'QC Log', href: '/project-management/qc-log' },
+      { label: 'PCL', href: '/role-views/pcl' },
+      { label: 'PCA', href: '/role-views/pca' },
+      { label: 'Project Lead', href: '/role-views/project-lead' },
+      { label: 'Senior Manager', href: '/role-views/senior-manager' },
+      { label: 'COO', href: '/role-views/coo' },
+      { label: 'RDA', href: '/role-views/rda' },
     ],
   },
 ];
 
 const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
   product_owner: PRODUCT_OWNER_NAV,
-  project_lead: [
+  coo: [
     {
-      label: 'Execution',
+      label: 'Executive',
       items: [
-        { label: 'Project Home', href: '/role-views/project-lead' },
-        { label: 'Schedule', href: '/role-views/project-lead/schedule' },
-        { label: 'Team', href: '/role-views/project-lead/team' },
-        { label: 'Week Ahead', href: '/role-views/project-lead/week-ahead' },
-        { label: 'Forecast', href: '/role-views/project-lead/forecast' },
-        { label: 'Documents', href: '/role-views/project-lead/documents' },
-        { label: 'Commitments Report', href: '/role-views/project-lead/report' },
-      ],
-    },
-    {
-      label: 'Controls',
-      items: [
-        { label: 'WBS/Gantt Engine', href: '/project-controls/wbs-gantt' },
-        { label: 'Project Plans', href: '/role-views/pca/plan-uploads' },
-        { label: 'Data Management', href: '/project-controls/data-management' },
-      ],
-    },
-  ],
-  pca: [
-    {
-      label: 'Operations',
-      items: [
-        { label: 'PCA Home', href: '/role-views/pca' },
-        { label: 'Plan Uploads + Publish', href: '/role-views/pca/plan-uploads' },
-        { label: 'Mapping Workspace', href: '/role-views/pca/mapping' },
-        { label: 'Data Quality', href: '/role-views/pca/data-quality' },
-        { label: 'WBS Workspace', href: '/role-views/pca/wbs' },
-      ],
-    },
-    {
-      label: 'Controls',
-      items: [
-        { label: 'Project Plans Engine', href: '/project-controls/project-plans' },
-        { label: 'Data Management', href: '/project-controls/data-management' },
-      ],
-    },
-  ],
-  pcl: [
-    {
-      label: 'Command',
-      items: [
-        { label: 'Command Center', href: '/role-views/pcl' },
-        { label: 'Exceptions', href: '/role-views/pcl/exceptions' },
-        { label: 'Schedule Health', href: '/role-views/pcl/schedule-health' },
-      ],
-    },
-    {
-      label: 'Operations',
-      items: [
-        { label: 'Plans & Mapping', href: '/role-views/pcl/plans-mapping' },
-        { label: 'Resourcing', href: '/role-views/pcl/resourcing' },
-        { label: 'WBS Risk Queue', href: '/role-views/pcl/wbs' },
+        { label: 'AI Command', href: '/role-views/coo/ai' },
+        { label: 'Period Review', href: '/role-views/coo/period-review' },
+        { label: 'Portfolio', href: '/role-views/coo' },
+        { label: 'Milestones', href: '/role-views/coo/milestones' },
+        { label: 'Commitments', href: '/role-views/coo/commitments', badgeKey: 'coo_commitments' },
       ],
     },
   ],
@@ -136,63 +67,161 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'Portfolio',
       items: [
-        { label: 'Portfolio Home', href: '/role-views/senior-manager' },
+        { label: 'Overview', href: '/role-views/senior-manager' },
         { label: 'Projects', href: '/role-views/senior-manager/projects' },
+        { label: 'Team', href: '/role-views/senior-manager/team' },
         { label: 'Milestones', href: '/role-views/senior-manager/milestones' },
-        { label: 'Commitments', href: '/role-views/senior-manager/commitments' },
-      ],
-    },
-    {
-      label: 'Visibility',
-      items: [
+        { label: 'Commitments', href: '/role-views/senior-manager/commitments', badgeKey: 'sm_commitments' },
         { label: 'Documents', href: '/role-views/senior-manager/documents' },
-        { label: 'WBS', href: '/role-views/senior-manager/wbs' },
       ],
     },
   ],
-  coo: [
+  project_lead: [
     {
-      label: 'Executive',
+      label: 'Project',
       items: [
-        { label: 'Pulse', href: '/role-views/coo' },
-        { label: 'Period Review', href: '/role-views/coo/period-review' },
-        { label: 'Commitments', href: '/role-views/coo/commitments' },
-        { label: 'AI Briefing', href: '/role-views/coo/ai' },
+        { label: 'My Project', href: '/role-views/project-lead' },
+        { label: 'Schedule', href: '/role-views/project-lead/schedule' },
+        { label: 'Team', href: '/role-views/project-lead/team' },
+        { label: 'Sprint', href: '/project-management/sprint' },
+        { label: 'Forecast', href: '/role-views/project-lead/forecast' },
+        { label: 'Documents', href: '/role-views/project-lead/documents' },
+        { label: 'Report', href: '/role-views/project-lead/report', badgeKey: 'pl_report' },
       ],
     },
+  ],
+  pcl: [
     {
-      label: 'Business',
+      label: 'Control',
       items: [
-        { label: 'Milestones', href: '/role-views/coo/milestones' },
-        { label: 'WBS', href: '/role-views/coo/wbs' },
+        { label: 'Command Center', href: '/role-views/pcl' },
+        { label: 'Schedule Health', href: '/role-views/pcl/schedule-health' },
+        { label: 'Plans & Mapping', href: '/role-views/pcl/plans-mapping' },
+        { label: 'Resourcing', href: '/role-views/pcl/resourcing' },
+        { label: 'Exceptions', href: '/role-views/pcl/exceptions', badgeKey: 'pcl_exceptions' },
+      ],
+    },
+  ],
+  pca: [
+    {
+      label: 'Operations',
+      items: [
+        { label: 'My Work', href: '/role-views/pca' },
+        { label: 'Mapping', href: '/role-views/pca/mapping', badgeKey: 'pca_mapping' },
+        { label: 'Plan Uploads', href: '/role-views/pca/plan-uploads' },
+        { label: 'Data Quality', href: '/role-views/pca/data-quality' },
+        { label: 'WBS', href: '/role-views/pca/wbs' },
       ],
     },
   ],
   rda: [
     {
-      label: 'My Work',
+      label: 'Execution',
       items: [
-        { label: 'Home', href: '/role-views/rda' },
+        { label: 'My Work', href: '/role-views/rda' },
+        { label: 'Sprint', href: '/role-views/rda/sprint' },
         { label: 'Hours', href: '/role-views/rda/hours' },
-        { label: 'Work', href: '/role-views/rda/work' },
         { label: 'Schedule', href: '/role-views/rda/schedule' },
+        { label: 'Work Queue', href: '/role-views/rda/work', badgeKey: 'rda_overdue' },
       ],
     },
   ],
   client_portal: [
     {
-      label: 'Delivery',
-      items: [
-        { label: 'Client Portal', href: '/role-views/client-portal' },
-      ],
+      label: 'Client',
+      items: [{ label: 'Portal', href: '/role-views/client-portal' }],
     },
   ],
 };
 
+function Badge({ value }: { value: number | '!' }) {
+  return (
+    <span
+      style={{
+        marginLeft: 6,
+        minWidth: 16,
+        height: 16,
+        padding: '0 5px',
+        borderRadius: 999,
+        background: value === '!' ? '#EF4444' : 'rgba(16,185,129,0.22)',
+        color: value === '!' ? '#fff' : 'var(--text-primary)',
+        border: `1px solid ${value === '!' ? '#EF4444' : 'var(--border-color)'}`,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.62rem',
+        fontWeight: 700,
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
 export default function Navigation() {
   const pathname = usePathname();
   const { activeRole } = useRoleView();
+  const { user } = useUser();
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [badges, setBadges] = useState<BadgeMap>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const headers = {
+      'x-role-view': activeRole.key,
+      'x-actor-email': user?.email || '',
+    };
+
+    async function loadBadges() {
+      try {
+        const [alertsRes, commitmentsRes, mappingRes, tasksRes] = await Promise.all([
+          fetch('/api/alerts?status=open&limit=500', { cache: 'no-store', headers }),
+          fetch('/api/commitments?limit=500', { cache: 'no-store', headers }),
+          fetch('/api/data/mapping?action=getCoverage&limit=500', { cache: 'no-store', headers }),
+          fetch('/api/data?table=tasks&limit=1000', { cache: 'no-store', headers }),
+        ]);
+
+        const alertsPayload = await alertsRes.json().catch(() => ({}));
+        const commitmentsPayload = await commitmentsRes.json().catch(() => ({}));
+        const mappingPayload = await mappingRes.json().catch(() => ({}));
+        const tasksPayload = await tasksRes.json().catch(() => ({}));
+        if (cancelled) return;
+
+        const alerts = Array.isArray(alertsPayload.alerts) ? alertsPayload.alerts : [];
+        const commitments = Array.isArray(commitmentsPayload.rows) ? commitmentsPayload.rows : [];
+        const tasks = Array.isArray(tasksPayload.rows) ? tasksPayload.rows : [];
+
+        const unresolvedCommitments = commitments.filter((row: { status?: string }) => {
+          const status = String(row.status || '').toLowerCase();
+          return status === 'submitted' || status === 'escalated';
+        }).length;
+
+        const overdueTasks = tasks.filter((task: Record<string, unknown>) => {
+          const pct = Number(task.percent_complete ?? task.percentComplete ?? 0);
+          const finish = String(task.finish_date || task.finishDate || '');
+          return pct < 100 && finish && Number.isFinite(Date.parse(finish)) && Date.parse(finish) < Date.now();
+        }).length;
+
+        const mappingBacklog = Number(mappingPayload?.summary?.unmappedHours || 0);
+
+        setBadges({
+          pcl_exceptions: alerts.length > 0 ? alerts.length : null,
+          pca_mapping: mappingBacklog > 0 ? mappingBacklog : null,
+          pl_report: overdueTasks > 0 ? '!' : null,
+          coo_commitments: unresolvedCommitments > 0 ? unresolvedCommitments : null,
+          sm_commitments: unresolvedCommitments > 0 ? unresolvedCommitments : null,
+          rda_overdue: overdueTasks > 0 ? overdueTasks : null,
+        });
+      } catch {
+        if (!cancelled) setBadges({});
+      }
+    }
+
+    void loadBadges();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRole.key, user?.email]);
 
   const visibleNavigation = useMemo(
     () => ROLE_NATIVE_NAV[activeRole.key] || PRODUCT_OWNER_NAV,
@@ -225,13 +254,15 @@ export default function Navigation() {
               {dropdown.items.map((item, index) => {
                 if (item.divider) return <div key={`divider-${index}`} className="nav-divider" />;
                 if (!item.href || !item.label) return null;
+                const badge = item.badgeKey ? badges[item.badgeKey] : null;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     className={`nav-dropdown-item ${isActive(item.href) ? 'active' : ''}`}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {badge ? <Badge value={badge} /> : null}
                   </Link>
                 );
               })}

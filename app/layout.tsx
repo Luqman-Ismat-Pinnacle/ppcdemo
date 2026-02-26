@@ -33,6 +33,7 @@ import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
 import RoleViewSwitcher from '@/components/layout/RoleViewSwitcher';
 import { RoleViewProvider } from '@/lib/role-view-context';
+import AmbientBackground from '@/components/background/AmbientBackground';
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -80,6 +81,7 @@ export default function RootLayout({
                         <DataProvider>
                           <SnapshotProvider>
                             <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
+                              <AmbientBackground />
                               <Header />
                               <main className="main-content">
                                 {children}

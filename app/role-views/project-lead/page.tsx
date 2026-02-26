@@ -9,6 +9,7 @@ import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import {
   calcCpi,
   calcHoursVariancePct,
@@ -113,77 +114,80 @@ export default function ProjectLeadRoleViewPage() {
         </div>
       )}
     >
-      <PeriodEfficiencyBanner
-        health={metrics.health.value}
-        spi={metrics.spi.value}
-        cpi={metrics.cpi.value}
-        variancePct={metrics.hoursVariance.value}
-      />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
-        {[
-          { label: 'Health Score', value: `${metrics.health.value}%`, provenance: metrics.health.provenance },
-          { label: 'SPI', value: metrics.spi.value.toFixed(2), provenance: metrics.spi.provenance },
-          { label: 'CPI', value: metrics.cpi.value.toFixed(2), provenance: metrics.cpi.provenance },
-          { label: 'Hours Variance', value: `${metrics.hoursVariance.value}%`, provenance: metrics.hoursVariance.provenance },
-          { label: 'IEAC', value: metrics.ieac.value.toLocaleString(undefined, { maximumFractionDigits: 2 }), provenance: metrics.ieac.provenance },
-          { label: 'TCPI', value: metrics.tcpi.value.toFixed(2), provenance: metrics.tcpi.provenance },
-        ].map((item) => (
-          <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-              {item.label}
-              <MetricProvenanceChip provenance={item.provenance} />
-            </div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.35rem', color: 'var(--text-primary)' }}>{item.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '0.9rem' }}>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem' }}>
-          <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.6rem' }}>Execution Snapshot</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', fontSize: '0.82rem' }}>
-            <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Tasks Completed</div>
-              <div style={{ fontWeight: 700 }}>{metrics.completedTasks} / {metrics.totalTasks}</div>
-            </div>
-            <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Overdue Open Tasks</div>
-              <div style={{ fontWeight: 700, color: metrics.overdueTasks.length > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.overdueTasks.length}</div>
-            </div>
-            <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Next Milestone</div>
-              <div style={{ fontWeight: 700 }}>{metrics.nextMilestone ? metrics.nextMilestone.name : 'None'}</div>
-            </div>
-            <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>At-Risk Milestones</div>
-              <div style={{ fontWeight: 700, color: metrics.atRiskMilestones > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.atRiskMilestones}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem', maxHeight: 360, overflowY: 'auto' }}>
-          <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.6rem' }}>Overdue Task Queue</div>
-          {metrics.overdueTasks.length === 0 ? (
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No overdue open tasks in the active scope.</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-              {metrics.overdueTasks.slice(0, 20).map((task, index) => (
-                <div key={`${String(task.id || task.taskId || index)}`} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(task.name || task.taskName || task.id || 'Task')}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                    Due {String(task.finishDate || task.finish_date || task.endDate || task.end_date)}
+      <WorkstationLayout
+        focus={(
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <PeriodEfficiencyBanner
+              health={metrics.health.value}
+              spi={metrics.spi.value}
+              cpi={metrics.cpi.value}
+              variancePct={metrics.hoursVariance.value}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
+              {[
+                { label: 'Health Score', value: `${metrics.health.value}%`, provenance: metrics.health.provenance },
+                { label: 'SPI', value: metrics.spi.value.toFixed(2), provenance: metrics.spi.provenance },
+                { label: 'CPI', value: metrics.cpi.value.toFixed(2), provenance: metrics.cpi.provenance },
+                { label: 'Hours Variance', value: `${metrics.hoursVariance.value}%`, provenance: metrics.hoursVariance.provenance },
+                { label: 'IEAC', value: metrics.ieac.value.toLocaleString(undefined, { maximumFractionDigits: 2 }), provenance: metrics.ieac.provenance },
+                { label: 'TCPI', value: metrics.tcpi.value.toFixed(2), provenance: metrics.tcpi.provenance },
+              ].map((item) => (
+                <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                    {item.label}
+                    <MetricProvenanceChip provenance={item.provenance} />
                   </div>
-                  <div style={{ marginTop: 4, display: 'flex', gap: '0.45rem' }}>
-                    <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Update Progress</Link>
-                    <Link href="/role-views/project-lead/team" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Reassign</Link>
-                  </div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.35rem', color: 'var(--text-primary)' }}>{item.value}</div>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '0.9rem' }}>
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem' }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.6rem' }}>Execution Snapshot</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', fontSize: '0.82rem' }}>
+                  <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Tasks Completed</div>
+                    <div style={{ fontWeight: 700 }}>{metrics.completedTasks} / {metrics.totalTasks}</div>
+                  </div>
+                  <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Overdue Open Tasks</div>
+                    <div style={{ fontWeight: 700, color: metrics.overdueTasks.length > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.overdueTasks.length}</div>
+                  </div>
+                  <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Next Milestone</div>
+                    <div style={{ fontWeight: 700 }}>{metrics.nextMilestone ? metrics.nextMilestone.name : 'None'}</div>
+                  </div>
+                  <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>At-Risk Milestones</div>
+                    <div style={{ fontWeight: 700, color: metrics.atRiskMilestones > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.atRiskMilestones}</div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem', maxHeight: 360, overflowY: 'auto' }}>
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.6rem' }}>Overdue Task Queue</div>
+                {metrics.overdueTasks.length === 0 ? (
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No overdue open tasks in the active scope.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                    {metrics.overdueTasks.slice(0, 20).map((task, index) => (
+                      <div key={`${String(task.id || task.taskId || index)}`} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(task.name || task.taskName || task.id || 'Task')}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                          Due {String(task.finishDate || task.finish_date || task.endDate || task.end_date)}
+                        </div>
+                        <div style={{ marginTop: 4, display: 'flex', gap: '0.45rem' }}>
+                          <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Update Progress</Link>
+                          <Link href="/role-views/project-lead/team" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Reassign</Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      />
     </RoleWorkstationShell>
   );
 }

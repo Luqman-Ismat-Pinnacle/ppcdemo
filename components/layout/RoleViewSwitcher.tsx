@@ -11,6 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
+import { isProductOwnerIdentity } from '@/lib/access-control';
 
 export default function RoleViewSwitcher() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function RoleViewSwitcher() {
     [activeRole.label, canSwitchRoles]
   );
 
-  const isProductOwner = String(user?.role || '').trim().toLowerCase() === 'product owner';
+  const isProductOwner = isProductOwnerIdentity(user?.email) || String(user?.role || '').trim().toLowerCase() === 'product owner';
   if (pathname === '/login' || !isProductOwner) return null;
 
   return (

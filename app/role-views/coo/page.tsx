@@ -13,6 +13,7 @@ import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
+import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 
 function answerForQuery(query: string, snapshot: {
   projects: number;
@@ -121,7 +122,9 @@ export default function CooRoleViewPage() {
   }, []);
 
   return (
-    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
+    <WorkstationLayout
+      focus={(
+        <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Role View</div>
@@ -224,6 +227,8 @@ export default function CooRoleViewPage() {
           </div>
         )}
       </div>
-    </div>
+        </div>
+      )}
+    />
   );
 }

@@ -6,20 +6,12 @@
 
 import React from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import AIBriefingChat from '@/components/role-workstations/AIBriefingChat';
-import { useRoleView } from '@/lib/role-view-context';
-import { useUser } from '@/lib/user-context';
+import WorkstationAIPanel from '@/components/ai/WorkstationAIPanel';
 
 export default function CooAiPage() {
-  const { activeRole } = useRoleView();
-  const { user } = useUser();
-
   return (
     <RoleWorkstationShell role="coo" requiredTier="tier2" title="AI Briefing" subtitle="OpenAI-backed executive briefing and Q&A from live operating data.">
-      <AIBriefingChat
-        roleKey={activeRole.key}
-        actorEmail={user?.email || ''}
-      />
+      <WorkstationAIPanel />
     </RoleWorkstationShell>
   );
 }

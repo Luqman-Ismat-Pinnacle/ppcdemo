@@ -26,6 +26,7 @@ export interface RoleNavItem {
   label: string;
   href: string;
   description?: string;
+  badge?: number | '!' | null;
 }
 
 export interface RoleNavConfig {

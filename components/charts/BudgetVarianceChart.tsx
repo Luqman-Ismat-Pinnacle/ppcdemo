@@ -96,7 +96,6 @@ export default function BudgetVarianceChart({
         rotate: 45,
         width: 56,
         overflow: 'truncate',
-        ellipsis: '…',
         interval: 0,
       },
     },
