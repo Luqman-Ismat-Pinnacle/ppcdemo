@@ -26,15 +26,15 @@ export default function ProjectLeadForecastPage() {
     const tasks = (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [];
     const projects = (filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || [];
 
-    const actual = tasks.reduce((sum, task) => sum + num((task as Record<string, unknown>).actualHours ?? (task as Record<string, unknown>).actual_hours), 0);
-    const planned = tasks.reduce((sum, task) => sum + num((task as Record<string, unknown>).baselineHours ?? (task as Record<string, unknown>).baseline_hours), 0);
+    const actual = tasks.reduce((sum, task) => sum + num((task as unknown as Record<string, unknown>).actualHours ?? (task as unknown as Record<string, unknown>).actual_hours), 0);
+    const planned = tasks.reduce((sum, task) => sum + num((task as unknown as Record<string, unknown>).baselineHours ?? (task as unknown as Record<string, unknown>).baseline_hours), 0);
     const earned = tasks.reduce((sum, task) => {
-      const row = task as Record<string, unknown>;
+      const row = task as unknown as Record<string, unknown>;
       const baseline = num(row.baselineHours ?? row.baseline_hours);
       const pct = Math.max(0, Math.min(1, num(row.percentComplete ?? row.percent_complete) / 100));
       return sum + baseline * pct;
     }, 0);
-    const bac = projects.reduce((sum, project) => sum + num((project as Record<string, unknown>).budget ?? (project as Record<string, unknown>).totalBudget ?? (project as Record<string, unknown>).bac), 0) || planned;
+    const bac = projects.reduce((sum, project) => sum + num((project as unknown as Record<string, unknown>).budget ?? (project as unknown as Record<string, unknown>).totalBudget ?? (project as unknown as Record<string, unknown>).bac), 0) || planned;
 
     const cpi = calcCpi(earned, actual, 'project-lead', 'active-filters');
     const spi = calcSpi(earned, planned, 'project-lead', 'active-filters');

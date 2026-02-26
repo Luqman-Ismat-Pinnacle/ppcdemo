@@ -306,6 +306,8 @@ export default function StatusAndLogsDropdown() {
 
     const logEntries: string[] = [];
     const errorCount = { employees: false, hierarchy: false, hours: 0, hoursTotal: 0 };
+    const asRecord = (value: unknown): Record<string, unknown> =>
+      value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     
     const pushLog = (msg: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
       const time = new Date().toLocaleTimeString();
@@ -343,8 +345,12 @@ export default function StatusAndLogsDropdown() {
               if (ev.success === false && ev.error) {
                 errorCount.hours++;
                 pushLog(`Hours chunk failed: ${ev.error}`, 'error');
-              } else if (ev.stats?.hours != null) {
-                pushLog(`Processed ${ev.stats.hours} hour entries`, 'success');
+              } else {
+                const stats = asRecord(ev.stats);
+                const hours = stats.hours;
+                if (hours != null) {
+                  pushLog(`Processed ${String(hours)} hour entries`, 'success');
+                }
               }
             }
             if (ev.status === 'done') {

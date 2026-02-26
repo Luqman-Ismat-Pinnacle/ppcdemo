@@ -18,7 +18,6 @@
 import type { 
   WBSItem, 
   WBSTableRow, 
-  GanttBar, 
   Employee, 
   WBSItemType 
 } from '../types/wbs';
@@ -59,6 +58,16 @@ export interface EVMMetrics {
   /** To Complete Performance Index */
   tcpi: number;
 }
+
+interface WBSRollupFields {
+  baselineCount?: number;
+  actualCount?: number;
+  completedCount?: number;
+  cpi?: number;
+  spi?: number;
+}
+
+type WBSRollupItem = WBSItem & WBSRollupFields;
 
 // ============================================================================
 // SECTION 1: CALENDAR & DATE UTILITIES
@@ -306,6 +315,7 @@ export function getStatusColor(cpi: number, spi: number): string {
  */
 export function calculateRollUpValues(item: WBSItem): void {
   if (!item.children || item.children.length === 0) return;
+  const rollupItem = item as WBSRollupItem;
 
   // 1. Recursively calculate children first (Bottom-Up)
   item.children.forEach(child => calculateRollUpValues(child));
@@ -334,14 +344,15 @@ export function calculateRollUpValues(item: WBSItem): void {
   item.actualCost = 0;
   
   // Reset count fields
-  (item as any).baselineCount = 0;
-  (item as any).actualCount = 0;
-  (item as any).completedCount = 0;
+  rollupItem.baselineCount = 0;
+  rollupItem.actualCount = 0;
+  rollupItem.completedCount = 0;
   
   let totalWeightedPercent = 0;
   let totalBaselineCostForWeighting = 0;
 
   item.children.forEach(child => {
+    const childRollup = child as WBSRollupItem;
     // Sum basic fields
     item.baselineHours! += child.baselineHours || 0;
     item.actualHours! += child.actualHours || 0;
@@ -350,9 +361,9 @@ export function calculateRollUpValues(item: WBSItem): void {
     item.actualCost! += child.actualCost || 0;
 
     // Sum count fields
-    (item as any).baselineCount += (child as any).baselineCount || 0;
-    (item as any).actualCount += (child as any).actualCount || 0;
-    (item as any).completedCount += (child as any).completedCount || 0;
+    rollupItem.baselineCount = (rollupItem.baselineCount ?? 0) + (childRollup.baselineCount || 0);
+    rollupItem.actualCount = (rollupItem.actualCount ?? 0) + (childRollup.actualCount || 0);
+    rollupItem.completedCount = (rollupItem.completedCount ?? 0) + (childRollup.completedCount || 0);
 
     // Accumulate for Weighted Percent Complete
     // Use Baseline Cost as weight (standard practice), fallback to Hours
@@ -369,8 +380,8 @@ export function calculateRollUpValues(item: WBSItem): void {
   // 5. Derive Aggregate EVM Metrics
   // Note: We recalculate CPI/SPI based on rolled-up sums
   const evm = calculateEVM(item);
-  (item as any).cpi = evm.cpi;
-  (item as any).spi = evm.spi;
+  rollupItem.cpi = evm.cpi;
+  rollupItem.spi = evm.spi;
   
   // 6. Roll up Critical Path flag
   item.isCritical = item.children.some(c => c.isCritical);
@@ -832,6 +843,4 @@ export function getTreeStatistics(item: WBSItem): {
     itemsByType,
   };
 }
-
-
 

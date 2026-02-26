@@ -12,7 +12,7 @@ export default function SeniorManagerMilestonesPage() {
     const milestones = (filteredData?.milestones?.length ? filteredData.milestones : fullData?.milestones) || [];
     const now = Date.now();
     const overdue = milestones.filter((item) => {
-      const row = item as Record<string, unknown>;
+      const row = item as unknown as Record<string, unknown>;
       const dueRaw = row.dueDate || row.due_date || row.targetDate || row.target_date;
       const status = String(row.status || '').toLowerCase();
       if (!dueRaw || status.includes('complete')) return false;

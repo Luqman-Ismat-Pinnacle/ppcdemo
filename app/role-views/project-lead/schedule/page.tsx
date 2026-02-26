@@ -21,16 +21,16 @@ export default function ProjectLeadSchedulePage() {
 
   const metrics = useMemo(() => {
     const tasks = (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [];
-    const openTasks = tasks.filter((task) => num((task as Record<string, unknown>).percentComplete ?? (task as Record<string, unknown>).percent_complete) < 100);
+    const openTasks = tasks.filter((task) => num((task as unknown as Record<string, unknown>).percentComplete ?? (task as unknown as Record<string, unknown>).percent_complete) < 100);
     const overdueTasks = openTasks.filter((task) => {
-      const row = task as Record<string, unknown>;
+      const row = task as unknown as Record<string, unknown>;
       const raw = row.finishDate ?? row.finish_date ?? row.endDate ?? row.end_date;
       if (!raw) return false;
       const due = new Date(String(raw));
       return Number.isFinite(due.getTime()) && due.getTime() < Date.now();
     });
     const criticalTasks = openTasks.filter((task) => {
-      const row = task as Record<string, unknown>;
+      const row = task as unknown as Record<string, unknown>;
       const float = num(row.totalFloat ?? row.total_float);
       return float <= 0;
     });

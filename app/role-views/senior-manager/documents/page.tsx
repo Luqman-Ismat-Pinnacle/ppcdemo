@@ -10,7 +10,7 @@ export default function SeniorManagerDocumentsPage() {
   const summary = useMemo(() => {
     const records = (filteredData?.projectDocumentRecords?.length ? filteredData.projectDocumentRecords : fullData?.projectDocumentRecords) || [];
     const pendingClient = records.filter((record) => {
-      const status = String((record as Record<string, unknown>).status || '').toLowerCase();
+      const status = String((record as unknown as Record<string, unknown>).status || '').toLowerCase();
       return status.includes('pending client');
     }).length;
     return { total: records.length, pendingClient };

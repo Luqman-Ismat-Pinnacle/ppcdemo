@@ -12,7 +12,7 @@ export default function SeniorManagerProjectsPage() {
     const projects = (filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || [];
     const healthRows = (filteredData?.projectHealth?.length ? filteredData.projectHealth : fullData?.projectHealth) || [];
     const atRisk = healthRows.filter((row) => {
-      const rec = row as Record<string, unknown>;
+      const rec = row as unknown as Record<string, unknown>;
       const status = String(rec.status || rec.health_status || '').toLowerCase();
       return status.includes('risk') || status.includes('red');
     }).length;

@@ -26,7 +26,7 @@ function toNumber(value: unknown): number {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  return typeof value === 'object' && value !== null ? (value as unknown as Record<string, unknown>) : {};
 }
 
 function toTaskName(task: Record<string, unknown>): string {

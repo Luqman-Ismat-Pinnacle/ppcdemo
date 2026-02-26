@@ -11,7 +11,7 @@ export default function ProjectLeadTeamPage() {
     const employees = (filteredData?.employees?.length ? filteredData.employees : fullData?.employees) || [];
     const tasks = (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [];
     const assignedTasks = tasks.filter((task) => {
-      const row = task as Record<string, unknown>;
+      const row = task as unknown as Record<string, unknown>;
       const resource = row.resourceName || row.assignedResource || row.resource_id || row.resourceId;
       return Boolean(String(resource || '').trim());
     }).length;

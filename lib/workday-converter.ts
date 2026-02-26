@@ -1,6 +1,13 @@
 import type { SampleData } from '@/types/data';
 
-export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData> {
+type WorkdayEntry = Record<string, unknown>;
+type GenericRow = Record<string, unknown>;
+
+function asString(value: unknown): string {
+    return typeof value === 'string' ? value : String(value ?? '');
+}
+
+export function convertWorkdayProjectReport(entries: WorkdayEntry[]): Partial<SampleData> {
     const result: Partial<SampleData> = {
         projects: [],
         customers: [],
@@ -10,8 +17,8 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
 
     const now = new Date().toISOString();
     // We maintain a map to avoid duplicates if multiple rows refer to same customer/site
-    const customerMap = new Map<string, any>();
-    const siteMap = new Map<string, any>();
+    const customerMap = new Map<string, GenericRow>();
+    const siteMap = new Map<string, GenericRow>();
 
     // Regex to clean Project ID: "1518_200IFSClosed1 (Inactive)" -> "1518_200IFSClosed1"
     const cleanId = (rawId: string) => rawId ? rawId.replace(/\s*\(.*?\)\s*/g, '').trim() : '';
@@ -59,35 +66,38 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
         return generateId('STE', key);
     };
 
-    entries.forEach((entry: any, index: number) => {
+    entries.forEach((entry: WorkdayEntry, index: number) => {
         // -------------------------------------------------------------------------
         // 1. EXTRACT RAW FIELDS
         // -------------------------------------------------------------------------
-        const rawProjectId = entry["Project_by_ID"];
-        const rawProjectName = entry["Project"];
-        const rawCustomerName = entry["Customer"];
-        const rawSiteName = entry["Site"];
+        const rawProjectId = asString(entry["Project_by_ID"]);
+        const rawProjectName = asString(entry["Project"]);
+        const rawCustomerName = asString(entry["Customer"]);
+        const rawSiteName = asString(entry["Site"]);
 
         // Portfolio Manager (Optional_Project_Hierarchies)
         // Workday sometimes returns this as an object or string
         const rawPortfolioMgr = entry["Optional_Project_Hierarchies"];
         let portfolioMgrName = "System";
         if (typeof rawPortfolioMgr === 'string') portfolioMgrName = rawPortfolioMgr;
-        else if (rawPortfolioMgr && rawPortfolioMgr.Descriptor) portfolioMgrName = rawPortfolioMgr.Descriptor;
+        else if (rawPortfolioMgr && typeof rawPortfolioMgr === 'object' && 'Descriptor' in rawPortfolioMgr) {
+            const descriptor = (rawPortfolioMgr as Record<string, unknown>).Descriptor;
+            if (typeof descriptor === 'string') portfolioMgrName = descriptor;
+        }
 
         // Dates - Robust extraction
         const rawStartDate = typeof entry["Start_Date"] === 'string' ? entry["Start_Date"].trim() : null;
         const rawEndDate = typeof entry["End_Date"] === 'string' ? entry["End_Date"].trim() : null;
 
         // Status
-        const projectStatus = entry["Project_Status"];
+        const projectStatus = asString(entry["Project_Status"]);
         const isActive = (entry["Inactive_-_Current"] === "1") ? false : (projectStatus === "Active");
 
         // Manager
-        const managerName = entry["CF_ARI_Sr_Project_Manager"] || "";
+        const managerName = asString(entry["CF_ARI_Sr_Project_Manager"]);
 
         // Billable Type
-        const primHierarchy = entry["Primary_Project_Hierarchy"] || "";
+        const primHierarchy = asString(entry["Primary_Project_Hierarchy"]);
         let billableType: 'T&M' | 'FP' = 'T&M';
         if (primHierarchy.includes("Fixed Price")) billableType = 'FP';
         else if (primHierarchy.includes("Time & Materials")) billableType = 'T&M';
@@ -139,20 +149,21 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
                 siteId: siteId,
                 id: siteId,
                 name: siteName,
-                location: entry["Location"] || "",
+                location: asString(entry["Location"]),
                 customerId: customerId,
                 isActive: true,
                 createdAt: now,
                 updatedAt: now,
-                region: entry["Region"] || "",
+                region: asString(entry["Region"]),
             });
         }
 
         // -- PROJECT --
         // Extract extra metadata for comments
-        const resourcePlan = entry["Project_Resource_Plan"] || "";
-        const costCenter = entry["Cost_Center"] || "";
-        const descriptionGroups = entry["Project_Groups"] ? `Groups: ${entry["Project_Groups"]}` : "";
+        const resourcePlan = asString(entry["Project_Resource_Plan"]);
+        const costCenter = asString(entry["Cost_Center"]);
+        const projectGroups = asString(entry["Project_Groups"]);
+        const descriptionGroups = projectGroups ? `Groups: ${projectGroups}` : "";
 
         const comments = [
             resourcePlan ? `Resource Plan: ${resourcePlan}` : null,
@@ -171,7 +182,7 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
             employeeId: `EMP-${managerName.replace(/[^A-Z]/g, '').substring(0, 5) || 'UNKNOWN'}`, // Dummy Employee ID
             manager: managerName,
             billableType: billableType,
-            methodology: entry["Project_Groups"] || "Waterfall",
+            methodology: projectGroups || "Waterfall",
             status: projectStatus,
             active: isActive,
             isActive: isActive,
@@ -204,8 +215,8 @@ export function convertWorkdayProjectReport(entries: any[]): Partial<SampleData>
     });
 
     // Convert maps to arrays
-    result.customers = Array.from(customerMap.values());
-    result.sites = Array.from(siteMap.values());
+    result.customers = Array.from(customerMap.values()) as unknown as SampleData['customers'];
+    result.sites = Array.from(siteMap.values()) as unknown as SampleData['sites'];
 
     return result;
 }

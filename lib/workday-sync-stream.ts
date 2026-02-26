@@ -10,9 +10,9 @@
  */
 
 export type WorkdayStreamEvent =
-  | { type: 'step'; step: string; status: 'started' | 'done' | 'chunk' | 'chunk_done'; result?: any; stats?: any; chunk?: number; totalChunks?: number; startDate?: string; endDate?: string; totalHours?: number; success?: boolean; error?: string }
+  | { type: 'step'; step: string; status: 'started' | 'done' | 'chunk' | 'chunk_done'; result?: unknown; stats?: unknown; chunk?: number; totalChunks?: number; startDate?: string; endDate?: string; totalHours?: number; success?: boolean; error?: string }
   | { type: 'error'; error: string }
-  | { type: 'done'; success: boolean; logs?: string[]; totalHours?: number; summary?: any };
+  | { type: 'done'; success: boolean; logs?: string[]; totalHours?: number; summary?: unknown };
 
 export interface RunWorkdaySyncStreamOptions {
   /** 'unified' = employees + projects + hours (chunked). 'hours' = hours only (chunked). */
@@ -31,10 +31,10 @@ export interface RunWorkdaySyncStreamOptions {
  * 
  * The sync continues even if individual chunks fail - it will report partial success.
  */
-export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions): Promise<{ success: boolean; summary?: any }> {
+export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions): Promise<{ success: boolean; summary?: unknown }> {
   const { syncType = 'unified', hoursDaysBack = 7, onEvent, timeoutMs = 600000 } = options;
   
-  let timeoutId: NodeJS.Timeout | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let aborted = false;
   
   try {
@@ -75,8 +75,7 @@ export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions)
     const decoder = new TextDecoder();
     let buffer = '';
     let success = false;
-    let summary: any = undefined;
-    let lastEventTime = Date.now();
+    let summary: unknown = undefined;
     let eventsReceived = 0;
     
     try {
@@ -88,7 +87,6 @@ export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions)
           break;
         }
         
-        lastEventTime = Date.now();
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -106,7 +104,7 @@ export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions)
               success = event.success;
               summary = event.summary;
             }
-          } catch (parseErr) {
+          } catch {
             // Log malformed lines for debugging but don't stop
             console.warn('[WorkdaySyncStream] Malformed NDJSON line:', trimmed.substring(0, 100));
           }
@@ -123,7 +121,7 @@ export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions)
             success = event.success;
             summary = event.summary;
           }
-        } catch (parseErr) {
+        } catch {
           console.warn('[WorkdaySyncStream] Malformed final buffer:', buffer.substring(0, 100));
         }
       }
@@ -147,8 +145,8 @@ export async function runWorkdaySyncStream(options: RunWorkdaySyncStreamOptions)
     } finally {
       reader.releaseLock();
     }
-  } catch (error: any) {
-    const errorMsg = error?.message || 'Unknown error';
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     console.error('[WorkdaySyncStream] Error:', errorMsg);
     onEvent({ type: 'error', error: errorMsg });
     return { success: false };

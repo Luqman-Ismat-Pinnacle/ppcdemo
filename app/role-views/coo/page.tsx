@@ -41,7 +41,7 @@ function answerForQuery(query: string, snapshot: {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  return typeof value === 'object' && value !== null ? (value as unknown as Record<string, unknown>) : {};
 }
 
 export default function CooRoleViewPage() {

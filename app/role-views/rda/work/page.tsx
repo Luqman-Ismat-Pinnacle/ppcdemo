@@ -10,7 +10,7 @@ export default function RdaWorkPage() {
   const summary = useMemo(() => {
     const tasks = (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [];
     const open = tasks.filter((task) => {
-      const row = task as Record<string, unknown>;
+      const row = task as unknown as Record<string, unknown>;
       const pct = Number(row.percentComplete ?? row.percent_complete ?? 0);
       return Number.isFinite(pct) ? pct < 100 : true;
     }).length;

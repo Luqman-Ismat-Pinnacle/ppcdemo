@@ -10,7 +10,7 @@ export default function RdaHoursPage() {
   const totalHours = useMemo(() => {
     const entries = (filteredData?.hours?.length ? filteredData.hours : fullData?.hours) || [];
     return entries.reduce((sum, entry) => {
-      const row = entry as Record<string, unknown>;
+      const row = entry as unknown as Record<string, unknown>;
       const hours = Number(row.hours ?? row.quantity ?? 0);
       return sum + (Number.isFinite(hours) ? hours : 0);
     }, 0);

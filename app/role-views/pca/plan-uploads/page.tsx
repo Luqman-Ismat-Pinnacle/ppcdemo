@@ -11,11 +11,15 @@ import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import { useData } from '@/lib/data-context';
 
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as unknown as Record<string, unknown>) : {};
+}
+
 function hasPlan(project: Record<string, unknown>, projectIdsWithDocs: Set<string>): boolean {
   const rawHasSchedule = project.has_schedule ?? project.hasSchedule;
   const hasSchedule = rawHasSchedule === true || rawHasSchedule === 1 || String(rawHasSchedule || '').toLowerCase() === 'true' || String(rawHasSchedule || '') === '1';
   const projectId = String(project.id ?? project.projectId ?? '');
-  return hasSchedule || (projectId && projectIdsWithDocs.has(projectId));
+  return hasSchedule || Boolean(projectId && projectIdsWithDocs.has(projectId));
 }
 
 export default function PcaPlanUploadsPage() {
@@ -26,11 +30,14 @@ export default function PcaPlanUploadsPage() {
     const sourceDocs = (filteredData?.projectDocuments?.length ? filteredData.projectDocuments : fullData?.projectDocuments) || [];
     const projectIdsWithDocs = new Set(
       sourceDocs
-        .map((doc) => String((doc as Record<string, unknown>).projectId ?? (doc as Record<string, unknown>).project_id ?? ''))
+        .map((doc) => {
+          const row = readRecord(doc);
+          return String(row.projectId ?? row.project_id ?? '');
+        })
         .filter(Boolean),
     );
 
-    const projects = sourceProjects.map((project) => project as Record<string, unknown>);
+    const projects = sourceProjects.map((project) => readRecord(project));
     const withPlan = projects.filter((project) => hasPlan(project, projectIdsWithDocs)).length;
     const withoutPlan = Math.max(0, projects.length - withPlan);
 

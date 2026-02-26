@@ -20,7 +20,7 @@ export default function ProjectLeadDocumentsPage() {
       : fullData?.projectDocumentRecords) || [];
     const byStatus = new Map<string, number>();
     records.forEach((record) => {
-      const row = record as Record<string, unknown>;
+      const row = record as unknown as Record<string, unknown>;
       const status = String(row.status || 'Not Started');
       byStatus.set(status, (byStatus.get(status) || 0) + 1);
     });

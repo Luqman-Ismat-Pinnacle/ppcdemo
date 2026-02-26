@@ -10,7 +10,7 @@ export default function PclScheduleHealthPage() {
 
   const metrics = useMemo(() => {
     const tasks = (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [];
-    const asRow = (task: unknown) => task as Record<string, unknown>;
+    const asRow = (task: unknown) => task as unknown as Record<string, unknown>;
     const num = (value: unknown) => {
       const n = Number(value);
       return Number.isFinite(n) ? n : 0;
