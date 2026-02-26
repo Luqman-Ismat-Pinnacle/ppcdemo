@@ -10,6 +10,8 @@ import { useSnapshotVariance } from '@/lib/use-snapshot-variance';
 import { CPMEngine } from '@/lib/cpm-engine';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { toTaskEfficiencyPct } from '@/lib/calculations/selectors';
+import { useRoleView } from '@/lib/role-view-context';
+import { getWorkflowPermissions } from '@/lib/workflow-permissions';
 
 type TimelineInterval = 'week' | 'month' | 'quarter' | 'year';
 
@@ -231,6 +233,7 @@ const getProgressColor = (progress: number, critical: boolean) => {
 export default function WBSGanttPage() {
   const { filteredData, data: fullData, isLoading } = useData();
   const { getSnapshotValue, hasComparison } = useSnapshotVariance();
+  const { activeRole } = useRoleView();
   const splitHostRef = useRef<HTMLDivElement>(null);
   const dataEditorRef = useRef<DataEditorRef | null>(null);
   const leftPanel = useElementSize<HTMLDivElement>();
@@ -276,6 +279,26 @@ export default function WBSGanttPage() {
     text: '#e2ebff',
     quarter: '#9eb0c7',
   });
+
+  const workflowPermissions = useMemo(() => getWorkflowPermissions(activeRole.key), [activeRole.key]);
+  const workflowActions = useMemo(
+    () => [
+      { label: 'Upload / Publish Plans', href: '/project-controls/project-plans', enabled: workflowPermissions.uploadPlans },
+      { label: 'Mapping Workspace', href: '/role-views/pca-workspace', enabled: workflowPermissions.editMapping },
+      { label: 'Forecast', href: '/project-management/forecast', enabled: workflowPermissions.updateForecast },
+      { label: 'Project Documents', href: '/project-management/documentation', enabled: workflowPermissions.manageDocuments },
+      { label: 'Commitments', href: '/role-views/project-lead/report', enabled: workflowPermissions.submitCommitments },
+      { label: 'Exceptions', href: '/role-views/pcl-exceptions', enabled: workflowPermissions.triageExceptions },
+    ].filter((action) => action.enabled),
+    [
+      workflowPermissions.updateForecast,
+      workflowPermissions.editMapping,
+      workflowPermissions.manageDocuments,
+      workflowPermissions.submitCommitments,
+      workflowPermissions.triageExceptions,
+      workflowPermissions.uploadPlans,
+    ],
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1292,6 +1315,47 @@ export default function WBSGanttPage() {
           <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.74rem' }}>
             Original theme + hierarchy + dependencies + resizable split
           </div>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 6,
+            width: '100%',
+            marginTop: 2,
+            padding: '0.45rem 0.55rem',
+            border: '1px solid var(--border-color)',
+            borderRadius: 8,
+            background: 'var(--bg-tertiary)',
+          }}
+        >
+          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+            Role Workflow ({activeRole.label})
+          </span>
+          {workflowActions.length > 0 ? (
+            workflowActions.map((action) => (
+              <a
+                key={action.label}
+                href={action.href}
+                style={{
+                  fontSize: '0.67rem',
+                  padding: '0.28rem 0.5rem',
+                  borderRadius: 999,
+                  border: '1px solid rgba(46,211,198,0.45)',
+                  color: 'var(--pinnacle-teal)',
+                  textDecoration: 'none',
+                  background: 'rgba(46,211,198,0.12)',
+                }}
+              >
+                {action.label}
+              </a>
+            ))
+          ) : (
+            <span style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
+              Read-only schedule lens for this role.
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
