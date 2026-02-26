@@ -68,6 +68,7 @@ function ResourcingPageContent() {
   // ── State ─────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'organization' | 'analytics' | 'heatmap'>('organization');
   const [heatmapBucket, setHeatmapBucket] = useState<'week' | 'month' | 'quarter'>('week');
+  const [assignmentProjectFilter, setAssignmentProjectFilter] = useState<string>('all');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
@@ -91,6 +92,16 @@ function ResourcingPageContent() {
     topReassigned: Array<{
       employeeId: string;
       employeeName: string;
+      assignments: number;
+      reassignments: number;
+    }>;
+    sourceBreakdown: Array<{
+      source: string;
+      assignments: number;
+      reassignments: number;
+    }>;
+    projectBreakdown: Array<{
+      projectId: string;
       assignments: number;
       reassignments: number;
     }>;
@@ -145,6 +156,18 @@ function ResourcingPageContent() {
     const p = data.projects.find((p: any) => p.id === pid || p.projectId === pid);
     return p?.name || p?.projectName || pid;
   }, [data.projects]);
+
+  const assignmentProjectOptions = useMemo<Array<{ id: string; name: string }>>(
+    () => data.projects
+      .map((project: any) => {
+        const id = String(project.id || project.projectId || '');
+        const name = String(project.name || project.projectName || id);
+        return { id, name };
+      })
+      .filter((project: { id: string; name: string }) => project.id)
+      .sort((a: { id: string; name: string }, b: { id: string; name: string }) => a.name.localeCompare(b.name)),
+    [data.projects]
+  );
 
   // ── Employee metrics ──────────────────────────────────────────
   const employeeMetrics = useMemo(() =>
@@ -253,13 +276,19 @@ function ResourcingPageContent() {
     let cancelled = false;
     const loadAssignmentSummary = async () => {
       try {
-        const res = await fetch('/api/tasks/assign?days=30', { cache: 'no-store' });
+        const query = new URLSearchParams({ days: '30' });
+        if (assignmentProjectFilter !== 'all') {
+          query.set('projectId', assignmentProjectFilter);
+        }
+        const res = await fetch(`/api/tasks/assign?${query.toString()}`, { cache: 'no-store' });
         const result = await res.json();
         if (!res.ok || !result.success || cancelled) return;
         setAssignmentSummary30d(result.summary || null);
         setAssignmentInsights30d({
           recentChanges: Array.isArray(result.recentChanges) ? result.recentChanges : [],
           topReassigned: Array.isArray(result.topReassigned) ? result.topReassigned : [],
+          sourceBreakdown: Array.isArray(result.sourceBreakdown) ? result.sourceBreakdown : [],
+          projectBreakdown: Array.isArray(result.projectBreakdown) ? result.projectBreakdown : [],
         });
       } catch {
         if (!cancelled) {
@@ -272,7 +301,7 @@ function ResourcingPageContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [assignmentProjectFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1482,7 +1511,21 @@ function ResourcingPageContent() {
           {/* Assignment analytics */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 250 }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.65rem' }}>Top Reassignments (30d)</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', marginBottom: '0.65rem' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Top Reassignments (30d)</div>
+                <select
+                  value={assignmentProjectFilter}
+                  onChange={(e) => setAssignmentProjectFilter(e.target.value)}
+                  style={{ padding: '0.3rem 0.5rem', fontSize: '0.72rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                >
+                  <option value="all">All Projects</option>
+                  {assignmentProjectOptions.map((project) => (
+                    <option key={`assignment-project-${project.id}`} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {(assignmentInsights30d?.topReassigned?.length || 0) === 0 ? (
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No reassignment activity in the last 30 days.</div>
               ) : (
@@ -1504,6 +1547,23 @@ function ResourcingPageContent() {
                   ))}
                 </div>
               )}
+              <div style={{ marginTop: '0.8rem' }}>
+                <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Assignment Source Mix</div>
+                {(assignmentInsights30d?.sourceBreakdown?.length || 0) === 0 ? (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>No source data.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    {assignmentInsights30d!.sourceBreakdown.slice(0, 5).map((row) => (
+                      <span
+                        key={`source-${row.source}`}
+                        style={{ fontSize: '0.68rem', padding: '0.22rem 0.5rem', borderRadius: 999, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                      >
+                        {row.source}: {row.assignments}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 250, maxHeight: 250, overflowY: 'auto' }}>
@@ -1525,6 +1585,19 @@ function ResourcingPageContent() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+              {(assignmentInsights30d?.projectBreakdown?.length || 0) > 0 && (
+                <div style={{ marginTop: '0.75rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem' }}>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>Top Projects (reassignments)</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.3rem 0.6rem', fontSize: '0.68rem' }}>
+                    {assignmentInsights30d!.projectBreakdown.slice(0, 5).map((row) => (
+                      <React.Fragment key={`project-breakdown-${row.projectId}`}>
+                        <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getProjectName(row.projectId)}</span>
+                        <span style={{ color: '#8B5CF6', fontWeight: 700 }}>{row.reassignments}</span>
+                      </React.Fragment>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

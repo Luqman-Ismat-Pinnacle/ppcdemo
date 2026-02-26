@@ -14,6 +14,7 @@
     "check:phase4-provenance": "node scripts/check-phase4-provenance.js",
     "check:phase5-smoke": "node scripts/check-phase5-smoke.js",
     "check:phase5-contracts": "node scripts/check-phase5-contracts.js",
+    "check:phase6-contracts": "node scripts/check-phase6-contracts.js",
     "alerts:scan": "node scripts/run-alert-scan.mjs"
   },
   "dependencies": {

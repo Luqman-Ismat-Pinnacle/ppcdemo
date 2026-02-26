@@ -221,3 +221,4 @@ Phase 6 alert scanning can run on a scheduler without opening the UI.
      - `ALERT_SCAN_TOKEN=<same-secret>`
 3. Suggested cadence: every 1-4 hours during business operations.
 4. Keep token out of browser code; use server scheduler/CI secret storage only.
+5. Optional runbook: `PHASE6_SCHEDULER_CHECKLIST.md`.

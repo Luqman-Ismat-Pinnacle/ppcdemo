@@ -7,6 +7,7 @@
  * - **Project Controls**: Project Plans, Resourcing, Data Management
  * - **Insights**: Overview (with Variance & Milestones), Tasks (Hours & QC), Documents
  * - **Project Management**: Sprint Planning, Forecasting, Documentation, QC Log
+ * - **Role Views**: Phase 7 role-specific operational dashboards
  * 
  * Note: WBS & Gantt is the home/landing page (accessible via logo click)
  * 
@@ -61,6 +62,19 @@ const navigation: NavDropdown[] = [
       { label: 'Forecasting', href: '/project-management/forecast' },
       { label: 'Documentation', href: '/project-management/documentation' },
       { label: 'QC Log', href: '/project-management/qc-log' },
+    ],
+  },
+  {
+    label: 'Role Views',
+    items: [
+      { label: 'Role Views Hub', href: '/role-views' },
+      { label: 'Project Lead', href: '/role-views/project-lead' },
+      { divider: true },
+      { label: 'PCA Workspace', href: '/role-views/pca-workspace' },
+      { label: 'PCL Exceptions', href: '/role-views/pcl-exceptions' },
+      { label: 'Senior Manager', href: '/role-views/senior-manager' },
+      { label: 'COO + AI Q&A', href: '/role-views/coo' },
+      { label: 'Client Portal', href: '/role-views/client-portal' },
     ],
   },
 ];

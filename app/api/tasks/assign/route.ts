@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId');
+    const projectId = searchParams.get('projectId');
     const days = Math.max(1, Math.min(180, Number(searchParams.get('days') || 30)));
     const sinceParam = `${days} days`;
 
@@ -54,46 +55,89 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, assignments: rows.rows, summary: summary.rows[0] });
     }
 
+    const filterParams: unknown[] = [sinceParam];
+    let filterProjectSql = '';
+    if (projectId) {
+      filterParams.push(projectId);
+      filterProjectSql = ` AND t.project_id = $${filterParams.length}`;
+    }
+
     const summary = await pool.query(
       `SELECT
          COUNT(*)::int AS assignments,
-         COUNT(*) FILTER (WHERE previous_employee_id IS NOT NULL AND previous_employee_id <> employee_id)::int AS reassignments,
-         COUNT(DISTINCT employee_id)::int AS employees_affected,
-         MAX(changed_at) AS latest_change
-       FROM task_assignments
-       WHERE changed_at >= NOW() - $1::interval`,
-      [sinceParam],
+         COUNT(*) FILTER (WHERE ta.previous_employee_id IS NOT NULL AND ta.previous_employee_id <> ta.employee_id)::int AS reassignments,
+         COUNT(DISTINCT ta.employee_id)::int AS employees_affected,
+         MAX(ta.changed_at) AS latest_change
+       FROM task_assignments ta
+       LEFT JOIN tasks t ON t.id = ta.task_id
+       WHERE ta.changed_at >= NOW() - $1::interval
+       ${filterProjectSql}`,
+      filterParams,
     );
 
     const recent = await pool.query(
       `SELECT
-         id,
-         task_id AS "taskId",
-         employee_id AS "employeeId",
-         employee_name AS "employeeName",
-         previous_employee_id AS "previousEmployeeId",
-         previous_employee_name AS "previousEmployeeName",
-         assignment_source AS "assignmentSource",
-         changed_at AS "changedAt"
-       FROM task_assignments
-       WHERE changed_at >= NOW() - $1::interval
-       ORDER BY changed_at DESC
+         ta.id,
+         ta.task_id AS "taskId",
+         ta.employee_id AS "employeeId",
+         ta.employee_name AS "employeeName",
+         ta.previous_employee_id AS "previousEmployeeId",
+         ta.previous_employee_name AS "previousEmployeeName",
+         ta.assignment_source AS "assignmentSource",
+         ta.changed_at AS "changedAt",
+         t.project_id AS "projectId"
+       FROM task_assignments ta
+       LEFT JOIN tasks t ON t.id = ta.task_id
+       WHERE ta.changed_at >= NOW() - $1::interval
+       ${filterProjectSql}
+       ORDER BY ta.changed_at DESC
        LIMIT 30`,
-      [sinceParam],
+      filterParams,
     );
 
     const topReassigned = await pool.query(
       `SELECT
-         employee_id AS "employeeId",
-         employee_name AS "employeeName",
+         ta.employee_id AS "employeeId",
+         ta.employee_name AS "employeeName",
          COUNT(*)::int AS assignments,
-         COUNT(*) FILTER (WHERE previous_employee_id IS NOT NULL AND previous_employee_id <> employee_id)::int AS reassignments
-       FROM task_assignments
-       WHERE changed_at >= NOW() - $1::interval
-       GROUP BY employee_id, employee_name
-       ORDER BY reassignments DESC, assignments DESC, employee_name ASC
+         COUNT(*) FILTER (WHERE ta.previous_employee_id IS NOT NULL AND ta.previous_employee_id <> ta.employee_id)::int AS reassignments
+       FROM task_assignments ta
+       LEFT JOIN tasks t ON t.id = ta.task_id
+       WHERE ta.changed_at >= NOW() - $1::interval
+       ${filterProjectSql}
+       GROUP BY ta.employee_id, ta.employee_name
+       ORDER BY reassignments DESC, assignments DESC, "employeeName" ASC
        LIMIT 8`,
-      [sinceParam],
+      filterParams,
+    );
+
+    const sourceBreakdown = await pool.query(
+      `SELECT
+         COALESCE(ta.assignment_source, 'unknown') AS source,
+         COUNT(*)::int AS assignments,
+         COUNT(*) FILTER (WHERE ta.previous_employee_id IS NOT NULL AND ta.previous_employee_id <> ta.employee_id)::int AS reassignments
+       FROM task_assignments ta
+       LEFT JOIN tasks t ON t.id = ta.task_id
+       WHERE ta.changed_at >= NOW() - $1::interval
+       ${filterProjectSql}
+       GROUP BY source
+       ORDER BY assignments DESC, source ASC`,
+      filterParams,
+    );
+
+    const projectBreakdown = await pool.query(
+      `SELECT
+         COALESCE(t.project_id, 'unknown') AS "projectId",
+         COUNT(*)::int AS assignments,
+         COUNT(*) FILTER (WHERE ta.previous_employee_id IS NOT NULL AND ta.previous_employee_id <> ta.employee_id)::int AS reassignments
+       FROM task_assignments ta
+       LEFT JOIN tasks t ON t.id = ta.task_id
+       WHERE ta.changed_at >= NOW() - $1::interval
+       ${filterProjectSql}
+       GROUP BY "projectId"
+       ORDER BY reassignments DESC, assignments DESC
+       LIMIT 10`,
+      filterParams,
     );
 
     return NextResponse.json({
@@ -101,6 +145,8 @@ export async function GET(req: NextRequest) {
       summary: summary.rows[0],
       recentChanges: recent.rows,
       topReassigned: topReassigned.rows,
+      sourceBreakdown: sourceBreakdown.rows,
+      projectBreakdown: projectBreakdown.rows,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

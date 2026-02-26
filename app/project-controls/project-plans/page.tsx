@@ -1086,6 +1086,8 @@ export default function DocumentsPage() {
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingProjectFilter, setMappingProjectFilter] = useState<string>('');
   const [mappingSearch, setMappingSearch] = useState('');
+  const [mappingSuggestionStatusFilter, setMappingSuggestionStatusFilter] = useState<'pending' | 'applied' | 'dismissed' | 'all'>('pending');
+  const [mappingSuggestionMinConfidenceFilter, setMappingSuggestionMinConfidenceFilter] = useState<number>(0);
   const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
   const [mappingSuggestions, setMappingSuggestions] = useState<MappingSuggestionRow[]>([]);
   const [mappingSuggestionStats, setMappingSuggestionStats] = useState<MappingSuggestionStats | null>(null);
@@ -1330,7 +1332,8 @@ export default function DocumentsPage() {
         body: JSON.stringify({
           action: 'listMappingSuggestions',
           projectId: mappingProjectFilter,
-          status: 'pending',
+          status: mappingSuggestionStatusFilter,
+          minConfidence: mappingSuggestionMinConfidenceFilter > 0 ? mappingSuggestionMinConfidenceFilter : undefined,
           limit: 120,
         }),
       });
@@ -1343,7 +1346,7 @@ export default function DocumentsPage() {
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [mappingProjectFilter, addLog]);
+  }, [mappingProjectFilter, mappingSuggestionStatusFilter, mappingSuggestionMinConfidenceFilter, addLog]);
 
   const loadMappingSuggestionStats = useCallback(async () => {
     if (!mappingProjectFilter) {
@@ -1378,7 +1381,7 @@ export default function DocumentsPage() {
         body: JSON.stringify({
           action: 'generateMappingSuggestions',
           projectId: mappingProjectFilter,
-          minConfidence: 0.78,
+          minConfidence: Math.max(0.78, mappingSuggestionMinConfidenceFilter || 0),
           limit: 300,
         }),
       });
@@ -1393,7 +1396,7 @@ export default function DocumentsPage() {
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [mappingProjectFilter, addLog, loadMappingSuggestions, loadMappingSuggestionStats]);
+  }, [mappingProjectFilter, mappingSuggestionMinConfidenceFilter, addLog, loadMappingSuggestions, loadMappingSuggestionStats]);
 
   const handleApplyMappingSuggestion = useCallback(async (suggestionId: number) => {
     setMappingSuggestionsLoading(true);
@@ -1448,7 +1451,7 @@ export default function DocumentsPage() {
         body: JSON.stringify({
           action: 'applyMappingSuggestionsBatch',
           projectId: mappingProjectFilter,
-          minConfidence: 0.9,
+          minConfidence: Math.max(0.9, mappingSuggestionMinConfidenceFilter || 0),
           limit: 60,
         }),
       });
@@ -1464,7 +1467,7 @@ export default function DocumentsPage() {
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [mappingProjectFilter, addLog, refreshData, loadMappingSuggestions, loadMappingSuggestionStats]);
+  }, [mappingProjectFilter, mappingSuggestionMinConfidenceFilter, addLog, refreshData, loadMappingSuggestions, loadMappingSuggestionStats]);
 
   const handlePruneClosedSuggestions = useCallback(async () => {
     if (!mappingProjectFilter) return;
@@ -2317,6 +2320,35 @@ export default function DocumentsPage() {
                   value={mappingSearch}
                   onChange={(e) => setMappingSearch(e.target.value)}
                   placeholder="Filter entries..."
+                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div style={{ minWidth: '170px' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+                  Suggestion Status
+                </label>
+                <select
+                  value={mappingSuggestionStatusFilter}
+                  onChange={(e) => setMappingSuggestionStatusFilter(e.target.value as 'pending' | 'applied' | 'dismissed' | 'all')}
+                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+                >
+                  <option value="pending">Pending</option>
+                  <option value="applied">Applied</option>
+                  <option value="dismissed">Dismissed</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+              <div style={{ minWidth: '160px' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+                  Min Confidence
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={mappingSuggestionMinConfidenceFilter}
+                  onChange={(e) => setMappingSuggestionMinConfidenceFilter(Math.min(1, Math.max(0, Number(e.target.value || 0))))}
                   style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
                 />
               </div>

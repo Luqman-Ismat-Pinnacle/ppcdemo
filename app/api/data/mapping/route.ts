@@ -512,11 +512,33 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
       }
       const projectId = String(body.projectId || '');
-      const status = String(body.status || 'pending');
+      const status = String(body.status || 'pending').toLowerCase();
+      const minConfidence = body.minConfidence != null ? Number(body.minConfidence) : null;
+      const olderThanDays = body.olderThanDays != null ? Number(body.olderThanDays) : null;
       const limit = Math.min(500, Math.max(1, Number(body.limit ?? 200)));
       if (!projectId) {
         return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
       }
+      if (!['pending', 'applied', 'dismissed', 'all'].includes(status)) {
+        return NextResponse.json({ success: false, error: 'Invalid status filter' }, { status: 400 });
+      }
+
+      const clauses: string[] = ['ms.project_id = $1'];
+      const params: unknown[] = [projectId];
+      if (status !== 'all') {
+        params.push(status);
+        clauses.push(`ms.status = $${params.length}`);
+      }
+      if (Number.isFinite(minConfidence as number)) {
+        params.push(Math.min(1, Math.max(0, Number(minConfidence))));
+        clauses.push(`ms.confidence >= $${params.length}`);
+      }
+      if (Number.isFinite(olderThanDays as number) && Number(olderThanDays) > 0) {
+        params.push(String(Math.min(365, Math.max(1, Number(olderThanDays)))));
+        clauses.push(`ms.created_at < NOW() - ($${params.length}::text || ' days')::interval`);
+      }
+      params.push(limit);
+
       const result = await pgQuery(
         `SELECT
            ms.id,
@@ -539,10 +561,10 @@ export async function POST(req: NextRequest) {
          FROM mapping_suggestions ms
          LEFT JOIN hour_entries he ON he.id = ms.hour_entry_id
          LEFT JOIN tasks t ON t.id = ms.task_id
-         WHERE ms.project_id = $1 AND ms.status = $2
+         WHERE ${clauses.join(' AND ')}
          ORDER BY ms.confidence DESC, ms.created_at DESC
-         LIMIT $3`,
-        [projectId, status, limit],
+         LIMIT $${params.length}`,
+        params,
       );
       return NextResponse.json({ success: true, suggestions: result.rows });
     }
