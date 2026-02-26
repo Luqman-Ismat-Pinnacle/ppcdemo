@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 import { DATA_KEY_TO_TABLE } from '@/lib/supabase';
 import { parseHourDescription } from '@/lib/hours-description';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
 
 type SyncOperation =
   | 'wipeAll'
@@ -32,6 +33,28 @@ interface SyncRequestBody {
   healthScore?: unknown;
   healthCheckJson?: unknown;
   taskIds?: unknown;
+}
+
+function requiredPermissionForSync(
+  tableName: string,
+  operation: SyncOperation,
+): Parameters<typeof hasRolePermission>[1] | null {
+  if (tableName === 'project_documents' || tableName === 'project_document_records' || tableName === 'project_document_versions') {
+    return 'manageDocuments';
+  }
+  if (tableName === 'units' || tableName === 'phases' || tableName === 'task_dependencies') {
+    return 'publishPlans';
+  }
+  if (tableName === 'tasks') {
+    return operation === 'update' ? 'editWbs' : 'publishPlans';
+  }
+  if (tableName === 'hour_entries' || tableName === 'project_mappings' || tableName === 'mapping_suggestions') {
+    return 'editMapping';
+  }
+  if (tableName === 'alert_events') {
+    return 'triageExceptions';
+  }
+  return null;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -404,6 +427,7 @@ async function getSupabaseClient() {
 export async function POST(req: NextRequest) {
   try {
     const usePostgres = isPostgresConfigured();
+    const roleContext = roleContextFromRequest(req);
     const body = parseRequestBody(await req.json());
     const { dataKey, records, operation, projectId, storagePath, healthScore, healthCheckJson } = body;
 
@@ -412,6 +436,9 @@ export async function POST(req: NextRequest) {
     // Intended for local/dev use when resetting the dataset.
     // ------------------------------------------------------------------
     if (operation === 'wipeAll') {
+      if (!hasRolePermission(roleContext, 'publishPlans')) {
+        return NextResponse.json({ success: false, error: 'Forbidden for current role view' }, { status: 403 });
+      }
       const tables = Array.from(new Set(Object.values(DATA_KEY_TO_TABLE)));
 
       if (usePostgres) {
@@ -460,6 +487,10 @@ export async function POST(req: NextRequest) {
     const tableName = DATA_KEY_TO_TABLE[dataKey];
     if (!tableName) {
       return NextResponse.json({ success: false, error: `Unknown data key: ${dataKey}` }, { status: 400 });
+    }
+    const requiredPermission = requiredPermissionForSync(tableName, operation);
+    if (requiredPermission && !hasRolePermission(roleContext, requiredPermission)) {
+      return NextResponse.json({ success: false, error: 'Forbidden for current role view' }, { status: 403 });
     }
 
     if (usePostgres && (tableName === 'units' || tableName === 'phases' || tableName === 'tasks')) {
