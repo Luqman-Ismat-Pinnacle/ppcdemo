@@ -12,12 +12,14 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useUser as useAuth0User } from '@auth0/nextjs-auth0/client';
+import { hasGlobalViewAccess, resolveRoleForIdentity } from '@/lib/access-control';
 
 export interface UserInfo {
   name: string;
   email: string;
   role: string;
   initials: string;
+  canViewAll: boolean;
   employeeId?: string | null;
   department?: string;
   managementLevel?: string;
@@ -46,6 +48,7 @@ const DEMO_USER: UserInfo = {
   email: 'demo@pinnacle.com',
   role: 'Admin',
   initials: 'DU',
+  canViewAll: true,
 };
 
 /**
@@ -96,8 +99,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setEnrichedUser({
           name: auth0User.name || 'User',
           email: '',
-          role: 'User',
+          role: resolveRoleForIdentity({ email: auth0User.email || '', fallbackRole: 'User' }),
           initials: getInitials(auth0User.name || 'User'),
+          canViewAll: hasGlobalViewAccess({
+            email: auth0User.email || '',
+            role: resolveRoleForIdentity({ email: auth0User.email || '', fallbackRole: 'User' }),
+          }),
         });
         setFetched(true);
         return;
@@ -112,11 +119,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
 
         if (data.success && data.employee) {
+          const resolvedRole = resolveRoleForIdentity({
+            email: data.employee.email || auth0User.email || '',
+            fallbackRole: data.employee.role,
+          });
           setEnrichedUser({
             name: data.employee.name || auth0User.name || 'User',
             email: data.employee.email || auth0User.email || '',
-            role: data.employee.role,
+            role: resolvedRole,
             initials: getInitials(data.employee.name || auth0User.name || 'User'),
+            canViewAll: Boolean(data.employee.canViewAll) || hasGlobalViewAccess({
+              email: data.employee.email || auth0User.email || '',
+              role: resolvedRole,
+            }),
             employeeId: data.employee.employeeId,
             department: data.employee.department,
             managementLevel: data.employee.managementLevel,
@@ -124,21 +139,37 @@ export function UserProvider({ children }: { children: ReactNode }) {
           });
         } else {
           // No match — use Auth0 info with default role
+          const resolvedRole = resolveRoleForIdentity({
+            email: auth0User.email || '',
+            fallbackRole: 'User',
+          });
           setEnrichedUser({
             name: auth0User.name || 'User',
             email: auth0User.email || '',
-            role: 'User',
+            role: resolvedRole,
             initials: getInitials(auth0User.name || 'User'),
+            canViewAll: hasGlobalViewAccess({
+              email: auth0User.email || '',
+              role: resolvedRole,
+            }),
           });
         }
       } catch (err) {
         console.error('[UserContext] Employee match failed:', err);
         // Fallback to Auth0 info
+        const resolvedRole = resolveRoleForIdentity({
+          email: auth0User.email || '',
+          fallbackRole: 'User',
+        });
         setEnrichedUser({
           name: auth0User.name || 'User',
           email: auth0User.email || '',
-          role: 'User',
+          role: resolvedRole,
           initials: getInitials(auth0User.name || 'User'),
+          canViewAll: hasGlobalViewAccess({
+            email: auth0User.email || '',
+            role: resolvedRole,
+          }),
         });
       }
       setFetchingProfile(false);

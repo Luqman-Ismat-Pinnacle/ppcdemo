@@ -52,9 +52,13 @@ export default function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     const params = new URLSearchParams();
-    if (user.employeeId) params.set('employeeId', user.employeeId);
-    if (user.role) params.set('role', user.role);
-    if (!params.toString()) return;
+    if (user.canViewAll) {
+      params.set('all', '1');
+    } else {
+      if (user.employeeId) params.set('employeeId', user.employeeId);
+      if (user.role) params.set('role', user.role);
+      if (!params.toString()) return;
+    }
 
     setLoading(true);
     try {
@@ -104,7 +108,11 @@ export default function NotificationBell() {
       await fetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markAllRead: true, employeeId: user?.employeeId, role: user?.role }),
+        body: JSON.stringify(
+          user?.canViewAll
+            ? { markAllRead: true, all: true }
+            : { markAllRead: true, employeeId: user?.employeeId, role: user?.role }
+        ),
       });
     } catch { /* silent */ }
   };

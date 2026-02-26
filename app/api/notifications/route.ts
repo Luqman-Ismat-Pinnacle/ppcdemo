@@ -42,8 +42,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get('employeeId');
     const role = searchParams.get('role');
+    const all = searchParams.get('all') === '1';
 
-    if (!employeeId && !role) {
+    if (!all && !employeeId && !role) {
       return NextResponse.json(
         { success: false, error: 'Query param employeeId or role is required' },
         { status: 400 }
@@ -51,7 +52,15 @@ export async function GET(req: NextRequest) {
     }
 
     let result;
-    if (employeeId && role) {
+    if (all) {
+      result = await pool.query(
+        `SELECT id, employee_id AS "employeeId", role, type, title, message,
+                related_task_id AS "relatedTaskId", related_project_id AS "relatedProjectId",
+                is_read AS "isRead", created_at AS "createdAt"
+         FROM notifications
+         ORDER BY created_at DESC`
+      );
+    } else if (employeeId && role) {
       result = await pool.query(
         `SELECT id, employee_id AS "employeeId", role, type, title, message,
                 related_task_id AS "relatedTaskId", related_project_id AS "relatedProjectId",
@@ -99,9 +108,11 @@ export async function PATCH(req: NextRequest) {
     }
     await ensureTable(pool);
     const body = await req.json();
-    const { id, ids, markAllRead, employeeId, role } = body;
+    const { id, ids, markAllRead, employeeId, role, all } = body;
 
-    if (markAllRead && (employeeId || role)) {
+    if (markAllRead && all === true) {
+      await pool.query(`UPDATE notifications SET is_read = true WHERE is_read = false`);
+    } else if (markAllRead && (employeeId || role)) {
       const conditions: string[] = [];
       const params: string[] = [];
       if (employeeId) { params.push(employeeId); conditions.push(`employee_id = $${params.length}`); }
