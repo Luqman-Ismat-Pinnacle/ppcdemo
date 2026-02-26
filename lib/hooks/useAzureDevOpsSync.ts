@@ -43,7 +43,7 @@ export function useAzureDevOpsSync() {
         return { success: false, error: error.error || 'Failed to sync to Azure DevOps' };
       }
 
-      const result = await response.json();
+      await response.json();
       return { success: true };
     } catch (error) {
       // Azure DevOps sync failed - continuing without sync

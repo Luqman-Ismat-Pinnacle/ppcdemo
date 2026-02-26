@@ -406,8 +406,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('[Mapping] Error:', err);
-    return NextResponse.json({ success: false, error: err?.message || 'Unknown error' }, { status: 500 });
+    return NextResponse.json({ success: false, error: message || 'Unknown error' }, { status: 500 });
   }
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 /**
  * Drift guard: prevent reintroduction of inline KPI formulas in overview pages.

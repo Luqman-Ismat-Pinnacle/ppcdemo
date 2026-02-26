@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * One-off: fetch Workday Customer Contract Lines report and print record count + sample rows.
  * Loads WORKDAY_ISU_USER, WORKDAY_ISU_PASS from .env.local (or env). Run from repo root.

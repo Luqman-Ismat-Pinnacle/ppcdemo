@@ -666,8 +666,6 @@ export default function WBSGanttPage() {
     () => visibleDefs.map((c) => ({ id: c.id, title: c.title, width: Math.max(56, Math.round(columnWidths[c.id] || c.width)) })),
     [visibleDefs, columnWidths],
   );
-  const numericColumnIds = useMemo(() => new Set(['days', 'blh', 'acth', 'remh', 'work', 'blc', 'actc', 'remc', 'sched', 'cpi', 'eff', 'pct', 'tf']), []);
-
   const baseFilteredRows = useMemo(() => {
     const globalQuery = searchAllQuery.trim().toLowerCase();
     return flatRows.filter((row) => {
@@ -892,7 +890,6 @@ export default function WBSGanttPage() {
     const def = visibleDefs[col];
     if (!r || !def) return;
 
-    const isNumeric = numericColumnIds.has(def.id);
     const isCritical = r.isCritical;
     const bg = isCritical ? 'rgba(220,38,38,0.12)' : uiColors.bgPrimary;
 
@@ -1020,7 +1017,7 @@ export default function WBSGanttPage() {
     ctx.clip();
     ctx.fillText(text, x, y);
     ctx.restore();
-  }, [filteredRows, visibleDefs, numericColumnIds, uiColors, getDisplayText, showVariance, getSnapshotValue]);
+  }, [filteredRows, visibleDefs, uiColors, getDisplayText, showVariance, getSnapshotValue]);
 
   const onCellClicked = useCallback((cell: Item) => {
     const [col, row] = cell;

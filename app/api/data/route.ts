@@ -28,8 +28,9 @@ export async function GET() {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Error fetching data:', error);
-    return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+    return NextResponse.json({ data: null, error: message }, { status: 500 });
   }
 }

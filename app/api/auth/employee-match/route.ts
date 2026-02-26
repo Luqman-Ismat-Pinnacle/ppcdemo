@@ -49,8 +49,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, employee: null, message: 'No match found' });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('[Employee Match]', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

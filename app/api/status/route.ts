@@ -55,9 +55,10 @@ export async function GET() {
     }
 
     result.latency = Date.now() - startTime;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     result.latency = Date.now() - startTime;
-    result.error = error?.message || 'Unknown error';
+    result.error = message;
     result.status = result.details.supabaseConfigured ? 'degraded' : 'disconnected';
   }
 

@@ -269,7 +269,7 @@ export async function runFullSyncAzure(connectionString: string, hoursDaysBack: 
           }
         }
       }
-    } catch (_e) {
+    } catch {
       console.warn('[workday-sync azure] Integration report failed (non-fatal)');
     }
 
@@ -320,7 +320,7 @@ export async function runFullSyncAzure(connectionString: string, hoursDaysBack: 
 
     try {
       summary.matching = await runMatchingAzure(client);
-    } catch (_e) {
+    } catch {
       /* non-fatal */
     }
 

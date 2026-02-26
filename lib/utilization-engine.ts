@@ -155,7 +155,7 @@ export class UtilizationEngine {
       : 0;
     
     // Calculate current efficiency (actual vs baseline for work done)
-    const currentEfficiency = this.calculateCurrentEfficiency(assignedTasks, employeeHours);
+    const currentEfficiency = this.calculateCurrentEfficiency(assignedTasks);
     
     // Calculate projected efficiency using weighted trend
     const projectedEfficiency = this.calculateProjectedEfficiency(
@@ -209,10 +209,7 @@ export class UtilizationEngine {
    * > 100% means work done faster than planned
    * < 100% means work took longer than planned
    */
-  private calculateCurrentEfficiency(
-    tasks: Task[],
-    hours: HourEntry[]
-  ): number {
+  private calculateCurrentEfficiency(tasks: Task[]): number {
     // Get completed or in-progress tasks
     const relevantTasks = tasks.filter(t => 
       t.status === 'Completed' || 
@@ -250,7 +247,7 @@ export class UtilizationEngine {
     
     if (periods.length === 0) {
       // No historical data, return current efficiency
-      return this.calculateCurrentEfficiency(tasks, hours);
+      return this.calculateCurrentEfficiency(tasks);
     }
     
     // Calculate efficiency for each period

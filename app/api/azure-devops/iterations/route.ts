@@ -46,11 +46,13 @@ export async function GET(request: Request) {
       log('Iterations fetched', { count: iterations.value?.length ?? 0 });
       return NextResponse.json({ iterations: iterations.value || [] });
     }
-  } catch (error: any) {
-    console.error('[Azure DevOps] Error:', error?.message ?? error);
-    log('Request failed', { error: error?.message, stack: error?.stack?.slice(0, 200) });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('[Azure DevOps] Error:', message);
+    log('Request failed', { error: message, stack: stack?.slice(0, 200) });
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch iterations' },
+      { error: message || 'Failed to fetch iterations' },
       { status: 500 }
     );
   }

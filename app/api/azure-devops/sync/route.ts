@@ -26,9 +26,9 @@ export async function POST(request: Request) {
       workItemType,
       changes
     }: {
-      workItem: any;
+      workItem: Record<string, unknown>;
       workItemType: ADOWorkItemType;
-      changes: Record<string, any>;
+      changes: Record<string, unknown>;
     } = body;
 
     if (!workItem || !workItemType || !changes) {
@@ -46,10 +46,11 @@ export async function POST(request: Request) {
       adoWorkItemId: result.id,
       result
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Error syncing to Azure DevOps:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to sync to Azure DevOps' },
+      { error: message || 'Failed to sync to Azure DevOps' },
       { status: 500 }
     );
   }

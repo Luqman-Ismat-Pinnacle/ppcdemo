@@ -12,7 +12,7 @@
  * @module app/insights/milestones/page
  */
 
-import React, { useMemo, useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useData } from '@/lib/data-context';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import InsightsFilterBar, { type FilterChip } from '@/components/insights/InsightsFilterBar';
@@ -35,7 +35,20 @@ function formatPercent(value: unknown): string {
   return `${Number(n.toFixed(2))}%`;
 }
 
-function getMilestoneRiskFlag(m: any): 'High' | 'Medium' | 'Low' | 'None' {
+type MilestoneLike = {
+  status?: string;
+  varianceDays?: number;
+  percentComplete?: number;
+  plannedCompletion?: string | null;
+  actualCompletion?: string | null;
+  customer?: string;
+  site?: string;
+  projectNum?: string;
+  name?: string;
+  forecastedCompletion?: string | null;
+};
+
+function getMilestoneRiskFlag(m: MilestoneLike): 'High' | 'Medium' | 'Low' | 'None' {
   const status = String(m.status || '').toLowerCase();
   const varianceDays = Number(m.varianceDays || 0);
   const progress = Number(m.percentComplete || 0);
@@ -73,7 +86,7 @@ export default function MilestonesPage() {
 
   const filteredScoreboard = useMemo(() => {
     let list = data.milestoneScoreboard || [];
-    if (customerFilterValues.length > 0) list = list.filter((i: any) => customerFilterValues.includes(i.customer));
+    if (customerFilterValues.length > 0) list = list.filter((i) => customerFilterValues.includes(i.customer || ''));
     return list;
   }, [data.milestoneScoreboard, customerFilterValues]);
 
@@ -95,14 +108,14 @@ export default function MilestonesPage() {
   }, [filteredScoreboard, scoreboardSort]);
 
   const filteredMilestones = useMemo(() => {
-    let list = data.milestones || [];
+    let list = (data.milestones || []) as MilestoneLike[];
     if (statusFilterValues.length > 0) {
-      list = list.filter((m: any) => {
+      list = list.filter((m) => {
         const s = (m.status || '').toString();
         return statusFilterValues.some((f) => s === f || (f === 'Completed' && (s === 'Complete' || s === 'Completed')));
       });
     }
-    if (customerFilterValues.length > 0) list = list.filter((m: any) => customerFilterValues.includes(m.customer));
+    if (customerFilterValues.length > 0) list = list.filter((m) => customerFilterValues.includes(m.customer || ''));
     return list;
   }, [data.milestones, statusFilterValues, customerFilterValues]);
 
@@ -293,7 +306,10 @@ export default function MilestonesPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedMilestones.map((m, idx) => (
+                {sortedMilestones.map((m, idx) => {
+                  const percentComplete = Number(m.percentComplete ?? 0);
+                  const varianceDays = Number(m.varianceDays ?? 0);
+                  return (
                   <tr key={idx}>
                     <td>{m.customer}</td>
                     <td>{m.site}</td>
@@ -313,7 +329,7 @@ export default function MilestonesPage() {
                         {m.status}
                       </span>
                     </td>
-                    <td className="number">{formatPercent(m.percentComplete)}</td>
+                    <td className="number">{formatPercent(percentComplete)}</td>
                     <td>{formatDate(m.plannedCompletion)}</td>
                     <td>{formatDate(m.forecastedCompletion)}</td>
                     <td>{formatDate(m.actualCompletion) || '-'}</td>
@@ -330,12 +346,12 @@ export default function MilestonesPage() {
                       >
                         <div
                           style={{
-                            width: `${m.percentComplete}%`,
+                            width: `${percentComplete}%`,
                             height: '100%',
                             background:
-                              m.percentComplete >= 75
+                              percentComplete >= 75
                                 ? 'var(--color-success)'
-                                : m.percentComplete >= 50
+                                : percentComplete >= 50
                                   ? 'var(--color-warning)'
                                   : 'var(--color-error)',
                             transition: 'width 0.3s ease',
@@ -343,8 +359,8 @@ export default function MilestonesPage() {
                         />
                       </div>
                     </td>
-                    <td className={`number ${m.varianceDays < 0 ? 'status-good' : m.varianceDays > 0 ? 'status-bad' : ''}`}>
-                      {m.varianceDays > 0 ? '+' : ''}{m.varianceDays}
+                    <td className={`number ${varianceDays < 0 ? 'status-good' : varianceDays > 0 ? 'status-bad' : ''}`}>
+                      {varianceDays > 0 ? '+' : ''}{varianceDays}
                     </td>
                     <td>
                       {(() => {
@@ -354,7 +370,7 @@ export default function MilestonesPage() {
                       })()}
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </TableCompareExport>

@@ -19,7 +19,7 @@ import { useData } from '@/lib/data-context';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 
 /** Safe number formatting - returns '0' for NaN/Infinity */
-const sn = (v: any, decimals = 1): string => {
+const sn = (v: unknown, decimals = 1): string => {
   const n = Number(v);
   return isFinite(n) ? n.toFixed(decimals) : '0';
 };
@@ -150,14 +150,6 @@ export default function HoursPage() {
       return [];
     }
     return [...new Set(data.laborBreakdown.byWorker.map((w) => w.role).filter(Boolean))].sort();
-  }, [data?.laborBreakdown]);
-
-  // Get unique charge codes from labor breakdown
-  const chargeCodes = useMemo(() => {
-    if (!data?.laborBreakdown?.byWorker || data.laborBreakdown.byWorker.length === 0) {
-      return [];
-    }
-    return [...new Set(data.laborBreakdown.byWorker.map((w) => w.chargeCode).filter(Boolean))].sort();
   }, [data?.laborBreakdown]);
 
   // Filter labor breakdown by all selected filters

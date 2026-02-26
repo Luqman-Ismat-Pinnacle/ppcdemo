@@ -8,6 +8,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query } from '@/lib/postgres';
 
+type ProjectDocumentRow = {
+  id: string;
+  project_id: string;
+  file_name: string;
+  storage_path: string | null;
+  file_type: string | null;
+  document_type: string | null;
+  uploaded_at: string | null;
+  is_current_version: boolean | null;
+};
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const name = searchParams.get('name')?.trim();
@@ -36,7 +47,7 @@ export async function GET(req: NextRequest) {
       [pattern]
     );
 
-    const documents = (result?.rows || []).map((row: any) => ({
+    const documents = ((result?.rows || []) as ProjectDocumentRow[]).map((row) => ({
       id: row.id,
       projectId: row.project_id,
       fileName: row.file_name,

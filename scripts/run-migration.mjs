@@ -22,7 +22,7 @@ function loadEnv() {
         const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
         if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
       }
-    } catch (_) {}
+    } catch {}
   }
 }
 loadEnv();

@@ -39,10 +39,11 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('Error fetching work items from Azure DevOps:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch work items' },
+      { error: message || 'Failed to fetch work items' },
       { status: 500 }
     );
   }

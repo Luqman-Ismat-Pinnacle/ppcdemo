@@ -1,5 +1,5 @@
 
-import { Employee, Portfolio, PortfolioTable } from '@/types/data';
+import { Employee, PortfolioTable } from '@/types/data';
 
 /**
  * Ensures that every Senior Manager has a corresponding Portfolio.
