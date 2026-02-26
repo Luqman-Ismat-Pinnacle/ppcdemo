@@ -10,11 +10,12 @@ import React from 'react';
 import Link from 'next/link';
 
 const ROLE_VIEWS = [
+  { title: 'PCL', href: '/role-views/pcl', status: 'Operational workstation' },
+  { title: 'PCA', href: '/role-views/pca', status: 'Operational workstation' },
   { title: 'Project Lead', href: '/role-views/project-lead', status: 'Active (Phase 7.1)' },
-  { title: 'PCA Mapping Workspace', href: '/role-views/pca-workspace', status: 'Active (Phase 7.2)' },
-  { title: 'PCL Exception View', href: '/role-views/pcl-exceptions', status: 'Active (Phase 7.3)' },
   { title: 'Senior Manager', href: '/role-views/senior-manager', status: 'Active (Phase 7.4)' },
-  { title: 'COO + AI Q&A', href: '/role-views/coo', status: 'Active (Phase 7.5)' },
+  { title: 'COO', href: '/role-views/coo', status: 'Active (Phase 7.5)' },
+  { title: 'RDA', href: '/role-views/rda', status: 'Operational workstation' },
   { title: 'Client Portal', href: '/role-views/client-portal', status: 'Active (Phase 7.6)' },
 ] as const;
 

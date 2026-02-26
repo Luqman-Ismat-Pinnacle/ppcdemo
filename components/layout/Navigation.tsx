@@ -23,6 +23,7 @@ import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRoleView } from '@/lib/role-view-context';
+import { ROLE_NAV_CONFIG } from '@/lib/role-navigation';
 
 interface NavItem {
   label?: string;
@@ -71,11 +72,11 @@ const navigation: NavDropdown[] = [
       { label: 'Role Views Hub', href: '/role-views' },
       { label: 'Project Lead', href: '/role-views/project-lead' },
       { divider: true },
-      { label: 'PCA Workspace', href: '/role-views/pca-workspace' },
-      { label: 'PCL Exceptions', href: '/role-views/pcl-exceptions' },
+      { label: 'PCA Workspace', href: '/role-views/pca' },
+      { label: 'PCL Workspace', href: '/role-views/pcl' },
       { label: 'Senior Manager', href: '/role-views/senior-manager' },
-      { label: 'COO + AI Q&A', href: '/role-views/coo' },
-      { label: 'Client Portal', href: '/role-views/client-portal' },
+      { label: 'COO', href: '/role-views/coo' },
+      { label: 'RDA', href: '/role-views/rda' },
     ],
   },
 ];
@@ -93,17 +94,19 @@ export default function Navigation() {
 
   const allowedDropdowns = useMemo(() => {
     switch (activeRole.key) {
-      case 'project-lead':
+      case 'project_lead':
         return new Set(['Project Controls', 'Project Management', 'Insights', 'Role Views']);
       case 'pca':
         return new Set(['Project Controls', 'Role Views']);
       case 'pcl':
         return new Set(['Project Controls', 'Insights', 'Role Views']);
-      case 'senior-manager':
+      case 'senior_manager':
       case 'coo':
-      case 'client':
+      case 'client_portal':
         return new Set(['Insights', 'Project Management', 'Role Views']);
-      case 'product-owner':
+      case 'rda':
+        return new Set(['Project Controls', 'Insights', 'Role Views']);
+      case 'product_owner':
       default:
         return null;
     }
@@ -111,8 +114,18 @@ export default function Navigation() {
 
   const visibleNavigation = useMemo(() => {
     if (!allowedDropdowns) return navigation;
-    return navigation.filter((dropdown) => allowedDropdowns.has(dropdown.label));
-  }, [allowedDropdowns]);
+    const base = navigation.filter((dropdown) => allowedDropdowns.has(dropdown.label));
+    return base.map((dropdown) => {
+      if (dropdown.label !== 'Role Views') return dropdown;
+      const roleNavItems = ROLE_NAV_CONFIG[activeRole.key]?.items || [];
+      const items: NavItem[] = [
+        { label: 'Role Views Hub', href: '/role-views' },
+        { divider: true },
+        ...roleNavItems.map((item) => ({ label: item.label, href: item.href })),
+      ];
+      return { ...dropdown, items };
+    });
+  }, [activeRole.key, allowedDropdowns]);
 
   return (
     <nav className="nav-menu" id="main-nav">

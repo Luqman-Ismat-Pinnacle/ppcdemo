@@ -94,7 +94,13 @@ export default function CooRoleViewPage() {
             Executive operating picture with narrative Q&amp;A grounded in live metrics.
           </div>
         </div>
-        <Link href="/role-views" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Back to role views</Link>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <Link href="/role-views/coo/period-review" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Period Review</Link>
+          <Link href="/role-views/coo/commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
+          <Link href="/role-views/coo/ai" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>AI</Link>
+          <Link href="/role-views/coo/wbs" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
+          <Link href="/role-views" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Hub</Link>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>

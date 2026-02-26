@@ -100,7 +100,13 @@ export default function ProjectLeadRoleViewPage() {
             Delivery execution metrics and issue queue using shared formulas.
           </div>
         </div>
-        <Link href="/role-views" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Back to role views</Link>
+        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <Link href="/role-views/project-lead/schedule" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Schedule</Link>
+          <Link href="/role-views/project-lead/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
+          <Link href="/role-views/project-lead/documents" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Documents</Link>
+          <Link href="/role-views/project-lead/report" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Report</Link>
+          <Link href="/role-views" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Hub</Link>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>

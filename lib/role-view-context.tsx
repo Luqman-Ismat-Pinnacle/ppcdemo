@@ -9,32 +9,10 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/lib/user-context';
+import { ROLE_PRESETS, getRolePreset, normalizeRoleKey } from '@/lib/role-navigation';
+import type { RolePreset, RoleViewKey } from '@/types/role-workstation';
 
-export type RoleViewKey =
-  | 'product-owner'
-  | 'project-lead'
-  | 'pca'
-  | 'pcl'
-  | 'senior-manager'
-  | 'coo'
-  | 'client';
-
-export interface RolePreset {
-  key: RoleViewKey;
-  label: string;
-  dashboardRoute: string;
-  description: string;
-}
-
-export const ROLE_PRESETS: RolePreset[] = [
-  { key: 'product-owner', label: 'Product Owner', dashboardRoute: '/role-views', description: 'Full system visibility and cross-role simulation.' },
-  { key: 'project-lead', label: 'Project Lead', dashboardRoute: '/role-views/project-lead', description: 'Execution, delivery health, and task risk.' },
-  { key: 'pca', label: 'PCA Workspace', dashboardRoute: '/role-views/pca-workspace', description: 'Data mapping governance and suggestion workflows.' },
-  { key: 'pcl', label: 'PCL Exceptions', dashboardRoute: '/role-views/pcl-exceptions', description: 'Exception triage and alert-response workflow.' },
-  { key: 'senior-manager', label: 'Senior Manager', dashboardRoute: '/role-views/senior-manager', description: 'Portfolio posture, escalations, and alerts.' },
-  { key: 'coo', label: 'COO + AI Q&A', dashboardRoute: '/role-views/coo', description: 'Executive KPI lens and Q&A decision support.' },
-  { key: 'client', label: 'Client Portal', dashboardRoute: '/role-views/client-portal', description: 'External-facing status and delivery transparency.' },
-];
+export type { RolePreset, RoleViewKey };
 
 const STORAGE_KEY = 'ppc.role_view_lens';
 
@@ -52,17 +30,20 @@ function normalizeRole(role: string | null | undefined): string {
 }
 
 function defaultRoleForUser(userRole: string | null | undefined, canViewAll: boolean): RoleViewKey {
-  if (canViewAll) return 'product-owner';
+  if (canViewAll) return 'product_owner';
   const role = normalizeRole(userRole);
-  if (role.includes('project lead')) return 'project-lead';
-  if (role.includes('senior manager')) return 'senior-manager';
+  if (role.includes('project lead')) return 'project_lead';
+  if (role.includes('senior manager')) return 'senior_manager';
   if (role.includes('coo')) return 'coo';
-  if (role.includes('client')) return 'client';
-  return 'project-lead';
+  if (role.includes('pca')) return 'pca';
+  if (role.includes('pcl')) return 'pcl';
+  if (role.includes('rda')) return 'rda';
+  if (role.includes('client')) return 'client_portal';
+  return 'project_lead';
 }
 
 function asPreset(key: RoleViewKey): RolePreset {
-  return ROLE_PRESETS.find((preset) => preset.key === key) || ROLE_PRESETS[0];
+  return getRolePreset(key);
 }
 
 export function RoleViewProvider({ children }: { children: React.ReactNode }) {
@@ -73,7 +54,8 @@ export function RoleViewProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const saved = window.localStorage.getItem(STORAGE_KEY) as RoleViewKey | null;
+    const savedRaw = window.localStorage.getItem(STORAGE_KEY);
+    const saved = savedRaw ? normalizeRoleKey(savedRaw) : null;
     if (!saved) return;
     if (!ROLE_PRESETS.some((preset) => preset.key === saved)) return;
     if (!canSwitchRoles && saved !== userDefaultRole) return;
@@ -103,8 +85,9 @@ export function RoleViewProvider({ children }: { children: React.ReactNode }) {
     activeRole: asPreset(activeRoleKey),
     canSwitchRoles,
     setActiveRole: (key: RoleViewKey) => {
-      if (!canSwitchRoles && key !== userDefaultRole) return;
-      setActiveRoleKey(key);
+      const normalized = normalizeRoleKey(key);
+      if (!canSwitchRoles && normalized !== userDefaultRole) return;
+      setActiveRoleKey(normalized);
     },
     presets: ROLE_PRESETS,
   }), [activeRoleKey, canSwitchRoles, userDefaultRole]);
@@ -119,4 +102,3 @@ export function useRoleView() {
   }
   return context;
 }
-

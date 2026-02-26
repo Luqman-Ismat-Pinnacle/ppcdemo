@@ -161,7 +161,7 @@ export default function PcaWorkspacePage() {
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Role View</div>
           <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.5rem' }}>PCA Mapping Workspace</h1>
         </div>
-        <Link href="/role-views" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Back to role views</Link>
+        <Link href="/role-views/pca" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Back to PCA workstation</Link>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.6rem' }}>

@@ -9,7 +9,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useRoleView, type RoleViewKey } from '@/lib/role-view-context';
+import { useRoleView } from '@/lib/role-view-context';
 
 export default function RoleViewSwitcher() {
   const router = useRouter();
@@ -83,7 +83,7 @@ export default function RoleViewSwitcher() {
                   key={preset.key}
                   type="button"
                   onClick={() => {
-                    setActiveRole(preset.key as RoleViewKey);
+                    setActiveRole(preset.key);
                     router.push(preset.dashboardRoute);
                   }}
                   disabled={!canSwitchRoles && !selected}
@@ -149,4 +149,3 @@ export default function RoleViewSwitcher() {
     </div>
   );
 }
-
