@@ -71,6 +71,17 @@ function ResourcingPageContent() {
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
+  const [assignmentSummary30d, setAssignmentSummary30d] = useState<{
+    assignments: number;
+    reassignments: number;
+    employees_affected: number;
+    latest_change: string | null;
+  } | null>(null);
+  const [selectedEmployeeAssignmentSummary, setSelectedEmployeeAssignmentSummary] = useState<{
+    assignments: number;
+    reassignments: number;
+    latest_change: string | null;
+  } | null>(null);
   const [levelingResult, setLevelingResult] = useState<LevelingResult | null>(null);
   const [orgSearch, setOrgSearch] = useState('');
   const [analyticsSearch, setAnalyticsSearch] = useState('');
@@ -219,6 +230,47 @@ function ResourcingPageContent() {
     () => calcUtilizationPct(summaryMetrics.totalAllocated, summaryMetrics.totalCapacity, 'resourcing', 'filtered-window'),
     [summaryMetrics.totalAllocated, summaryMetrics.totalCapacity]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAssignmentSummary = async () => {
+      try {
+        const res = await fetch('/api/tasks/assign?days=30', { cache: 'no-store' });
+        const result = await res.json();
+        if (!res.ok || !result.success || cancelled) return;
+        setAssignmentSummary30d(result.summary || null);
+      } catch {
+        if (!cancelled) setAssignmentSummary30d(null);
+      }
+    };
+    void loadAssignmentSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const employeeId = selectedEmployee?.id;
+    if (!employeeId) {
+      setSelectedEmployeeAssignmentSummary(null);
+      return;
+    }
+    const loadEmployeeSummary = async () => {
+      try {
+        const res = await fetch(`/api/tasks/assign?employeeId=${encodeURIComponent(String(employeeId))}&days=30`, { cache: 'no-store' });
+        const result = await res.json();
+        if (!res.ok || !result.success || cancelled) return;
+        setSelectedEmployeeAssignmentSummary(result.summary || null);
+      } catch {
+        if (!cancelled) setSelectedEmployeeAssignmentSummary(null);
+      }
+    };
+    void loadEmployeeSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEmployee?.id]);
 
   // ── Suggested tasks for an employee (role-matched only) ───────
   const getSuggestedTasks = useCallback((emp: any) => {
@@ -1186,7 +1238,7 @@ function ResourcingPageContent() {
               </div>
 
               {/* Metrics Strip */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <div style={{ padding: '0.75rem', background: `linear-gradient(135deg, ${uc}20, transparent)`, borderRadius: '10px', border: `1px solid ${uc}40`, textAlign: 'center' }}>
                   <div style={{ fontSize: '1.5rem', fontWeight: 800, color: uc }}>{selectedEmployee.utilization}%</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Utilization</div>
@@ -1203,7 +1255,16 @@ function ResourcingPageContent() {
                   <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10B981' }}>{fmt(selectedEmployee.availableHours)}</div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Available Hrs</div>
                 </div>
+                <div style={{ padding: '0.75rem', background: 'rgba(139,92,246,0.1)', borderRadius: '10px', border: '1px solid rgba(139,92,246,0.25)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#8B5CF6' }}>{selectedEmployeeAssignmentSummary?.reassignments ?? 0}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Reassignments (30d)</div>
+                </div>
               </div>
+              {selectedEmployeeAssignmentSummary?.latest_change ? (
+                <div style={{ marginTop: '-0.55rem', marginBottom: '0.9rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  Last assignment change: {new Date(selectedEmployeeAssignmentSummary.latest_change).toLocaleString()}
+                </div>
+              ) : null}
 
               {/* Projects */}
               {selectedEmployee.projects?.length > 0 && (
@@ -1373,7 +1434,7 @@ function ResourcingPageContent() {
         /* ═══ ANALYTICS TAB ═════════════════════════════════════════════════ */
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Scorecards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.75rem', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.75rem', flexShrink: 0 }}>
             {[
               { label: 'Portfolios', value: summaryMetrics.totalPortfolios },
               { label: 'Projects', value: summaryMetrics.totalProjects },
@@ -1381,6 +1442,7 @@ function ResourcingPageContent() {
               { label: 'Avg Utilization', value: `${summaryMetrics.avgUtilization}%`, accent: getUtilColor(summaryMetrics.avgUtilization), provenance: avgUtilizationMetric.provenance },
               { label: 'Overloaded', value: summaryMetrics.overloaded, accent: '#EF4444', bg: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.1)' : undefined, border: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.3)' : undefined },
               { label: 'Unassigned Tasks', value: summaryMetrics.unassignedTasks, accent: '#F59E0B', bg: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.1)' : undefined, border: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.3)' : undefined },
+              { label: 'Reassignments (30d)', value: assignmentSummary30d?.reassignments ?? 0, accent: '#8B5CF6' },
             ].map(m => (
               <div key={m.label} style={{ padding: '0.75rem', background: m.bg || 'var(--bg-card)', borderRadius: '10px', border: `1px solid ${m.border || 'var(--border-color)'}` }}>
                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>

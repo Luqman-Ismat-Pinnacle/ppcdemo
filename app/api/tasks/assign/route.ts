@@ -9,6 +9,70 @@ import { emitAlertEvent, ensurePhase6Tables } from '@/lib/phase6-data';
 
 export const dynamic = 'force-dynamic';
 
+export async function GET(req: NextRequest) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return NextResponse.json({ success: false, error: 'PostgreSQL not configured' }, { status: 503 });
+    }
+    await ensurePhase6Tables(pool);
+
+    const { searchParams } = new URL(req.url);
+    const employeeId = searchParams.get('employeeId');
+    const days = Math.max(1, Math.min(180, Number(searchParams.get('days') || 30)));
+    const sinceParam = `${days} days`;
+
+    if (employeeId) {
+      const rows = await pool.query(
+        `SELECT
+           id,
+           task_id AS "taskId",
+           employee_id AS "employeeId",
+           employee_name AS "employeeName",
+           previous_employee_id AS "previousEmployeeId",
+           previous_employee_name AS "previousEmployeeName",
+           assignment_source AS "assignmentSource",
+           changed_at AS "changedAt",
+           metadata
+         FROM task_assignments
+         WHERE employee_id = $1
+           AND changed_at >= NOW() - $2::interval
+         ORDER BY changed_at DESC
+         LIMIT 100`,
+        [employeeId, sinceParam],
+      );
+      const summary = await pool.query(
+        `SELECT
+           COUNT(*)::int AS assignments,
+           COUNT(*) FILTER (WHERE previous_employee_id IS NOT NULL AND previous_employee_id <> employee_id)::int AS reassignments,
+           MAX(changed_at) AS latest_change
+         FROM task_assignments
+         WHERE employee_id = $1
+           AND changed_at >= NOW() - $2::interval`,
+        [employeeId, sinceParam],
+      );
+      return NextResponse.json({ success: true, assignments: rows.rows, summary: summary.rows[0] });
+    }
+
+    const summary = await pool.query(
+      `SELECT
+         COUNT(*)::int AS assignments,
+         COUNT(*) FILTER (WHERE previous_employee_id IS NOT NULL AND previous_employee_id <> employee_id)::int AS reassignments,
+         COUNT(DISTINCT employee_id)::int AS employees_affected,
+         MAX(changed_at) AS latest_change
+       FROM task_assignments
+       WHERE changed_at >= NOW() - $1::interval`,
+      [sinceParam],
+    );
+
+    return NextResponse.json({ success: true, summary: summary.rows[0] });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[API tasks/assign GET]', err);
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

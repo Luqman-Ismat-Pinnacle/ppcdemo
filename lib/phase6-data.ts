@@ -130,3 +130,32 @@ export async function emitAlertEvent(db: DbExecutor, event: AlertEventInput): Pr
     ],
   );
 }
+
+/**
+ * Emits alert only when there is no recent open/acknowledged alert with same dedupe key.
+ */
+export async function emitAlertEventIfAbsent(
+  db: DbExecutor,
+  event: AlertEventInput,
+  lookbackHours: number = 24,
+): Promise<boolean> {
+  if (!event.dedupeKey) {
+    await emitAlertEvent(db, event);
+    return true;
+  }
+
+  await ensurePhase6Tables(db);
+  const check = await db.query(
+    `SELECT 1
+     FROM alert_events
+     WHERE dedupe_key = $1
+       AND status IN ('open', 'acknowledged')
+       AND created_at >= NOW() - ($2::text || ' hours')::interval
+     LIMIT 1`,
+    [event.dedupeKey, String(Math.max(1, Math.floor(lookbackHours)))],
+  ) as { rows?: unknown[] };
+
+  if (check.rows && check.rows.length > 0) return false;
+  await emitAlertEvent(db, event);
+  return true;
+}

@@ -1402,6 +1402,33 @@ export default function DocumentsPage() {
     }
   }, [addLog, loadMappingSuggestions]);
 
+  const handleApplyHighConfidenceSuggestions = useCallback(async () => {
+    if (!mappingProjectFilter) return;
+    setMappingSuggestionsLoading(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'applyMappingSuggestionsBatch',
+          projectId: mappingProjectFilter,
+          minConfidence: 0.9,
+          limit: 60,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to apply high-confidence suggestions');
+      addLog('success', `[Mapping Suggestions] Batch applied ${result.applied || 0} suggestion(s)`);
+      await refreshData();
+      await loadMappingSuggestions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('error', message);
+    } finally {
+      setMappingSuggestionsLoading(false);
+    }
+  }, [mappingProjectFilter, addLog, refreshData, loadMappingSuggestions]);
+
   const handleSelectTaskForBucket = useCallback(async (bucketWorkdayPhaseId: string | null, taskId: string | null) => {
     if (!taskId) return;
     await handleAssignTaskToWorkdayPhase(taskId, bucketWorkdayPhaseId);
@@ -2264,6 +2291,23 @@ export default function DocumentsPage() {
                   >
                     {mappingSuggestionsLoading ? 'Scanning...' : 'Generate Suggestions'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyHighConfidenceSuggestions}
+                    disabled={mappingSaving || mappingSuggestionsLoading || !mappingProjectFilter || mappingSuggestions.length === 0}
+                    style={{
+                      padding: '0.55rem 0.9rem',
+                      background: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter && mappingSuggestions.length > 0 ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)',
+                      color: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter && mappingSuggestions.length > 0 ? '#10b981' : 'var(--text-muted)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter && mappingSuggestions.length > 0 ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Apply High-Confidence
+                  </button>
                 </div>
               </div>
             </div>
@@ -2335,6 +2379,9 @@ export default function DocumentsPage() {
                               </div>
                               <div style={{ fontSize: '0.71rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 Source: {s.sourceValue || s.hourDescription || s.hourEntryId}
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                Why: {s.reason}
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: '0.35rem' }}>

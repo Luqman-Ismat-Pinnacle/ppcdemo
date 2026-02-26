@@ -631,6 +631,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    if (action === 'applyMappingSuggestionsBatch') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const projectId = String(body.projectId || '');
+      const minConfidence = Math.min(0.99, Math.max(0.5, Number(body.minConfidence ?? 0.9)));
+      const limit = Math.min(500, Math.max(1, Number(body.limit ?? 50)));
+      if (!projectId) {
+        return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
+      }
+
+      const pending = await pgQuery(
+        `SELECT id, hour_entry_id, task_id, confidence
+         FROM mapping_suggestions
+         WHERE project_id = $1
+           AND status = 'pending'
+           AND confidence >= $2
+         ORDER BY confidence DESC, created_at DESC
+         LIMIT $3`,
+        [projectId, minConfidence, limit],
+      );
+
+      let applied = 0;
+      for (const row of pending.rows as Array<{ id: number; hour_entry_id: string; task_id: string; confidence: number }>) {
+        await pgQuery(
+          `UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2`,
+          [row.task_id, row.hour_entry_id],
+        );
+        await pgQuery(
+          `UPDATE mapping_suggestions SET status = 'applied', applied_at = NOW() WHERE id = $1`,
+          [row.id],
+        );
+        applied += 1;
+      }
+
+      await emitAlertEvent({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestions.batch_applied',
+        severity: applied > 0 ? 'info' : 'warning',
+        title: 'Batch Mapping Apply',
+        message: applied > 0
+          ? `Applied ${applied} mapping suggestions in batch for project ${projectId}.`
+          : `No mapping suggestions met batch threshold for project ${projectId}.`,
+        source: 'api/data/mapping',
+        entityType: 'project',
+        entityId: projectId,
+        relatedProjectId: projectId,
+        metadata: { projectId, minConfidence, limit, applied },
+      });
+
+      return NextResponse.json({ success: true, applied, considered: pending.rowCount || 0 });
+    }
+
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
