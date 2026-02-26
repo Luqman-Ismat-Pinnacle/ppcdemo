@@ -41,6 +41,13 @@ Tracks implementation status for Role View Enhancement Plan v2.1.
 - `check:role-enhancement-contracts` expanded to verify:
   - `/api/project-documents` list contract
   - key workstation routes return non-5xx (`/role-views/pca/plan-uploads`, `/role-views/project-lead/documents`)
+- Product Owner control-plane additions:
+  - new `/role-views/product-owner` command-center route
+  - command-center-first product-owner preset landing
+  - role switcher now routes to selected role command-center landing
+- Access control update:
+  - `angel.barras@pinnaclereliability.com` added as Product Owner full-access identity.
+- PCL command center now includes explicit resourcing action shortcut.
 
 ## Tier 1 Functionalization (Done)
 - PCA:

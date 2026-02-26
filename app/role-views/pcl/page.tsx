@@ -150,6 +150,7 @@ export default function PclHomePage() {
           actions={[
             { label: 'Exceptions', href: '/role-views/pcl/exceptions', permission: 'triageExceptions' },
             { label: 'Plans + Mapping', href: '/role-views/pcl/plans-mapping', permission: 'editMapping' },
+            { label: 'Resourcing', href: '/role-views/pcl/resourcing', permission: 'viewPortfolioCompliance' },
             { label: 'WBS Risk Queue', href: '/role-views/pcl/wbs', permission: 'editWbs' },
           ]}
         />

@@ -7,6 +7,7 @@
 
 const PRODUCT_OWNER_EMAILS = new Set([
   'luqman.ismat@pinnaclereliability.com',
+  'angel.barras@pinnaclereliability.com',
 ]);
 
 export function normalizeEmail(value: string | null | undefined): string {
@@ -36,4 +37,3 @@ export function hasGlobalViewAccess(params: {
   const role = String(params.role || '').trim().toLowerCase();
   return role === 'admin' || role === 'administrator';
 }
-

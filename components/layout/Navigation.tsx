@@ -26,6 +26,18 @@ interface NavDropdown {
 
 const PRODUCT_OWNER_NAV: NavDropdown[] = [
   {
+    label: 'Command',
+    items: [
+      { label: 'PO Command Center', href: '/role-views/product-owner' },
+      { label: 'PCL Command Center', href: '/role-views/pcl' },
+      { label: 'PCA Command Center', href: '/role-views/pca' },
+      { label: 'Project Lead Command Center', href: '/role-views/project-lead' },
+      { label: 'Senior Manager Command Center', href: '/role-views/senior-manager' },
+      { label: 'COO Command Center', href: '/role-views/coo' },
+      { label: 'RDA Command Center', href: '/role-views/rda' },
+    ],
+  },
+  {
     label: 'Project Controls',
     items: [
       { label: 'Project Plans', href: '/project-controls/project-plans' },

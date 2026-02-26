@@ -5,7 +5,7 @@
 import type { RoleNavConfig, RolePreset, RoleViewKey } from '@/types/role-workstation';
 
 export const ROLE_PRESETS: RolePreset[] = [
-  { key: 'product_owner', label: 'Product Owner', dashboardRoute: '/insights/overview', description: 'Global role simulation and end-to-end visibility.' },
+  { key: 'product_owner', label: 'Product Owner', dashboardRoute: '/role-views/product-owner', description: 'Global role simulation and end-to-end visibility.' },
   { key: 'pcl', label: 'PCL', dashboardRoute: '/role-views/pcl', description: 'Command center, compliance, and exception triage.' },
   { key: 'pca', label: 'PCA', dashboardRoute: '/role-views/pca', description: 'Project upload/parser/publish and mapping operations.' },
   { key: 'project_lead', label: 'Project Lead', dashboardRoute: '/role-views/project-lead', description: 'Forecast, schedule, commitments, and documents.' },
@@ -20,7 +20,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     role: 'product_owner',
     title: 'Product Owner',
     items: [
-      { label: 'Role Hub', href: '/role-views' },
+      { label: 'Command Center', href: '/role-views/product-owner' },
       { label: 'PCL', href: '/role-views/pcl' },
       { label: 'PCA', href: '/role-views/pca' },
       { label: 'Project Lead', href: '/role-views/project-lead' },
