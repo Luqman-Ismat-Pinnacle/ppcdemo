@@ -77,6 +77,36 @@ export default function PclExceptionsPage() {
     await loadAlerts();
   }, [activeRole.key, loadAlerts, user?.email]);
 
+  const escalate = useCallback(async (row: AlertRow) => {
+    const create = await fetch('/api/alerts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-role-view': activeRole.key,
+        'x-actor-email': user?.email || '',
+      },
+      body: JSON.stringify({
+        eventType: 'exception.escalated',
+        severity: row.severity === 'critical' ? 'critical' : 'warning',
+        title: `Escalated: ${row.title}`,
+        message: row.message,
+        source: 'role-views/pcl-exceptions',
+        entityType: 'alert_events',
+        entityId: String(row.id),
+        relatedProjectId: row.relatedProjectId,
+        metadata: { escalatedFromAlertId: row.id, status: row.status },
+      }),
+    });
+    const createPayload = await create.json().catch(() => ({}));
+    if (!create.ok || !createPayload.success) {
+      setMessage(createPayload.error || 'Failed to escalate alert');
+      return;
+    }
+    await updateStatus(row.id, 'acknowledged');
+    setMessage(`Escalated alert #${row.id}.`);
+    await loadAlerts();
+  }, [activeRole.key, loadAlerts, updateStatus, user?.email]);
+
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
@@ -100,7 +130,7 @@ export default function PclExceptionsPage() {
       {message ? <div style={{ fontSize: '0.78rem', color: '#F59E0B' }}>{message}</div> : null}
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '90px 140px 1fr 150px 160px', gap: '0.5rem', padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '90px 140px 1fr 150px 220px', gap: '0.5rem', padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
           <span>Severity</span>
           <span>Event</span>
           <span>Message</span>
@@ -113,7 +143,7 @@ export default function PclExceptionsPage() {
           ) : alerts.length === 0 ? (
             <div style={{ padding: '0.8rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No exceptions in this status.</div>
           ) : alerts.map((row) => (
-            <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '90px 140px 1fr 150px 160px', gap: '0.5rem', padding: '0.6rem 0.7rem', borderBottom: '1px solid var(--border-color)', alignItems: 'center' }}>
+            <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '90px 140px 1fr 150px 220px', gap: '0.5rem', padding: '0.6rem 0.7rem', borderBottom: '1px solid var(--border-color)', alignItems: 'center' }}>
               <span style={{ fontSize: '0.72rem', fontWeight: 700, color: row.severity === 'critical' ? '#EF4444' : row.severity === 'warning' ? '#F59E0B' : 'var(--text-secondary)' }}>{row.severity}</span>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{row.eventType}</span>
               <div style={{ minWidth: 0 }}>
@@ -124,6 +154,7 @@ export default function PclExceptionsPage() {
               <div style={{ display: 'flex', gap: '0.25rem' }}>
                 <button type="button" onClick={() => void updateStatus(row.id, 'acknowledged')} disabled={row.status !== 'open'} style={{ padding: '0.24rem 0.42rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: row.status === 'open' ? 'pointer' : 'not-allowed' }}>Ack</button>
                 <button type="button" onClick={() => void updateStatus(row.id, 'resolved')} disabled={row.status === 'resolved'} style={{ padding: '0.24rem 0.42rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: row.status === 'resolved' ? 'not-allowed' : 'pointer' }}>Resolve</button>
+                <button type="button" onClick={() => void escalate(row)} disabled={row.status === 'resolved'} style={{ padding: '0.24rem 0.42rem', borderRadius: 6, border: '1px solid var(--border-color)', background: 'rgba(245,158,11,0.12)', color: 'var(--text-primary)', cursor: row.status === 'resolved' ? 'not-allowed' : 'pointer' }}>Escalate</button>
               </div>
             </div>
           ))}

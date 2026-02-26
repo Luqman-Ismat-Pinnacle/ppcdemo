@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
 import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 
 export const dynamic = 'force-dynamic';
 const EDIT_WINDOW_DAYS = Math.max(1, Number(process.env.COMMITMENT_EDIT_WINDOW_DAYS || 3));
@@ -24,10 +25,17 @@ async function ensureTables(pool: import('pg').Pool) {
       commitment_text TEXT NOT NULL,
       followthrough_text TEXT,
       status TEXT NOT NULL DEFAULT 'draft',
+      review_note TEXT,
+      reviewed_by TEXT,
+      reviewed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (project_id, period_key, owner_role, author_email)
     );
+
+    ALTER TABLE commitments ADD COLUMN IF NOT EXISTS review_note TEXT;
+    ALTER TABLE commitments ADD COLUMN IF NOT EXISTS reviewed_by TEXT;
+    ALTER TABLE commitments ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
 
     CREATE INDEX IF NOT EXISTS idx_commitments_project_period ON commitments(project_id, period_key);
     CREATE INDEX IF NOT EXISTS idx_commitments_author_period ON commitments(author_email, period_key);
@@ -200,12 +208,93 @@ export async function POST(req: NextRequest) {
         JSON.stringify({ periodKey, status }),
       ],
     );
+    await writeWorkflowAudit(pool, {
+      eventType: 'commitment_upsert',
+      roleKey: roleContext.roleKey,
+      actorEmail: roleContext.actorEmail,
+      projectId,
+      entityType: 'commitment',
+      entityId: result.rows?.[0]?.id ?? id,
+      payload: { periodKey, status },
+    });
 
     return NextResponse.json({
       success: true,
       row: result.rows?.[0] ?? null,
       editableWindowDays: EDIT_WINDOW_DAYS,
     });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'submitCommitments')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for active role view' }, { status: 403 });
+    }
+
+    const pool = getPool();
+    if (!pool) return NextResponse.json({ success: false, error: 'PostgreSQL not configured' }, { status: 503 });
+    await ensureTables(pool);
+
+    const body = await req.json().catch(() => ({}));
+    const id = String(body.id || '').trim();
+    const status = String(body.status || '').trim().toLowerCase();
+    const reviewNote = body.reviewNote ? String(body.reviewNote) : null;
+    const reviewerEmail = body.reviewerEmail ? String(body.reviewerEmail) : roleContext.actorEmail;
+
+    if (!id || !status) {
+      return NextResponse.json({ success: false, error: 'id and status are required' }, { status: 400 });
+    }
+
+    const allowed = new Set(['draft', 'submitted', 'reviewed', 'escalated', 'approved', 'rejected']);
+    if (!allowed.has(status)) {
+      return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
+    }
+
+    const result = await pool.query(
+      `UPDATE commitments
+       SET status = $2,
+           review_note = COALESCE($3, review_note),
+           reviewed_by = $4,
+           reviewed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING
+         id,
+         project_id AS "projectId",
+         period_key AS "periodKey",
+         owner_role AS "ownerRole",
+         author_employee_id AS "authorEmployeeId",
+         author_email AS "authorEmail",
+         commitment_text AS "commitmentText",
+         followthrough_text AS "followthroughText",
+         status,
+         review_note AS "reviewNote",
+         reviewed_by AS "reviewedBy",
+         reviewed_at AS "reviewedAt",
+         updated_at AS "updatedAt"`,
+      [id, status, reviewNote, reviewerEmail],
+    );
+
+    if (!result.rows?.[0]) {
+      return NextResponse.json({ success: false, error: 'Commitment not found' }, { status: 404 });
+    }
+
+    await writeWorkflowAudit(pool, {
+      eventType: 'commitment_status_update',
+      roleKey: roleContext.roleKey,
+      actorEmail: reviewerEmail,
+      projectId: result.rows[0].projectId,
+      entityType: 'commitment',
+      entityId: id,
+      payload: { status, reviewNote },
+    });
+
+    return NextResponse.json({ success: true, row: result.rows[0] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

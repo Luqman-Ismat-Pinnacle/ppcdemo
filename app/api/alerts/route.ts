@@ -65,6 +65,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'triageExceptions')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for active role view' }, { status: 403 });
+    }
+
     const pool = getPool();
     if (!pool) {
       return NextResponse.json({ success: false, error: 'PostgreSQL not configured' }, { status: 503 });
@@ -102,6 +107,16 @@ export async function POST(req: NextRequest) {
       relatedTaskId: relatedTaskId ? String(relatedTaskId) : undefined,
       dedupeKey: dedupeKey ? String(dedupeKey) : undefined,
       metadata: metadata && typeof metadata === 'object' ? metadata as Record<string, unknown> : {},
+    });
+
+    await writeWorkflowAudit(pool, {
+      eventType: 'alert_create',
+      roleKey: roleContext.roleKey,
+      actorEmail: roleContext.actorEmail,
+      projectId: relatedProjectId ? String(relatedProjectId) : null,
+      entityType: entityType ? String(entityType) : 'alert_events',
+      entityId: entityId ? String(entityId) : null,
+      payload: { eventType, severity, source },
     });
 
     return NextResponse.json({ success: true });
