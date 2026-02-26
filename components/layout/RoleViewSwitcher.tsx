@@ -110,7 +110,7 @@ export default function RoleViewSwitcher() {
               type="button"
               onClick={() => router.push(activeRole.dashboardRoute)}
               style={{
-                flex: 1,
+                width: '100%',
                 border: '1px solid var(--border-color)',
                 background: 'var(--bg-secondary)',
                 color: 'var(--text-primary)',
@@ -120,23 +120,7 @@ export default function RoleViewSwitcher() {
                 cursor: 'pointer',
               }}
             >
-              Open Role Dashboard
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push('/role-views')}
-              style={{
-                flex: 1,
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-secondary)',
-                color: 'var(--text-primary)',
-                borderRadius: 8,
-                padding: '0.42rem 0.5rem',
-                fontSize: '0.68rem',
-                cursor: 'pointer',
-              }}
-            >
-              Role View Hub
+              Open Role Home
             </button>
           </div>
           {!canSwitchRoles && (
