@@ -474,7 +474,6 @@ export async function POST(req: NextRequest) {
              WHERE status = 'pending'
                AND suggestion_type = 'hour_to_task'
                AND hour_entry_id = $3
-               AND task_id = $4
            )`,
           [
             projectId,
@@ -580,24 +579,30 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'Suggestion is not pending' }, { status: 400 });
       }
 
-      await pgQuery(
+      const hourUpdate = await pgQuery(
         `UPDATE hour_entries
          SET task_id = $1, updated_at = NOW()
-         WHERE id = $2`,
+         WHERE id = $2
+           AND (task_id IS NULL OR task_id = '')`,
         [suggestion.task_id, suggestion.hour_entry_id],
       );
+      const applied = Boolean(hourUpdate.rowCount && hourUpdate.rowCount > 0);
       await pgQuery(
         `UPDATE mapping_suggestions
-         SET status = 'applied', applied_at = NOW()
+         SET status = $2,
+             applied_at = CASE WHEN $2 = 'applied' THEN NOW() ELSE applied_at END,
+             dismissed_at = CASE WHEN $2 = 'dismissed' THEN NOW() ELSE dismissed_at END
          WHERE id = $1`,
-        [suggestion.id],
+        [suggestion.id, applied ? 'applied' : 'dismissed'],
       );
 
       await emitAlertEvent({ query: pgQuery } as { query: typeof pgQuery }, {
-        eventType: 'mapping_suggestion.applied',
-        severity: 'info',
-        title: 'Mapping Suggestion Applied',
-        message: `Applied suggestion #${suggestion.id} for project ${suggestion.project_id}.`,
+        eventType: applied ? 'mapping_suggestion.applied' : 'mapping_suggestion.skipped',
+        severity: applied ? 'info' : 'warning',
+        title: applied ? 'Mapping Suggestion Applied' : 'Mapping Suggestion Skipped',
+        message: applied
+          ? `Applied suggestion #${suggestion.id} for project ${suggestion.project_id}.`
+          : `Skipped suggestion #${suggestion.id} because the hour entry already has a task mapping.`,
         source: 'api/data/mapping',
         entityType: 'project',
         entityId: suggestion.project_id,
@@ -608,10 +613,11 @@ export async function POST(req: NextRequest) {
           hourEntryId: suggestion.hour_entry_id,
           taskId: suggestion.task_id,
           confidence: suggestion.confidence,
+          applied,
         },
       });
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, applied });
     }
 
     if (action === 'dismissMappingSuggestion') {
@@ -654,16 +660,29 @@ export async function POST(req: NextRequest) {
       );
 
       let applied = 0;
+      let skipped = 0;
       for (const row of pending.rows as Array<{ id: number; hour_entry_id: string; task_id: string; confidence: number }>) {
-        await pgQuery(
-          `UPDATE hour_entries SET task_id = $1, updated_at = NOW() WHERE id = $2`,
+        const hourUpdate = await pgQuery(
+          `UPDATE hour_entries
+           SET task_id = $1, updated_at = NOW()
+           WHERE id = $2
+             AND (task_id IS NULL OR task_id = '')`,
           [row.task_id, row.hour_entry_id],
         );
-        await pgQuery(
-          `UPDATE mapping_suggestions SET status = 'applied', applied_at = NOW() WHERE id = $1`,
-          [row.id],
-        );
-        applied += 1;
+        const rowApplied = Boolean(hourUpdate.rowCount && hourUpdate.rowCount > 0);
+        if (rowApplied) {
+          await pgQuery(
+            `UPDATE mapping_suggestions SET status = 'applied', applied_at = NOW() WHERE id = $1`,
+            [row.id],
+          );
+          applied += 1;
+        } else {
+          await pgQuery(
+            `UPDATE mapping_suggestions SET status = 'dismissed', dismissed_at = NOW() WHERE id = $1`,
+            [row.id],
+          );
+          skipped += 1;
+        }
       }
 
       await emitAlertEvent({ query: pgQuery } as { query: typeof pgQuery }, {
@@ -680,7 +699,7 @@ export async function POST(req: NextRequest) {
         metadata: { projectId, minConfidence, limit, applied },
       });
 
-      return NextResponse.json({ success: true, applied, considered: pending.rowCount || 0 });
+      return NextResponse.json({ success: true, applied, skipped, considered: pending.rowCount || 0 });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });

@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { taskId, employeeId, employeeName } = body;
+    const { taskId, employeeId, employeeName, assignedBy, assignmentSource, note } = body;
 
     if (!taskId || employeeId == null || employeeName == null) {
       return NextResponse.json(
@@ -94,8 +94,20 @@ export async function POST(req: NextRequest) {
     }
 
     const resolvedTaskId = String(taskId);
-    const normalizedEmployeeId = String(employeeId);
-    const normalizedEmployeeName = String(employeeName);
+    const normalizedEmployeeId = String(employeeId).trim();
+    const normalizedEmployeeName = String(employeeName).trim();
+    const normalizedAssignedBy = assignedBy != null ? String(assignedBy).trim() : null;
+    const normalizedAssignmentSource = assignmentSource != null
+      ? String(assignmentSource).trim()
+      : 'resourcing_modal';
+    const normalizedNote = note != null ? String(note).trim() : null;
+
+    if (!normalizedEmployeeId || !normalizedEmployeeName) {
+      return NextResponse.json(
+        { success: false, error: 'employeeId and employeeName must be non-empty' },
+        { status: 400 }
+      );
+    }
 
     const assignmentResult = await withClient(async (client) => {
       await client.query('BEGIN');
@@ -124,6 +136,15 @@ export async function POST(req: NextRequest) {
           assignedTo?: string | null;
         };
 
+        const priorEmployeeId = (taskRow.employee_id || '').trim();
+        const priorEmployeeName = (taskRow.assignedTo || '').trim();
+        const noAssignmentChange = priorEmployeeId === normalizedEmployeeId
+          && priorEmployeeName.toLowerCase() === normalizedEmployeeName.toLowerCase();
+        if (noAssignmentChange) {
+          await client.query('ROLLBACK');
+          return { found: true as const, taskId: taskRow.id, unchanged: true as const };
+        }
+
         await client.query(
           `UPDATE tasks
            SET "assignedTo" = $1, employee_id = $2, updated_at = NOW()
@@ -134,15 +155,17 @@ export async function POST(req: NextRequest) {
         await client.query(
           `INSERT INTO task_assignments (
              task_id, employee_id, employee_name, assignment_source,
-             previous_employee_id, previous_employee_name, metadata
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+             previous_employee_id, previous_employee_name, assigned_by, note, metadata
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
           [
             taskRow.id,
             normalizedEmployeeId,
             normalizedEmployeeName,
-            'resourcing_modal',
+            normalizedAssignmentSource || 'resourcing_modal',
             taskRow.employee_id ?? null,
             taskRow.assignedTo ?? null,
+            normalizedAssignedBy,
+            normalizedNote,
             JSON.stringify({
               taskName: taskRow.name ?? null,
               taskReference: taskRow.taskId ?? null,
@@ -170,7 +193,7 @@ export async function POST(req: NextRequest) {
         });
 
         await client.query('COMMIT');
-        return { found: true as const, taskId: taskRow.id };
+        return { found: true as const, taskId: taskRow.id, unchanged: false as const };
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -184,7 +207,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    if (assignmentResult.unchanged) {
+      return NextResponse.json({ success: true, unchanged: true });
+    }
+
+    return NextResponse.json({ success: true, unchanged: false });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[API tasks/assign]', err);
