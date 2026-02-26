@@ -42,6 +42,7 @@ const PRODUCT_OWNER_NAV: NavDropdown[] = [
       { label: 'Tasks', href: '/insights/tasks' },
       { label: "Mo's Page", href: '/insights/mos-page' },
       { label: 'Hours', href: '/insights/hours' },
+      { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       { divider: true },
       { label: 'Documents', href: '/insights/documents' },
     ],
@@ -76,6 +77,7 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
         { label: 'Overview', href: '/insights/overview' },
         { label: 'Tasks', href: '/insights/tasks' },
         { label: "Mo's Page", href: '/insights/mos-page' },
+        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       ],
     },
     {
@@ -126,6 +128,7 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
       items: [
         { label: 'Overview', href: '/insights/overview' },
         { label: 'Hours', href: '/insights/hours' },
+        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       ],
     },
   ],
@@ -143,6 +146,7 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
       items: [
         { label: 'Documents', href: '/insights/documents' },
         { label: 'Tasks', href: '/insights/tasks' },
+        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
         { label: 'WBS / Gantt', href: '/project-controls/wbs-gantt' },
       ],
     },
@@ -163,6 +167,7 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
         { label: 'Overview', href: '/insights/overview' },
         { label: 'Milestones', href: '/insights/milestones' },
         { label: "Mo's Page", href: '/insights/mos-page' },
+        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       ],
     },
   ],
@@ -183,6 +188,7 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
       items: [
         { label: 'Overview', href: '/insights/overview' },
         { label: 'Milestones', href: '/insights/milestones' },
+        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
         { label: 'Documents', href: '/insights/documents' },
       ],
     },
