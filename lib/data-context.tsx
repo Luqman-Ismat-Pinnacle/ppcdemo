@@ -793,19 +793,21 @@ export function DataProvider({ children }: DataProviderProps) {
 
     // =========================================================================
     // APPLY ROLE VIEW PROJECT SCOPE
-    // Product Owner / global roles keep full scope; delivery roles are restricted.
+    // Product Owner override keeps full data visibility across simulated lenses.
     // =========================================================================
-    const roleScopedProjectIds = selectRoleProjectIds({
-      role: activeRole.key,
-      projects: filtered.projects || [],
-      currentUserEmail: user?.email,
-    });
-    if (filtered.projects?.length) {
-      const allowedProjectIdSet = new Set(roleScopedProjectIds);
-      filtered.projects = (filtered.projects as any[]).filter((project: any) => {
-        const projectId = String(project.id ?? project.projectId ?? project.project_id ?? '').trim();
-        return !projectId || allowedProjectIdSet.has(projectId);
+    if (!user?.canViewAll) {
+      const roleScopedProjectIds = selectRoleProjectIds({
+        role: activeRole.key,
+        projects: filtered.projects || [],
+        currentUserEmail: user?.email,
       });
+      if (filtered.projects?.length) {
+        const allowedProjectIdSet = new Set(roleScopedProjectIds);
+        filtered.projects = (filtered.projects as any[]).filter((project: any) => {
+          const projectId = String(project.id ?? project.projectId ?? project.project_id ?? '').trim();
+          return !projectId || allowedProjectIdSet.has(projectId);
+        });
+      }
     }
     const visibleProjectIds = new Set((filtered.projects || []).map((p: any) => String(p.id ?? p.projectId ?? p.project_id ?? '')).filter(Boolean));
     if (filtered.units) {
@@ -1424,7 +1426,7 @@ export function DataProvider({ children }: DataProviderProps) {
     }
 
     return filtered;
-  }, [activeRole.key, data, hierarchyFilter, dateFilter, user?.email]);
+  }, [activeRole.key, data, hierarchyFilter, dateFilter, user?.canViewAll, user?.email]);
 
   // Assemble context value
   const value: DataContextType = {
