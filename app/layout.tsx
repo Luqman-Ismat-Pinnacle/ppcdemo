@@ -31,6 +31,8 @@ import Header from '@/components/layout/Header';
 import SnapshotPopup from '@/components/snapshot/SnapshotPopup';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import HelpButton from '@/components/help/HelpButton';
+import RoleViewSwitcher from '@/components/layout/RoleViewSwitcher';
+import { RoleViewProvider } from '@/lib/role-view-context';
 
 const montserrat = Montserrat({
   subsets: ['latin'],
@@ -74,18 +76,21 @@ export default function RootLayout({
                 <LogsProvider>
                   <ThemeProvider>
                     <UserProvider>
-                      <DataProvider>
-                        <SnapshotProvider>
-                          <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
-                            <Header />
-                            <main className="main-content">
-                              {children}
-                            </main>
-                            <HelpButton />
-                            <SnapshotPopup />
-                          </div>
-                        </SnapshotProvider>
-                      </DataProvider>
+                      <RoleViewProvider>
+                        <DataProvider>
+                          <SnapshotProvider>
+                            <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
+                              <Header />
+                              <main className="main-content">
+                                {children}
+                              </main>
+                              <HelpButton />
+                              <RoleViewSwitcher />
+                              <SnapshotPopup />
+                            </div>
+                          </SnapshotProvider>
+                        </DataProvider>
+                      </RoleViewProvider>
                     </UserProvider>
                   </ThemeProvider>
                 </LogsProvider>

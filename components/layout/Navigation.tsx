@@ -19,9 +19,10 @@
  * @module components/layout/Navigation
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useRoleView } from '@/lib/role-view-context';
 
 interface NavItem {
   label?: string;
@@ -81,6 +82,7 @@ const navigation: NavDropdown[] = [
 
 export default function Navigation() {
   const pathname = usePathname();
+  const { activeRole } = useRoleView();
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   const isActive = (href: string) => pathname === href;
@@ -89,9 +91,32 @@ export default function Navigation() {
     return items.some((item) => item.href && isActive(item.href));
   };
 
+  const allowedDropdowns = useMemo(() => {
+    switch (activeRole.key) {
+      case 'project-lead':
+        return new Set(['Project Controls', 'Project Management', 'Insights', 'Role Views']);
+      case 'pca':
+        return new Set(['Project Controls', 'Role Views']);
+      case 'pcl':
+        return new Set(['Project Controls', 'Insights', 'Role Views']);
+      case 'senior-manager':
+      case 'coo':
+      case 'client':
+        return new Set(['Insights', 'Project Management', 'Role Views']);
+      case 'product-owner':
+      default:
+        return null;
+    }
+  }, [activeRole.key]);
+
+  const visibleNavigation = useMemo(() => {
+    if (!allowedDropdowns) return navigation;
+    return navigation.filter((dropdown) => allowedDropdowns.has(dropdown.label));
+  }, [allowedDropdowns]);
+
   return (
     <nav className="nav-menu" id="main-nav">
-      {navigation.map((dropdown) => {
+      {visibleNavigation.map((dropdown) => {
         const isOpen = openDropdown === dropdown.label;
         const hasActive = hasActiveItem(dropdown.items);
 

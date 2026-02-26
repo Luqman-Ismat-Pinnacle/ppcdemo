@@ -21,6 +21,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from '@/lib/theme-context';
 import { useUser } from '@/lib/user-context';
+import { useRoleView } from '@/lib/role-view-context';
 import Navigation from './Navigation';
 import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
@@ -44,6 +45,7 @@ export default function Header() {
 
   // Get user info from context
   const { user, logout: userLogout } = useUser();
+  const { activeRole } = useRoleView();
 
   // Close profile dropdown when clicking outside
   useEffect(() => {
@@ -103,7 +105,7 @@ export default function Header() {
           >
             <div className="user-info">
               <span className="user-name">{user?.name || 'Guest'}</span>
-              <span className="user-role">{user?.role || 'User'}</span>
+              <span className="user-role">{user?.role || 'User'} · Viewing {activeRole.label}</span>
             </div>
             <div className="user-avatar">{user?.initials || 'GU'}</div>
             <svg viewBox="0 0 12 12" width="10" height="10" style={{ marginLeft: '4px', color: 'var(--text-muted)' }}>
