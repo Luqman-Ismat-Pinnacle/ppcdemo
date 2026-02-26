@@ -112,6 +112,7 @@ These are the minimum required variables for production website operation:
 | `AZURE_DEVOPS_TEAM` | Sprint/QC Azure sync | Azure DevOps team (defaults to project name). If you see "team does not exist", call `GET /api/azure-devops/teams` to list valid team names and set this. |
 | `AZURE_DEVOPS_PAT` | Sprint/QC Azure sync | Azure DevOps PAT |
 | `AZURE_DEVOPS_BASE_URL` | Sprint/QC Azure sync | Defaults to `https://dev.azure.com` |
+| `ALERT_SCAN_TOKEN` | Alert scan scheduler auth | Shared secret used by `GET /api/alerts/scan` (Bearer token or `?token=`) and `npm run alerts:scan` |
 
 ### Optional fallback (legacy Supabase mode)
 
@@ -205,3 +206,18 @@ Point the Next.js app at the new MPP parser URL:
 | `DB 2.17.26.sql` | Canonical database schema for the app |
 | `azure-functions-workday-sync/` | Azure Functions app for Workday → Postgres sync |
 | `pipeline/azure-pipeline.yaml` | Azure DevOps build/deploy pipeline |
+
+---
+
+## Alert Scan Scheduling
+
+Phase 6 alert scanning can run on a scheduler without opening the UI.
+
+1. Set `ALERT_SCAN_TOKEN` in the web app environment.
+2. Trigger scan either:
+   - direct endpoint: `GET /api/alerts/scan` with `Authorization: Bearer <ALERT_SCAN_TOKEN>`, or
+   - script: `npm run alerts:scan` with:
+     - `ALERT_SCAN_BASE_URL=https://<your-host>`
+     - `ALERT_SCAN_TOKEN=<same-secret>`
+3. Suggested cadence: every 1-4 hours during business operations.
+4. Keep token out of browser code; use server scheduler/CI secret storage only.

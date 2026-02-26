@@ -65,7 +65,43 @@ export async function GET(req: NextRequest) {
       [sinceParam],
     );
 
-    return NextResponse.json({ success: true, summary: summary.rows[0] });
+    const recent = await pool.query(
+      `SELECT
+         id,
+         task_id AS "taskId",
+         employee_id AS "employeeId",
+         employee_name AS "employeeName",
+         previous_employee_id AS "previousEmployeeId",
+         previous_employee_name AS "previousEmployeeName",
+         assignment_source AS "assignmentSource",
+         changed_at AS "changedAt"
+       FROM task_assignments
+       WHERE changed_at >= NOW() - $1::interval
+       ORDER BY changed_at DESC
+       LIMIT 30`,
+      [sinceParam],
+    );
+
+    const topReassigned = await pool.query(
+      `SELECT
+         employee_id AS "employeeId",
+         employee_name AS "employeeName",
+         COUNT(*)::int AS assignments,
+         COUNT(*) FILTER (WHERE previous_employee_id IS NOT NULL AND previous_employee_id <> employee_id)::int AS reassignments
+       FROM task_assignments
+       WHERE changed_at >= NOW() - $1::interval
+       GROUP BY employee_id, employee_name
+       ORDER BY reassignments DESC, assignments DESC, employee_name ASC
+       LIMIT 8`,
+      [sinceParam],
+    );
+
+    return NextResponse.json({
+      success: true,
+      summary: summary.rows[0],
+      recentChanges: recent.rows,
+      topReassigned: topReassigned.rows,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[API tasks/assign GET]', err);

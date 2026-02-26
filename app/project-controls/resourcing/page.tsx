@@ -77,6 +77,24 @@ function ResourcingPageContent() {
     employees_affected: number;
     latest_change: string | null;
   } | null>(null);
+  const [assignmentInsights30d, setAssignmentInsights30d] = useState<{
+    recentChanges: Array<{
+      id: number;
+      taskId: string;
+      employeeId: string;
+      employeeName: string;
+      previousEmployeeId: string | null;
+      previousEmployeeName: string | null;
+      assignmentSource: string | null;
+      changedAt: string;
+    }>;
+    topReassigned: Array<{
+      employeeId: string;
+      employeeName: string;
+      assignments: number;
+      reassignments: number;
+    }>;
+  } | null>(null);
   const [selectedEmployeeAssignmentSummary, setSelectedEmployeeAssignmentSummary] = useState<{
     assignments: number;
     reassignments: number;
@@ -239,8 +257,15 @@ function ResourcingPageContent() {
         const result = await res.json();
         if (!res.ok || !result.success || cancelled) return;
         setAssignmentSummary30d(result.summary || null);
+        setAssignmentInsights30d({
+          recentChanges: Array.isArray(result.recentChanges) ? result.recentChanges : [],
+          topReassigned: Array.isArray(result.topReassigned) ? result.topReassigned : [],
+        });
       } catch {
-        if (!cancelled) setAssignmentSummary30d(null);
+        if (!cancelled) {
+          setAssignmentSummary30d(null);
+          setAssignmentInsights30d(null);
+        }
       }
     };
     void loadAssignmentSummary();
@@ -1452,6 +1477,57 @@ function ResourcingPageContent() {
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: m.accent }}>{m.value}</div>
               </div>
             ))}
+          </div>
+
+          {/* Assignment analytics */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 250 }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.65rem' }}>Top Reassignments (30d)</div>
+              {(assignmentInsights30d?.topReassigned?.length || 0) === 0 ? (
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No reassignment activity in the last 30 days.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  {assignmentInsights30d!.topReassigned.map((row) => (
+                    <div
+                      key={`${row.employeeId}-${row.employeeName}`}
+                      style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 0.6rem', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {row.employeeName || row.employeeId}
+                        </div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>Assignments: {row.assignments}</div>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#8B5CF6', fontWeight: 700, textAlign: 'right' }}>{row.reassignments}</div>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>reassign</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1rem', border: '1px solid var(--border-color)', minHeight: 250, maxHeight: 250, overflowY: 'auto' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.65rem' }}>Recent Assignment Changes (30d)</div>
+              {(assignmentInsights30d?.recentChanges?.length || 0) === 0 ? (
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No assignment changes found.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  {assignmentInsights30d!.recentChanges.slice(0, 20).map((row) => (
+                    <div
+                      key={`assign-change-${row.id}`}
+                      style={{ padding: '0.52rem 0.6rem', borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
+                    >
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                        {row.previousEmployeeName ? `${row.previousEmployeeName} → ${row.employeeName}` : `Assigned to ${row.employeeName}`}
+                      </div>
+                      <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Task {row.taskId} · {row.assignmentSource || 'manual'} · {new Date(row.changedAt).toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Employee Utilization — Horizontal bar, ALL employees */}
