@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
 
 function answerForQuery(query: string, snapshot: {
   projects: number;
@@ -120,6 +121,13 @@ export default function CooRoleViewPage() {
           </div>
         ))}
       </div>
+
+      <PeriodEfficiencyBanner
+        health={aggregate.healthScore}
+        spi={aggregate.spi}
+        cpi={aggregate.cpi}
+        variancePct={aggregate.hrsVariance}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.9rem' }}>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem' }}>

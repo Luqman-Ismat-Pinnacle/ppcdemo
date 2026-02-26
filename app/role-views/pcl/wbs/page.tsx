@@ -1,45 +1,17 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import Link from 'next/link';
+import React from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import { getWbsCapabilities } from '@/lib/wbs-role-adapter';
+import RoleScopedWbsWorkspace from '@/components/role-workstations/RoleScopedWbsWorkspace';
 
 export default function PclWbsPage() {
-  const capabilities = useMemo(() => getWbsCapabilities('pcl'), []);
-  const items = [
-    ['Edit Structure', capabilities.canEditStructure],
-    ['Edit Dependencies', capabilities.canEditDependencies],
-    ['Edit Progress', capabilities.canEditProgress],
-    ['Edit Assignments', capabilities.canEditAssignments],
-    ['Annotate', capabilities.canAnnotate],
-    ['Escalate', capabilities.canEscalate],
-  ] as const;
-
   return (
     <RoleWorkstationShell
       role="pcl"
       title="Portfolio WBS Risk Queue"
       subtitle="Cross-project schedule intervention and escalation controls."
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.55rem' }}>
-        {items.map(([label, enabled]) => (
-          <div key={label} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-card)', padding: '0.6rem' }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{label}</div>
-            <div style={{ marginTop: 3, fontSize: '0.84rem', fontWeight: 700, color: enabled ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-              {enabled ? 'Enabled' : 'Read-only'}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ marginTop: '0.6rem', display: 'flex', gap: '0.55rem' }}>
-        <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-          Open WBS/Gantt Engine
-        </Link>
-        <Link href="/role-views/pcl-exceptions" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-          Open Exceptions Queue
-        </Link>
-      </div>
+      <RoleScopedWbsWorkspace role="pcl" />
     </RoleWorkstationShell>
   );
 }

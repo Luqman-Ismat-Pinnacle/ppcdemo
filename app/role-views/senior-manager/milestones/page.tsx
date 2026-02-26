@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import { useData } from '@/lib/data-context';
+import MilestoneScoreboardTable from '@/components/role-workstations/MilestoneScoreboardTable';
 
 export default function SeniorManagerMilestonesPage() {
   const { filteredData, data: fullData } = useData();
@@ -20,6 +21,19 @@ export default function SeniorManagerMilestonesPage() {
       return Number.isFinite(due.getTime()) && due.getTime() < now;
     }).length;
     return { total: milestones.length, overdue };
+  }, [filteredData?.milestones, fullData?.milestones]);
+  const rows = useMemo(() => {
+    const milestones = (filteredData?.milestones?.length ? filteredData.milestones : fullData?.milestones) || [];
+    return milestones.slice(0, 20).map((item, idx) => {
+      const row = item as unknown as Record<string, unknown>;
+      return {
+        id: String(row.id || idx),
+        name: String(row.name || row.milestoneName || row.title || 'Milestone'),
+        dueDate: String(row.dueDate || row.due_date || row.targetDate || row.target_date || ''),
+        status: String(row.status || ''),
+        project: String(row.project || row.projectName || row.projectId || ''),
+      };
+    });
   }, [filteredData?.milestones, fullData?.milestones]);
 
   return (
@@ -38,6 +52,7 @@ export default function SeniorManagerMilestonesPage() {
           <div style={{ marginTop: 4, fontSize: '1.25rem', fontWeight: 800, color: summary.overdue > 0 ? '#EF4444' : 'var(--text-primary)' }}>{summary.overdue}</div>
         </div>
       </div>
+      <MilestoneScoreboardTable rows={rows} />
       <Link href="/insights/milestones" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Open Milestones View</Link>
     </RoleWorkstationShell>
   );

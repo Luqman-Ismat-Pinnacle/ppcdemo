@@ -13,6 +13,7 @@ import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstation
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import { useData } from '@/lib/data-context';
 import { calcCpi, calcIeacCpi, calcSpi } from '@/lib/calculations/kpis';
+import PlanVsForecastActualSCurve from '@/components/role-workstations/PlanVsForecastActualSCurve';
 
 function num(value: unknown): number {
   const parsed = Number(value);
@@ -40,7 +41,7 @@ export default function ProjectLeadForecastPage() {
     const spi = calcSpi(earned, planned, 'project-lead', 'active-filters');
     const ieac = calcIeacCpi(bac, cpi.value, 'project-lead', 'active-filters');
 
-    return { cpi, spi, ieac };
+    return { cpi, spi, ieac, planned, actual, forecast: ieac.value };
   }, [filteredData?.projects, filteredData?.tasks, fullData?.projects, fullData?.tasks]);
 
   return (
@@ -70,6 +71,11 @@ export default function ProjectLeadForecastPage() {
           </div>
         ))}
       </div>
+      <PlanVsForecastActualSCurve
+        planned={kpis.planned}
+        actual={kpis.actual}
+        forecast={kpis.forecast}
+      />
     </RoleWorkstationShell>
   );
 }

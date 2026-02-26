@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown, type ProjectBreakdownItem } from '@/lib/calculations/selectors';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import ClientHealthGrid from '@/components/role-workstations/ClientHealthGrid';
 
 type AlertRow = {
   id: number;
@@ -170,6 +171,20 @@ export default function SeniorManagerRoleViewPage() {
           )}
         </div>
       </div>
+
+      <ClientHealthGrid
+        rows={[...projectBreakdown]
+          .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
+          .slice(0, 12)
+          .map((project) => ({
+            id: project.id,
+            name: project.name,
+            spi: project.spi,
+            cpi: project.cpi,
+            variance: project.variance,
+            percentComplete: project.percentComplete,
+          }))}
+      />
 
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
         Total Planned Hours: {aggregate.baselineHours.toLocaleString()} · Actual Hours: {aggregate.totalHours.toLocaleString()} · Timesheet Hours: {toNumber(aggregate.timesheetHours).toLocaleString()}
