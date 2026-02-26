@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,11 @@ type DataQualityIssue = {
 
 export async function GET(req: NextRequest) {
   try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'editMapping')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for active role view' }, { status: 403 });
+    }
+
     const pool = getPool();
     if (!pool) return NextResponse.json({ success: false, error: 'PostgreSQL not configured' }, { status: 503 });
 

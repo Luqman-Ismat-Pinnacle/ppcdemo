@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 import { parseHourDescription } from '@/lib/hours-description';
 import { emitAlertEvent, ensurePhase6Tables } from '@/lib/phase6-data';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 let postgresMappingColumnsEnsured = false;
 
 function normalizeText(input: string | null | undefined): string {
@@ -70,12 +72,33 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
+    const roleContext = roleContextFromRequest(req);
+
     if (isPostgresConfigured()) {
       await ensurePostgresMappingColumns();
       await ensurePhase6Tables({ query: pgQuery } as { query: typeof pgQuery });
     }
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
+
+    const mappingWriteActions = new Set([
+      'assignHourToTask',
+      'assignTaskToWorkdayPhase',
+      'assignEntityToWorkdayPhase',
+      'assignHourToWorkdayPhase',
+      'matchWorkdayPhaseToHoursPhases',
+      'autoMatchHoursToTasksInWorkdayPhaseBucket',
+      'bulkAssignHoursToTasks',
+      'generateMappingSuggestions',
+      'applyMappingSuggestion',
+      'dismissMappingSuggestion',
+      'applyMappingSuggestionsBatch',
+      'pruneMappingSuggestions',
+    ]);
+
+    if (mappingWriteActions.has(action) && !hasRolePermission(roleContext, 'editMapping')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for active role view' }, { status: 403 });
+    }
 
     if (action === 'assignHourToTask') {
       const hourId = body.hourId as string;
@@ -504,6 +527,15 @@ export async function POST(req: NextRequest) {
         metadata: { projectId, workdayPhaseId, minConfidence, limit, created },
       });
 
+      await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestions_generated',
+        roleKey: roleContext.roleKey,
+        actorEmail: roleContext.actorEmail,
+        projectId,
+        entityType: 'mapping_suggestions',
+        payload: { action, workdayPhaseId, minConfidence, limit, created },
+      });
+
       return NextResponse.json({ success: true, created });
     }
 
@@ -667,6 +699,16 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestion_apply',
+        roleKey: roleContext.roleKey,
+        actorEmail: roleContext.actorEmail,
+        projectId: suggestion.project_id,
+        entityType: 'mapping_suggestion',
+        entityId: String(suggestion.id),
+        payload: { action, applied, hourEntryId: suggestion.hour_entry_id, taskId: suggestion.task_id, confidence: suggestion.confidence },
+      });
+
       return NextResponse.json({ success: true, applied });
     }
 
@@ -684,6 +726,14 @@ export async function POST(req: NextRequest) {
          WHERE id = $1`,
         [suggestionId],
       );
+      await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestion_dismiss',
+        roleKey: roleContext.roleKey,
+        actorEmail: roleContext.actorEmail,
+        entityType: 'mapping_suggestion',
+        entityId: String(suggestionId),
+        payload: { action },
+      });
       return NextResponse.json({ success: true });
     }
 
@@ -749,6 +799,15 @@ export async function POST(req: NextRequest) {
         metadata: { projectId, minConfidence, limit, applied },
       });
 
+      await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestion_apply_batch',
+        roleKey: roleContext.roleKey,
+        actorEmail: roleContext.actorEmail,
+        projectId,
+        entityType: 'mapping_suggestions',
+        payload: { action, minConfidence, limit, considered: pending.rowCount || 0, applied, skipped },
+      });
+
       return NextResponse.json({ success: true, applied, skipped, considered: pending.rowCount || 0 });
     }
 
@@ -789,6 +848,15 @@ export async function POST(req: NextRequest) {
         entityId: projectId,
         relatedProjectId: projectId,
         metadata: { projectId, olderThanDays, statuses, removed },
+      });
+
+      await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestion_prune',
+        roleKey: roleContext.roleKey,
+        actorEmail: roleContext.actorEmail,
+        projectId,
+        entityType: 'mapping_suggestions',
+        payload: { action, olderThanDays, statuses, removed },
       });
 
       return NextResponse.json({ success: true, removed, olderThanDays, statuses });

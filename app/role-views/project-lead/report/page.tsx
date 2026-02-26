@@ -11,6 +11,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useData } from '@/lib/data-context';
 import { useUser } from '@/lib/user-context';
+import { useRoleView } from '@/lib/role-view-context';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 
 interface CommitmentRecord {
@@ -35,6 +36,7 @@ function currentPeriodKey() {
 export default function ProjectLeadReportPage() {
   const { filteredData, data: fullData } = useData();
   const { user } = useUser();
+  const { activeRole } = useRoleView();
 
   const projects = useMemo(() => {
     const rows = (filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || [];
@@ -77,7 +79,13 @@ export default function ProjectLeadReportPage() {
         limit: '20',
       });
 
-      const res = await fetch(`/api/commitments?${params.toString()}`, { cache: 'no-store' });
+      const res = await fetch(`/api/commitments?${params.toString()}`, {
+        cache: 'no-store',
+        headers: {
+          'x-role-view': activeRole.key,
+          'x-actor-email': user?.email || '',
+        },
+      });
       const payload = await res.json().catch(() => ({}));
       if (cancelled || !res.ok || !payload.success) return;
 
@@ -107,7 +115,11 @@ export default function ProjectLeadReportPage() {
     setMessage('');
     const res = await fetch('/api/commitments', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-role-view': activeRole.key,
+        'x-actor-email': user?.email || '',
+      },
       body: JSON.stringify({
         projectId,
         periodKey,
@@ -144,7 +156,13 @@ export default function ProjectLeadReportPage() {
       authorEmail: user?.email || '',
       limit: '20',
     });
-    const refresh = await fetch(`/api/commitments?${refreshParams.toString()}`, { cache: 'no-store' });
+    const refresh = await fetch(`/api/commitments?${refreshParams.toString()}`, {
+      cache: 'no-store',
+      headers: {
+        'x-role-view': activeRole.key,
+        'x-actor-email': user?.email || '',
+      },
+    });
     const refreshPayload = await refresh.json().catch(() => ({}));
     if (refresh.ok && refreshPayload.success) {
       setHistory(Array.isArray(refreshPayload.rows) ? refreshPayload.rows : []);

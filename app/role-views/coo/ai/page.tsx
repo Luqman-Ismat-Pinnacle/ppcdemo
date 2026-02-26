@@ -6,6 +6,8 @@
 
 import React, { useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
+import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 
@@ -13,6 +15,8 @@ export default function CooAiPage() {
   const [query, setQuery] = useState('Summarize today\'s highest execution risks by project.');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const { activeRole } = useRoleView();
+  const { user } = useUser();
 
   const send = async () => {
     setLoading(true);
@@ -20,7 +24,11 @@ export default function CooAiPage() {
     try {
       const res = await fetch('/api/ai/query', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-role-view': activeRole.key,
+          'x-actor-email': user?.email || '',
+        },
         body: JSON.stringify({ query, role: 'coo' }),
       });
       const payload = await res.json().catch(() => ({}));

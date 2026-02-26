@@ -8,6 +8,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 
 type AlertRow = {
   id: number;
@@ -26,12 +28,20 @@ export default function PclExceptionsPage() {
   const [loading, setLoading] = useState(false);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const { activeRole } = useRoleView();
+  const { user } = useUser();
 
   const loadAlerts = useCallback(async () => {
     setLoading(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/alerts?status=${encodeURIComponent(statusFilter)}&limit=200`, { cache: 'no-store' });
+      const response = await fetch(`/api/alerts?status=${encodeURIComponent(statusFilter)}&limit=200`, {
+        cache: 'no-store',
+        headers: {
+          'x-role-view': activeRole.key,
+          'x-actor-email': user?.email || '',
+        },
+      });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to load alerts');
@@ -43,7 +53,7 @@ export default function PclExceptionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [activeRole.key, statusFilter, user?.email]);
 
   useEffect(() => {
     void loadAlerts();
@@ -52,7 +62,11 @@ export default function PclExceptionsPage() {
   const updateStatus = useCallback(async (id: number, status: 'acknowledged' | 'resolved' | 'open') => {
     const response = await fetch('/api/alerts', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-role-view': activeRole.key,
+        'x-actor-email': user?.email || '',
+      },
       body: JSON.stringify({ id, status, acknowledgedBy: 'pcl-exception-view' }),
     });
     const result = await response.json();
@@ -61,7 +75,7 @@ export default function PclExceptionsPage() {
       return;
     }
     await loadAlerts();
-  }, [loadAlerts]);
+  }, [activeRole.key, loadAlerts, user?.email]);
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

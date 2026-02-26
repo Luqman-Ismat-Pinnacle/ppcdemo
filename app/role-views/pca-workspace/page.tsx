@@ -9,6 +9,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useData } from '@/lib/data-context';
+import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 
 type Suggestion = {
   id: number;
@@ -33,6 +35,8 @@ type SuggestionStats = {
 
 export default function PcaWorkspacePage() {
   const { filteredData, data: fullData, refreshData } = useData();
+  const { activeRole } = useRoleView();
+  const { user } = useUser();
   const projects = useMemo(() => {
     const active = filteredData?.projects?.length ? filteredData.projects : fullData?.projects;
     return (active || []).map((project) => ({
@@ -48,6 +52,14 @@ export default function PcaWorkspacePage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [stats, setStats] = useState<SuggestionStats | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const apiHeaders = useMemo(
+    () => ({
+      'Content-Type': 'application/json',
+      'x-role-view': activeRole.key,
+      'x-actor-email': user?.email || '',
+    }),
+    [activeRole.key, user?.email],
+  );
 
   useEffect(() => {
     if (!projectId && projects.length > 0) {
@@ -59,14 +71,14 @@ export default function PcaWorkspacePage() {
     if (!selectedProjectId) return;
     const response = await fetch('/api/data/mapping', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders,
       body: JSON.stringify({ action: 'mappingSuggestionsStats', projectId: selectedProjectId }),
     });
     const result = await response.json();
     if (response.ok && result.success) {
       setStats(result.stats as SuggestionStats);
     }
-  }, []);
+  }, [apiHeaders]);
 
   const loadSuggestions = useCallback(async () => {
     if (!projectId) return;
@@ -75,7 +87,7 @@ export default function PcaWorkspacePage() {
     try {
       const response = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: apiHeaders,
         body: JSON.stringify({
           action: 'listMappingSuggestions',
           projectId,
@@ -97,7 +109,7 @@ export default function PcaWorkspacePage() {
     } finally {
       setLoading(false);
     }
-  }, [loadStats, minConfidence, projectId, status]);
+  }, [apiHeaders, loadStats, minConfidence, projectId, status]);
 
   useEffect(() => {
     void loadSuggestions();
@@ -106,7 +118,7 @@ export default function PcaWorkspacePage() {
   const applySuggestion = useCallback(async (id: number) => {
     const response = await fetch('/api/data/mapping', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders,
       body: JSON.stringify({ action: 'applyMappingSuggestion', suggestionId: id }),
     });
     const result = await response.json();
@@ -116,12 +128,12 @@ export default function PcaWorkspacePage() {
     }
     await refreshData();
     await loadSuggestions();
-  }, [loadSuggestions, refreshData]);
+  }, [apiHeaders, loadSuggestions, refreshData]);
 
   const dismissSuggestion = useCallback(async (id: number) => {
     const response = await fetch('/api/data/mapping', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders,
       body: JSON.stringify({ action: 'dismissMappingSuggestion', suggestionId: id }),
     });
     const result = await response.json();
@@ -130,13 +142,13 @@ export default function PcaWorkspacePage() {
       return;
     }
     await loadSuggestions();
-  }, [loadSuggestions]);
+  }, [apiHeaders, loadSuggestions]);
 
   const applyBatch = useCallback(async () => {
     if (!projectId) return;
     const response = await fetch('/api/data/mapping', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders,
       body: JSON.stringify({
         action: 'applyMappingSuggestionsBatch',
         projectId,
@@ -152,7 +164,7 @@ export default function PcaWorkspacePage() {
     setMessage(`Applied ${Number(result.applied || 0)} suggestion(s).`);
     await refreshData();
     await loadSuggestions();
-  }, [loadSuggestions, minConfidence, projectId, refreshData]);
+  }, [apiHeaders, loadSuggestions, minConfidence, projectId, refreshData]);
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>

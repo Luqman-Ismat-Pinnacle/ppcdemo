@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +34,11 @@ async function buildContextSnippet(): Promise<string> {
 
 export async function POST(req: NextRequest) {
   try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'queryAiBriefing')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for active role view' }, { status: 403 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const query = String(body.query || '').trim();
     const role = String(body.role || 'coo').trim();
@@ -74,6 +81,17 @@ export async function POST(req: NextRequest) {
 
     if (!answer) {
       answer = `${await fallbackAnswer(query)} ${context}`;
+    }
+
+    const pool = getPool();
+    if (pool) {
+      await writeWorkflowAudit(pool, {
+        eventType: 'ai_query',
+        roleKey: roleContext.roleKey,
+        actorEmail: roleContext.actorEmail,
+        entityType: 'ai',
+        payload: { role, queryLength: query.length, usedOpenAi: Boolean(apiKey) },
+      });
     }
 
     return NextResponse.json({ success: true, answer, context });

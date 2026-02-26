@@ -7,6 +7,8 @@
 import React, { useEffect, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
+import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 
 type ComplianceMatrixRow = {
   projectId: string;
@@ -18,11 +20,19 @@ type ComplianceMatrixRow = {
 
 export default function PclHomePage() {
   const [rows, setRows] = useState<ComplianceMatrixRow[]>([]);
+  const { activeRole } = useRoleView();
+  const { user } = useUser();
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const res = await fetch('/api/compliance/matrix?limit=20', { cache: 'no-store' });
+      const res = await fetch('/api/compliance/matrix?limit=20', {
+        cache: 'no-store',
+        headers: {
+          'x-role-view': activeRole.key,
+          'x-actor-email': user?.email || '',
+        },
+      });
       const payload = await res.json().catch(() => ({}));
       if (!cancelled && res.ok && payload.success) {
         setRows(Array.isArray(payload.rows) ? payload.rows : []);
@@ -30,7 +40,7 @@ export default function PclHomePage() {
     };
     void run();
     return () => { cancelled = true; };
-  }, []);
+  }, [activeRole.key, user?.email]);
 
   return (
     <RoleWorkstationShell

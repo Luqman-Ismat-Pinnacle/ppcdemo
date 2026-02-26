@@ -7,6 +7,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
+import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 
 type DataQualityIssue = {
   id: string;
@@ -22,11 +24,19 @@ type DataQualityIssue = {
 
 export default function PcaDataQualityPage() {
   const [issues, setIssues] = useState<DataQualityIssue[]>([]);
+  const { activeRole } = useRoleView();
+  const { user } = useUser();
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const res = await fetch('/api/data-quality/issues?scope=assigned', { cache: 'no-store' });
+      const res = await fetch('/api/data-quality/issues?scope=assigned', {
+        cache: 'no-store',
+        headers: {
+          'x-role-view': activeRole.key,
+          'x-actor-email': user?.email || '',
+        },
+      });
       const payload = await res.json().catch(() => ({}));
       if (!cancelled && res.ok && payload.success) {
         setIssues(Array.isArray(payload.issues) ? payload.issues : []);
@@ -34,7 +44,7 @@ export default function PcaDataQualityPage() {
     };
     void run();
     return () => { cancelled = true; };
-  }, []);
+  }, [activeRole.key, user?.email]);
 
   return (
     <RoleWorkstationShell

@@ -9,6 +9,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
 import { emitAlertEvent, ensurePhase6Tables } from '@/lib/phase6-data';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +114,11 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'triageExceptions')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for active role view' }, { status: 403 });
+    }
+
     const pool = getPool();
     if (!pool) {
       return NextResponse.json({ success: false, error: 'PostgreSQL not configured' }, { status: 503 });
@@ -142,6 +149,15 @@ export async function PATCH(req: NextRequest) {
        WHERE id IN (${placeholders})`,
       params,
     );
+
+    await writeWorkflowAudit(pool, {
+      eventType: 'alert_status_update',
+      roleKey: roleContext.roleKey,
+      actorEmail: roleContext.actorEmail,
+      entityType: 'alert_events',
+      entityId: idList.length === 1 ? String(idList[0]) : null,
+      payload: { status: nextStatus, ids: idList },
+    });
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
