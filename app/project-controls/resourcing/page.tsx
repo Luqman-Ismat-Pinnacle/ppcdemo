@@ -27,6 +27,8 @@ import {
   type LevelingResult,
 } from '@/lib/resource-leveling-engine';
 import { toTaskEfficiencyPct } from '@/lib/calculations/selectors';
+import { calcUtilizationPct } from '@/lib/calculations/kpis';
+import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 
 // ═══════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -217,6 +219,11 @@ function ResourcingPageContent() {
     unassignedTasks: unassignedTasks.length,
     criticalTasks: unassignedTasks.filter((t: any) => getTaskCriticality(t).label === 'Critical').length,
   }), [employeeMetrics, data.projects, data.portfolios, unassignedTasks, getTaskCriticality]);
+
+  const avgUtilizationMetric = useMemo(
+    () => calcUtilizationPct(summaryMetrics.totalAllocated, summaryMetrics.totalCapacity, 'resourcing', 'filtered-window'),
+    [summaryMetrics.totalAllocated, summaryMetrics.totalCapacity]
+  );
 
   // ── Suggested tasks for an employee (role-matched only) ───────
   const getSuggestedTasks = useCallback((emp: any) => {
@@ -1523,12 +1530,15 @@ function ResourcingPageContent() {
               { label: 'Portfolios', value: summaryMetrics.totalPortfolios },
               { label: 'Projects', value: summaryMetrics.totalProjects },
               { label: 'Employees', value: summaryMetrics.totalEmployees, accent: 'var(--pinnacle-teal)', bg: 'linear-gradient(135deg, rgba(64,224,208,0.15), rgba(64,224,208,0.05))', border: 'rgba(64,224,208,0.3)' },
-              { label: 'Avg Utilization', value: `${summaryMetrics.avgUtilization}%`, accent: getUtilColor(summaryMetrics.avgUtilization) },
+              { label: 'Avg Utilization', value: `${summaryMetrics.avgUtilization}%`, accent: getUtilColor(summaryMetrics.avgUtilization), provenance: avgUtilizationMetric.provenance },
               { label: 'Overloaded', value: summaryMetrics.overloaded, accent: '#EF4444', bg: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.1)' : undefined, border: summaryMetrics.overloaded > 0 ? 'rgba(239,68,68,0.3)' : undefined },
               { label: 'Unassigned Tasks', value: summaryMetrics.unassignedTasks, accent: '#F59E0B', bg: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.1)' : undefined, border: summaryMetrics.unassignedTasks > 0 ? 'rgba(245,158,11,0.3)' : undefined },
             ].map(m => (
               <div key={m.label} style={{ padding: '0.75rem', background: m.bg || 'var(--bg-card)', borderRadius: '10px', border: `1px solid ${m.border || 'var(--border-color)'}` }}>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{m.label}</div>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {m.label}
+                  {m.provenance ? <MetricProvenanceChip provenance={m.provenance} /> : null}
+                </div>
                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: m.accent }}>{m.value}</div>
               </div>
             ))}

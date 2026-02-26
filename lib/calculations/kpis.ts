@@ -197,3 +197,24 @@ export function calcTaskEfficiencyPct(actual: number, baseline: number, scope: s
   ];
   return { value, provenance };
 }
+
+export function calcUtilizationPct(allocated: number, capacity: number, scope: string, timeWindow: string): MetricOutput<number> {
+  const value = capacity > 0 ? round((allocated / capacity) * 100, 0) : 0;
+  const provenance = baseProvenance(
+    {
+      id: 'UTILIZATION_PCT_V1',
+      version: 'v1',
+      label: 'Utilization %',
+      dataSources: ['employees', 'tasks'],
+      scope,
+      timeWindow,
+    },
+    '(Allocated / Capacity) * 100',
+    [`Allocated=${round(allocated, 2)}`, `Capacity=${round(capacity, 2)}`, `Utilization=${value}%`],
+  );
+  provenance.inputs = [
+    { key: 'allocated_hours', label: 'Allocated Hours', value: round(allocated, 2) },
+    { key: 'capacity_hours', label: 'Capacity Hours', value: round(capacity, 2) },
+  ];
+  return { value, provenance };
+}
