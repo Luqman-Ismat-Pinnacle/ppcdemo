@@ -26,6 +26,7 @@ import {
   type LevelingParams,
   type LevelingResult,
 } from '@/lib/resource-leveling-engine';
+import { toTaskEfficiencyPct } from '@/lib/calculations/selectors';
 
 // ═══════════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -132,7 +133,7 @@ function ResourcingPageContent() {
       const actualHours = empTasks.reduce((s: number, t: any) => s + (Number(t.actualHours) || 0), 0);
       const taskCount = empTasks.length;
       const completedTasks = empTasks.filter((t: any) => (Number(t.percentComplete) || 0) >= 100).length;
-      const efficiency = allocatedHours > 0 ? Math.round((actualHours / allocatedHours) * 100) : 100;
+      const efficiency = allocatedHours > 0 ? toTaskEfficiencyPct(actualHours, allocatedHours) : 100;
 
       // QC pass rate
       const empQc = data.qctasks.filter((qc: any) =>

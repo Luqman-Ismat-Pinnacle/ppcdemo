@@ -60,6 +60,33 @@ const targets = [
       /calcTaskEfficiencyPct\(/,
     ],
   },
+  {
+    file: 'app/project-controls/resourcing/page.tsx',
+    banned: [
+      /Math\.round\(\(actualHours\s*\/\s*allocatedHours\)\s*\*\s*100\)/g,
+    ],
+    required: [
+      /toTaskEfficiencyPct\(/,
+    ],
+  },
+  {
+    file: 'app/project-controls/wbs-gantt/page.tsx',
+    banned: [
+      /baselineHours\s*>\s*0\s*\?\s*\(actualHours\s*\/\s*baselineHours\)\s*\*\s*100\s*:\s*0/g,
+    ],
+    required: [
+      /toTaskEfficiencyPct\(/,
+    ],
+  },
+  {
+    file: 'app/project-controls/wbs-gantt-v2/page.tsx',
+    banned: [
+      /baselineHours\s*>\s*0\s*\?\s*\(actualHours\s*\/\s*baselineHours\)\s*\*\s*100\s*:\s*0/g,
+    ],
+    required: [
+      /toTaskEfficiencyPct\(/,
+    ],
+  },
 ];
 
 const violations = [];

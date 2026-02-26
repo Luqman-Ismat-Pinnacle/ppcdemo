@@ -9,6 +9,7 @@ import { useData } from '@/lib/data-context';
 import { useSnapshotVariance } from '@/lib/use-snapshot-variance';
 import { CPMEngine } from '@/lib/cpm-engine';
 import ContainerLoader from '@/components/ui/ContainerLoader';
+import { toTaskEfficiencyPct } from '@/lib/calculations/selectors';
 
 type TimelineInterval = 'week' | 'month' | 'quarter' | 'year';
 
@@ -495,7 +496,7 @@ export default function WBSGanttV2Page() {
         const remainingCost = readNumber(rec, 'remainingCost', 'remaining_cost');
         const scheduleCost = actualCost + remainingCost;
 
-        const efficiency = baselineHours > 0 ? (actualHours / baselineHours) * 100 : 0;
+        const efficiency = toTaskEfficiencyPct(actualHours, baselineHours);
 
         const taskId = normalizeTaskId(readString(rec, 'taskId', 'task_id', 'id'));
         const assignedResourceId = readString(rec, 'assignedResourceId', 'assigned_resource_id', 'employeeId', 'employee_id');
