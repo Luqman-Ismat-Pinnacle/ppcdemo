@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
 
 export const dynamic = 'force-dynamic';
+const EDIT_WINDOW_DAYS = Math.max(1, Number(process.env.COMMITMENT_EDIT_WINDOW_DAYS || 3));
 
 async function ensureTables(pool: import('pg').Pool) {
   await pool.query(`
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get('projectId');
     const periodKey = searchParams.get('periodKey');
     const ownerRole = searchParams.get('ownerRole');
+    const authorEmail = searchParams.get('authorEmail');
     const limit = Math.min(500, Number(searchParams.get('limit') || 100));
 
     const where: string[] = [];
@@ -73,7 +75,7 @@ export async function GET(req: NextRequest) {
     if (projectId) add('project_id', projectId);
     if (periodKey) add('period_key', periodKey);
     if (ownerRole) add('owner_role', ownerRole);
-    params.push(limit);
+    if (authorEmail) add('author_email', authorEmail);
 
     const result = await pool.query(
       `SELECT
@@ -87,12 +89,16 @@ export async function GET(req: NextRequest) {
          followthrough_text AS "followthroughText",
          status,
          created_at AS "createdAt",
-         updated_at AS "updatedAt"
+         updated_at AS "updatedAt",
+         (
+           status = 'submitted'
+           AND updated_at < NOW() - ($${params.length + 1}::text || ' days')::interval
+         ) AS "locked"
        FROM commitments
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY updated_at DESC
-       LIMIT $${params.length}`,
-      params,
+       LIMIT $${params.length + 2}`,
+      [...params, String(EDIT_WINDOW_DAYS), limit],
     );
 
     return NextResponse.json({ success: true, rows: result.rows });
@@ -117,12 +123,37 @@ export async function POST(req: NextRequest) {
     const commitmentText = String(body.commitmentText || '').trim();
     const followthroughText = body.followthroughText ? String(body.followthroughText) : null;
     const status = String(body.status || 'draft').trim().toLowerCase();
+    const overrideLock = Boolean(body.overrideLock);
 
     if (!projectId || !periodKey || !ownerRole || !commitmentText) {
       return NextResponse.json({ success: false, error: 'projectId, periodKey, ownerRole, and commitmentText are required' }, { status: 400 });
     }
 
-    const id = String(body.id || makeId());
+    const existing = await pool.query(
+      `SELECT id, status, updated_at
+       FROM commitments
+       WHERE project_id = $1
+         AND period_key = $2
+         AND owner_role = $3
+         AND author_email IS NOT DISTINCT FROM $4
+       LIMIT 1`,
+      [projectId, periodKey, ownerRole, authorEmail],
+    );
+    const existingRow = existing.rows?.[0] as { id: string; status: string; updated_at: string } | undefined;
+    const id = String(existingRow?.id || body.id || makeId());
+
+    if (existingRow?.status === 'submitted' && !overrideLock) {
+      const updatedAtMs = new Date(existingRow.updated_at).getTime();
+      const lockDeadline = updatedAtMs + (EDIT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+      if (Number.isFinite(updatedAtMs) && lockDeadline < Date.now()) {
+        return NextResponse.json({
+          success: false,
+          error: `Commitment is locked after ${EDIT_WINDOW_DAYS} day edit window.`,
+          code: 'COMMITMENT_LOCKED',
+          editableWindowDays: EDIT_WINDOW_DAYS,
+        }, { status: 409 });
+      }
+    }
 
     const result = await pool.query(
       `INSERT INTO commitments (
@@ -164,7 +195,11 @@ export async function POST(req: NextRequest) {
       ],
     );
 
-    return NextResponse.json({ success: true, row: result.rows?.[0] ?? null });
+    return NextResponse.json({
+      success: true,
+      row: result.rows?.[0] ?? null,
+      editableWindowDays: EDIT_WINDOW_DAYS,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
