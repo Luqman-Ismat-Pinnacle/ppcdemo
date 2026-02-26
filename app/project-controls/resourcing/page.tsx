@@ -50,6 +50,41 @@ const getUtilColor = (u: number) =>
 const fmt = (n: number, d = 0) =>
   n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 
+function countBusinessDaysInMonth(year: number, monthIndex: number): number {
+  const start = new Date(year, monthIndex, 1);
+  const end = new Date(year, monthIndex + 1, 0);
+  let count = 0;
+  for (let day = 1; day <= end.getDate(); day++) {
+    const d = new Date(year, monthIndex, day);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return Math.max(1, count);
+}
+
+function bucketWorkingDays(bucket: 'week' | 'month' | 'quarter', label: string): number {
+  if (bucket === 'week') return DAYS_PER_WEEK;
+  if (bucket === 'month') {
+    const [y, m] = label.split('-').map((v) => Number(v));
+    if (Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12) {
+      return countBusinessDaysInMonth(y, m - 1);
+    }
+    return 22;
+  }
+  const [yearPart, quarterPart] = label.split('-Q');
+  const year = Number(yearPart);
+  const q = Number(quarterPart);
+  if (Number.isFinite(year) && Number.isFinite(q) && q >= 1 && q <= 4) {
+    const startMonth = (q - 1) * 3;
+    return (
+      countBusinessDaysInMonth(year, startMonth) +
+      countBusinessDaysInMonth(year, startMonth + 1) +
+      countBusinessDaysInMonth(year, startMonth + 2)
+    );
+  }
+  return 65;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // LOADING FALLBACK
 // ═══════════════════════════════════════════════════════════════════
@@ -1089,6 +1124,7 @@ function ResourcingPageContent() {
       return {
         labels: displayWeeks.map((w) => w.label),
         roleBucketHours: roleWeekHours,
+        bucketWorkingDays: displayWeeks.map(() => DAYS_PER_WEEK),
       };
     }
     // Group weeks into month or quarter buckets
@@ -1120,7 +1156,11 @@ function ResourcingPageContent() {
       });
       roleBucketHours.set(role, bucketMap);
     });
-    return { labels: bucketLabels, roleBucketHours };
+    return {
+      labels: bucketLabels,
+      roleBucketHours,
+      bucketWorkingDays: bucketLabels.map((label) => bucketWorkingDays(heatmapBucket, label)),
+    };
   }, [heatmapSharedData, heatmapBucket]);
 
   // ── Heatmap by ROLE ──
@@ -1225,6 +1265,119 @@ function ResourcingPageContent() {
               const val = Number(params?.data?.[2] ?? 0);
               if (val <= 0) return '';
               return `${Math.round(val)}`;
+            },
+          },
+          itemStyle: {
+            borderColor: 'rgba(255,255,255,0.08)',
+            borderWidth: 1,
+          },
+          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(64,224,208,0.5)' } },
+        },
+      ],
+      _dynamicHeight: dynamicHeight,
+    } as any;
+  }, [heatmapSharedData, heatmapBucketed, heatmapBucket]);
+
+  // ── Heatmap by ROLE (FTE normalized by working days) ──
+  const heatmapByRoleFteOption: EChartsOption | null = useMemo(() => {
+    if (!heatmapSharedData || !heatmapBucketed) return null;
+    const { roleWeekHours } = heatmapSharedData;
+    const { labels: displayLabels, roleBucketHours, bucketWorkingDays } = heatmapBucketed as {
+      labels: string[];
+      roleBucketHours: Map<string, Map<number, number>>;
+      bucketWorkingDays: number[];
+    };
+
+    const sortedRoles = [...roleWeekHours.entries()]
+      .map(([role, wm]) => ({ role, total: [...wm.values()].reduce((s: number, v: number) => s + v, 0) }))
+      .sort((a, b) => b.total - a.total)
+      .map((r: any) => r.role);
+
+    const heatData: [number, number, number][] = [];
+    let maxVal = 0;
+    const numBuckets = displayLabels.length;
+
+    sortedRoles.forEach((role, ri) => {
+      const bucketMap = roleBucketHours.get(role) ?? new Map<number, number>();
+      for (let wi = 0; wi < numBuckets; wi++) {
+        const hoursVal = Number(bucketMap.get(wi) || 0);
+        const days = Math.max(1, Number(bucketWorkingDays[wi] || DAYS_PER_WEEK));
+        const fteVal = hoursVal / (days * HOURS_PER_DAY);
+        heatData.push([wi, ri, Number(fteVal.toFixed(2))]);
+        if (fteVal > maxVal) maxVal = fteVal;
+      }
+    });
+
+    const dynamicHeight = Math.max(520, sortedRoles.length * 36 + 140);
+
+    return {
+      backgroundColor: 'transparent',
+      tooltip: {
+        position: 'top',
+        confine: true,
+        backgroundColor: 'rgba(9,14,20,0.96)',
+        borderColor: 'rgba(148,163,184,0.45)',
+        textStyle: { color: '#fff', fontSize: 11 },
+        extraCssText: 'border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.5);backdrop-filter:blur(8px);max-width:360px;white-space:normal;',
+        formatter: (params: any) => {
+          const [wi, ri] = params.data;
+          const role = sortedRoles[ri];
+          const periodLabel = displayLabels[wi] ?? '';
+          const days = Math.max(1, Number(bucketWorkingDays[wi] || DAYS_PER_WEEK));
+          const hours = Number((roleBucketHours.get(role)?.get(wi) || 0));
+          const fteVal = hours / (days * HOURS_PER_DAY);
+          return `<div style="padding:10px 12px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#40E0D0">${role}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:8px">${heatmapBucket === 'week' ? 'Week of ' : ''}${periodLabel}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:11px">
+              <span style="color:#9ca3af">FTE</span><span style="font-weight:700;color:#10B981">${fteVal.toFixed(2)}</span>
+              <span style="color:#9ca3af">Hours</span><span style="font-weight:700;color:#fff">${fmt(Math.round(hours))}</span>
+              <span style="color:#9ca3af">Working Days</span><span style="font-weight:700;color:#fff">${days}</span>
+            </div>
+          </div>`;
+        },
+      },
+      grid: { top: 60, left: 200, right: 60, bottom: 80 },
+      xAxis: {
+        type: 'category',
+        data: displayLabels,
+        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 55, interval: 0 },
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+        splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.01)', 'rgba(255,255,255,0.03)'] } },
+      },
+      yAxis: {
+        type: 'category',
+        data: sortedRoles,
+        axisLabel: {
+          color: '#d4d4d8', fontSize: 11, interval: 0,
+          formatter: (v: string) => v.length > 28 ? `${v.substring(0, 26)}...` : v,
+        },
+        axisLine: { lineStyle: { color: '#3f3f46' } },
+      },
+      visualMap: {
+        min: 0,
+        max: Math.max(maxVal, 1.5),
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 4,
+        itemWidth: 14,
+        itemHeight: 120,
+        textStyle: { color: '#a1a1aa', fontSize: 9 },
+        inRange: { color: ['#161b22', '#1a3a3a', '#10B981', '#F59E0B', '#EF4444'] },
+      },
+      series: [
+        {
+          type: 'heatmap',
+          data: heatData,
+          label: {
+            show: true,
+            fontSize: 9,
+            color: 'rgba(255,255,255,0.9)',
+            formatter: (params: any) => {
+              const val = Number(params?.data?.[2] ?? 0);
+              if (val <= 0) return '';
+              return `${val.toFixed(2)}`;
             },
           },
           itemStyle: {
@@ -1791,6 +1944,28 @@ function ResourcingPageContent() {
                 </svg>
                 <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>No heatmap data available</div>
                 <div style={{ fontSize: '0.85rem' }}>Import project plans with task schedules and baseline hours to generate the resource heatmap.</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 700 }}>Resource Heatmap (FTE)</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  FTE normalized view: hours divided by working days and 8-hour workday
+                </div>
+              </div>
+            </div>
+            {heatmapSharedData?.emptyDueToScope ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No scheduled task data in active scope.
+              </div>
+            ) : heatmapByRoleFteOption ? (
+              <ChartWrapper option={heatmapByRoleFteOption} height={`${(heatmapByRoleFteOption as any)._dynamicHeight || 600}px`} />
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No FTE heatmap data available.
               </div>
             )}
           </div>

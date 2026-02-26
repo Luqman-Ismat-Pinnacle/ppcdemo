@@ -79,7 +79,7 @@ export default function Navigation() {
             aria-expanded={toolsOpen}
             aria-label="Open role tools"
           >
-            Tools
+            Pages
             <span style={{ opacity: 0.72 }}>({navConfig.tools.length})</span>
           </button>
           {toolsOpen ? (
@@ -88,6 +88,7 @@ export default function Navigation() {
                 <Link key={item.href} href={item.href} className={`role-nav-tool-item ${isActive(item.href) ? 'active' : ''}`}>
                   <span>{item.label}</span>
                   {item.countKey ? <span className="role-nav-tool-count">{toolCounts[item.countKey] ?? 0}</span> : null}
+                  {!item.countKey && item.badgeKey ? <Badge value={badges[item.badgeKey]} /> : null}
                 </Link>
               ))}
             </div>
@@ -102,7 +103,7 @@ export default function Navigation() {
         aria-expanded={mobileOpen}
         aria-label="Open navigation menu"
       >
-        Menu
+        Pages
       </button>
 
       {mobileOpen ? (
@@ -119,6 +120,7 @@ export default function Navigation() {
             <Link key={item.href} href={item.href} className={`role-nav-mobile-item ${isActive(item.href) ? 'active' : ''}`}>
               <span>{item.label}</span>
               {item.countKey ? <span className="role-nav-tool-count">{toolCounts[item.countKey] ?? 0}</span> : null}
+              {!item.countKey && item.badgeKey ? <Badge value={badges[item.badgeKey]} /> : null}
             </Link>
           ))}
         </div>

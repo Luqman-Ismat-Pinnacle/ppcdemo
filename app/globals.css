@@ -591,6 +591,12 @@ body {
   gap: 0.5rem;
 }
 
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
 .nav-menu {
   display: flex;
   gap: 0.25rem;
