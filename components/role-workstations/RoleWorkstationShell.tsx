@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ROLE_NAV_CONFIG } from '@/lib/role-navigation';
 import type { RoleViewKey } from '@/types/role-workstation';
+import RoleContextStrip from '@/components/role-workstations/RoleContextStrip';
 
 export default function RoleWorkstationShell({
   role,
@@ -36,6 +37,7 @@ export default function RoleWorkstationShell({
         </div>
         <Link href="/role-views" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Back to role hub</Link>
       </div>
+      <RoleContextStrip role={role} />
 
       <div style={{ display: 'flex', gap: '0.45rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
         {nav.items.map((item) => {
