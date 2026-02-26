@@ -146,7 +146,8 @@ async function fetchFromPostgreSQL() {
       safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
       safeQuery('SELECT * FROM employees ORDER BY name'),
       safeQuery('SELECT * FROM hour_entries ORDER BY date'),
-      safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, due_date, created_at)"),
+      // Keep ordering compatible with pruned schemas where due_date no longer exists.
+      safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, created_at)"),
       safeQuery('SELECT * FROM deliverables ORDER BY name'),
       safeQuery('SELECT * FROM sprints ORDER BY start_date'),
       safeQuery('SELECT * FROM sprint_tasks'),

@@ -33,6 +33,7 @@ const ENSURE_PHASE6_TABLES_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_alert_events_created_at ON alert_events (created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_alert_events_status ON alert_events (status);
+  CREATE INDEX IF NOT EXISTS idx_alert_events_status_created_at ON alert_events (status, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_alert_events_severity ON alert_events (severity);
   CREATE INDEX IF NOT EXISTS idx_alert_events_dedupe_key ON alert_events (dedupe_key);
 
@@ -53,6 +54,7 @@ const ENSURE_PHASE6_TABLES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_task_assignments_task_id ON task_assignments (task_id);
   CREATE INDEX IF NOT EXISTS idx_task_assignments_employee_id ON task_assignments (employee_id);
   CREATE INDEX IF NOT EXISTS idx_task_assignments_changed_at ON task_assignments (changed_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_task_assignments_task_changed_at ON task_assignments (task_id, changed_at DESC);
 
   CREATE TABLE IF NOT EXISTS mapping_suggestions (
     id BIGSERIAL PRIMARY KEY,
@@ -75,6 +77,11 @@ const ENSURE_PHASE6_TABLES_SQL = `
   CREATE INDEX IF NOT EXISTS idx_mapping_suggestions_project_status ON mapping_suggestions (project_id, status);
   CREATE INDEX IF NOT EXISTS idx_mapping_suggestions_confidence ON mapping_suggestions (confidence DESC);
   CREATE INDEX IF NOT EXISTS idx_mapping_suggestions_hour_entry ON mapping_suggestions (hour_entry_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_mapping_suggestions_pending_hour_entry
+    ON mapping_suggestions (hour_entry_id)
+    WHERE suggestion_type = 'hour_to_task'
+      AND status = 'pending'
+      AND hour_entry_id IS NOT NULL;
 `;
 
 let phase6TablesEnsured = false;

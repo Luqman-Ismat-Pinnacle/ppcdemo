@@ -11,7 +11,9 @@
     "lint:api": "eslint app/api",
     "check:calc-drift": "node scripts/check-calculation-drift.js",
     "check:calc-correctness": "tsx scripts/check-calculation-correctness.ts",
+    "check:phase4-provenance": "node scripts/check-phase4-provenance.js",
     "check:phase5-smoke": "node scripts/check-phase5-smoke.js",
+    "check:phase5-contracts": "node scripts/check-phase5-contracts.js",
     "alerts:scan": "node scripts/run-alert-scan.mjs"
   },
   "dependencies": {
