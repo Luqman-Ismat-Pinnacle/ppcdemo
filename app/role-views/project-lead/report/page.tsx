@@ -14,6 +14,7 @@ import { useUser } from '@/lib/user-context';
 import { useRoleView } from '@/lib/role-view-context';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
+import CommitmentCard from '@/components/role-workstations/CommitmentCard';
 
 interface CommitmentRecord {
   id: string;
@@ -240,22 +241,14 @@ export default function ProjectLeadReportPage() {
           {message ? <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{message}</span> : null}
         </div>
 
-        <div style={{ marginTop: '0.4rem', border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '120px 120px 90px 1fr', gap: '0.5rem', padding: '0.45rem 0.6rem', fontSize: '0.67rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>
-            <span>Period</span>
-            <span>Updated</span>
-            <span>Status</span>
-            <span>Commitment</span>
-          </div>
+        <div style={{ marginTop: '0.4rem', display: 'grid', gap: '0.5rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Recent History</div>
           {history.length === 0 ? (
-            <div style={{ padding: '0.6rem', fontSize: '0.76rem', color: 'var(--text-muted)' }}>No history for this project/period scope.</div>
-          ) : history.map((item) => (
-            <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '120px 120px 90px 1fr', gap: '0.5rem', padding: '0.5rem 0.6rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.73rem' }}>
-              <span>{item.periodKey}</span>
-              <span>{new Date(item.updatedAt).toLocaleDateString()}</span>
-              <span>{item.status}{item.locked ? ' (locked)' : ''}</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{item.commitmentText}</span>
+            <div style={{ padding: '0.6rem', fontSize: '0.76rem', color: 'var(--text-muted)', border: '1px solid var(--border-color)', borderRadius: 10 }}>
+              No history for this project/period scope.
             </div>
+          ) : history.slice(0, 12).map((item) => (
+            <CommitmentCard key={item.id} item={item} />
           ))}
         </div>
       </div>
