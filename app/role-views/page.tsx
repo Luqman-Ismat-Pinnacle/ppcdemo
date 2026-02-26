@@ -13,9 +13,9 @@ const ROLE_VIEWS = [
   { title: 'Project Lead', href: '/role-views/project-lead', status: 'Active (Phase 7.1)' },
   { title: 'PCA Mapping Workspace', href: '/role-views/pca-workspace', status: 'Active (Phase 7.2)' },
   { title: 'PCL Exception View', href: '/role-views/pcl-exceptions', status: 'Active (Phase 7.3)' },
-  { title: 'Senior Manager', href: '/role-views/senior-manager', status: 'Planned (Phase 7.4)' },
-  { title: 'COO + AI Q&A', href: '/role-views/coo', status: 'Planned (Phase 7.5)' },
-  { title: 'Client Portal', href: '/role-views/client-portal', status: 'Planned (Phase 7.6)' },
+  { title: 'Senior Manager', href: '/role-views/senior-manager', status: 'Active (Phase 7.4)' },
+  { title: 'COO + AI Q&A', href: '/role-views/coo', status: 'Active (Phase 7.5)' },
+  { title: 'Client Portal', href: '/role-views/client-portal', status: 'Active (Phase 7.6)' },
 ] as const;
 
 export default function RoleViewsIndexPage() {
