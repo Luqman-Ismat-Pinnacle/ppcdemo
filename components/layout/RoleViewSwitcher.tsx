@@ -10,11 +10,13 @@
 import React, { useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
 
 export default function RoleViewSwitcher() {
   const router = useRouter();
   const pathname = usePathname();
   const { activeRole, canSwitchRoles, setActiveRole, presets } = useRoleView();
+  const { user } = useUser();
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [hoverOpen, setHoverOpen] = useState(false);
   const open = pinnedOpen || hoverOpen;
@@ -24,7 +26,8 @@ export default function RoleViewSwitcher() {
     [activeRole.label, canSwitchRoles]
   );
 
-  if (pathname === '/login') return null;
+  const isProductOwner = String(user?.role || '').trim().toLowerCase() === 'product owner';
+  if (pathname === '/login' || !isProductOwner) return null;
 
   return (
     <div

@@ -7,8 +7,8 @@ import { useEffect } from 'react';
 export default function Home() {
   const router = useRouter();
   useEffect(() => {
-    // Redirect to WBS Gantt as the home/landing page
-    router.push('/project-controls/wbs-gantt');
+    // Route to role-aware landing; /role-views redirects to active role command center.
+    router.push('/role-views');
   }, [router]);
 
   return (
