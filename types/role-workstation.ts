@@ -27,12 +27,15 @@ export interface RoleNavItem {
   href: string;
   description?: string;
   badge?: number | '!' | null;
+  badgeKey?: string;
+  countKey?: string;
 }
 
 export interface RoleNavConfig {
   role: RoleViewKey;
   title: string;
-  items: RoleNavItem[];
+  primary: RoleNavItem[];
+  tools: RoleNavItem[];
 }
 
 export interface WorkflowPermissions {

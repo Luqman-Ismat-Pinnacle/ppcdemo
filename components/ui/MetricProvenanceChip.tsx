@@ -16,20 +16,9 @@ export default function MetricProvenanceChip({ provenance }: MetricProvenanceChi
         type="button"
         onClick={() => setOpen(true)}
         title={`Formula ${provenance.id}`}
-        style={{
-          border: '1px solid var(--border-color)',
-          background: 'var(--bg-tertiary)',
-          color: 'var(--text-muted)',
-          borderRadius: 999,
-          fontSize: '0.62rem',
-          lineHeight: 1.2,
-          padding: '2px 8px',
-          cursor: 'pointer',
-          marginLeft: 6,
-          whiteSpace: 'nowrap',
-        }}
+        className="metric-provenance-chip"
       >
-        {provenance.id}
+        <span className="metric-provenance-chip-text">{provenance.id}</span>
       </button>
 
       {open && (

@@ -1,17 +1,9 @@
-'use client';
-
 /**
- * @fileoverview COO AI briefing chat page backed by /api/ai/query.
+ * @fileoverview Legacy COO AI route redirect to COO command center.
  */
 
-import React from 'react';
-import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import WorkstationAIPanel from '@/components/ai/WorkstationAIPanel';
+import { redirect } from 'next/navigation';
 
-export default function CooAiPage() {
-  return (
-    <RoleWorkstationShell role="coo" requiredTier="tier2" title="AI Briefing" subtitle="OpenAI-backed executive briefing and Q&A from live operating data.">
-      <WorkstationAIPanel />
-    </RoleWorkstationShell>
-  );
+export default function CooAiRedirectPage() {
+  redirect('/role-views/coo');
 }

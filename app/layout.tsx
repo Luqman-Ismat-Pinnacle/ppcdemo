@@ -3,7 +3,7 @@
  * 
  * This is the main layout component that wraps all pages and provides:
  * - Global CSS styles
- * - Font configuration (Outfit, JetBrains Mono)
+ * - Font configuration (Space Grotesk, JetBrains Mono)
  * - Theme provider (dark/light mode)
  * - Data provider (centralized data context)
  * - Error boundary for graceful error handling
@@ -15,7 +15,7 @@
  */
 
 import type { Metadata } from 'next';
-import { Montserrat, JetBrains_Mono } from 'next/font/google';
+import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 import './globals.css';
@@ -35,7 +35,7 @@ import RoleViewSwitcher from '@/components/layout/RoleViewSwitcher';
 import { RoleViewProvider } from '@/lib/role-view-context';
 import AmbientBackground from '@/components/background/AmbientBackground';
 
-const montserrat = Montserrat({
+const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   variable: '--font-montserrat',
   display: 'swap', // Optimize font loading
@@ -62,14 +62,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${montserrat.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
-        {/* Global background system: layered gradient + texture + soft vignettes */}
-        <div className="app-background">
-          <div className="bg-noise" />
-          <div className="bg-vignette bg-vignette-left" />
-          <div className="bg-vignette bg-vignette-right" />
-          <div className="video-overlay" />
-        </div>
+      <body className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <ErrorBoundary>
           <Auth0Provider>
             <AuthGuard>

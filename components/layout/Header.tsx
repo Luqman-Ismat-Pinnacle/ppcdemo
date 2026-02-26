@@ -63,12 +63,6 @@ export default function Header() {
     userLogout();
   };
 
-  const now = new Date();
-  const hour = now.getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const roleLine = `Viewing as ${activeRole.label}`;
-  const firstName = String(user?.name || '').trim().split(/\s+/)[0] || 'there';
-
   return (
     <header className="app-header" style={{
       background: 'var(--bg-glass)',
@@ -93,25 +87,17 @@ export default function Header() {
         </Link>
         <Navigation />
       </div>
-      <div style={{ flex: 1, minWidth: 240, display: 'flex', justifyContent: 'center', padding: '0 0.75rem' }}>
-        <div style={{ textAlign: 'center', lineHeight: 1.15 }}>
-          <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-            {greeting}, {firstName}
-          </div>
-          <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
-            {now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {roleLine}
-          </div>
-        </div>
-      </div>
       <div className="header-right">
-        <StatusAndLogsDropdown />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        <DateFilterControl />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        <HierarchyFilter />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-        <NotificationBell />
-        <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+        <div className="header-controls">
+          <StatusAndLogsDropdown />
+          <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+          <DateFilterControl />
+          <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+          <HierarchyFilter />
+          <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+          <NotificationBell />
+          <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
+        </div>
         {/* Profile Dropdown */}
         <div ref={profileRef} style={{ position: 'relative' }}>
           <button

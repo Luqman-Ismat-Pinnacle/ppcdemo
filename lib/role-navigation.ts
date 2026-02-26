@@ -19,92 +19,125 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
   product_owner: {
     role: 'product_owner',
     title: 'Product Owner',
-    items: [
+    primary: [
       { label: 'Command Center', href: '/role-views/product-owner' },
-      { label: 'PCL', href: '/role-views/pcl' },
-      { label: 'PCA', href: '/role-views/pca' },
+      { label: 'Role Monitor', href: '/role-views/product-owner#role-monitor' },
+      { label: 'System Health', href: '/role-views/product-owner#system-health' },
+      { label: 'Feedback', href: '/project-management/qc-log' },
+      { label: 'Data Admin', href: '/project-controls/data-management' },
+    ],
+    tools: [
+      { label: 'PCL Command', href: '/role-views/pcl' },
+      { label: 'PCA Workstation', href: '/role-views/pca' },
       { label: 'Project Lead', href: '/role-views/project-lead' },
       { label: 'Senior Manager', href: '/role-views/senior-manager' },
       { label: 'COO', href: '/role-views/coo' },
       { label: 'RDA', href: '/role-views/rda' },
+      { label: 'WBS / Gantt', href: '/project-controls/wbs-gantt' },
     ],
   },
   pcl: {
     role: 'pcl',
     title: 'PCL Workstation',
-    items: [
+    primary: [
       { label: 'Command Center', href: '/role-views/pcl' },
       { label: 'Schedule Health', href: '/role-views/pcl/schedule-health' },
-      { label: 'Plans Mapping', href: '/role-views/pcl/plans-mapping' },
+      { label: 'Plans & Mapping', href: '/role-views/pcl/plans-mapping' },
       { label: 'Resourcing', href: '/role-views/pcl/resourcing' },
-      { label: 'Exceptions', href: '/role-views/pcl/exceptions' },
-      { label: 'WBS', href: '/role-views/pcl/wbs' },
+      { label: 'Exceptions', href: '/role-views/pcl/exceptions', badgeKey: 'pcl_exceptions' },
+    ],
+    tools: [
+      { label: 'WBS Queue', href: '/role-views/pcl/wbs' },
+      { label: 'Portfolio WBS / Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'Data Management', href: '/project-controls/data-management' },
     ],
   },
   pca: {
     role: 'pca',
     title: 'PCA Workstation',
-    items: [
-      { label: 'My Projects', href: '/role-views/pca' },
-      { label: 'Mapping', href: '/role-views/pca/mapping' },
+    primary: [
+      { label: 'My Work', href: '/role-views/pca' },
+      { label: 'Mapping', href: '/role-views/pca/mapping', badgeKey: 'pca_mapping' },
       { label: 'Plan Uploads', href: '/role-views/pca/plan-uploads' },
       { label: 'Data Quality', href: '/role-views/pca/data-quality' },
-      { label: 'WBS', href: '/role-views/pca/wbs' },
+    ],
+    tools: [
+      { label: 'Assigned WBS', href: '/role-views/pca/wbs' },
+      { label: 'Full WBS / Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'Project Plans', href: '/project-controls/project-plans' },
     ],
   },
   project_lead: {
     role: 'project_lead',
     title: 'Project Lead Workstation',
-    items: [
+    primary: [
       { label: 'My Project', href: '/role-views/project-lead' },
       { label: 'Schedule', href: '/role-views/project-lead/schedule' },
       { label: 'Team', href: '/role-views/project-lead/team' },
       { label: 'Sprint', href: '/project-management/sprint' },
-      { label: 'Week Ahead', href: '/role-views/project-lead/week-ahead' },
-      { label: 'Report', href: '/role-views/project-lead/report' },
       { label: 'Forecast', href: '/role-views/project-lead/forecast' },
       { label: 'Documents', href: '/role-views/project-lead/documents' },
+      { label: 'Report', href: '/role-views/project-lead/report', badgeKey: 'pl_report' },
+    ],
+    tools: [
+      { label: 'Week Ahead', href: '/role-views/project-lead/week-ahead', badgeKey: 'pl_due' },
+      { label: 'WBS / Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'Project Documentation', href: '/project-management/documentation' },
     ],
   },
   senior_manager: {
     role: 'senior_manager',
     title: 'Senior Manager Workstation',
-    items: [
-      { label: 'Portfolio', href: '/role-views/senior-manager' },
+    primary: [
+      { label: 'Overview', href: '/role-views/senior-manager' },
       { label: 'Projects', href: '/role-views/senior-manager/projects' },
       { label: 'Team', href: '/role-views/senior-manager/team' },
       { label: 'Milestones', href: '/role-views/senior-manager/milestones' },
-      { label: 'Commitments', href: '/role-views/senior-manager/commitments' },
+      { label: 'Commitments', href: '/role-views/senior-manager/commitments', badgeKey: 'sm_commitments' },
       { label: 'Documents', href: '/role-views/senior-manager/documents' },
-      { label: 'WBS', href: '/role-views/senior-manager/wbs' },
+    ],
+    tools: [
+      { label: 'Portfolio WBS', href: '/role-views/senior-manager/wbs' },
+      { label: 'Portfolio Resourcing', href: '/project-controls/resourcing' },
+      { label: 'Milestone Insights', href: '/insights/milestones' },
     ],
   },
   coo: {
     role: 'coo',
     title: 'COO Workstation',
-    items: [
+    primary: [
       { label: 'Portfolio', href: '/role-views/coo' },
       { label: 'Period Review', href: '/role-views/coo/period-review' },
       { label: 'Milestones', href: '/role-views/coo/milestones' },
-      { label: 'Commitments', href: '/role-views/coo/commitments' },
-      { label: 'AI Briefing', href: '/role-views/coo/ai' },
+      { label: 'Commitments', href: '/role-views/coo/commitments', badgeKey: 'coo_commitments' },
+      { label: 'AI Command', href: '/role-views/coo' },
+    ],
+    tools: [
+      { label: 'Executive WBS Lens', href: '/role-views/coo/wbs' },
+      { label: 'Portfolio Overview', href: '/insights/overview-v2' },
+      { label: 'Forecast Insights', href: '/project-management/forecast' },
     ],
   },
   rda: {
     role: 'rda',
     title: 'RDA Workstation',
-    items: [
+    primary: [
       { label: 'My Work', href: '/role-views/rda' },
       { label: 'Sprint', href: '/role-views/rda/sprint' },
       { label: 'Hours', href: '/role-views/rda/hours' },
-      { label: 'Work', href: '/role-views/rda/work' },
+      { label: 'Work Queue', href: '/role-views/rda/work', badgeKey: 'rda_overdue' },
       { label: 'Schedule', href: '/role-views/rda/schedule' },
+    ],
+    tools: [
+      { label: 'Task Boards', href: '/project-management/boards' },
+      { label: 'Task Insights', href: '/insights/tasks' },
     ],
   },
   client_portal: {
     role: 'client_portal',
     title: 'Client Portal',
-    items: [{ label: 'Portal', href: '/role-views/client-portal' }],
+    primary: [{ label: 'Portal', href: '/role-views/client-portal' }],
+    tools: [{ label: 'Milestones', href: '/insights/milestones' }],
   },
 };
 

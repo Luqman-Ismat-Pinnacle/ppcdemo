@@ -48,7 +48,7 @@ async function readSseText(response: Response, onText: (delta: string) => void):
 export default function WorkstationAIPanel() {
   const { activeRole } = useRoleView();
   const { user } = useUser();
-  const [prompt, setPrompt] = useState('What should I focus on today?');
+  const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingBriefing, setLoadingBriefing] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -66,10 +66,7 @@ export default function WorkstationAIPanel() {
   const runBriefing = useCallback(async () => {
     setLoadingBriefing(true);
     setError(null);
-    setMessages((prev) => {
-      const hasExisting = prev.some((message) => message.role === 'assistant');
-      return hasExisting ? prev : [...prev, { role: 'assistant', text: '' }];
-    });
+    setMessages([{ role: 'assistant', text: '' }]);
 
     try {
       const response = await fetch('/api/ai/briefing', {
@@ -82,24 +79,17 @@ export default function WorkstationAIPanel() {
         throw new Error(`Briefing failed (${response.status})`);
       }
 
-      setMessages((prev) => {
-        const next = [...prev];
-        if (!next.length || next[next.length - 1].role !== 'assistant') {
-          next.push({ role: 'assistant', text: '' });
-        }
-        return next;
-      });
-
       await readSseText(response, (delta) => {
         setMessages((prev) => {
           const next = [...prev];
-          const idx = next.length - 1;
-          if (idx < 0) return [{ role: 'assistant', text: delta }];
-          if (next[idx].role !== 'assistant') {
+          if (!next.length || next[next.length - 1].role !== 'assistant') {
             next.push({ role: 'assistant', text: delta });
             return next;
           }
-          next[idx] = { ...next[idx], text: `${next[idx].text}${delta}` };
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            text: `${next[next.length - 1].text}${delta}`,
+          };
           return next;
         });
       });
@@ -152,6 +142,7 @@ export default function WorkstationAIPanel() {
   }, [activeRole.key, asking, headers, messages, prompt, user?.email, user?.employeeId]);
 
   React.useEffect(() => {
+    setPrompt('');
     setMessages([]);
     void runBriefing();
   }, [activeRole.key, runBriefing]);
@@ -159,29 +150,29 @@ export default function WorkstationAIPanel() {
   const showSuggestedPrompts = messages.filter((entry) => entry.role === 'user').length === 0;
 
   return (
-    <aside style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.55rem', maxHeight: 'calc(100vh - 180px)', minHeight: 360 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Copilot</div>
-          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>{activeRole.label} briefing</div>
+    <aside className="workstation-ai-panel">
+      <div className="workstation-ai-header">
+        <div className="workstation-ai-icon" aria-hidden>◌</div>
+        <div className="workstation-ai-title-wrap">
+          <div className="workstation-ai-title">Create a chat prompt</div>
+          <div className="workstation-ai-subtitle">{activeRole.label} Copilot</div>
         </div>
-        <button type="button" onClick={() => void runBriefing()} disabled={loadingBriefing} style={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', borderRadius: 8, fontSize: '0.68rem', color: 'var(--text-secondary)', padding: '0.3rem 0.5rem', cursor: 'pointer' }}>
-          {loadingBriefing ? 'Refreshing...' : 'Refresh'}
-        </button>
       </div>
 
       {showSuggestedPrompts ? (
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+        <div className="workstation-ai-suggested">
           {[
-            'What is the top blocker right now?',
-            'Which numbers changed the most today?',
-            'Where should I escalate first?',
+            'Top blocker',
+            'Risk scan',
+            'Schedule brief',
+            'Commitment status',
+            'Action plan',
           ].map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setPrompt(item)}
-              style={{ borderRadius: 999, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontSize: '0.65rem', padding: '0.22rem 0.5rem' }}
+              className="workstation-ai-suggested-chip"
             >
               {item}
             </button>
@@ -189,47 +180,41 @@ export default function WorkstationAIPanel() {
         </div>
       ) : null}
 
-      <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.55rem', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.42rem' }}>
-        {messages.length === 0 ? <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>No messages yet.</div> : null}
+      <div className="workstation-ai-chat">
+        {messages.length === 0 ? <div className="workstation-ai-empty">Preparing role briefing...</div> : null}
         {messages.map((message, index) => (
           <div
             key={`${message.role}-${index}`}
-            style={{
-              alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-              maxWidth: '92%',
-              border: '1px solid var(--border-color)',
-              borderRadius: 10,
-              background: message.role === 'user' ? 'rgba(16,185,129,0.14)' : 'var(--bg-card)',
-              padding: '0.42rem 0.5rem',
-              fontSize: '0.75rem',
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.4,
-            }}
+            className={`workstation-ai-message ${message.role === 'user' ? 'user' : 'assistant'}`}
           >
             {message.text || (message.role === 'assistant' && (asking || loadingBriefing) ? '…' : '')}
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gap: '0.42rem' }}>
-        <textarea
-          rows={3}
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder="Ask about this role's data and priorities..."
-          style={{ width: '100%', resize: 'vertical', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', padding: '0.5rem', fontSize: '0.76rem' }}
-        />
-        <button
-          type="button"
-          onClick={() => void ask()}
-          disabled={asking || !prompt.trim()}
-          style={{ border: 'none', borderRadius: 8, background: 'var(--pinnacle-teal)', color: '#03211d', fontSize: '0.76rem', fontWeight: 700, padding: '0.45rem 0.62rem', cursor: asking ? 'not-allowed' : 'pointer' }}
-        >
-          {asking ? 'Asking...' : 'Ask AI'}
+      <div className="workstation-ai-input-wrap">
+        <button type="button" className="workstation-ai-create-btn" onClick={() => void runBriefing()} disabled={loadingBriefing}>
+          + Create
         </button>
+        <div className="workstation-ai-input-shell">
+          <input
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                void ask();
+              }
+            }}
+            placeholder="Generate..."
+            className="workstation-ai-input"
+          />
+          <button type="button" className="workstation-ai-send-btn" onClick={() => void ask()} disabled={asking || !prompt.trim()}>
+            ↑
+          </button>
+        </div>
       </div>
-
-      {error ? <div style={{ fontSize: '0.69rem', color: '#EF4444' }}>{error}</div> : null}
+      {error ? <div className="workstation-ai-error">{error}</div> : null}
     </aside>
   );
 }
