@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, withClient } from '@/lib/postgres';
 import { emitAlertEvent, ensurePhase6Tables } from '@/lib/phase6-data';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,6 +159,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'editWbs')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for current role view' }, { status: 403 });
+    }
+
     const body = await req.json();
     const { taskId, employeeId, employeeName, assignedBy, assignmentSource, note } = body;
 
@@ -271,6 +278,22 @@ export async function POST(req: NextRequest) {
             previousEmployeeName: taskRow.assignedTo ?? null,
             nextEmployeeId: normalizedEmployeeId,
             nextEmployeeName: normalizedEmployeeName,
+          },
+        });
+
+        await writeWorkflowAudit(client, {
+          eventType: 'tasks.assignment_changed',
+          roleKey: roleContext.roleKey,
+          actorEmail: roleContext.actorEmail ?? normalizedAssignedBy ?? null,
+          projectId: taskRow.project_id ?? null,
+          entityType: 'task',
+          entityId: taskRow.id,
+          payload: {
+            previousEmployeeId: taskRow.employee_id ?? null,
+            previousEmployeeName: taskRow.assignedTo ?? null,
+            nextEmployeeId: normalizedEmployeeId,
+            nextEmployeeName: normalizedEmployeeName,
+            assignmentSource: normalizedAssignmentSource || 'resourcing_modal',
           },
         });
 

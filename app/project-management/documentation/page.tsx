@@ -4,6 +4,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
 import { useUser } from '@/lib/user-context';
+import { useRoleView } from '@/lib/role-view-context';
 
 type DocType = 'DRD' | 'Workflow' | 'QMP' | 'SOP';
 type FileFilter = 'all' | 'pdf' | 'word';
@@ -97,10 +98,10 @@ function mapVersion(raw: any): DocVersion {
   };
 }
 
-async function callDocsApi(payload: Record<string, unknown>) {
+async function callDocsApi(payload: Record<string, unknown>, roleHeaders?: Record<string, string>) {
   const res = await fetch('/api/project-documents', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(roleHeaders || {}) },
     body: JSON.stringify(payload),
   });
   const data = await res.json();
@@ -113,6 +114,7 @@ async function callDocsApi(payload: Record<string, unknown>) {
 export default function DocumentationPage() {
   const { filteredData, isLoading, refreshData, hierarchyFilter } = useData();
   const { user } = useUser();
+  const { activeRole } = useRoleView();
   const [fileFilter, setFileFilter] = useState<FileFilter>('all');
   const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
   const [savingKey, setSavingKey] = useState<string>('');
@@ -131,6 +133,11 @@ export default function DocumentationPage() {
   const actorName = user?.name || 'System';
   const actorEmail = user?.email || '';
   const auditActor = actorEmail || actorName || 'System';
+  const roleHeaders = useMemo(() => ({
+    'x-role-view': activeRole.key,
+    'x-actor-email': actorEmail || '',
+  }), [activeRole.key, actorEmail]);
+  const callDocs = useCallback((payload: Record<string, unknown>) => callDocsApi(payload, roleHeaders), [roleHeaders]);
 
   const records = useMemo(() => ((filteredData.projectDocumentRecords || []) as any[]).map(mapRecord), [filteredData.projectDocumentRecords]);
   const versions = useMemo(() => ((filteredData.projectDocumentVersions || []) as any[]).map(mapVersion), [filteredData.projectDocumentVersions]);
@@ -175,7 +182,7 @@ export default function DocumentationPage() {
     const draft = metaDraft[record.id] || {};
     setSavingKey(`meta-${record.id}`);
     try {
-      await callDocsApi({
+      await callDocs({
         action: 'updateDocumentRecordMetadata',
         recordId: record.id,
         owner: draft.owner ?? record.owner,
@@ -196,7 +203,7 @@ export default function DocumentationPage() {
     const notes = notesDraft[versionId] ?? fallbackNotes ?? '';
     setSavingKey(`notes-${versionId}`);
     try {
-      await callDocsApi({ action: 'updateDocumentVersionNotes', versionId, notes });
+      await callDocs({ action: 'updateDocumentVersionNotes', versionId, notes });
       await refreshData();
     } finally {
       setSavingKey('');
@@ -206,7 +213,7 @@ export default function DocumentationPage() {
   const handleCreateRecord = useCallback(async (docType: DocType) => {
     setSavingKey(`create-${docType}`);
     try {
-      await callDocsApi({
+      await callDocs({
         action: 'createDocumentRecord',
         docType,
         name: `${docType} Document`,
@@ -240,7 +247,7 @@ export default function DocumentationPage() {
       const { data: uploadData, error } = await storageApi.upload(path, file);
       if (error || !uploadData?.path) throw new Error(error?.message || 'Upload failed');
 
-      await callDocsApi({
+      await callDocs({
         action: 'uploadDocumentVersion',
         recordId: record.id,
         fileName: file.name,
@@ -265,7 +272,7 @@ export default function DocumentationPage() {
     if (!confirm('Delete latest version for this document?')) return;
     setSavingKey(`delete-${recordId}`);
     try {
-      await callDocsApi({ action: 'deleteLatestDocumentVersion', recordId });
+      await callDocs({ action: 'deleteLatestDocumentVersion', recordId });
       await refreshData();
     } finally {
       setSavingKey('');

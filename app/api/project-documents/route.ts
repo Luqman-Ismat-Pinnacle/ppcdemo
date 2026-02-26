@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 
 type Action =
   | 'listDocumentRecords'
@@ -50,6 +52,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const actorIdentity = resolveActor(body as Record<string, unknown>);
     const action = asString(body.action) as Action;
+    const roleContext = roleContextFromRequest(req);
+
+    const mutatingActions = new Set<Action>([
+      'createDocumentRecord',
+      'uploadDocumentVersion',
+      'deleteLatestDocumentVersion',
+      'updateDocumentRecordMetadata',
+      'updateDocumentVersionNotes',
+    ]);
+
+    if (mutatingActions.has(action) && !hasRolePermission(roleContext, 'manageDocuments')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for current role view' }, { status: 403 });
+    }
 
     if (!action) {
       return NextResponse.json({ success: false, error: 'action required' }, { status: 400 });
@@ -151,6 +166,15 @@ export async function POST(req: NextRequest) {
           ],
         );
         const rec = await pgQuery('SELECT * FROM project_document_records WHERE id = $1', [payload.id]);
+        await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+          eventType: 'documents.create_record',
+          roleKey: roleContext.roleKey,
+          actorEmail: roleContext.actorEmail || actorIdentity,
+          projectId: payload.project_id,
+          entityType: 'project_document_record',
+          entityId: payload.id,
+          payload: { action, docType: payload.doc_type, recordName: payload.name },
+        });
         return NextResponse.json({ success: true, record: rec.rows?.[0] || null });
       }
 
@@ -194,6 +218,16 @@ export async function POST(req: NextRequest) {
             'UPDATE project_document_records SET latest_version_id = $1, updated_by = $2, updated_at = NOW() WHERE id = $3',
             [id, uploadedBy, recordId],
           );
+          const rec = await pgQuery('SELECT project_id FROM project_document_records WHERE id = $1', [recordId]);
+          await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+            eventType: 'documents.upload_version',
+            roleKey: roleContext.roleKey,
+            actorEmail: roleContext.actorEmail || actorIdentity,
+            projectId: rec.rows?.[0]?.project_id || null,
+            entityType: 'project_document_version',
+            entityId: id,
+            payload: { action, recordId, fileName, versionNumber },
+          });
           await pgQuery('COMMIT', []);
           const inserted = await pgQuery('SELECT * FROM project_document_versions WHERE id = $1', [id]);
           return NextResponse.json({ success: true, version: inserted.rows?.[0] || null });
@@ -254,6 +288,16 @@ export async function POST(req: NextRequest) {
           } else {
             await pgQuery('DELETE FROM project_document_records WHERE id = $1', [recordId]);
           }
+          const rec = await pgQuery('SELECT project_id FROM project_document_records WHERE id = $1', [recordId]);
+          await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+            eventType: 'documents.delete_latest_version',
+            roleKey: roleContext.roleKey,
+            actorEmail: roleContext.actorEmail || actorIdentity,
+            projectId: rec.rows?.[0]?.project_id || null,
+            entityType: 'project_document_record',
+            entityId: recordId,
+            payload: { action, promotedVersionId: nextId },
+          });
           await pgQuery('COMMIT', []);
           return NextResponse.json({ success: true, removed: true, promotedVersionId: nextId });
         } catch (err) {
@@ -307,6 +351,16 @@ export async function POST(req: NextRequest) {
         const setClause = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
         const vals = [recordId, ...keys.map((k) => updates[k])];
         await pgQuery(`UPDATE project_document_records SET ${setClause}, updated_at = NOW() WHERE id = $1`, vals);
+        const rec = await pgQuery('SELECT project_id FROM project_document_records WHERE id = $1', [recordId]);
+        await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+          eventType: 'documents.update_record',
+          roleKey: roleContext.roleKey,
+          actorEmail: roleContext.actorEmail || actorIdentity,
+          projectId: rec.rows?.[0]?.project_id || null,
+          entityType: 'project_document_record',
+          entityId: recordId,
+          payload: { action, updatedKeys: keys },
+        });
         return NextResponse.json({ success: true });
       }
 
@@ -322,7 +376,24 @@ export async function POST(req: NextRequest) {
       if (!versionId) return NextResponse.json({ success: false, error: 'versionId required' }, { status: 400 });
       const notes = asNullableString(body.notes);
       if (isPostgresConfigured()) {
+        const rec = await pgQuery(
+          `SELECT r.project_id
+           FROM project_document_versions v
+           LEFT JOIN project_document_records r ON r.id = v.record_id
+           WHERE v.id = $1
+           LIMIT 1`,
+          [versionId]
+        );
         await pgQuery('UPDATE project_document_versions SET notes = $1, updated_at = NOW() WHERE id = $2', [notes, versionId]);
+        await writeWorkflowAudit({ query: pgQuery } as { query: typeof pgQuery }, {
+          eventType: 'documents.update_version_notes',
+          roleKey: roleContext.roleKey,
+          actorEmail: roleContext.actorEmail || actorIdentity,
+          projectId: rec.rows?.[0]?.project_id || null,
+          entityType: 'project_document_version',
+          entityId: versionId,
+          payload: { action },
+        });
         return NextResponse.json({ success: true });
       }
       const supabase = await getSupabase();

@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useLogs } from '@/lib/logs-context';
+import { useUser } from '@/lib/user-context';
+import { useRoleView } from '@/lib/role-view-context';
 import { type ProjectHealthAutoResult, type HealthCheckResult } from '@/lib/project-health-auto-check';
 import SearchableDropdown, { type DropdownOption } from '@/components/ui/SearchableDropdown';
 import { parseHourDescription } from '@/lib/hours-description';
@@ -155,7 +157,16 @@ export default function DocumentsPage() {
   const router = useRouter();
   const { refreshData, data, filteredData, isLoading } = useData();
   const { addEngineLog } = useLogs();
+  const { user } = useUser();
+  const { activeRole } = useRoleView();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const roleHeaders = useMemo(
+    () => ({
+      'x-role-view': activeRole.key,
+      'x-actor-email': user?.email || '',
+    }),
+    [activeRole.key, user?.email],
+  );
 
   // Track which file row has its dropdown expanded
   const [expandedDropdownId, setExpandedDropdownId] = useState<string | null>(null);
@@ -398,7 +409,7 @@ export default function DocumentsPage() {
     try {
       const response = await fetch('/api/workday', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'get-available-projects' })
       });
 
@@ -605,7 +616,7 @@ export default function DocumentsPage() {
           const projectId = proj.id || proj.projectId;
           const resProj = await fetch('/api/data/sync', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...roleHeaders },
             body: JSON.stringify({
               dataKey: 'projects',
               operation: 'update',
@@ -621,7 +632,7 @@ export default function DocumentsPage() {
           if (customerId) {
             const resCust = await fetch('/api/data/sync', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...roleHeaders },
               body: JSON.stringify({
                 dataKey: 'customers',
                 operation: 'update',
@@ -703,7 +714,7 @@ export default function DocumentsPage() {
           for (const oldDoc of existingProjectDocs) {
             await fetch('/api/data/sync', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...roleHeaders },
               body: JSON.stringify({
                 dataKey: 'projectDocuments',
                 operation: 'update',
@@ -721,7 +732,7 @@ export default function DocumentsPage() {
       try {
         const docRes = await fetch('/api/data/sync', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...roleHeaders },
           body: JSON.stringify({
             dataKey: 'projectDocuments',
             records: [{
@@ -765,7 +776,7 @@ export default function DocumentsPage() {
         if (logRecords.length > 0) {
           const logRes = await fetch('/api/data/sync', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...roleHeaders },
             body: JSON.stringify({ dataKey: 'projectLog', records: logRecords }),
           });
           const logResult = await logRes.json();
@@ -854,6 +865,7 @@ export default function DocumentsPage() {
 
       const response = await fetch('/api/documents/process-mpp', {
         method: 'POST',
+        headers: roleHeaders,
         body: formData,
       });
       const result = await response.json();
@@ -931,7 +943,7 @@ export default function DocumentsPage() {
     try {
       await fetch('/api/data/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ dataKey: 'projectDocuments', operation: 'delete', records: [{ id: file.id }] }),
       });
       addLog('success', '[Database] Document record deleted');
@@ -959,7 +971,7 @@ export default function DocumentsPage() {
           if (taskIds.length > 0) {
             await fetch('/api/data/sync', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...roleHeaders },
               body: JSON.stringify({ dataKey: 'taskDependencies', operation: 'deleteByTaskIds', taskIds, records: [] }),
             });
             addLog('success', `[Database] Task dependencies cleared`);
@@ -973,7 +985,7 @@ export default function DocumentsPage() {
           try {
             const res = await fetch('/api/data/sync', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...roleHeaders },
               body: JSON.stringify({ dataKey: key, operation: 'deleteByProjectId', projectId, records: [] }),
             });
             const result = await res.json();
@@ -989,7 +1001,7 @@ export default function DocumentsPage() {
         try {
           await fetch('/api/data/sync', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...roleHeaders },
             body: JSON.stringify({
               dataKey: 'projects',
               operation: 'update',
@@ -1047,7 +1059,7 @@ export default function DocumentsPage() {
       updateRecord[disconnect.field] = nextValue;
       const res = await fetch('/api/data/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           dataKey,
           operation: 'update',
@@ -1215,7 +1227,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'assignHourToWorkdayPhase', hourId, workdayPhaseId }),
       });
       const result = await res.json();
@@ -1235,7 +1247,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'assignHourToTask', hourId, taskId }),
       });
       const result = await res.json();
@@ -1255,7 +1267,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'assignTaskToWorkdayPhase', taskId, workdayPhaseId }),
       });
       const result = await res.json();
@@ -1275,7 +1287,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           action: 'autoMatchHoursToTasksInWorkdayPhaseBucket',
           projectId: mappingProjectFilter,
@@ -1300,7 +1312,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'matchWorkdayPhaseToHoursPhases', projectId: mappingProjectFilter, rematchAll }),
       });
       const result = await res.json();
@@ -1328,7 +1340,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           action: 'listMappingSuggestions',
           projectId: mappingProjectFilter,
@@ -1356,7 +1368,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           action: 'mappingSuggestionsStats',
           projectId: mappingProjectFilter,
@@ -1377,7 +1389,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           action: 'generateMappingSuggestions',
           projectId: mappingProjectFilter,
@@ -1403,7 +1415,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'applyMappingSuggestion', suggestionId }),
       });
       const result = await res.json();
@@ -1425,7 +1437,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({ action: 'dismissMappingSuggestion', suggestionId }),
       });
       const result = await res.json();
@@ -1447,7 +1459,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           action: 'applyMappingSuggestionsBatch',
           projectId: mappingProjectFilter,
@@ -1475,7 +1487,7 @@ export default function DocumentsPage() {
     try {
       const res = await fetch('/api/data/mapping', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...roleHeaders },
         body: JSON.stringify({
           action: 'pruneMappingSuggestions',
           projectId: mappingProjectFilter,

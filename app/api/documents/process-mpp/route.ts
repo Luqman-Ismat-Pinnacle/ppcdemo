@@ -4,6 +4,8 @@ import { toSupabaseFormat } from '@/lib/supabase';
 import { downloadFile } from '@/lib/azure-storage';
 import { withClient } from '@/lib/postgres';
 import { runProjectHealthAutoCheck } from '@/lib/project-health-auto-check';
+import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
+import { writeWorkflowAudit } from '@/lib/workflow-audit';
 
 type ProcessLogType = 'info' | 'success' | 'warning';
 
@@ -241,6 +243,11 @@ export async function POST(req: NextRequest) {
   const diagnostics: string[] = [];
   const logDiag = (msg: string) => diagnostics.push(`${new Date().toISOString()} ${msg}`);
   try {
+    const roleContext = roleContextFromRequest(req);
+    if (!hasRolePermission(roleContext, 'publishPlans')) {
+      return NextResponse.json({ success: false, error: 'Forbidden for current role view' }, { status: 403 });
+    }
+
     const parserUrl =
       process.env.MPP_PARSER_URL ||
       process.env.NEXT_PUBLIC_MPP_PARSER_URL ||
@@ -396,6 +403,21 @@ export async function POST(req: NextRequest) {
           'UPDATE project_documents SET health_score = $1, health_check_json = $2, updated_at = NOW() WHERE id = $3',
           [healthResult.score, JSON.stringify(healthResult), documentId]
         );
+        await writeWorkflowAudit(client, {
+          eventType: 'plans.process_mpp_publish',
+          roleKey: roleContext.roleKey,
+          actorEmail: roleContext.actorEmail,
+          projectId,
+          entityType: 'project_document',
+          entityId: documentId,
+          payload: {
+            unitsSaved,
+            phasesSaved,
+            tasksSaved,
+            depsSaved,
+            healthScore: healthResult.score,
+          },
+        });
         logDiag(`[Health] score=${healthResult.score} passed=${healthResult.passed}/${healthResult.totalChecks}`);
 
         return { unitsSaved, phasesSaved, tasksSaved, depsSaved, healthScore: healthResult.score };
