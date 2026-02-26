@@ -547,6 +547,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, suggestions: result.rows });
     }
 
+    if (action === 'mappingSuggestionsStats') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const projectId = String(body.projectId || '');
+      if (!projectId) {
+        return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
+      }
+
+      const stats = await pgQuery(
+        `SELECT
+           COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+           COUNT(*) FILTER (WHERE status = 'applied')::int AS applied_count,
+           COUNT(*) FILTER (WHERE status = 'dismissed')::int AS dismissed_count,
+           COUNT(*) FILTER (
+             WHERE status = 'pending'
+               AND created_at < NOW() - INTERVAL '3 days'
+           )::int AS stale_pending_count,
+           ROUND(COALESCE(AVG(confidence) FILTER (WHERE status = 'pending'), 0)::numeric, 4) AS avg_pending_confidence,
+           MAX(created_at) FILTER (WHERE status = 'pending') AS newest_pending_at
+         FROM mapping_suggestions
+         WHERE project_id = $1`,
+        [projectId],
+      );
+
+      return NextResponse.json({ success: true, stats: stats.rows[0] || null });
+    }
+
     if (action === 'applyMappingSuggestion') {
       if (!isPostgresConfigured()) {
         return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
@@ -700,6 +728,48 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({ success: true, applied, skipped, considered: pending.rowCount || 0 });
+    }
+
+    if (action === 'pruneMappingSuggestions') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const projectId = String(body.projectId || '');
+      const olderThanDays = Math.min(365, Math.max(1, Number(body.olderThanDays ?? 14)));
+      if (!projectId) {
+        return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
+      }
+
+      const statusesRaw = Array.isArray(body.statuses) ? body.statuses : ['applied', 'dismissed'];
+      const statuses = statusesRaw
+        .map((value: unknown) => String(value || '').toLowerCase())
+        .filter((value: string) => value === 'applied' || value === 'dismissed');
+      if (!statuses.length) {
+        return NextResponse.json({ success: false, error: 'statuses must include applied and/or dismissed' }, { status: 400 });
+      }
+
+      const deleted = await pgQuery(
+        `DELETE FROM mapping_suggestions
+         WHERE project_id = $1
+           AND status = ANY($2::text[])
+           AND created_at < NOW() - ($3::text || ' days')::interval`,
+        [projectId, statuses, String(olderThanDays)],
+      );
+
+      const removed = Number(deleted.rowCount || 0);
+      await emitAlertEvent({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestions.pruned',
+        severity: 'info',
+        title: 'Mapping Suggestions Pruned',
+        message: `Pruned ${removed} closed mapping suggestion(s) for project ${projectId}.`,
+        source: 'api/data/mapping',
+        entityType: 'project',
+        entityId: projectId,
+        relatedProjectId: projectId,
+        metadata: { projectId, olderThanDays, statuses, removed },
+      });
+
+      return NextResponse.json({ success: true, removed, olderThanDays, statuses });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });

@@ -86,6 +86,15 @@ interface MappingSuggestionRow {
   taskNameAlt?: string | null;
 }
 
+interface MappingSuggestionStats {
+  pending_count: number;
+  applied_count: number;
+  dismissed_count: number;
+  stale_pending_count: number;
+  avg_pending_confidence: number;
+  newest_pending_at: string | null;
+}
+
 const STORAGE_BUCKET = 'projectdoc';
 
 // Azure Blob Storage API helpers (server-side via /api/storage)
@@ -1079,6 +1088,7 @@ export default function DocumentsPage() {
   const [mappingSearch, setMappingSearch] = useState('');
   const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
   const [mappingSuggestions, setMappingSuggestions] = useState<MappingSuggestionRow[]>([]);
+  const [mappingSuggestionStats, setMappingSuggestionStats] = useState<MappingSuggestionStats | null>(null);
   const [mappingSuggestionsLoading, setMappingSuggestionsLoading] = useState(false);
   const [mappingTaskPickerByBucket, setMappingTaskPickerByBucket] = useState<Record<string, string | null>>({});
   const autoMatchedProjectRef = useRef<string>('');
@@ -1335,6 +1345,29 @@ export default function DocumentsPage() {
     }
   }, [mappingProjectFilter, addLog]);
 
+  const loadMappingSuggestionStats = useCallback(async () => {
+    if (!mappingProjectFilter) {
+      setMappingSuggestionStats(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'mappingSuggestionsStats',
+          projectId: mappingProjectFilter,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to load mapping suggestion stats');
+      setMappingSuggestionStats((result.stats || null) as MappingSuggestionStats | null);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('warning', message);
+    }
+  }, [mappingProjectFilter, addLog]);
+
   const handleGenerateMappingSuggestions = useCallback(async () => {
     if (!mappingProjectFilter) return;
     setMappingSuggestionsLoading(true);
@@ -1353,13 +1386,14 @@ export default function DocumentsPage() {
       if (!res.ok || !result.success) throw new Error(result.error || 'Failed to generate mapping suggestions');
       addLog('success', `[Mapping Suggestions] ${result.created || 0} suggestion(s) generated`);
       await loadMappingSuggestions();
+      await loadMappingSuggestionStats();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       addLog('error', message);
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [mappingProjectFilter, addLog, loadMappingSuggestions]);
+  }, [mappingProjectFilter, addLog, loadMappingSuggestions, loadMappingSuggestionStats]);
 
   const handleApplyMappingSuggestion = useCallback(async (suggestionId: number) => {
     setMappingSuggestionsLoading(true);
@@ -1374,13 +1408,14 @@ export default function DocumentsPage() {
       addLog('success', `Applied mapping suggestion #${suggestionId}`);
       await refreshData();
       await loadMappingSuggestions();
+      await loadMappingSuggestionStats();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       addLog('error', message);
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [addLog, refreshData, loadMappingSuggestions]);
+  }, [addLog, refreshData, loadMappingSuggestions, loadMappingSuggestionStats]);
 
   const handleDismissMappingSuggestion = useCallback(async (suggestionId: number) => {
     setMappingSuggestionsLoading(true);
@@ -1394,13 +1429,14 @@ export default function DocumentsPage() {
       if (!res.ok || !result.success) throw new Error(result.error || 'Failed to dismiss mapping suggestion');
       addLog('info', `Dismissed mapping suggestion #${suggestionId}`);
       await loadMappingSuggestions();
+      await loadMappingSuggestionStats();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       addLog('error', message);
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [addLog, loadMappingSuggestions]);
+  }, [addLog, loadMappingSuggestions, loadMappingSuggestionStats]);
 
   const handleApplyHighConfidenceSuggestions = useCallback(async () => {
     if (!mappingProjectFilter) return;
@@ -1418,16 +1454,43 @@ export default function DocumentsPage() {
       });
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(result.error || 'Failed to apply high-confidence suggestions');
-      addLog('success', `[Mapping Suggestions] Batch applied ${result.applied || 0} suggestion(s)`);
+      addLog('success', `[Mapping Suggestions] Batch applied ${result.applied || 0} suggestion(s), skipped ${result.skipped || 0}`);
       await refreshData();
       await loadMappingSuggestions();
+      await loadMappingSuggestionStats();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       addLog('error', message);
     } finally {
       setMappingSuggestionsLoading(false);
     }
-  }, [mappingProjectFilter, addLog, refreshData, loadMappingSuggestions]);
+  }, [mappingProjectFilter, addLog, refreshData, loadMappingSuggestions, loadMappingSuggestionStats]);
+
+  const handlePruneClosedSuggestions = useCallback(async () => {
+    if (!mappingProjectFilter) return;
+    setMappingSuggestionsLoading(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'pruneMappingSuggestions',
+          projectId: mappingProjectFilter,
+          statuses: ['applied', 'dismissed'],
+          olderThanDays: 14,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to prune suggestions');
+      addLog('success', `[Mapping Suggestions] Pruned ${result.removed || 0} closed suggestion(s)`);
+      await loadMappingSuggestionStats();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('error', message);
+    } finally {
+      setMappingSuggestionsLoading(false);
+    }
+  }, [mappingProjectFilter, addLog, loadMappingSuggestionStats]);
 
   const handleSelectTaskForBucket = useCallback(async (bucketWorkdayPhaseId: string | null, taskId: string | null) => {
     if (!taskId) return;
@@ -1466,10 +1529,12 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!mappingProjectFilter) {
       setMappingSuggestions([]);
+      setMappingSuggestionStats(null);
       return;
     }
     void loadMappingSuggestions();
-  }, [mappingProjectFilter, loadMappingSuggestions]);
+    void loadMappingSuggestionStats();
+  }, [mappingProjectFilter, loadMappingSuggestions, loadMappingSuggestionStats]);
 
   const visibleFiles = useMemo(() => {
     const q = fileSearchQuery.trim().toLowerCase();
@@ -2308,6 +2373,23 @@ export default function DocumentsPage() {
                   >
                     Apply High-Confidence
                   </button>
+                  <button
+                    type="button"
+                    onClick={handlePruneClosedSuggestions}
+                    disabled={mappingSaving || mappingSuggestionsLoading || !mappingProjectFilter}
+                    style={{
+                      padding: '0.55rem 0.9rem',
+                      background: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
+                      color: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--text-primary)' : 'var(--text-muted)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Prune Closed (14d+)
+                  </button>
                 </div>
               </div>
             </div>
@@ -2333,6 +2415,25 @@ export default function DocumentsPage() {
                       Tasks Assigned to Buckets: <strong style={{ color: 'var(--text-primary)' }}>{mappingProjectTasks.filter((t: any) => Boolean(t.workdayPhaseId ?? t.workday_phase_id)).length}</strong>
                     </div>
                   </div>
+                  {mappingSuggestionStats && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem', alignItems: 'center', marginTop: '0.7rem' }}>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                        Pending: <strong style={{ color: 'var(--text-primary)' }}>{mappingSuggestionStats.pending_count}</strong>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                        Applied: <strong style={{ color: 'var(--text-primary)' }}>{mappingSuggestionStats.applied_count}</strong>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                        Dismissed: <strong style={{ color: 'var(--text-primary)' }}>{mappingSuggestionStats.dismissed_count}</strong>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                        Stale Pending (&gt;3d): <strong style={{ color: '#f59e0b' }}>{mappingSuggestionStats.stale_pending_count}</strong>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                        Avg Pending Confidence: <strong style={{ color: 'var(--text-primary)' }}>{(Number(mappingSuggestionStats.avg_pending_confidence || 0) * 100).toFixed(1)}%</strong>
+                      </div>
+                    </div>
+                  )}
                   {mappingResult && (
                     <div style={{
                       marginTop: '0.75rem',
