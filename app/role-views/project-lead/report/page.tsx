@@ -13,6 +13,7 @@ import { useData } from '@/lib/data-context';
 import { useUser } from '@/lib/user-context';
 import { useRoleView } from '@/lib/role-view-context';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 
 interface CommitmentRecord {
   id: string;
@@ -177,6 +178,26 @@ export default function ProjectLeadReportPage() {
   return (
     <RoleWorkstationShell role="project_lead" title="Report + Commitments" subtitle="Submit period narrative and commitments with lock-window workflow controls.">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.6rem', maxWidth: 980 }}>
+        <MetricProvenanceOverlay
+          entries={[
+            {
+              metric: 'Commitment Lock State',
+              formulaId: 'PL_COMMIT_LOCK_V1',
+              formula: "locked = (status='submitted' and updated_at older than editable window)",
+              sources: ['commitments'],
+              scope: 'selected project + period + author',
+              window: `${editableWindowDays}-day edit window`,
+            },
+            {
+              metric: 'Submission Status',
+              formulaId: 'PL_COMMIT_STATUS_V1',
+              formula: 'Latest commitment status in selected scope',
+              sources: ['commitments'],
+              scope: 'selected project + period + author',
+              window: 'latest row',
+            },
+          ]}
+        />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: '0.6rem' }}>
           <div>
             <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Project</label>

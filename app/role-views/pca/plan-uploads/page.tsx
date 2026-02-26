@@ -13,6 +13,7 @@ import { useData } from '@/lib/data-context';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
 import EmbeddedAppSurface from '@/components/role-workstations/EmbeddedAppSurface';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 
 export default function PcaPlanUploadsPage() {
   const { filteredData, data: fullData } = useData();
@@ -55,6 +56,35 @@ export default function PcaPlanUploadsPage() {
           <div style={{ marginTop: '0.25rem', fontSize: '1.2rem', fontWeight: 800, color: stats.failed > 0 ? '#EF4444' : 'var(--text-primary)' }}>{stats.failed}</div>
         </div>
       </div>
+
+      <MetricProvenanceOverlay
+        entries={[
+          {
+            metric: 'Uploaded Plans',
+            formulaId: 'PCA_UPLOAD_TOTAL_V1',
+            formula: 'Count(project_documents rows)',
+            sources: ['project_documents'],
+            scope: 'role-filtered projects',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Processed/Published',
+            formulaId: 'PCA_UPLOAD_PROCESSED_V1',
+            formula: 'Count(project_documents where processed_at or has_schedule is set)',
+            sources: ['project_documents'],
+            scope: 'role-filtered projects',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Error Count',
+            formulaId: 'PCA_UPLOAD_ERRORS_V1',
+            formula: "Count(project_documents where status = 'error')",
+            sources: ['project_documents'],
+            scope: 'role-filtered projects',
+            window: 'current snapshot',
+          },
+        ]}
+      />
 
       <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem' }}>Operational Workflow</div>

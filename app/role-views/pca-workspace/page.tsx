@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useData } from '@/lib/data-context';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 
 type Suggestion = {
   id: number;
@@ -189,6 +190,35 @@ export default function PcaWorkspacePage() {
           </div>
         ))}
       </div>
+
+      <MetricProvenanceOverlay
+        entries={[
+          {
+            metric: 'Pending Suggestions',
+            formulaId: 'MAP_PENDING_COUNT_V1',
+            formula: "COUNT(mapping_suggestions where status='pending')",
+            sources: ['mapping_suggestions'],
+            scope: 'selected project',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Applied Suggestions',
+            formulaId: 'MAP_APPLIED_COUNT_V1',
+            formula: "COUNT(mapping_suggestions where status='applied')",
+            sources: ['mapping_suggestions'],
+            scope: 'selected project',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Stale Pending',
+            formulaId: 'MAP_STALE_PENDING_V1',
+            formula: "COUNT(pending suggestions older than 3 days)",
+            sources: ['mapping_suggestions'],
+            scope: 'selected project',
+            window: 'rolling 3 days',
+          },
+        ]}
+      />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'flex-end' }}>
         <div style={{ minWidth: 260 }}>

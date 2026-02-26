@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 
 type AlertRow = {
   id: number;
@@ -128,6 +129,27 @@ export default function PclExceptionsPage() {
       </div>
 
       {message ? <div style={{ fontSize: '0.78rem', color: '#F59E0B' }}>{message}</div> : null}
+
+      <MetricProvenanceOverlay
+        entries={[
+          {
+            metric: 'Open Exceptions',
+            formulaId: 'PCL_ALERT_OPEN_V1',
+            formula: "COUNT(alert_events where status='open')",
+            sources: ['alert_events'],
+            scope: 'active status filter in role lens',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Escalation Events',
+            formulaId: 'PCL_ALERT_ESCALATE_V1',
+            formula: "POST /api/alerts eventType='exception.escalated'",
+            sources: ['alert_events', 'workflow_audit_log'],
+            scope: 'exceptions triggered from workstation',
+            window: 'event-time',
+          },
+        ]}
+      />
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '90px 140px 1fr 150px 220px', gap: '0.5rem', padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>

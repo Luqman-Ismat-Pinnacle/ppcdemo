@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 
 type CommitmentRecord = {
   id: string;
@@ -65,6 +66,26 @@ export default function CooCommitmentsPage() {
 
   return (
     <RoleWorkstationShell role="coo" title="Commitments" subtitle="Executive commitment decisions and escalation outcomes.">
+      <MetricProvenanceOverlay
+        entries={[
+          {
+            metric: 'Executive Decision State',
+            formulaId: 'COO_COMMIT_DECISION_V1',
+            formula: "Status transition: submitted -> escalated/approved/rejected",
+            sources: ['commitments', 'workflow_audit_log'],
+            scope: 'non-draft commitments',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Executive Notes',
+            formulaId: 'COO_EXEC_NOTE_V1',
+            formula: 'Stored review_note per commitment',
+            sources: ['commitments'],
+            scope: 'selected commitment row',
+            window: 'latest review event',
+          },
+        ]}
+      />
       {message ? <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{message}</div> : null}
       <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 1fr 110px 180px 240px', padding: '0.5rem 0.65rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>

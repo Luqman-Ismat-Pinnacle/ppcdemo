@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 
 type CommitmentRecord = {
   id: string;
@@ -66,6 +67,26 @@ export default function SeniorManagerCommitmentsPage() {
 
   return (
     <RoleWorkstationShell role="senior_manager" title="Commitments" subtitle="Cross-project commitment review with escalation/approval workflow.">
+      <MetricProvenanceOverlay
+        entries={[
+          {
+            metric: 'Commitment Status',
+            formulaId: 'SM_COMMIT_STATUS_V1',
+            formula: 'Persisted status field per commitment row',
+            sources: ['commitments'],
+            scope: 'portfolio commitments in role lens',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Review Notes',
+            formulaId: 'SM_REVIEW_NOTE_V1',
+            formula: 'Latest review_note attached by reviewer action',
+            sources: ['commitments', 'workflow_audit_log'],
+            scope: 'selected commitment row',
+            window: 'latest review event',
+          },
+        ]}
+      />
       {message ? <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{message}</div> : null}
       <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '110px 110px 90px 1fr 120px 180px 240px', padding: '0.5rem 0.65rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>

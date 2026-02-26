@@ -7,6 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
+import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
 
@@ -57,6 +58,34 @@ export default function PclHomePage() {
         />
       )}
     >
+      <MetricProvenanceOverlay
+        entries={[
+          {
+            metric: 'Open Issues',
+            formulaId: 'PCL_OPEN_ISSUES_V1',
+            formula: 'Count(tasks where start/finish dates missing)',
+            sources: ['tasks'],
+            scope: 'portfolio projects in current role lens',
+            window: 'current snapshot',
+          },
+          {
+            metric: 'Overdue Tasks',
+            formulaId: 'PCL_OVERDUE_TASKS_V1',
+            formula: 'Count(tasks where %complete < 100 and finish_date < today)',
+            sources: ['tasks'],
+            scope: 'portfolio projects in current role lens',
+            window: 'current day',
+          },
+          {
+            metric: 'Health Score',
+            formulaId: 'PCL_HEALTH_PROXY_V1',
+            formula: '100 - (open_issues*10) - (overdue_tasks*2), floored at 0',
+            sources: ['tasks'],
+            scope: 'per project, command-center matrix',
+            window: 'current snapshot',
+          },
+        ]}
+      />
       <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px 120px', padding: '0.5rem 0.7rem', fontSize: '0.68rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>
           <span>Project</span><span>Open Issues</span><span>Overdue</span><span>Health</span>
