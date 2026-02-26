@@ -1,21 +1,7 @@
 'use client';
 
-/**
- * @fileoverview PCA mapping workflow page.
- */
-
-import React from 'react';
-import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import EmbeddedAppSurface from '@/components/role-workstations/EmbeddedAppSurface';
+import RolePageRedirect from '@/components/role-workstations/RolePageRedirect';
 
 export default function PcaMappingPage() {
-  return (
-    <RoleWorkstationShell
-      role="pca"
-      title="Mapping Queue"
-      subtitle="Review, apply, or dismiss mapping suggestions on assigned projects."
-    >
-      <EmbeddedAppSurface title="PCA Mapping Workspace" src="/role-views/pca-workspace" />
-    </RoleWorkstationShell>
-  );
+  return <RolePageRedirect to="/role-views/pca-workspace" />;
 }

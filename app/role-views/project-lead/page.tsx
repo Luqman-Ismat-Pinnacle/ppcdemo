@@ -105,7 +105,6 @@ export default function ProjectLeadRoleViewPage() {
           <Link href="/role-views/project-lead/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
           <Link href="/role-views/project-lead/documents" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Documents</Link>
           <Link href="/role-views/project-lead/report" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Report</Link>
-          <Link href="/role-views" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Hub</Link>
         </div>
       </div>
 

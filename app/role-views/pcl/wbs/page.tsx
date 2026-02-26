@@ -1,12 +1,7 @@
 'use client';
-import React from 'react';
-import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import RoleScopedWbsWorkspace from '@/components/role-workstations/RoleScopedWbsWorkspace';
+
+import RolePageRedirect from '@/components/role-workstations/RolePageRedirect';
 
 export default function PclWbsPage() {
-  return (
-    <RoleWorkstationShell role="pcl" title="WBS Risk Queue" subtitle="Cross-project schedule intervention and exception response.">
-      <RoleScopedWbsWorkspace />
-    </RoleWorkstationShell>
-  );
+  return <RolePageRedirect to="/project-controls/wbs-gantt?role=pcl" />;
 }

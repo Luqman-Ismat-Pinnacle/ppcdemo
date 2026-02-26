@@ -99,7 +99,6 @@ export default function CooRoleViewPage() {
           <Link href="/role-views/coo/commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
           <Link href="/role-views/coo/ai" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>AI</Link>
           <Link href="/role-views/coo/wbs" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
-          <Link href="/role-views" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Hub</Link>
         </div>
       </div>
 

@@ -100,7 +100,7 @@ export default function ClientPortalRoleViewPage() {
             Read-only delivery summary and latest project documentation.
           </div>
         </div>
-        <Link href="/role-views" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Back to role views</Link>
+        <Link href="/insights/overview" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Open Overview</Link>
       </div>
 
       <div style={{ maxWidth: 360 }}>

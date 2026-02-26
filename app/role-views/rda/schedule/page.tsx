@@ -1,12 +1,7 @@
 'use client';
-import React from 'react';
-import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import RoleScopedWbsWorkspace from '@/components/role-workstations/RoleScopedWbsWorkspace';
+
+import RolePageRedirect from '@/components/role-workstations/RolePageRedirect';
 
 export default function RdaSchedulePage() {
-  return (
-    <RoleWorkstationShell role="rda" title="Schedule" subtitle="Limited schedule lane for task progress and status updates.">
-      <RoleScopedWbsWorkspace />
-    </RoleWorkstationShell>
-  );
+  return <RolePageRedirect to="/project-controls/wbs-gantt?role=rda" />;
 }

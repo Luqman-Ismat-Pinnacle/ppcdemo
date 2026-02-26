@@ -101,7 +101,6 @@ export default function SeniorManagerRoleViewPage() {
           <Link href="/role-views/senior-manager/projects" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Projects</Link>
           <Link href="/role-views/senior-manager/commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
           <Link href="/role-views/senior-manager/wbs" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
-          <Link href="/role-views" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Hub</Link>
         </div>
       </div>
 

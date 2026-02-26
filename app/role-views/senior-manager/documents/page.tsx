@@ -1,12 +1,7 @@
 'use client';
-import React from 'react';
-import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import EmbeddedAppSurface from '@/components/role-workstations/EmbeddedAppSurface';
+
+import RolePageRedirect from '@/components/role-workstations/RolePageRedirect';
 
 export default function SeniorManagerDocumentsPage() {
-  return (
-    <RoleWorkstationShell role="senior_manager" title="Documents" subtitle="Portfolio documentation status, ownership, and signoff progress.">
-      <EmbeddedAppSurface title="Documentation" src="/project-management/documentation" />
-    </RoleWorkstationShell>
-  );
+  return <RolePageRedirect to="/insights/documents" />;
 }
