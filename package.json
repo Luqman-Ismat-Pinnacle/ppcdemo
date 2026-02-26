@@ -9,7 +9,9 @@
     "clean": "rm -rf .next node_modules package-lock.json && npm install --legacy-peer-deps",
     "lint": "eslint",
     "lint:api": "eslint app/api",
-    "check:calc-drift": "node scripts/check-calculation-drift.js"
+    "check:calc-drift": "node scripts/check-calculation-drift.js",
+    "check:calc-correctness": "tsx scripts/check-calculation-correctness.ts",
+    "check:phase5-smoke": "node scripts/check-phase5-smoke.js"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^3.8.0",
@@ -48,6 +50,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.2.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
