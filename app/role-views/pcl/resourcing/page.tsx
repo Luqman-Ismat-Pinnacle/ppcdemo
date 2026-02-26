@@ -44,7 +44,7 @@ export default function PclResourcingPage() {
   }), [outliers]);
 
   return (
-    <RoleWorkstationShell role="pcl" title="Resourcing" subtitle="Portfolio staffing coordination and capacity balancing.">
+    <RoleWorkstationShell role="pcl" requiredTier="tier1" title="Resourcing" subtitle="Portfolio staffing coordination and capacity balancing.">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.65rem' }}>
         <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Over-Utilized (&gt;100%)</div>

@@ -28,6 +28,7 @@ export default function RoleContextStrip({ role }: { role: RoleViewKey }) {
     projects: (filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || [],
     tasks: (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [],
     hours: (filteredData?.hours?.length ? filteredData.hours : fullData?.hours) || [],
+    employees: (filteredData?.employees?.length ? filteredData.employees : fullData?.employees) || [],
     alerts: ((filteredDataRecord.alerts as unknown[])?.length
       ? (filteredDataRecord.alerts as unknown[])
       : ((fullDataRecord.alerts as unknown[]) || [])),
@@ -38,6 +39,7 @@ export default function RoleContextStrip({ role }: { role: RoleViewKey }) {
     const projects = source.projects as unknown as Array<Record<string, unknown>>;
     const tasks = source.tasks as unknown as Array<Record<string, unknown>>;
     const hours = source.hours as unknown as Array<Record<string, unknown>>;
+    const employees = source.employees as unknown as Array<Record<string, unknown>>;
     const alerts = source.alerts as unknown as Array<Record<string, unknown>>;
     const docs = source.docs as unknown as Array<Record<string, unknown>>;
     const now = Date.now();
@@ -89,6 +91,19 @@ export default function RoleContextStrip({ role }: { role: RoleViewKey }) {
         { label: 'Task Lane', value: String(tasks.length) },
         { label: 'My Overdue', value: String(overdueTasks) },
         { label: 'Hours Logged', value: hours.reduce((sum, h) => sum + toNumber(h.hours), 0).toFixed(1) },
+      ];
+    }
+    if (role === 'product_owner') {
+      const openFeatures = tasks.filter((task) => {
+        const name = String(task.name || task.taskName || '').toLowerCase();
+        const featureLike = name.includes('feature') || name.includes('enhancement') || name.includes('epic');
+        const pct = toNumber(task.percentComplete ?? task.percent_complete);
+        return featureLike && pct < 100;
+      }).length;
+      return [
+        { label: 'Open Issues', value: String(openAlerts) },
+        { label: 'Open Features', value: String(openFeatures) },
+        { label: 'People', value: String(employees.length) },
       ];
     }
     return [{ label: 'Projects', value: String(projects.length) }];

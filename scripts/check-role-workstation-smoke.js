@@ -11,7 +11,9 @@ const START_TIMEOUT_MS = 90_000;
 
 const checks = [
   '/role-views',
+  '/role-views/product-owner',
   '/role-views/pcl',
+  '/role-views/pcl/resourcing',
   '/role-views/pcl/wbs',
   '/role-views/pca',
   '/role-views/pca/plan-uploads',
