@@ -11,6 +11,8 @@ export type WeekAheadItem = {
   title: string;
   dueLabel: string;
   detail?: string;
+  actionLabel?: string;
+  actionHref?: string;
 };
 
 interface WeekAheadBoardProps {
@@ -32,6 +34,11 @@ function Column({ title, items, accent }: { title: string; items: WeekAheadItem[
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.title}</div>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{item.dueLabel}</div>
               {item.detail ? <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', marginTop: 2 }}>{item.detail}</div> : null}
+              {item.actionHref ? (
+                <a href={item.actionHref} style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', marginTop: 4, display: 'inline-block' }}>
+                  {item.actionLabel || 'Open'}
+                </a>
+              ) : null}
             </div>
           ))}
         </div>
@@ -49,4 +56,3 @@ export default function WeekAheadBoard({ thisWeek, nextWeek, overdue }: WeekAhea
     </div>
   );
 }
-

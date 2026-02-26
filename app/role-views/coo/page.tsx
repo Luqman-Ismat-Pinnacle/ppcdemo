@@ -7,7 +7,7 @@
  * from the current filtered dataset and shared metrics.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
@@ -48,6 +48,8 @@ function asRecord(value: unknown): Record<string, unknown> {
 export default function CooRoleViewPage() {
   const { filteredData, data: fullData } = useData();
   const [question, setQuestion] = useState('What is the biggest execution risk right now?');
+  const [openAlerts, setOpenAlerts] = useState(0);
+  const [openCommitments, setOpenCommitments] = useState(0);
 
   const data = useMemo(() => ({
     tasks: (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [],
@@ -85,6 +87,39 @@ export default function CooRoleViewPage() {
     [question, aggregate.projectCount, aggregate.healthScore, aggregate.spi, aggregate.cpi, aggregate.hrsVariance, atRisk, completedTasks, totalTasks]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [alertsRes, commitmentsRes] = await Promise.all([
+          fetch('/api/alerts?status=open&limit=200', { cache: 'no-store' }),
+          fetch('/api/commitments?limit=300', { cache: 'no-store' }),
+        ]);
+        const alertsPayload = await alertsRes.json().catch(() => ({}));
+        const commitmentsPayload = await commitmentsRes.json().catch(() => ({}));
+        if (cancelled) return;
+        if (alertsRes.ok && alertsPayload.success) {
+          const alerts = Array.isArray(alertsPayload.alerts) ? alertsPayload.alerts : [];
+          setOpenAlerts(alerts.length);
+        }
+        if (commitmentsRes.ok && commitmentsPayload.success) {
+          const rows = Array.isArray(commitmentsPayload.rows) ? commitmentsPayload.rows : [];
+          setOpenCommitments(rows.filter((row: { status?: string }) => {
+            const status = String(row.status || '').toLowerCase();
+            return status === 'submitted' || status === 'escalated';
+          }).length);
+        }
+      } catch {
+        if (!cancelled) {
+          setOpenAlerts(0);
+          setOpenCommitments(0);
+        }
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
@@ -111,6 +146,8 @@ export default function CooRoleViewPage() {
           { label: 'Hours Variance', value: `${aggregate.hrsVariance}%`, provenance: aggregate.provenance.hoursVariance },
           { label: 'Projects At Risk', value: `${atRisk}/${aggregate.projectCount}` },
           { label: 'Task Completion', value: `${completedTasks}/${totalTasks}` },
+          { label: 'Open Exceptions', value: String(openAlerts) },
+          { label: 'Decision Queue', value: String(openCommitments) },
         ].map((item) => (
           <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>

@@ -50,6 +50,8 @@ export default function ProjectLeadWeekAheadPage() {
       title: item.title,
       dueLabel: `Due ${item.due.toLocaleDateString()}`,
       detail: `${Math.round(item.pct)}% complete`,
+      actionLabel: 'Open WBS',
+      actionHref: '/project-controls/wbs-gantt',
     });
 
     return {
@@ -71,6 +73,20 @@ export default function ProjectLeadWeekAheadPage() {
         </div>
       )}
     >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.65rem' }}>
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.65rem' }}>
+          <div style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>Overdue</div>
+          <div style={{ marginTop: 3, fontSize: '1.15rem', fontWeight: 800, color: board.overdue.length > 0 ? '#EF4444' : 'var(--text-primary)' }}>{board.overdue.length}</div>
+        </div>
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.65rem' }}>
+          <div style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>Due This Week</div>
+          <div style={{ marginTop: 3, fontSize: '1.15rem', fontWeight: 800 }}>{board.thisWeek.length}</div>
+        </div>
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.65rem' }}>
+          <div style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>Upcoming Next Week</div>
+          <div style={{ marginTop: 3, fontSize: '1.15rem', fontWeight: 800 }}>{board.nextWeek.length}</div>
+        </div>
+      </div>
       <WeekAheadBoard overdue={board.overdue} thisWeek={board.thisWeek} nextWeek={board.nextWeek} />
     </RoleWorkstationShell>
   );

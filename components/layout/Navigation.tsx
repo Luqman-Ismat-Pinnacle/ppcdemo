@@ -65,25 +65,20 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'Execution',
       items: [
-        { label: 'Schedule (WBS/Gantt)', href: '/project-controls/wbs-gantt' },
-        { label: 'Forecast', href: '/project-management/forecast' },
-        { label: 'Documentation', href: '/project-management/documentation' },
+        { label: 'Project Home', href: '/role-views/project-lead' },
+        { label: 'Schedule', href: '/role-views/project-lead/schedule' },
+        { label: 'Team', href: '/role-views/project-lead/team' },
+        { label: 'Week Ahead', href: '/role-views/project-lead/week-ahead' },
+        { label: 'Forecast', href: '/role-views/project-lead/forecast' },
+        { label: 'Documents', href: '/role-views/project-lead/documents' },
         { label: 'Commitments Report', href: '/role-views/project-lead/report' },
-      ],
-    },
-    {
-      label: 'Insights',
-      items: [
-        { label: 'Overview', href: '/insights/overview' },
-        { label: 'Tasks', href: '/insights/tasks' },
-        { label: "Mo's Page", href: '/insights/mos-page' },
-        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       ],
     },
     {
       label: 'Controls',
       items: [
-        { label: 'Project Plans', href: '/project-controls/project-plans' },
+        { label: 'WBS/Gantt Engine', href: '/project-controls/wbs-gantt' },
+        { label: 'Project Plans', href: '/role-views/pca/plan-uploads' },
         { label: 'Data Management', href: '/project-controls/data-management' },
       ],
     },
@@ -92,16 +87,17 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'Operations',
       items: [
-        { label: 'Plan Uploads + Publish', href: '/project-controls/project-plans' },
-        { label: 'Mapping Workspace', href: '/role-views/pca-workspace' },
+        { label: 'PCA Home', href: '/role-views/pca' },
+        { label: 'Plan Uploads + Publish', href: '/role-views/pca/plan-uploads' },
+        { label: 'Mapping Workspace', href: '/role-views/pca/mapping' },
         { label: 'Data Quality', href: '/role-views/pca/data-quality' },
-        { label: 'Schedule (WBS/Gantt)', href: '/project-controls/wbs-gantt' },
+        { label: 'WBS Workspace', href: '/role-views/pca/wbs' },
       ],
     },
     {
       label: 'Controls',
       items: [
-        { label: 'Folders', href: '/project-controls/folders' },
+        { label: 'Project Plans Engine', href: '/project-controls/project-plans' },
         { label: 'Data Management', href: '/project-controls/data-management' },
       ],
     },
@@ -111,24 +107,16 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
       label: 'Command',
       items: [
         { label: 'Command Center', href: '/role-views/pcl' },
-        { label: 'Exceptions', href: '/role-views/pcl-exceptions' },
+        { label: 'Exceptions', href: '/role-views/pcl/exceptions' },
         { label: 'Schedule Health', href: '/role-views/pcl/schedule-health' },
       ],
     },
     {
       label: 'Operations',
       items: [
-        { label: 'Plans & Mapping', href: '/project-controls/project-plans' },
-        { label: 'Resourcing', href: '/project-controls/resourcing' },
-        { label: 'Schedule (WBS/Gantt)', href: '/project-controls/wbs-gantt' },
-      ],
-    },
-    {
-      label: 'Insights',
-      items: [
-        { label: 'Overview', href: '/insights/overview' },
-        { label: 'Hours', href: '/insights/hours' },
-        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
+        { label: 'Plans & Mapping', href: '/role-views/pcl/plans-mapping' },
+        { label: 'Resourcing', href: '/role-views/pcl/resourcing' },
+        { label: 'WBS Risk Queue', href: '/role-views/pcl/wbs' },
       ],
     },
   ],
@@ -136,18 +124,17 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'Portfolio',
       items: [
-        { label: 'Overview', href: '/insights/overview' },
+        { label: 'Portfolio Home', href: '/role-views/senior-manager' },
+        { label: 'Projects', href: '/role-views/senior-manager/projects' },
+        { label: 'Milestones', href: '/role-views/senior-manager/milestones' },
         { label: 'Commitments', href: '/role-views/senior-manager/commitments' },
-        { label: 'Milestones', href: '/insights/milestones' },
       ],
     },
     {
       label: 'Visibility',
       items: [
-        { label: 'Documents', href: '/insights/documents' },
-        { label: 'Tasks', href: '/insights/tasks' },
-        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
-        { label: 'WBS / Gantt', href: '/project-controls/wbs-gantt' },
+        { label: 'Documents', href: '/role-views/senior-manager/documents' },
+        { label: 'WBS', href: '/role-views/senior-manager/wbs' },
       ],
     },
   ],
@@ -164,10 +151,8 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'Business',
       items: [
-        { label: 'Overview', href: '/insights/overview' },
-        { label: 'Milestones', href: '/insights/milestones' },
-        { label: "Mo's Page", href: '/insights/mos-page' },
-        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
+        { label: 'Milestones', href: '/role-views/coo/milestones' },
+        { label: 'WBS', href: '/role-views/coo/wbs' },
       ],
     },
   ],
@@ -175,10 +160,10 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'My Work',
       items: [
-        { label: 'Tasks', href: '/insights/tasks' },
-        { label: 'Hours', href: '/insights/hours' },
-        { label: 'QC Log', href: '/project-management/qc-log' },
-        { label: 'Schedule (WBS/Gantt)', href: '/project-controls/wbs-gantt' },
+        { label: 'Home', href: '/role-views/rda' },
+        { label: 'Hours', href: '/role-views/rda/hours' },
+        { label: 'Work', href: '/role-views/rda/work' },
+        { label: 'Schedule', href: '/role-views/rda/schedule' },
       ],
     },
   ],
@@ -186,10 +171,7 @@ const ROLE_NATIVE_NAV: Record<RoleViewKey, NavDropdown[]> = {
     {
       label: 'Delivery',
       items: [
-        { label: 'Overview', href: '/insights/overview' },
-        { label: 'Milestones', href: '/insights/milestones' },
-        { label: 'Metric Provenance', href: '/insights/metric-provenance' },
-        { label: 'Documents', href: '/insights/documents' },
+        { label: 'Client Portal', href: '/role-views/client-portal' },
       ],
     },
   ],

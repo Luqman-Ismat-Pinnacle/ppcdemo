@@ -61,6 +61,7 @@ export default function ProjectLeadReportPage() {
   const [locked, setLocked] = useState(false);
   const [overrideLock, setOverrideLock] = useState(false);
   const [message, setMessage] = useState('');
+  const periodValid = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey);
 
   useEffect(() => {
     if (!projectId && projects.length > 0) {
@@ -111,9 +112,13 @@ export default function ProjectLeadReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [periodKey, projectId, user?.email]);
+  }, [activeRole.key, periodKey, projectId, user?.email]);
 
   const submit = async () => {
+    if (!periodValid) {
+      setMessage('Period must use YYYY-MM format.');
+      return;
+    }
     setMessage('');
     const res = await fetch('/api/commitments', {
       method: 'POST',
@@ -177,7 +182,7 @@ export default function ProjectLeadReportPage() {
   const canEdit = !locked || (overrideLock && Boolean(user?.canViewAll));
 
   return (
-    <RoleWorkstationShell role="project_lead" title="Report + Commitments" subtitle="Submit period narrative and commitments with lock-window workflow controls.">
+    <RoleWorkstationShell role="project_lead" requiredTier="tier2" title="Report + Commitments" subtitle="Submit period narrative and commitments with lock-window workflow controls.">
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.6rem', maxWidth: 980 }}>
         <MetricProvenanceOverlay
           entries={[
@@ -211,6 +216,11 @@ export default function ProjectLeadReportPage() {
             <input value={periodKey} onChange={(event) => setPeriodKey(event.target.value)} placeholder="YYYY-MM" style={{ width: '100%', padding: '0.48rem 0.56rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }} />
           </div>
         </div>
+        {!periodValid ? (
+          <div style={{ fontSize: '0.72rem', color: '#EF4444' }}>
+            Use `YYYY-MM` format (example: 2026-02).
+          </div>
+        ) : null}
 
         <div style={{ fontSize: '0.74rem', color: locked ? '#F59E0B' : 'var(--text-muted)' }}>
           {locked
@@ -237,7 +247,7 @@ export default function ProjectLeadReportPage() {
             <option value="draft">Draft</option>
             <option value="submitted">Submit</option>
           </select>
-          <button type="button" onClick={() => void submit()} disabled={!canEdit || !projectId} style={{ padding: '0.42rem 0.7rem', borderRadius: 8, border: 'none', background: canEdit ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)', color: canEdit ? '#06241f' : 'var(--text-muted)', fontWeight: 700, cursor: canEdit ? 'pointer' : 'not-allowed' }}>Save</button>
+          <button type="button" onClick={() => void submit()} disabled={!canEdit || !projectId || !periodValid} style={{ padding: '0.42rem 0.7rem', borderRadius: 8, border: 'none', background: canEdit && periodValid ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)', color: canEdit && periodValid ? '#06241f' : 'var(--text-muted)', fontWeight: 700, cursor: canEdit && periodValid ? 'pointer' : 'not-allowed' }}>Save</button>
           {message ? <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{message}</span> : null}
         </div>
 

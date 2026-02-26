@@ -284,11 +284,11 @@ export default function WBSGanttPage() {
   const workflowActions = useMemo(
     () => [
       { label: 'Upload / Publish Plans', href: '/project-controls/project-plans', enabled: workflowPermissions.uploadPlans },
-      { label: 'Mapping Workspace', href: '/role-views/pca-workspace', enabled: workflowPermissions.editMapping },
+      { label: 'Mapping Workspace', href: '/role-views/pca/mapping', enabled: workflowPermissions.editMapping },
       { label: 'Forecast', href: '/project-management/forecast', enabled: workflowPermissions.updateForecast },
       { label: 'Project Documents', href: '/project-management/documentation', enabled: workflowPermissions.manageDocuments },
       { label: 'Commitments', href: '/role-views/project-lead/report', enabled: workflowPermissions.submitCommitments },
-      { label: 'Exceptions', href: '/role-views/pcl-exceptions', enabled: workflowPermissions.triageExceptions },
+      { label: 'Exceptions', href: '/role-views/pcl/exceptions', enabled: workflowPermissions.triageExceptions },
     ].filter((action) => action.enabled),
     [
       workflowPermissions.updateForecast,

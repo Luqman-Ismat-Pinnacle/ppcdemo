@@ -7,12 +7,12 @@ import type { RoleNavConfig, RolePreset, RoleViewKey } from '@/types/role-workst
 export const ROLE_PRESETS: RolePreset[] = [
   { key: 'product_owner', label: 'Product Owner', dashboardRoute: '/insights/overview', description: 'Global role simulation and end-to-end visibility.' },
   { key: 'pcl', label: 'PCL', dashboardRoute: '/role-views/pcl', description: 'Command center, compliance, and exception triage.' },
-  { key: 'pca', label: 'PCA', dashboardRoute: '/project-controls/project-plans', description: 'Project upload/parser/publish and mapping operations.' },
-  { key: 'project_lead', label: 'Project Lead', dashboardRoute: '/project-controls/wbs-gantt', description: 'Forecast, schedule, commitments, and documents.' },
-  { key: 'senior_manager', label: 'Senior Manager', dashboardRoute: '/insights/overview', description: 'Portfolio health, commitments, milestones, and docs.' },
+  { key: 'pca', label: 'PCA', dashboardRoute: '/role-views/pca', description: 'Project upload/parser/publish and mapping operations.' },
+  { key: 'project_lead', label: 'Project Lead', dashboardRoute: '/role-views/project-lead', description: 'Forecast, schedule, commitments, and documents.' },
+  { key: 'senior_manager', label: 'Senior Manager', dashboardRoute: '/role-views/senior-manager', description: 'Portfolio health, commitments, milestones, and docs.' },
   { key: 'coo', label: 'COO', dashboardRoute: '/role-views/coo', description: 'Executive operational review and AI briefing.' },
-  { key: 'rda', label: 'RDA', dashboardRoute: '/insights/tasks', description: 'Task-level work lane and schedule execution.' },
-  { key: 'client_portal', label: 'Client Portal', dashboardRoute: '/insights/documents', description: 'External delivery lens and document transparency.' },
+  { key: 'rda', label: 'RDA', dashboardRoute: '/role-views/rda', description: 'Task-level work lane and schedule execution.' },
+  { key: 'client_portal', label: 'Client Portal', dashboardRoute: '/role-views/client-portal', description: 'External delivery lens and document transparency.' },
 ];
 
 export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {

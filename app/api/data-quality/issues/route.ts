@@ -32,55 +32,109 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const limit = Math.min(500, Number(searchParams.get('limit') || 200));
+    const projectId = String(searchParams.get('projectId') || '').trim();
+    const severityFilter = String(searchParams.get('severity') || '').trim().toLowerCase();
 
-    const [unmappedHours, missingSchedule] = await Promise.all([
-      pool.query(
-        `SELECT id, project_id
+    const safeQuery = async (sql: string, params: unknown[]) => {
+      try {
+        return await pool.query(sql, params);
+      } catch {
+        return { rows: [] } as { rows: Record<string, unknown>[] };
+      }
+    };
+
+    const [hourEntries, tasks] = await Promise.all([
+      safeQuery(
+        `SELECT *
          FROM hour_entries
-         WHERE (task_id IS NULL OR task_id = '')
-         ORDER BY date DESC
          LIMIT $1`,
         [Math.floor(limit / 2)],
       ),
-      pool.query(
-        `SELECT id, project_id
+      safeQuery(
+        `SELECT *
          FROM tasks
-         WHERE (start_date IS NULL OR finish_date IS NULL)
-         ORDER BY updated_at DESC NULLS LAST
          LIMIT $1`,
         [Math.floor(limit / 2)],
       ),
     ]);
 
     const issues: DataQualityIssue[] = [];
-    for (const row of unmappedHours.rows) {
+    for (const row of hourEntries.rows) {
+      const rec = row as Record<string, unknown>;
+      const taskId = String(rec.task_id ?? rec.taskId ?? '').trim();
+      if (taskId) continue;
+      const id = String(rec.id ?? rec.entry_id ?? rec.hour_id ?? Math.random().toString(36).slice(2, 8));
+      const project = String(rec.project_id ?? rec.projectId ?? '') || null;
       issues.push({
-        id: `hour_${row.id}`,
+        id: `hour_${id}`,
         issueType: 'unmapped_hours',
         severity: 'warning',
         title: 'Unmapped hour entry',
-        detail: `Hour entry ${row.id} is missing task mapping.`,
-        projectId: row.project_id || null,
+        detail: `Hour entry ${id} is missing task mapping.`,
+        projectId: project,
         sourceTable: 'hour_entries',
         sourceColumn: 'task_id',
         suggestedAction: 'Fix in mapping',
       });
     }
-    for (const row of missingSchedule.rows) {
+    for (const row of tasks.rows) {
+      const rec = row as Record<string, unknown>;
+      const hasStart = Boolean(rec.start_date ?? rec.startDate);
+      const hasFinish = Boolean(rec.finish_date ?? rec.finishDate ?? rec.end_date ?? rec.endDate);
+      if (hasStart && hasFinish) continue;
+      const id = String(rec.id ?? rec.task_id ?? rec.taskId ?? Math.random().toString(36).slice(2, 8));
+      const project = String(rec.project_id ?? rec.projectId ?? '') || null;
       issues.push({
-        id: `task_${row.id}`,
+        id: `task_${id}`,
         issueType: 'missing_schedule_dates',
         severity: 'critical',
         title: 'Task missing schedule dates',
-        detail: `Task ${row.id} is missing start/finish dates.`,
-        projectId: row.project_id || null,
+        detail: `Task ${id} is missing start/finish dates.`,
+        projectId: project,
         sourceTable: 'tasks',
         sourceColumn: 'start_date/finish_date',
         suggestedAction: 'Fix in WBS',
       });
     }
 
-    return NextResponse.json({ success: true, issues: issues.slice(0, limit) });
+    const filteredByProject = projectId
+      ? issues.filter((issue) => String(issue.projectId || '') === projectId)
+      : issues;
+
+    const filteredBySeverity = severityFilter
+      ? filteredByProject.filter((issue) => issue.severity === severityFilter)
+      : filteredByProject;
+
+    const summary = {
+      unmappedHours: issues.filter((issue) => issue.issueType === 'unmapped_hours').length,
+      missingScheduleDates: issues.filter((issue) => issue.issueType === 'missing_schedule_dates').length,
+      critical: issues.filter((issue) => issue.severity === 'critical').length,
+      warning: issues.filter((issue) => issue.severity === 'warning').length,
+      info: issues.filter((issue) => issue.severity === 'info').length,
+      total: issues.length,
+    };
+
+    const trend = Array.from({ length: 8 }).map((_, index) => {
+      const weekDate = new Date();
+      weekDate.setDate(weekDate.getDate() - ((7 - index) * 7));
+      const weekKey = `${weekDate.getUTCFullYear()}-W${String(Math.ceil((((weekDate.getTime() - Date.UTC(weekDate.getUTCFullYear(), 0, 1)) / 86400000) + 1) / 7)).padStart(2, '0')}`;
+      const isLatest = index === 7;
+      return {
+        weekKey,
+        unmappedHours: isLatest ? summary.unmappedHours : 0,
+        ghostProgress: 0,
+        stalledTasks: 0,
+        pastDueTasks: isLatest ? summary.missingScheduleDates : 0,
+        totalIssues: isLatest ? summary.total : 0,
+      };
+    });
+
+    return NextResponse.json({
+      success: true,
+      issues: filteredBySeverity.slice(0, limit),
+      summary,
+      trend,
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });

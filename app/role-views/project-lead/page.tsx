@@ -1,15 +1,13 @@
 'use client';
 
 /**
- * @fileoverview Project Lead role view.
- *
- * Presents project-execution KPIs and risk queues for project leads using the
- * shared calculation layer with always-visible provenance chips.
+ * @fileoverview Project Lead workstation home.
  */
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { useData } from '@/lib/data-context';
+import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
+import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import {
   calcCpi,
@@ -19,6 +17,7 @@ import {
   calcSpi,
   calcTcpiToBac,
 } from '@/lib/calculations/kpis';
+import { useData } from '@/lib/data-context';
 
 function toNumber(value: unknown): number {
   const n = Number(value);
@@ -26,11 +25,7 @@ function toNumber(value: unknown): number {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null ? (value as unknown as Record<string, unknown>) : {};
-}
-
-function toTaskName(task: Record<string, unknown>): string {
-  return String(task.name || task.taskName || task.id || 'Unnamed Task');
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
 function isCompleted(task: Record<string, unknown>): boolean {
@@ -40,25 +35,22 @@ function isCompleted(task: Record<string, unknown>): boolean {
 export default function ProjectLeadRoleViewPage() {
   const { filteredData, data: fullData } = useData();
 
-  const data = useMemo(() => {
-    const tasks = (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [];
-    const projects = (filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || [];
-    return { tasks, projects };
-  }, [filteredData, fullData]);
+  const dataset = useMemo(() => ({
+    tasks: ((filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || []).map(asRecord),
+    projects: ((filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || []).map(asRecord),
+    milestones: ((filteredData?.milestones?.length ? filteredData.milestones : fullData?.milestones) || []).map(asRecord),
+  }), [filteredData?.milestones, filteredData?.projects, filteredData?.tasks, fullData?.milestones, fullData?.projects, fullData?.tasks]);
 
   const metrics = useMemo(() => {
-    const tasks = (data.tasks as unknown[]).map(asRecord);
-    const projects = (data.projects as unknown[]).map(asRecord);
-
-    const baselineHours = tasks.reduce((sum, task) => sum + toNumber(task.baselineHours ?? task.baseline_hours), 0);
-    const actualHours = tasks.reduce((sum, task) => sum + toNumber(task.actualHours ?? task.actual_hours), 0);
-    const earnedValue = tasks.reduce((sum, task) => {
+    const baselineHours = dataset.tasks.reduce((sum, task) => sum + toNumber(task.baselineHours ?? task.baseline_hours), 0);
+    const actualHours = dataset.tasks.reduce((sum, task) => sum + toNumber(task.actualHours ?? task.actual_hours), 0);
+    const earnedValue = dataset.tasks.reduce((sum, task) => {
       const baseline = toNumber(task.baselineHours ?? task.baseline_hours);
       const pct = toNumber(task.percentComplete ?? task.percent_complete) / 100;
       return sum + (baseline * Math.max(0, Math.min(1, pct)));
     }, 0);
-    const plannedValue = tasks.reduce((sum, task) => sum + toNumber(task.plannedValue ?? task.planned_value ?? task.baselineHours ?? task.baseline_hours), 0);
-    const budgetAtCompletion = projects.reduce((sum, project) => sum + toNumber(project.budget ?? project.totalBudget ?? project.bac), 0) || baselineHours;
+    const plannedValue = dataset.tasks.reduce((sum, task) => sum + toNumber(task.plannedValue ?? task.planned_value ?? task.baselineHours ?? task.baseline_hours), 0);
+    const budgetAtCompletion = dataset.projects.reduce((sum, project) => sum + toNumber(project.budget ?? project.totalBudget ?? project.bac), 0) || baselineHours;
 
     const cpi = calcCpi(earnedValue, actualHours, 'project-lead', 'active-filters');
     const spi = calcSpi(earnedValue, plannedValue, 'project-lead', 'active-filters');
@@ -67,19 +59,34 @@ export default function ProjectLeadRoleViewPage() {
     const tcpi = calcTcpiToBac(budgetAtCompletion, earnedValue, actualHours, 'project-lead', 'active-filters');
     const health = calcHealthScore(spi.value, cpi.value, 'project-lead', 'active-filters');
 
-    const completedTasks = tasks.filter(isCompleted).length;
-    const overdueTasks = tasks.filter((task) => {
+    const completedTasks = dataset.tasks.filter(isCompleted).length;
+    const overdueTasks = dataset.tasks.filter((task) => {
       const raw = task.finishDate || task.finish_date || task.endDate || task.end_date;
       if (!raw || isCompleted(task)) return false;
       const finish = new Date(String(raw));
       return Number.isFinite(finish.getTime()) && finish.getTime() < Date.now();
     });
 
+    const milestoneRows = dataset.milestones.map((milestone) => {
+      const dueRaw = milestone.dueDate || milestone.due_date || milestone.targetDate || milestone.target_date;
+      const due = dueRaw ? new Date(String(dueRaw)) : null;
+      return {
+        id: String(milestone.id || milestone.milestoneId || ''),
+        name: String(milestone.name || milestone.milestoneName || 'Milestone'),
+        due,
+        status: String(milestone.status || '').toLowerCase(),
+      };
+    }).filter((row) => row.id);
+    const nextMilestone = milestoneRows
+      .filter((row) => row.due && !row.status.includes('complete'))
+      .sort((a, b) => (a.due!.getTime() - b.due!.getTime()))[0] || null;
+    const atRiskMilestones = milestoneRows.filter((row) => row.due && row.due.getTime() < Date.now() && !row.status.includes('complete')).length;
+
     return {
       baselineHours,
       actualHours,
       completedTasks,
-      totalTasks: tasks.length,
+      totalTasks: dataset.tasks.length,
       overdueTasks,
       cpi,
       spi,
@@ -87,26 +94,31 @@ export default function ProjectLeadRoleViewPage() {
       ieac,
       tcpi,
       health,
+      nextMilestone,
+      atRiskMilestones,
     };
-  }, [data.tasks, data.projects]);
+  }, [dataset.milestones, dataset.projects, dataset.tasks]);
 
   return (
-    <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Role View</div>
-          <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.5rem' }}>Project Lead</h1>
-          <div style={{ marginTop: '0.3rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Delivery execution metrics and issue queue using shared formulas.
-          </div>
-        </div>
+    <RoleWorkstationShell
+      role="project_lead"
+      title="Project Lead"
+      subtitle="Delivery execution metrics, period efficiency, and near-term intervention queue."
+      actions={(
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href="/role-views/project-lead/schedule" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Schedule</Link>
           <Link href="/role-views/project-lead/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
           <Link href="/role-views/project-lead/documents" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Documents</Link>
           <Link href="/role-views/project-lead/report" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Report</Link>
         </div>
-      </div>
+      )}
+    >
+      <PeriodEfficiencyBanner
+        health={metrics.health.value}
+        spi={metrics.spi.value}
+        cpi={metrics.cpi.value}
+        variancePct={metrics.hoursVariance.value}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
         {[
@@ -140,17 +152,17 @@ export default function ProjectLeadRoleViewPage() {
               <div style={{ fontWeight: 700, color: metrics.overdueTasks.length > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.overdueTasks.length}</div>
             </div>
             <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Baseline Hours</div>
-              <div style={{ fontWeight: 700 }}>{metrics.baselineHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Next Milestone</div>
+              <div style={{ fontWeight: 700 }}>{metrics.nextMilestone ? metrics.nextMilestone.name : 'None'}</div>
             </div>
             <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Actual Hours</div>
-              <div style={{ fontWeight: 700 }}>{metrics.actualHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>At-Risk Milestones</div>
+              <div style={{ fontWeight: 700, color: metrics.atRiskMilestones > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.atRiskMilestones}</div>
             </div>
           </div>
         </div>
 
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem', maxHeight: 330, overflowY: 'auto' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem', maxHeight: 360, overflowY: 'auto' }}>
           <div style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.6rem' }}>Overdue Task Queue</div>
           {metrics.overdueTasks.length === 0 ? (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No overdue open tasks in the active scope.</div>
@@ -158,9 +170,13 @@ export default function ProjectLeadRoleViewPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
               {metrics.overdueTasks.slice(0, 20).map((task, index) => (
                 <div key={`${String(task.id || task.taskId || index)}`} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{toTaskName(task)}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 600 }}>{String(task.name || task.taskName || task.id || 'Task')}</div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
                     Due {String(task.finishDate || task.finish_date || task.endDate || task.end_date)}
+                  </div>
+                  <div style={{ marginTop: 4, display: 'flex', gap: '0.45rem' }}>
+                    <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Update Progress</Link>
+                    <Link href="/role-views/project-lead/team" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Reassign</Link>
                   </div>
                 </div>
               ))}
@@ -168,6 +184,6 @@ export default function ProjectLeadRoleViewPage() {
           )}
         </div>
       </div>
-    </div>
+    </RoleWorkstationShell>
   );
 }

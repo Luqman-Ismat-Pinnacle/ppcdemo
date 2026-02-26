@@ -22,6 +22,7 @@ export default function CooCommitmentsPage() {
   const [rows, setRows] = useState<CommitmentRecord[]>([]);
   const [message, setMessage] = useState('');
   const [reviewNote, setReviewNote] = useState<Record<string, string>>({});
+  const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'reviewed' | 'escalated' | 'approved' | 'rejected'>('all');
   const { activeRole } = useRoleView();
   const { user } = useUser();
 
@@ -64,8 +65,29 @@ export default function CooCommitmentsPage() {
     if (payload.success) await load();
   };
 
+  const filteredRows = statusFilter === 'all' ? rows : rows.filter((row) => row.status === statusFilter);
+  const summary = {
+    total: rows.length,
+    submitted: rows.filter((row) => row.status === 'submitted').length,
+    escalated: rows.filter((row) => row.status === 'escalated').length,
+    approved: rows.filter((row) => row.status === 'approved').length,
+  };
+
   return (
-    <RoleWorkstationShell role="coo" title="Commitments" subtitle="Executive commitment decisions and escalation outcomes.">
+    <RoleWorkstationShell role="coo" requiredTier="tier2" title="Commitments" subtitle="Executive commitment decisions and escalation outcomes.">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.65rem' }}>
+        {[
+          { label: 'Decision Queue', value: summary.total },
+          { label: 'Submitted', value: summary.submitted },
+          { label: 'Escalated', value: summary.escalated, danger: summary.escalated > 0 },
+          { label: 'Approved', value: summary.approved },
+        ].map((card) => (
+          <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{card.label}</div>
+            <div style={{ marginTop: 4, fontSize: '1.2rem', fontWeight: 800, color: card.danger ? '#EF4444' : 'var(--text-primary)' }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
       <MetricProvenanceOverlay
         entries={[
           {
@@ -87,13 +109,32 @@ export default function CooCommitmentsPage() {
         ]}
       />
       {message ? <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{message}</div> : null}
+      <div style={{ display: 'flex', gap: '0.45rem' }}>
+        {['all', 'submitted', 'reviewed', 'escalated', 'approved', 'rejected'].map((status) => (
+          <button
+            key={status}
+            type="button"
+            onClick={() => setStatusFilter(status as 'all' | 'submitted' | 'reviewed' | 'escalated' | 'approved' | 'rejected')}
+            style={{
+              padding: '0.3rem 0.58rem',
+              borderRadius: 999,
+              border: `1px solid ${statusFilter === status ? 'var(--pinnacle-teal)' : 'var(--border-color)'}`,
+              background: statusFilter === status ? 'rgba(16,185,129,0.12)' : 'var(--bg-secondary)',
+              color: 'var(--text-secondary)',
+              fontSize: '0.7rem',
+            }}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
       <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 1fr 110px 180px 240px', padding: '0.5rem 0.65rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
           <span>Project</span><span>Period</span><span>Role</span><span>Commitment</span><span>Status</span><span>Exec Note</span><span>Actions</span>
         </div>
-        {rows.length === 0 ? (
+        {filteredRows.length === 0 ? (
           <div style={{ padding: '0.7rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>No submitted commitments.</div>
-        ) : rows.map((row) => (
+        ) : filteredRows.map((row) => (
           <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '100px 100px 90px 1fr 110px 180px 240px', gap: '0.5rem', padding: '0.55rem 0.65rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.75rem', alignItems: 'center' }}>
             <span>{row.projectId}</span>
             <span>{row.periodKey}</span>

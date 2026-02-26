@@ -10,6 +10,7 @@ import { usePathname } from 'next/navigation';
 import { ROLE_NAV_CONFIG } from '@/lib/role-navigation';
 import type { RoleViewKey } from '@/types/role-workstation';
 import RoleContextStrip from '@/components/role-workstations/RoleContextStrip';
+import { isRoleEnhancementTierEnabled, type RoleEnhanceTier } from '@/lib/role-enhancement-flags';
 
 export default function RoleWorkstationShell({
   role,
@@ -17,15 +18,18 @@ export default function RoleWorkstationShell({
   subtitle,
   children,
   actions,
+  requiredTier = 'tier1',
 }: {
   role: RoleViewKey;
   title: string;
   subtitle: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
+  requiredTier?: RoleEnhanceTier;
 }) {
   const pathname = usePathname();
   const nav = ROLE_NAV_CONFIG[role];
+  const enabled = isRoleEnhancementTierEnabled(requiredTier);
 
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 0 }}>
@@ -64,7 +68,18 @@ export default function RoleWorkstationShell({
       </div>
 
       {actions ? <div>{actions}</div> : null}
-      {children}
+      {!enabled ? (
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.85rem' }}>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            This workstation section is currently behind rollout flag `{requiredTier}`.
+          </div>
+          <div style={{ marginTop: '0.45rem' }}>
+            <Link href={nav.items[0]?.href || '/role-views'} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+              Open role home
+            </Link>
+          </div>
+        </div>
+      ) : children}
     </div>
   );
 }

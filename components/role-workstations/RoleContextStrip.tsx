@@ -94,13 +94,27 @@ export default function RoleContextStrip({ role }: { role: RoleViewKey }) {
     return [{ label: 'Projects', value: String(projects.length) }];
   }, [role, source]);
 
+  const identity = useMemo(() => {
+    if (role === 'coo') return 'Chief Operating Officer | All Portfolios';
+    if (role === 'senior_manager') return 'Senior Manager | Active Portfolio Scope';
+    if (role === 'project_lead') return 'Project Lead | Active Customer and Project Scope';
+    if (role === 'pca') return 'Project Controls Analyst | Assigned Project Operations';
+    if (role === 'pcl') return 'Project Controls Lead | Portfolio Command Scope';
+    if (role === 'rda') return 'RDA | Personal Task Execution Lane';
+    if (role === 'client_portal') return 'Client Portal | Delivery Visibility';
+    return 'Product Owner | Global Role Simulation';
+  }, [role]);
+
   return (
-    <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-      {chips.map((chip) => (
-        <div key={chip.label} style={{ border: '1px solid var(--border-color)', borderRadius: 999, background: 'var(--bg-secondary)', padding: '0.28rem 0.6rem', fontSize: '0.69rem', color: 'var(--text-secondary)' }}>
-          <span style={{ opacity: 0.85 }}>{chip.label}:</span> <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{chip.value}</span>
-        </div>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{identity}</div>
+      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+        {chips.map((chip) => (
+          <div key={chip.label} style={{ border: '1px solid var(--border-color)', borderRadius: 999, background: 'var(--bg-secondary)', padding: '0.28rem 0.6rem', fontSize: '0.69rem', color: 'var(--text-secondary)' }}>
+            <span style={{ opacity: 0.85 }}>{chip.label}:</span> <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{chip.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

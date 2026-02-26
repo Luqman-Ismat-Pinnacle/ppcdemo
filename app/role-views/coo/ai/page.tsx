@@ -15,7 +15,7 @@ export default function CooAiPage() {
   const { user } = useUser();
 
   return (
-    <RoleWorkstationShell role="coo" title="AI Briefing" subtitle="OpenAI-backed executive briefing and Q&A from live operating data.">
+    <RoleWorkstationShell role="coo" requiredTier="tier2" title="AI Briefing" subtitle="OpenAI-backed executive briefing and Q&A from live operating data.">
       <AIBriefingChat
         roleKey={activeRole.key}
         actorEmail={user?.email || ''}
