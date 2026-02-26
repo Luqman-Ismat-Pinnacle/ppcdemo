@@ -25,6 +25,9 @@ import { VariancePeriod, MetricsHistory } from '@/lib/variance-engine';
 import { autoRecordMetricsIfNeeded } from '@/lib/metrics-recorder';
 import { filterActiveEmployees, filterActiveProjects } from '@/lib/active-filters';
 import { normalizeRuntimeData } from '@/lib/data-normalization';
+import { useRoleView } from '@/lib/role-view-context';
+import { useUser } from '@/lib/user-context';
+import { filterEntitiesByProjectScope, selectRoleProjectIds } from '@/lib/role-data-selectors';
 
 const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
 const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -230,6 +233,9 @@ interface TabSyncEvent {
  * Automatically fetches data from Supabase on initialization.
  */
 export function DataProvider({ children }: DataProviderProps) {
+  const { activeRole } = useRoleView();
+  const { user } = useUser();
+
   // State starts EMPTY - populated from Supabase on mount
   const [data, setData] = useState<SampleData>(createEmptyData);
   const [isLoading, setIsLoading] = useState(true);
@@ -785,6 +791,112 @@ export function DataProvider({ children }: DataProviderProps) {
       });
     }
 
+    // =========================================================================
+    // APPLY ROLE VIEW PROJECT SCOPE
+    // Product Owner / global roles keep full scope; delivery roles are restricted.
+    // =========================================================================
+    const roleScopedProjectIds = selectRoleProjectIds({
+      role: activeRole.key,
+      projects: filtered.projects || [],
+      currentUserEmail: user?.email,
+    });
+    if (filtered.projects?.length) {
+      const allowedProjectIdSet = new Set(roleScopedProjectIds);
+      filtered.projects = (filtered.projects as any[]).filter((project: any) => {
+        const projectId = String(project.id ?? project.projectId ?? project.project_id ?? '').trim();
+        return !projectId || allowedProjectIdSet.has(projectId);
+      });
+    }
+    const visibleProjectIds = new Set((filtered.projects || []).map((p: any) => String(p.id ?? p.projectId ?? p.project_id ?? '')).filter(Boolean));
+    if (filtered.units) {
+      filtered.units = (filtered.units as any[]).filter((row: any) => {
+        const projectId = String(row.projectId ?? row.project_id ?? '').trim();
+        return !projectId || visibleProjectIds.has(projectId);
+      });
+    }
+    if (filtered.phases) {
+      filtered.phases = (filtered.phases as any[]).filter((row: any) => {
+        const projectId = String(row.projectId ?? row.project_id ?? '').trim();
+        return !projectId || visibleProjectIds.has(projectId);
+      });
+    }
+    if (filtered.tasks) {
+      filtered.tasks = filterEntitiesByProjectScope(filtered.tasks as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.subTasks) {
+      filtered.subTasks = filterEntitiesByProjectScope(filtered.subTasks as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.qctasks) {
+      filtered.qctasks = filterEntitiesByProjectScope(filtered.qctasks as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.hours) {
+      filtered.hours = filterEntitiesByProjectScope(filtered.hours as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.costTransactions) {
+      filtered.costTransactions = filterEntitiesByProjectScope(filtered.costTransactions as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.projectDocuments) {
+      filtered.projectDocuments = filterEntitiesByProjectScope(filtered.projectDocuments as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.projectDocumentRecords) {
+      filtered.projectDocumentRecords = filterEntitiesByProjectScope(filtered.projectDocumentRecords as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.projectDocumentVersions && filtered.projectDocumentRecords) {
+      const visibleRecordIds = new Set(
+        (filtered.projectDocumentRecords as any[])
+          .map((record: any) => String(record.id ?? '').trim())
+          .filter(Boolean)
+      );
+      filtered.projectDocumentVersions = (filtered.projectDocumentVersions as any[]).filter((version: any) => {
+        const recordId = String(version.recordId ?? version.record_id ?? '').trim();
+        return !recordId || visibleRecordIds.has(recordId);
+      });
+    }
+    if (filtered.projectHealth) {
+      filtered.projectHealth = filterEntitiesByProjectScope(filtered.projectHealth as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.projectLog) {
+      filtered.projectLog = filterEntitiesByProjectScope(filtered.projectLog as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.changeRequests) {
+      filtered.changeRequests = filterEntitiesByProjectScope(filtered.changeRequests as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.changeImpacts) {
+      filtered.changeImpacts = filterEntitiesByProjectScope(filtered.changeImpacts as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.moPeriodNotes) {
+      filtered.moPeriodNotes = filterEntitiesByProjectScope(filtered.moPeriodNotes as any[], Array.from(visibleProjectIds));
+    }
+    if (filtered.snapshots) {
+      filtered.snapshots = (filtered.snapshots as any[]).filter((snap: any) => {
+        if (!snap || snap.scope === 'all') return true;
+        if (snap.scope !== 'project') return true;
+        const scopeId = String(snap.scopeId ?? '').trim();
+        return !scopeId || visibleProjectIds.has(scopeId);
+      });
+    }
+    const visibleSiteIds = new Set((filtered.projects || []).map((p: any) => String(p.siteId ?? p.site_id ?? '')).filter(Boolean));
+    if (filtered.sites) {
+      filtered.sites = (filtered.sites as any[]).filter((site: any) => {
+        const siteId = String(site.id ?? site.siteId ?? site.site_id ?? '').trim();
+        return !siteId || visibleSiteIds.has(siteId);
+      });
+    }
+    const visibleCustomerIds = new Set((filtered.sites || []).map((s: any) => String(s.customerId ?? s.customer_id ?? '')).filter(Boolean));
+    if (filtered.customers) {
+      filtered.customers = (filtered.customers as any[]).filter((customer: any) => {
+        const customerId = String(customer.id ?? customer.customerId ?? customer.customer_id ?? '').trim();
+        return !customerId || visibleCustomerIds.has(customerId);
+      });
+    }
+    const visiblePortfolioIds = new Set((filtered.customers || []).map((c: any) => String(c.portfolioId ?? c.portfolio_id ?? '')).filter(Boolean));
+    if (filtered.portfolios) {
+      filtered.portfolios = (filtered.portfolios as any[]).filter((portfolio: any) => {
+        const portfolioId = String(portfolio.id ?? portfolio.portfolioId ?? portfolio.portfolio_id ?? '').trim();
+        return !portfolioId || visiblePortfolioIds.has(portfolioId);
+      });
+    }
+
     // Filter WBS tree: only active portfolios, exclude empty portfolios (no children), then deep-clone and renumber
     if (filtered.wbsData?.items?.length) {
       const isPortfolio = (item: any) => item.itemType === 'portfolio' || item.type === 'portfolio';
@@ -1312,7 +1424,7 @@ export function DataProvider({ children }: DataProviderProps) {
     }
 
     return filtered;
-  }, [data, hierarchyFilter, dateFilter]);
+  }, [activeRole.key, data, hierarchyFilter, dateFilter, user?.email]);
 
   // Assemble context value
   const value: DataContextType = {
