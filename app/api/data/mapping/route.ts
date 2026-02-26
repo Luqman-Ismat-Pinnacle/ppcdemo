@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isPostgresConfigured, query as pgQuery } from '@/lib/postgres';
 import { parseHourDescription } from '@/lib/hours-description';
+import { emitAlertEvent, ensurePhase6Tables } from '@/lib/phase6-data';
 let postgresMappingColumnsEnsured = false;
 
 function normalizeText(input: string | null | undefined): string {
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
   try {
     if (isPostgresConfigured()) {
       await ensurePostgresMappingColumns();
+      await ensurePhase6Tables({ query: pgQuery } as { query: typeof pgQuery });
     }
     const body = await req.json().catch(() => ({}));
     const action = body.action as string;
@@ -403,6 +405,230 @@ export async function POST(req: NextRequest) {
         await supabase.from('hour_entries').update({ task_id: taskId }).eq('id', hourId);
       }
       return NextResponse.json({ success: true, updated: pairs.length });
+    }
+
+    if (action === 'generateMappingSuggestions') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const projectId = String(body.projectId || '');
+      const workdayPhaseId = body.workdayPhaseId ? String(body.workdayPhaseId) : null;
+      const minConfidence = Math.min(0.99, Math.max(0.5, Number(body.minConfidence ?? 0.78)));
+      const limit = Math.min(500, Math.max(1, Number(body.limit ?? 200)));
+      if (!projectId) {
+        return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
+      }
+
+      const hourParams: unknown[] = [projectId];
+      const hourWhere = workdayPhaseId
+        ? `WHERE project_id = $1 AND task_id IS NULL AND workday_phase_id = $2`
+        : `WHERE project_id = $1 AND task_id IS NULL`;
+      if (workdayPhaseId) hourParams.push(workdayPhaseId);
+
+      const hoursRes = await pgQuery(
+        `SELECT id, COALESCE(task, '') AS task_text, COALESCE(description, '') AS description,
+                COALESCE(phases, '') AS phases, workday_phase_id
+         FROM hour_entries
+         ${hourWhere}
+         ORDER BY updated_at DESC NULLS LAST, id DESC
+         LIMIT $${hourParams.length + 1}`,
+        [...hourParams, limit],
+      );
+
+      const taskParams: unknown[] = [projectId];
+      const taskWhere = workdayPhaseId
+        ? `WHERE project_id = $1 AND workday_phase_id = $2`
+        : `WHERE project_id = $1`;
+      if (workdayPhaseId) taskParams.push(workdayPhaseId);
+      const tasksRes = await pgQuery(
+        `SELECT id, COALESCE(name, '') AS name, COALESCE(task_name, '') AS task_name, workday_phase_id
+         FROM tasks
+         ${taskWhere}`,
+        taskParams,
+      );
+
+      let created = 0;
+      for (const h of hoursRes.rows || []) {
+        const source = String(h.task_text || parseHourDescription(String(h.description || '')).task || '').trim();
+        if (!source) continue;
+
+        const ranked = (tasksRes.rows || [])
+          .map((t) => ({
+            taskId: String(t.id),
+            taskName: String(t.name || t.task_name || t.id),
+            score: similarity(source, String(t.name || t.task_name || '')),
+          }))
+          .sort((a, b) => b.score - a.score);
+
+        const top = ranked[0];
+        if (!top || top.score < minConfidence) continue;
+
+        const insertRes = await pgQuery(
+          `INSERT INTO mapping_suggestions (
+             project_id, workday_phase_id, hour_entry_id, task_id, suggestion_type,
+             confidence, reason, source_value, target_value, status, metadata
+           )
+           SELECT $1, $2, $3, $4, 'hour_to_task', $5, $6, $7, $8, 'pending', $9::jsonb
+           WHERE NOT EXISTS (
+             SELECT 1 FROM mapping_suggestions
+             WHERE status = 'pending'
+               AND suggestion_type = 'hour_to_task'
+               AND hour_entry_id = $3
+               AND task_id = $4
+           )`,
+          [
+            projectId,
+            h.workday_phase_id ?? null,
+            String(h.id),
+            top.taskId,
+            Number(top.score.toFixed(4)),
+            `Matched hour entry task text to task name with confidence ${(top.score * 100).toFixed(1)}%`,
+            source,
+            top.taskName,
+            JSON.stringify({ algorithm: 'levenshtein_similarity_v1' }),
+          ],
+        );
+        if (insertRes.rowCount && insertRes.rowCount > 0) created += 1;
+      }
+
+      await emitAlertEvent({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestions.generated',
+        severity: created > 0 ? 'info' : 'warning',
+        title: 'Mapping Suggestions Generated',
+        message: created > 0
+          ? `${created} mapping suggestion(s) generated for project ${projectId}.`
+          : `No mapping suggestions generated for project ${projectId}.`,
+        source: 'api/data/mapping',
+        entityType: 'project',
+        entityId: projectId,
+        relatedProjectId: projectId,
+        metadata: { projectId, workdayPhaseId, minConfidence, limit, created },
+      });
+
+      return NextResponse.json({ success: true, created });
+    }
+
+    if (action === 'listMappingSuggestions') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const projectId = String(body.projectId || '');
+      const status = String(body.status || 'pending');
+      const limit = Math.min(500, Math.max(1, Number(body.limit ?? 200)));
+      if (!projectId) {
+        return NextResponse.json({ success: false, error: 'projectId required' }, { status: 400 });
+      }
+      const result = await pgQuery(
+        `SELECT
+           ms.id,
+           ms.project_id AS "projectId",
+           ms.workday_phase_id AS "workdayPhaseId",
+           ms.hour_entry_id AS "hourEntryId",
+           ms.task_id AS "taskId",
+           ms.suggestion_type AS "suggestionType",
+           ms.confidence,
+           ms.reason,
+           ms.source_value AS "sourceValue",
+           ms.target_value AS "targetValue",
+           ms.status,
+           ms.metadata,
+           ms.created_at AS "createdAt",
+           he.description AS "hourDescription",
+           he.date AS "hourDate",
+           t.name AS "taskName",
+           t.task_name AS "taskNameAlt"
+         FROM mapping_suggestions ms
+         LEFT JOIN hour_entries he ON he.id = ms.hour_entry_id
+         LEFT JOIN tasks t ON t.id = ms.task_id
+         WHERE ms.project_id = $1 AND ms.status = $2
+         ORDER BY ms.confidence DESC, ms.created_at DESC
+         LIMIT $3`,
+        [projectId, status, limit],
+      );
+      return NextResponse.json({ success: true, suggestions: result.rows });
+    }
+
+    if (action === 'applyMappingSuggestion') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const suggestionId = Number(body.suggestionId || 0);
+      if (!suggestionId) {
+        return NextResponse.json({ success: false, error: 'suggestionId required' }, { status: 400 });
+      }
+
+      const suggestionRes = await pgQuery(
+        `SELECT id, project_id, hour_entry_id, task_id, confidence, status
+         FROM mapping_suggestions
+         WHERE id = $1
+         LIMIT 1`,
+        [suggestionId],
+      );
+      const suggestion = suggestionRes.rows[0] as {
+        id: number;
+        project_id: string;
+        hour_entry_id: string;
+        task_id: string;
+        confidence: number;
+        status: string;
+      } | undefined;
+
+      if (!suggestion) {
+        return NextResponse.json({ success: false, error: 'Suggestion not found' }, { status: 404 });
+      }
+      if (suggestion.status !== 'pending') {
+        return NextResponse.json({ success: false, error: 'Suggestion is not pending' }, { status: 400 });
+      }
+
+      await pgQuery(
+        `UPDATE hour_entries
+         SET task_id = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [suggestion.task_id, suggestion.hour_entry_id],
+      );
+      await pgQuery(
+        `UPDATE mapping_suggestions
+         SET status = 'applied', applied_at = NOW()
+         WHERE id = $1`,
+        [suggestion.id],
+      );
+
+      await emitAlertEvent({ query: pgQuery } as { query: typeof pgQuery }, {
+        eventType: 'mapping_suggestion.applied',
+        severity: 'info',
+        title: 'Mapping Suggestion Applied',
+        message: `Applied suggestion #${suggestion.id} for project ${suggestion.project_id}.`,
+        source: 'api/data/mapping',
+        entityType: 'project',
+        entityId: suggestion.project_id,
+        relatedProjectId: suggestion.project_id,
+        relatedTaskId: suggestion.task_id,
+        metadata: {
+          suggestionId: suggestion.id,
+          hourEntryId: suggestion.hour_entry_id,
+          taskId: suggestion.task_id,
+          confidence: suggestion.confidence,
+        },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'dismissMappingSuggestion') {
+      if (!isPostgresConfigured()) {
+        return NextResponse.json({ success: false, error: 'PostgreSQL required for mapping suggestions' }, { status: 501 });
+      }
+      const suggestionId = Number(body.suggestionId || 0);
+      if (!suggestionId) {
+        return NextResponse.json({ success: false, error: 'suggestionId required' }, { status: 400 });
+      }
+      await pgQuery(
+        `UPDATE mapping_suggestions
+         SET status = 'dismissed', dismissed_at = NOW()
+         WHERE id = $1`,
+        [suggestionId],
+      );
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ success: false, error: 'Invalid action.' }, { status: 400 });

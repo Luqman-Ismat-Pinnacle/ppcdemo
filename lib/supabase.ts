@@ -152,6 +152,9 @@ export const TABLES = {
   WORKDAY_PHASES: 'workday_phases',
   MO_PERIOD_NOTES: 'mo_period_notes',
   ENGINE_LOGS: 'engine_logs',
+  ALERT_EVENTS: 'alert_events',
+  TASK_ASSIGNMENTS: 'task_assignments',
+  MAPPING_SUGGESTIONS: 'mapping_suggestions',
 } as const;
 
 export type TableName = typeof TABLES[keyof typeof TABLES];
@@ -193,6 +196,9 @@ export const DATA_KEY_TO_TABLE: Record<string, TableName> = {
   customerContracts: TABLES.CUSTOMER_CONTRACTS,
   workdayPhases: TABLES.WORKDAY_PHASES,
   moPeriodNotes: TABLES.MO_PERIOD_NOTES,
+  alertEvents: TABLES.ALERT_EVENTS,
+  taskAssignments: TABLES.TASK_ASSIGNMENTS,
+  mappingSuggestions: TABLES.MAPPING_SUGGESTIONS,
 };
 
 /**

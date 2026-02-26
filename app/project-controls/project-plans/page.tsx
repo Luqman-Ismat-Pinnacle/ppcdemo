@@ -67,6 +67,25 @@ interface UploadedFile {
   isCurrentVersion?: boolean;
 }
 
+interface MappingSuggestionRow {
+  id: number;
+  projectId: string;
+  workdayPhaseId: string | null;
+  hourEntryId: string;
+  taskId: string;
+  suggestionType: string;
+  confidence: number;
+  reason: string;
+  sourceValue: string | null;
+  targetValue: string | null;
+  status: 'pending' | 'applied' | 'dismissed';
+  createdAt: string;
+  hourDescription?: string | null;
+  hourDate?: string | null;
+  taskName?: string | null;
+  taskNameAlt?: string | null;
+}
+
 const STORAGE_BUCKET = 'projectdoc';
 
 // Azure Blob Storage API helpers (server-side via /api/storage)
@@ -1059,6 +1078,8 @@ export default function DocumentsPage() {
   const [mappingProjectFilter, setMappingProjectFilter] = useState<string>('');
   const [mappingSearch, setMappingSearch] = useState('');
   const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
+  const [mappingSuggestions, setMappingSuggestions] = useState<MappingSuggestionRow[]>([]);
+  const [mappingSuggestionsLoading, setMappingSuggestionsLoading] = useState(false);
   const [mappingTaskPickerByBucket, setMappingTaskPickerByBucket] = useState<Record<string, string | null>>({});
   const autoMatchedProjectRef = useRef<string>('');
 
@@ -1286,6 +1307,101 @@ export default function DocumentsPage() {
     }
   }, [mappingProjectFilter, addLog, refreshData]);
 
+  const loadMappingSuggestions = useCallback(async () => {
+    if (!mappingProjectFilter) {
+      setMappingSuggestions([]);
+      return;
+    }
+    setMappingSuggestionsLoading(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'listMappingSuggestions',
+          projectId: mappingProjectFilter,
+          status: 'pending',
+          limit: 120,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to load mapping suggestions');
+      setMappingSuggestions((result.suggestions || []) as MappingSuggestionRow[]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('warning', message);
+    } finally {
+      setMappingSuggestionsLoading(false);
+    }
+  }, [mappingProjectFilter, addLog]);
+
+  const handleGenerateMappingSuggestions = useCallback(async () => {
+    if (!mappingProjectFilter) return;
+    setMappingSuggestionsLoading(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generateMappingSuggestions',
+          projectId: mappingProjectFilter,
+          minConfidence: 0.78,
+          limit: 300,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to generate mapping suggestions');
+      addLog('success', `[Mapping Suggestions] ${result.created || 0} suggestion(s) generated`);
+      await loadMappingSuggestions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('error', message);
+    } finally {
+      setMappingSuggestionsLoading(false);
+    }
+  }, [mappingProjectFilter, addLog, loadMappingSuggestions]);
+
+  const handleApplyMappingSuggestion = useCallback(async (suggestionId: number) => {
+    setMappingSuggestionsLoading(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'applyMappingSuggestion', suggestionId }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to apply mapping suggestion');
+      addLog('success', `Applied mapping suggestion #${suggestionId}`);
+      await refreshData();
+      await loadMappingSuggestions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('error', message);
+    } finally {
+      setMappingSuggestionsLoading(false);
+    }
+  }, [addLog, refreshData, loadMappingSuggestions]);
+
+  const handleDismissMappingSuggestion = useCallback(async (suggestionId: number) => {
+    setMappingSuggestionsLoading(true);
+    try {
+      const res = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dismissMappingSuggestion', suggestionId }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'Failed to dismiss mapping suggestion');
+      addLog('info', `Dismissed mapping suggestion #${suggestionId}`);
+      await loadMappingSuggestions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      addLog('error', message);
+    } finally {
+      setMappingSuggestionsLoading(false);
+    }
+  }, [addLog, loadMappingSuggestions]);
+
   const handleSelectTaskForBucket = useCallback(async (bucketWorkdayPhaseId: string | null, taskId: string | null) => {
     if (!taskId) return;
     await handleAssignTaskToWorkdayPhase(taskId, bucketWorkdayPhaseId);
@@ -1319,6 +1435,14 @@ export default function DocumentsPage() {
     autoMatchedProjectRef.current = mappingProjectFilter;
     void handleAutoMatchWorkdayPhaseToHours(true);
   }, [mappingProjectFilter, mappingProjectWorkdayPhases.length, handleAutoMatchWorkdayPhaseToHours]);
+
+  useEffect(() => {
+    if (!mappingProjectFilter) {
+      setMappingSuggestions([]);
+      return;
+    }
+    void loadMappingSuggestions();
+  }, [mappingProjectFilter, loadMappingSuggestions]);
 
   const visibleFiles = useMemo(() => {
     const q = fileSearchQuery.trim().toLowerCase();
@@ -2105,23 +2229,42 @@ export default function DocumentsPage() {
                 />
               </div>
               <div style={{ minWidth: '220px', display: 'flex', alignItems: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={() => handleAutoMatchWorkdayPhaseToHours(true)}
-                  disabled={mappingSaving || !mappingProjectFilter}
-                  style={{
-                    padding: '0.55rem 0.9rem',
-                    background: !mappingSaving && mappingProjectFilter ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                    color: !mappingSaving && mappingProjectFilter ? '#000' : 'var(--text-muted)',
-                    border: 'none',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    cursor: !mappingSaving && mappingProjectFilter ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  {mappingSaving ? 'Matching...' : 'Re-Match Hours by Phase Name'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleAutoMatchWorkdayPhaseToHours(true)}
+                    disabled={mappingSaving || !mappingProjectFilter}
+                    style={{
+                      padding: '0.55rem 0.9rem',
+                      background: !mappingSaving && mappingProjectFilter ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
+                      color: !mappingSaving && mappingProjectFilter ? '#000' : 'var(--text-muted)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: !mappingSaving && mappingProjectFilter ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {mappingSaving ? 'Matching...' : 'Re-Match Hours by Phase Name'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateMappingSuggestions}
+                    disabled={mappingSaving || mappingSuggestionsLoading || !mappingProjectFilter}
+                    style={{
+                      padding: '0.55rem 0.9rem',
+                      background: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
+                      color: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--text-primary)' : 'var(--text-muted)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {mappingSuggestionsLoading ? 'Scanning...' : 'Generate Suggestions'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2159,6 +2302,64 @@ export default function DocumentsPage() {
                       Last phase matching run: {mappingResult.matched} matched, {mappingResult.unmatched} unmatched, {mappingResult.considered} considered.
                     </div>
                   )}
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
+                      Mapping Suggestions ({mappingSuggestions.length})
+                    </div>
+                    {mappingSuggestions.length === 0 ? (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        No pending suggestions. Click <strong>Generate Suggestions</strong> to scan unmatched hours.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '220px', overflowY: 'auto' }}>
+                        {mappingSuggestions.slice(0, 30).map((s) => (
+                          <div
+                            key={`mapping-suggestion-${s.id}`}
+                            style={{
+                              border: '1px solid var(--border-color)',
+                              borderRadius: 8,
+                              padding: '0.55rem 0.65rem',
+                              background: 'var(--bg-secondary)',
+                              display: 'grid',
+                              gridTemplateColumns: '1fr auto',
+                              gap: '0.6rem',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {s.targetValue || s.taskName || s.taskNameAlt || s.taskId}
+                                <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontWeight: 600 }}>
+                                  {(Number(s.confidence || 0) * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.71rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                Source: {s.sourceValue || s.hourDescription || s.hourEntryId}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.35rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleApplyMappingSuggestion(s.id)}
+                                disabled={mappingSaving || mappingSuggestionsLoading}
+                                style={{ border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: 6, padding: '0.22rem 0.5rem', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                Apply
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDismissMappingSuggestion(s.id)}
+                                disabled={mappingSaving || mappingSuggestionsLoading}
+                                style={{ border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderRadius: 6, padding: '0.22rem 0.5rem', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '0.85rem', alignItems: 'start' }}>
