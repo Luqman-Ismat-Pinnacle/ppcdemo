@@ -688,21 +688,6 @@ export function DataProvider({ children }: DataProviderProps) {
    */
   const filteredData = useMemo(() => {
     const filtered = { ...data };
-    const projectIdsWithDocs = new Set(
-      (filtered.projectDocuments || [])
-        .map((d: any) => String(d.projectId ?? d.project_id ?? ''))
-        .filter(Boolean)
-    );
-    const hasPlan = (project: any) => {
-      const rawHasSchedule = project?.has_schedule ?? project?.hasSchedule;
-      const hasSchedule =
-        rawHasSchedule === true ||
-        rawHasSchedule === 1 ||
-        String(rawHasSchedule || '').toLowerCase() === 'true' ||
-        String(rawHasSchedule || '') === '1';
-      const projectId = String(project?.id ?? project?.projectId ?? '');
-      return hasSchedule || (projectId && projectIdsWithDocs.has(projectId));
-    };
 
     // =========================================================================
     // ACTIVE PORTFOLIOS ONLY (WBS, Gantt, and app-wide views exclude inactive)
@@ -739,57 +724,8 @@ export function DataProvider({ children }: DataProviderProps) {
       });
     }
 
-    // Only surface projects with uploaded plans and cascade that to dependent entities.
-    if (filtered.projects) {
-      const originalProjects = filtered.projects as any[];
-      const plannedOnly = originalProjects.filter((p: any) => hasPlan(p));
-      // Guard: if plan metadata is missing during initial load, do not zero-out all views.
-      filtered.projects = plannedOnly.length > 0 ? plannedOnly : originalProjects;
-    }
-    const plannedProjectIds = new Set((filtered.projects || []).map((p: any) => p.id || p.projectId));
-    const phaseProjectFallback = new Map<string, string>();
-    (filtered.tasks || []).forEach((t: any) => {
-      const phaseId = String(t.phaseId ?? t.phase_id ?? '').trim();
-      const projectId = String(t.projectId ?? t.project_id ?? '').trim();
-      if (phaseId && projectId && !phaseProjectFallback.has(phaseId)) {
-        phaseProjectFallback.set(phaseId, projectId);
-      }
-    });
-    if (filtered.units) {
-      filtered.units = (filtered.units as any[]).filter((u: any) => plannedProjectIds.has(u.projectId ?? u.project_id));
-    }
-    if (filtered.phases) {
-      filtered.phases = (filtered.phases as any[]).filter((ph: any) => {
-        const directProjectId = ph.projectId ?? ph.project_id;
-        if (directProjectId && plannedProjectIds.has(directProjectId)) return true;
-        const phaseId = String(ph.id ?? ph.phaseId ?? ph.phase_id ?? '').trim();
-        if (!phaseId) return false;
-        const fallbackProjectId = phaseProjectFallback.get(phaseId);
-        return Boolean(fallbackProjectId && plannedProjectIds.has(fallbackProjectId));
-      });
-    }
-    if (filtered.tasks) {
-      filtered.tasks = (filtered.tasks as any[]).filter((t: any) => {
-        const pid = t.projectId ?? t.project_id;
-        if (pid) return plannedProjectIds.has(pid);
-        const phaseId = String(t.phaseId ?? t.phase_id ?? '').trim();
-        if (!phaseId) return true;
-        const fallbackProjectId = phaseProjectFallback.get(phaseId);
-        return !fallbackProjectId || plannedProjectIds.has(fallbackProjectId);
-      });
-    }
-    if (filtered.hours) {
-      filtered.hours = (filtered.hours as any[]).filter((h: any) => {
-        const pid = h.projectId ?? h.project_id;
-        return !pid || plannedProjectIds.has(pid);
-      });
-    }
-    if (filtered.moPeriodNotes) {
-      filtered.moPeriodNotes = (filtered.moPeriodNotes as any[]).filter((n: any) => {
-        const pid = n.projectId ?? n.project_id;
-        return !pid || plannedProjectIds.has(pid);
-      });
-    }
+    // Keep full project/task/hour scope in global context; plan-specific filtering
+    // is handled by dedicated pages (e.g., project plans) to avoid hidden data loss.
 
     // =========================================================================
     // APPLY ROLE VIEW PROJECT SCOPE

@@ -1,5 +1,6 @@
-# Use Node.js LTS version
-FROM node:20-alpine AS base
+# Use Node.js LTS version mirrored in ACR to avoid Docker Hub pull limits
+ARG ACR_REGISTRY=vantageacreastus2.azurecr.io
+FROM ${ACR_REGISTRY}/base/node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
