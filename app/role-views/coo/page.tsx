@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import CommandCenterSection from '@/components/command-center/CommandCenterSection';
 import DecisionQueueCard from '@/components/command-center/DecisionQueueCard';
 import OffenderList from '@/components/command-center/OffenderList';
+import { useData } from '@/lib/data-context';
 
 type CooSummary = {
   success: boolean;
@@ -59,6 +60,7 @@ type CooSummary = {
 
 export default function CooRoleViewPage() {
   const [payload, setPayload] = useState<CooSummary | null>(null);
+  const { filteredData } = useData();
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +72,118 @@ export default function CooRoleViewPage() {
     void run();
     return () => { cancelled = true; };
   }, []);
+
+  const wbsHealthRows = useMemo(() => {
+    const items = (filteredData.wbsData?.items || []) as any[];
+    const projects = (filteredData.projects || []) as any[];
+    const milestones = (filteredData.milestones || []) as any[];
+    const deliverables = (filteredData.deliverables || []) as any[];
+
+    const projectById = new Map<string, any>();
+    projects.forEach((p: any) => {
+      const id = String(p.id || p.projectId || '');
+      if (id) projectById.set(id, p);
+    });
+
+    const milestonesByProject = new Map<string, any[]>();
+    milestones.forEach((m: any) => {
+      const pid = String(m.projectId || m.project_id || '');
+      if (!pid) return;
+      if (!milestonesByProject.has(pid)) milestonesByProject.set(pid, []);
+      milestonesByProject.get(pid)!.push(m);
+    });
+
+    const deliverablesByProject = new Map<string, any[]>();
+    deliverables.forEach((d: any) => {
+      const pid = String(d.projectId || d.project_id || '');
+      if (!pid) return;
+      if (!deliverablesByProject.has(pid)) deliverablesByProject.set(pid, []);
+      deliverablesByProject.get(pid)!.push(d);
+    });
+
+    type Row = {
+      id: string;
+      name: string;
+      level: number;
+      schedulePct: number;
+      baselineHours: number;
+      maintenancePct: number;
+      scheduleHealth: 'good' | 'warning' | 'bad';
+      costHealth: 'good' | 'warning' | 'bad';
+      docsPct: number;
+      overallCompliance: number;
+    };
+
+    const rows: Row[] = [];
+
+    const walk = (list: any[], level: number) => {
+      list.forEach((node: any) => {
+        const type = String(node.type || node.itemType || '').toLowerCase();
+        const id = String(node.id || '');
+        const name = String(node.name || '');
+
+        if (type === 'project' && id.startsWith('wbs-project-')) {
+          const projectId = id.replace(/^wbs-project-/i, '');
+          const project = projectById.get(projectId);
+          if (project) {
+            const baselineHours = Number(project.baselineHours ?? project.baseline_hours ?? 0) || 0;
+            const actualHours = Number(project.actualHours ?? project.actual_hours ?? 0) || 0;
+            const percentComplete = Number(project.percentComplete ?? project.percent_complete ?? 0) || 0;
+
+            const projectMilestones = milestonesByProject.get(projectId) || [];
+            const lateMilestones = projectMilestones.filter((m) => Number(m.varianceDays || 0) > 0);
+            const scheduleHealth: Row['scheduleHealth'] =
+              lateMilestones.length === 0 ? 'good' : percentComplete >= 80 ? 'warning' : 'bad';
+
+            const cpi = Number(project.cpi ?? 1);
+            const costHealth: Row['costHealth'] =
+              cpi >= 1 ? 'good' : cpi >= 0.9 ? 'warning' : 'bad';
+
+            const projectDeliverables = deliverablesByProject.get(projectId) || [];
+            const approvedDocs = projectDeliverables.filter((d) => {
+              const status = String(d.status || d.drdStatus || '').toLowerCase();
+              return status.includes('approved') || status.includes('signed') || status.includes('complete');
+            }).length;
+            const docsPct =
+              projectDeliverables.length > 0
+                ? (approvedDocs / projectDeliverables.length) * 100
+                : 0;
+
+            const maintenanceHours = 0; // placeholder – maintenance tagging not yet wired
+            const maintenancePct =
+              baselineHours > 0 ? (maintenanceHours / baselineHours) * 100 : 0;
+
+            const scheduleScore = scheduleHealth === 'good' ? 100 : scheduleHealth === 'warning' ? 60 : 30;
+            const costScore = costHealth === 'good' ? 100 : costHealth === 'warning' ? 60 : 30;
+            const docsScore = docsPct;
+            const maintenanceScore = 100 - Math.min(maintenancePct, 100);
+            const overallCompliance =
+              (scheduleScore + costScore + docsScore + maintenanceScore) / 4;
+
+            rows.push({
+              id,
+              name,
+              level,
+              schedulePct: percentComplete,
+              baselineHours,
+              maintenancePct,
+              scheduleHealth,
+              costHealth,
+              docsPct,
+              overallCompliance,
+            });
+          }
+        }
+
+        if (Array.isArray(node.children) && node.children.length) {
+          walk(node.children, level + 1);
+        }
+      });
+    };
+
+    walk(items, 0);
+    return rows;
+  }, [filteredData]);
 
   return (
     <RoleWorkstationShell role="coo" title="COO Command Center" subtitle="Executive decision surface for portfolio health, commitments, and escalations.">
@@ -140,7 +254,7 @@ export default function CooRoleViewPage() {
           </div>
         </CommandCenterSection>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
           <CommandCenterSection title="Period Performance">
             <div style={{ display: 'grid', gap: '0.35rem' }}>
               <div style={{ fontSize: '0.74rem' }}>Task completion rate: {payload?.sections.periodPerformance.completionRate || 0}%</div>
@@ -156,17 +270,6 @@ export default function CooRoleViewPage() {
             </div>
           </CommandCenterSection>
 
-          <CommandCenterSection title="Portfolio Variance by Senior Manager">
-            <OffenderList
-              rows={(payload?.sections.bySeniorManager || []).map((row, index) => ({
-                id: `${row.manager}-${index}`,
-                label: row.manager,
-                value: `Alerts ${row.alertCount}`,
-                href: `/project-controls/wbs-gantt-v2?lens=coo&manager=${encodeURIComponent(row.manager)}`,
-              }))}
-              empty="No SM portfolio rows."
-            />
-          </CommandCenterSection>
         </div>
 
         <CommandCenterSection title="Period Efficiency Summary">
@@ -253,6 +356,141 @@ export default function CooRoleViewPage() {
             </div>
           ) : (
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No milestone status summary available.</div>
+          )}
+        </CommandCenterSection>
+
+        <CommandCenterSection title="WBS Health by Project">
+          {wbsHealthRows.length === 0 ? (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No WBS / project health data available.</div>
+          ) : (
+            <div style={{ maxHeight: 380, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '0.4rem 0.5rem' }}>Project</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Schedule</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Baseline</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Maintenance</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>Schedule Health</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>Cost Health</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Documents</th>
+                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Overall Compliance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {wbsHealthRows.map((row) => (
+                    <tr key={row.id} style={{ borderBottom: '1px solid rgba(148,163,184,0.25)' }}>
+                      <td style={{ padding: '0.35rem 0.5rem' }}>
+                        <span style={{ paddingLeft: `${row.level * 12}px` }}>{row.name}</span>
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>{row.schedulePct.toFixed(0)}%</td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
+                        {Math.round(row.baselineHours).toLocaleString()}h
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
+                        {row.maintenancePct.toFixed(1)}%
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: 999,
+                            background:
+                              row.scheduleHealth === 'good'
+                                ? 'rgba(34,197,94,0.12)'
+                                : row.scheduleHealth === 'warning'
+                                  ? 'rgba(234,179,8,0.12)'
+                                  : 'rgba(239,68,68,0.12)',
+                            color:
+                              row.scheduleHealth === 'good'
+                                ? '#22C55E'
+                                : row.scheduleHealth === 'warning'
+                                  ? '#EAB308'
+                                  : '#EF4444',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background:
+                                row.scheduleHealth === 'good'
+                                  ? '#22C55E'
+                                  : row.scheduleHealth === 'warning'
+                                    ? '#EAB308'
+                                    : '#EF4444',
+                            }}
+                          />
+                          {row.scheduleHealth === 'good'
+                            ? 'Good'
+                            : row.scheduleHealth === 'warning'
+                              ? 'Watch'
+                              : 'Bad'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center' }}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: 999,
+                            background:
+                              row.costHealth === 'good'
+                                ? 'rgba(34,197,94,0.12)'
+                                : row.costHealth === 'warning'
+                                  ? 'rgba(234,179,8,0.12)'
+                                  : 'rgba(239,68,68,0.12)',
+                            color:
+                              row.costHealth === 'good'
+                                ? '#22C55E'
+                                : row.costHealth === 'warning'
+                                  ? '#EAB308'
+                                  : '#EF4444',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              background:
+                                row.costHealth === 'good'
+                                  ? '#22C55E'
+                                  : row.costHealth === 'warning'
+                                    ? '#EAB308'
+                                    : '#EF4444',
+                            }}
+                          />
+                          {row.costHealth === 'good'
+                            ? 'Good'
+                            : row.costHealth === 'warning'
+                              ? 'Watch'
+                              : 'Bad'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
+                        {row.docsPct.toFixed(0)}%
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
+                        {row.overallCompliance.toFixed(0)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                Schedule = project percent complete; Baseline = planned hours; Maintenance = share of
+                hours tagged as maintenance (placeholder); Schedule &amp; Cost Health are traffic‑light
+                categories; Documents = % of deliverables approved/signed; Overall Compliance is the
+                simple average of these sub‑scores.
+              </div>
+            </div>
           )}
         </CommandCenterSection>
       </div>

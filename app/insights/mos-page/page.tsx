@@ -7,6 +7,10 @@ import ChartWrapper from '@/components/charts/ChartWrapper';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import { useData } from '@/lib/data-context';
 import MosGlideTable from './components/MosGlideTable';
+import TaskHoursEfficiencyChart from '@/components/charts/TaskHoursEfficiencyChart';
+import QualityHoursChart from '@/components/charts/QualityHoursChart';
+import NonExecutePieChart from '@/components/charts/NonExecutePieChart';
+import LaborBreakdownChart from '@/components/charts/LaborBreakdownChart';
 import type { MoPeriodGranularity, MoPeriodNote, MoPeriodNoteType } from '@/types/data';
 import { calcHoursVariancePct } from '@/lib/calculations/kpis';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
@@ -158,6 +162,10 @@ export default function MosPage() {
   const milestones = useMemo(() => ([...(filteredData.milestones || []), ...(filteredData.milestonesTable || [])] as any[]), [filteredData.milestones, filteredData.milestonesTable]);
   const hours = useMemo(() => (filteredData.hours || []) as any[], [filteredData.hours]);
   const moPeriodNotes = useMemo(() => (filteredData.moPeriodNotes || []) as MoPeriodNote[], [filteredData.moPeriodNotes]);
+  const taskHoursEfficiency = filteredData.taskHoursEfficiency as any;
+  const qualityHours = filteredData.qualityHours as any;
+  const nonExecuteHours = filteredData.nonExecuteHours as any;
+  const laborBreakdown = filteredData.laborBreakdown as any;
 
   const projectById = useMemo(() => {
     const m = new Map<string, any>();
@@ -1104,6 +1112,62 @@ export default function MosPage() {
                 </div>
               </div>
               <ChartWrapper option={nonExQcOption} height={620} onClick={(p) => p.name && setSelectedBucket(String(p.name))} isEmpty={!hours.some((h) => !isExcluded(h))} />
+            </div>
+          </section>
+
+          <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr' }}>
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+              <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Task Hours Efficiency (Portfolio)</h3>
+              <TaskHoursEfficiencyChart
+                data={taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
+                onBarClick={(params) => {
+                  const idx = params.dataIndex;
+                  const name = taskHoursEfficiency?.tasks?.[idx];
+                  if (name) {
+                    const row = taskRows.find((t) => t.name === name);
+                    if (row) setSelectedTaskId(row.id);
+                  }
+                }}
+                activeFilters={[]}
+              />
+            </div>
+
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+              <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Quality & Non-Execute Hours</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)', gap: '0.75rem' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 0.35rem', color: C.text, fontSize: '0.8rem' }}>Quality Hours by Charge Code</h4>
+                  <QualityHoursChart
+                    data={qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+                    taskOrder={taskHoursEfficiency?.tasks}
+                    activeFilters={[]}
+                  />
+                </div>
+                <div>
+                  <h4 style={{ margin: '0 0 0.35rem', color: C.text, fontSize: '0.8rem' }}>Non-Execute Hours (TPW)</h4>
+                  <NonExecutePieChart
+                    data={nonExecuteHours?.tpwComparison || []}
+                    height={220}
+                    showLabels
+                    visualId="mos-non-execute"
+                    enableCompare={false}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+              <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Labor Breakdown (Phase / Role / Worker)</h3>
+              <LaborBreakdownChart
+                months={laborBreakdown?.weeks || []}
+                dataByCategory={(laborBreakdown?.byPhase || []).reduce((acc: Record<string, number[]>, row: any) => {
+                  const name = String(row.phase || row.name || row.project || 'Unknown');
+                  acc[name] = (row.data || []) as number[];
+                  return acc;
+                }, {})}
+                height={320}
+                activeFilters={[]}
+              />
             </div>
           </section>
         </>
