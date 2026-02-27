@@ -1490,6 +1490,8 @@ export default function DataManagementPage() {
         { key: 'phases', header: 'Phase', type: 'text', editable: false, tooltip: 'Derived from description between first and second \">\".' },
         { key: 'task', header: 'Task', type: 'text', editable: false, tooltip: 'Derived from description text after second \">\".' },
         { key: 'workdayPhaseId', header: 'Workday Phase', type: 'text', editable: true, tooltip: 'Mapped Workday phase bucket for this hour entry.' },
+        { key: 'mppTaskPhase', header: 'MPP Task / Phase', type: 'text', editable: true, tooltip: 'Matched MPP task/phase name for this hour entry.' },
+        { key: 'mppPhaseUnit', header: 'MPP Phase / Unit', type: 'text', editable: true, tooltip: 'Matched MPP phase/unit bucket for this hour entry.' },
         { key: 'chargeType', header: 'Charge Type', type: 'text', editable: true, tooltip: 'EX=Execution, QC=Quality, CR=Customer Relations. From Workday charge_type column.' },
         { key: 'date', header: 'Date', type: 'date', editable: true },
         { key: 'hours', header: 'Hours', type: 'number', editable: true },
@@ -1511,6 +1513,8 @@ export default function DataManagementPage() {
         phases: '',
         task: '',
         workdayPhaseId: null,
+        mppTaskPhase: null,
+        mppPhaseUnit: null,
         chargeType: '',
         date: new Date().toISOString().split('T')[0],
         hours: 0,
@@ -4261,7 +4265,6 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
 
 
 

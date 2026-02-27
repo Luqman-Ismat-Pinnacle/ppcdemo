@@ -41,6 +41,7 @@ export async function GET() {
     commitmentsRows,
     feedbackRows,
     pipelineRows,
+    pipelineFallbackRows,
     activityRows,
     qualityRows,
   ] = await Promise.all([
@@ -52,10 +53,18 @@ export async function GET() {
     safeRows(pool, "SELECT id, title, status, severity, created_by_name AS created_by, created_at, item_type FROM feedback_items ORDER BY created_at DESC LIMIT 80"),
     safeRows(
       pool,
-      `SELECT source, MAX(created_at) AS last_run
+      `SELECT event_type, MAX(created_at) AS last_run
        FROM workflow_audit_log
        WHERE event_type IN ('workday_sync','mpp_parser','alert_scan','mapping_refresh')
-       GROUP BY source`,
+       GROUP BY event_type`,
+    ),
+    safeRows(
+      pool,
+      `SELECT
+         (SELECT MAX(updated_at) FROM workday_phases) AS workday_last,
+         (SELECT MAX(created_at) FROM project_document_records WHERE COALESCE(file_type, '') ILIKE 'mpp%') AS mpp_last,
+         (SELECT MAX(created_at) FROM alert_events) AS alerts_last,
+         (SELECT MAX(updated_at) FROM hour_entries WHERE workday_phase_id IS NOT NULL OR COALESCE(mpp_task_phase, '') <> '') AS mapping_last`,
     ),
     safeRows(
       pool,
@@ -85,12 +94,13 @@ export async function GET() {
   const commitmentCompliance = activeProjects > 0 ? Math.round((asNumber(commitmentsRows[0]?.submitted) / activeProjects) * 100) : 100;
 
   const pipelineMap = new Map(
-    pipelineRows.map((row) => [String(row.source || ''), String(row.last_run || '')]),
+    pipelineRows.map((row) => [String(row.event_type || ''), String(row.last_run || '')]),
   );
-  const workdayLabel = ageLabel(pipelineMap.get('api/workday') || pipelineMap.get('workday') || '');
-  const parserLabel = ageLabel(pipelineMap.get('api/documents/process-mpp') || pipelineMap.get('mpp') || '');
-  const alertLabel = ageLabel(pipelineMap.get('api/alerts/scan') || pipelineMap.get('alerts') || '');
-  const mappingLabel = ageLabel(pipelineMap.get('api/data/mapping') || pipelineMap.get('mapping') || '');
+  const fallback = pipelineFallbackRows[0] || {};
+  const workdayLabel = ageLabel(String(pipelineMap.get('workday_sync') || fallback.workday_last || ''));
+  const parserLabel = ageLabel(String(pipelineMap.get('mpp_parser') || fallback.mpp_last || ''));
+  const alertLabel = ageLabel(String(pipelineMap.get('alert_scan') || fallback.alerts_last || ''));
+  const mappingLabel = ageLabel(String(pipelineMap.get('mapping_refresh') || fallback.mapping_last || ''));
 
   const pipelineStatus = [
     { key: 'workday', label: 'Workday Sync', ageLabel: workdayLabel, status: statusFromAge(workdayLabel), summary: `${mappedHours} mapped entries` },

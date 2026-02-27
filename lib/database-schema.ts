@@ -524,7 +524,11 @@ export interface DBHourEntry {
   chargeCode: string;
   phases?: string | null;
   task?: string | null;
+  workdayPhase?: string | null;
+  workdayTask?: string | null;
   workdayPhaseId?: string | null;
+  mppTaskPhase?: string | null;
+  mppPhaseUnit?: string | null;
   date: string;                   // YYYY-MM-DD
   hours: number;
   description: string;

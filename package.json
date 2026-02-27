@@ -18,7 +18,8 @@
     "check:role-enhancement-contracts": "node scripts/check-role-enhancement-contracts.js",
     "check:role-workstation-smoke": "node scripts/check-role-workstation-smoke.js",
     "check:command-center-content-contracts": "node scripts/check-command-center-content-contracts.js",
-    "alerts:scan": "node scripts/run-alert-scan.mjs"
+    "alerts:scan": "node scripts/run-alert-scan.mjs",
+    "hours:match-buckets": "node scripts/match-hours-workday-mpp-buckets.mjs"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^3.8.0",
