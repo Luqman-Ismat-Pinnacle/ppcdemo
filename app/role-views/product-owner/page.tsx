@@ -10,6 +10,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
+import SectionHeader from '@/components/ui/SectionHeader';
+import type { MetricContract } from '@/lib/metrics/contracts';
 
 type Summary = {
   activeProjects: number;
@@ -70,7 +72,9 @@ type OpenIssues = {
 
 type PoPayload = {
   success: boolean;
+  computedAt?: string;
   periodKey: string;
+  metrics?: MetricContract[];
   summary: Summary;
   features: FeatureRow[];
   roles: RoleRow[];
@@ -149,15 +153,16 @@ export default function ProductOwnerCommandCenterPage() {
   const cards = useMemo(() => {
     const summary = payload?.summary;
     if (!summary) return [];
+    const metricsById = new Map((payload?.metrics || []).map((metric) => [metric.metricId, metric]));
     return [
-      { label: 'Active Projects', value: summary.activeProjects },
-      { label: 'People in System', value: summary.activePeople },
-      { label: 'Mapping Coverage', value: `${summary.mappingCoverage.toFixed(1)}%`, tone: colorForMetric(summary.mappingCoverage, 85) },
-      { label: 'Plans Current', value: `${summary.plansCurrentPct.toFixed(1)}%`, tone: colorForMetric(summary.plansCurrentPct, 90) },
-      { label: 'Open Alerts', value: summary.openAlerts, tone: summary.openAlerts === 0 ? '#10B981' : summary.openAlerts <= 5 ? '#F59E0B' : '#EF4444' },
-      { label: 'Commitment Rate', value: `${summary.commitmentRate.toFixed(1)}%`, tone: colorForMetric(summary.commitmentRate, 80) },
+      { label: 'Active Projects', value: metricsById.get('po_active_projects')?.value ?? summary.activeProjects },
+      { label: 'People in System', value: metricsById.get('po_people_in_system')?.value ?? summary.activePeople },
+      { label: 'Mapping Coverage', value: `${metricsById.get('po_mapping_coverage')?.value ?? summary.mappingCoverage}%`, tone: colorForMetric(summary.mappingCoverage, 85) },
+      { label: 'Plans Current', value: `${metricsById.get('po_plans_current')?.value ?? summary.plansCurrentPct}%`, tone: colorForMetric(summary.plansCurrentPct, 90) },
+      { label: 'Open Alerts', value: metricsById.get('po_open_alerts')?.value ?? summary.openAlerts, tone: summary.openAlerts === 0 ? '#10B981' : summary.openAlerts <= 5 ? '#F59E0B' : '#EF4444' },
+      { label: 'Commitment Rate', value: `${metricsById.get('po_commitment_rate')?.value ?? summary.commitmentRate}%`, tone: colorForMetric(summary.commitmentRate, 80) },
     ];
-  }, [payload?.summary]);
+  }, [payload?.metrics, payload?.summary]);
 
   const features = payload?.features || [];
   const roles = payload?.roles || [];
@@ -203,7 +208,8 @@ export default function ProductOwnerCommandCenterPage() {
     >
       {error ? <div style={{ color: '#EF4444', fontSize: '0.8rem' }}>{error}</div> : null}
       <div style={{ display: 'grid', gap: '0.75rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: '0.65rem' }}>
+        <SectionHeader title="Tier-1 Platform KPIs" timestamp={payload?.computedAt || null} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: '0.65rem' }}>
           {cards.map((card) => (
             <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.72rem' }}>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{card.label}</div>
@@ -342,4 +348,3 @@ export default function ProductOwnerCommandCenterPage() {
     </RoleWorkstationShell>
   );
 }
-

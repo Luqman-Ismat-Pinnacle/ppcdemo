@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
+import { buildMetric } from '@/lib/metrics/contracts';
 
 export const dynamic = 'force-dynamic';
 
@@ -232,6 +233,7 @@ export async function GET() {
   ];
 
   const now = Date.now();
+  const computedAt = new Date().toISOString();
   const pipeline = [
     {
       key: 'workday',
@@ -283,7 +285,75 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
+    computedAt,
     periodKey,
+    metrics: [
+      buildMetric({
+        metricId: 'po_active_projects',
+        formulaId: 'active_project_count_v1',
+        label: 'Active Projects',
+        value: activeProjects,
+        unit: 'count',
+        sourceTables: ['projects'],
+        nullSemantics: 'no active projects',
+        drillDownUrl: '/insights/overview-v2',
+        computedAt,
+      }),
+      buildMetric({
+        metricId: 'po_people_in_system',
+        formulaId: 'active_people_count_v1',
+        label: 'People in System',
+        value: activePeople,
+        unit: 'count',
+        sourceTables: ['employees'],
+        nullSemantics: 'no active employees',
+        computedAt,
+      }),
+      buildMetric({
+        metricId: 'po_mapping_coverage',
+        formulaId: 'mapped_hours_over_total_v1',
+        label: 'Mapping Coverage',
+        value: Number(mappingCoverage.toFixed(1)),
+        unit: 'percent',
+        sourceTables: ['hour_entries'],
+        nullSemantics: 'no hour entries',
+        drillDownUrl: '/project-controls/mapping',
+        computedAt,
+      }),
+      buildMetric({
+        metricId: 'po_plans_current',
+        formulaId: 'plans_current_14d_v1',
+        label: 'Plans Current',
+        value: Number(plansCurrentPct.toFixed(1)),
+        unit: 'percent',
+        sourceTables: ['project_documents', 'projects'],
+        nullSemantics: 'no active projects',
+        drillDownUrl: '/project-controls/project-plans',
+        computedAt,
+      }),
+      buildMetric({
+        metricId: 'po_open_alerts',
+        formulaId: 'open_alert_count_v1',
+        label: 'Open Alerts',
+        value: openAlerts,
+        unit: 'count',
+        sourceTables: ['alert_events'],
+        nullSemantics: 'no open alerts',
+        drillDownUrl: '/role-views/product-owner/system-health',
+        computedAt,
+      }),
+      buildMetric({
+        metricId: 'po_commitment_rate',
+        formulaId: 'submitted_commitments_over_projects_v1',
+        label: 'Commitment Rate',
+        value: Number(commitmentRate.toFixed(1)),
+        unit: 'percent',
+        sourceTables: ['commitments', 'projects'],
+        nullSemantics: 'no active projects',
+        drillDownUrl: '/role-views/coo/commitments',
+        computedAt,
+      }),
+    ],
     summary: {
       activeProjects,
       activePeople,
@@ -312,4 +382,3 @@ export async function GET() {
     },
   });
 }
-

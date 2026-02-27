@@ -22,8 +22,8 @@ export default function WorkstationLayout({
         className="workstation-split"
         style={{
           display: 'grid',
-          gridTemplateColumns: hasAiPanel ? 'minmax(0, 1.55fr) minmax(300px, 1fr)' : 'minmax(0, 1fr)',
-          gap: '0.8rem',
+          gridTemplateColumns: hasAiPanel ? 'minmax(0, 1fr) 400px' : 'minmax(0, 1fr)',
+          gap: 'var(--workspace-gap-md)',
           alignItems: 'start',
         }}
       >

@@ -84,6 +84,14 @@
   --gradient-card: linear-gradient(165deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 50%, transparent 100%);
   --gradient-glass: linear-gradient(165deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
   --gradient-accent-subtle: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(52, 211, 153, 0.04) 100%);
+  --workspace-gap-sm: 0.75rem;
+  --workspace-gap-md: 1.1rem;
+  --workspace-gap-lg: 1.5rem;
+  --workspace-max-width: 1440px;
+  --workspace-padding-x: clamp(0.8rem, 2vw, 1.4rem);
+  --workspace-padding-y: 0.75rem;
+  --kpi-card-min-width: 200px;
+  --panel-padding: 0.95rem;
   --bg-atmosphere:
     radial-gradient(1200px 700px at 12% 10%, rgba(16, 185, 129, 0.12), transparent 58%),
     radial-gradient(900px 600px at 88% 85%, rgba(59, 130, 246, 0.12), transparent 60%),
@@ -389,10 +397,10 @@ button {
 
 /* Page Spacing Enhancements */
 .page-panel {
-  padding: 0.5rem;
+  padding: var(--panel-padding);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--workspace-gap-sm);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
   background: var(--surface-glass);
@@ -1189,8 +1197,7 @@ body {
 }
 
 /* Page Styles */
-.page-panel {
-  padding: 0.95rem;
+.page-panel--animated {
   animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -2879,6 +2886,16 @@ button {
   display: none;
 }
 
+.workstation-layout {
+  width: 100%;
+  max-width: var(--workspace-max-width);
+  margin: 0 auto;
+}
+
+.workstation-split {
+  width: 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ambient-image,
   .ambient-blob {
@@ -3002,9 +3019,7 @@ button {
     padding: 0.55rem;
   }
 
-  .page-panel {
-    padding: 0.9rem;
-  }
+  .page-panel { --panel-padding: 0.9rem; }
 
   .app-header {
     padding: 0.4rem 0.56rem;

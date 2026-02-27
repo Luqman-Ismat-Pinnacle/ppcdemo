@@ -6,10 +6,14 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
+import SectionHeader from '@/components/ui/SectionHeader';
+import BlockSkeleton from '@/components/ui/BlockSkeleton';
+import type { MetricContract } from '@/lib/metrics/contracts';
 import {
   calcCpi,
   calcHoursVariancePct,
@@ -35,6 +39,29 @@ function isCompleted(task: Record<string, unknown>): boolean {
 
 export default function ProjectLeadRoleViewPage() {
   const { filteredData, data: fullData } = useData();
+  const router = useRouter();
+  const params = useSearchParams();
+  const section = params.get('section') || 'overview';
+  const [summaryMetrics, setSummaryMetrics] = React.useState<MetricContract[]>([]);
+  const [computedAt, setComputedAt] = React.useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoadingSummary(true);
+      const response = await fetch('/api/role-views/project-lead/summary', { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!cancelled && response.ok && result.success) {
+        setSummaryMetrics(Array.isArray(result.data?.metrics) ? result.data.metrics : []);
+        setComputedAt(String(result.computedAt || ''));
+      }
+      if (!cancelled) setLoadingSummary(false);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
+  const metricById = (metricId: string) => summaryMetrics.find((metric) => metric.metricId === metricId)?.value;
 
   const dataset = useMemo(() => ({
     tasks: ((filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || []).map(asRecord),
@@ -109,14 +136,16 @@ export default function ProjectLeadRoleViewPage() {
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href="/role-views/project-lead/project-health" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Project Health</Link>
           <Link href="/project-management/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
-          <Link href="#documents" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Documents</Link>
-          <Link href="#report" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Report</Link>
+          <button type="button" onClick={() => router.push('/role-views/project-lead?section=documents')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Documents</button>
+          <button type="button" onClick={() => router.push('/role-views/project-lead?section=report')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Report</button>
         </div>
       )}
     >
       <WorkstationLayout
         focus={(
           <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <SectionHeader title="Tier-1 Delivery Metrics" timestamp={computedAt} />
+            {loadingSummary ? <BlockSkeleton rows={1} /> : null}
             <PeriodEfficiencyBanner
               health={metrics.health.value}
               spi={metrics.spi.value}
@@ -151,7 +180,7 @@ export default function ProjectLeadRoleViewPage() {
                   </div>
                   <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Overdue Open Tasks</div>
-                    <div style={{ fontWeight: 700, color: metrics.overdueTasks.length > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metrics.overdueTasks.length}</div>
+                    <div style={{ fontWeight: 700, color: metrics.overdueTasks.length > 0 ? '#EF4444' : 'var(--text-primary)' }}>{metricById('pl_overdue_tasks') ?? metrics.overdueTasks.length}</div>
                   </div>
                   <div style={{ padding: '0.55rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border-color)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Next Milestone</div>
@@ -188,10 +217,10 @@ export default function ProjectLeadRoleViewPage() {
             <div id="week-ahead" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
               Week-ahead execution has been rolled into this command center and task queue; use WBS Gantt for direct scheduling actions.
             </div>
-            <div id="documents" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            <div id="documents" style={{ display: section === 'documents' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
               Document workflow now routes through canonical pages. Open <Link href="/project-management/documentation" style={{ color: 'var(--text-primary)' }}>Documentation</Link> for upload/status operations.
             </div>
-            <div id="report" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            <div id="report" style={{ display: section === 'report' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
               Commitment/report submission has been consolidated into shared workflow surfaces and remains visible to SM/COO via commitments APIs.
             </div>
           </div>

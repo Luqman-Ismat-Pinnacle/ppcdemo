@@ -8,6 +8,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
@@ -15,6 +16,9 @@ import { useData } from '@/lib/data-context';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
 import type { DataQualityIssue, RoleQueueItem } from '@/types/role-workstation';
+import type { MetricContract } from '@/lib/metrics/contracts';
+import SectionHeader from '@/components/ui/SectionHeader';
+import BlockSkeleton from '@/components/ui/BlockSkeleton';
 
 type QueueStats = {
   unmappedHours: number;
@@ -27,11 +31,33 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 export default function PcaRoleHomePage() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const section = params.get('section') || 'overview';
   const { filteredData, data: fullData } = useData();
   const { activeRole } = useRoleView();
   const { user } = useUser();
   const [issues, setIssues] = useState<DataQualityIssue[]>([]);
   const [loadingIssues, setLoadingIssues] = useState(false);
+  const [metrics, setMetrics] = useState<MetricContract[]>([]);
+  const [computedAt, setComputedAt] = useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoadingSummary(true);
+      const response = await fetch('/api/role-views/pca/summary', { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!cancelled && response.ok && result.success) {
+        setMetrics(Array.isArray(result.data?.metrics) ? result.data.metrics : []);
+        setComputedAt(String(result.computedAt || ''));
+      }
+      if (!cancelled) setLoadingSummary(false);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +82,7 @@ export default function PcaRoleHomePage() {
     void run();
     return () => { cancelled = true; };
   }, [activeRole.key, user?.email]);
+  const metricById = (metricId: string) => metrics.find((metric) => metric.metricId === metricId)?.value;
 
   const stats = useMemo<QueueStats>(() => {
     const docs = (filteredData?.projectDocumentRecords?.length ? filteredData.projectDocumentRecords : fullData?.projectDocumentRecords)
@@ -99,7 +126,7 @@ export default function PcaRoleHomePage() {
         projectName: null,
         description: `${stats.dataIssues} data quality issue(s) need triage`,
         metricValue: stats.dataIssues,
-        actionHref: '/role-views/pca/data-quality',
+        actionHref: '/role-views/pca?section=data-quality',
         actionLabel: 'Fix Issues',
       });
     }
@@ -112,7 +139,7 @@ export default function PcaRoleHomePage() {
         projectName: null,
         description: `${stats.overduePlans} project(s) have plan uploads overdue by >14 days`,
         metricValue: stats.overduePlans,
-        actionHref: '/project-controls/project-plans#pca-plan-uploads',
+        actionHref: '/project-controls/project-plans',
         actionLabel: 'Upload Plans',
       });
     }
@@ -140,9 +167,9 @@ export default function PcaRoleHomePage() {
       actions={(
         <RoleWorkflowActionBar
           actions={[
-            { label: 'Open Upload + Parser', href: '/project-controls/project-plans#pca-plan-uploads', permission: 'uploadPlans' },
+            { label: 'Open Upload + Parser', href: '/project-controls/project-plans', permission: 'uploadPlans' },
             { label: 'Open Mapping Queue', href: '/project-controls/mapping', permission: 'editMapping' },
-            { label: 'Open Data Quality', href: '/role-views/pca#data-quality', permission: 'editMapping' },
+            { label: 'Open Data Quality', href: '/role-views/pca?section=data-quality', permission: 'editMapping' },
             { label: 'Open WBS', href: '/project-controls/wbs-gantt-v2?lens=pca', permission: 'editWbs' },
           ]}
         />
@@ -151,22 +178,25 @@ export default function PcaRoleHomePage() {
       <WorkstationLayout
         focus={(
           <div style={{ display: 'grid', gap: '0.75rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.65rem' }}>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Unmapped Hours</div>
-                <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.unmappedHours}</div>
+            <SectionHeader title="Tier-1 Work Queue Metrics" timestamp={computedAt} />
+            {loadingSummary ? <BlockSkeleton rows={2} /> : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: '0.65rem' }}>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Unmapped Hours</div>
+                  <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{metricById('pca_unmapped_hours_proxy') ?? stats.unmappedHours}</div>
+                </div>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Overdue Plan Uploads</div>
+                  <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{metricById('pca_overdue_plans') ?? stats.overduePlans}</div>
+                </div>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Data Issues</div>
+                  <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{metricById('pca_data_issues') ?? stats.dataIssues}</div>
+                </div>
               </div>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Overdue Plan Uploads</div>
-                <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.overduePlans}</div>
-              </div>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Data Issues</div>
-                <div style={{ marginTop: 4, fontSize: '1.22rem', fontWeight: 800 }}>{stats.dataIssues}</div>
-              </div>
-            </div>
+            )}
 
-            <div id="data-quality" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div id="data-quality" style={{ display: section === 'overview' || section === 'data-quality' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
               <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 Today&apos;s Priority Queue
               </div>

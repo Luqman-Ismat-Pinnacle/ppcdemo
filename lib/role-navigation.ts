@@ -21,7 +21,6 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     title: 'Product Owner',
     primary: [
       { label: 'Command Center', href: '/role-views/product-owner' },
-      { label: 'Overview', href: '/insights/overview-v2' },
       { label: 'Portfolio', href: '/insights/overview-v2' },
       { label: 'System Health', href: '/role-views/product-owner/system-health' },
       { label: 'Data Management', href: '/project-controls/data-management' },

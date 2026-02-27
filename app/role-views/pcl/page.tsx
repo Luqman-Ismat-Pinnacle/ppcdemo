@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
 import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
@@ -13,13 +14,38 @@ import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
 import type { ExceptionRow } from '@/types/role-workstation';
+import type { MetricContract } from '@/lib/metrics/contracts';
+import SectionHeader from '@/components/ui/SectionHeader';
+import BlockSkeleton from '@/components/ui/BlockSkeleton';
 
 export default function PclHomePage() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const section = params.get('section') || 'overview';
   const [rows, setRows] = useState<ComplianceMatrixRow[]>([]);
   const [alerts, setAlerts] = useState<ExceptionRow[]>([]);
   const [queueMessage, setQueueMessage] = useState('');
+  const [summaryMetrics, setSummaryMetrics] = useState<MetricContract[]>([]);
+  const [computedAt, setComputedAt] = useState<string | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
   const { activeRole } = useRoleView();
   const { user } = useUser();
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoadingSummary(true);
+      const res = await fetch('/api/role-views/pcl/summary', { cache: 'no-store' });
+      const payload = await res.json().catch(() => ({}));
+      if (!cancelled && res.ok && payload.success) {
+        setSummaryMetrics(Array.isArray(payload.data?.metrics) ? payload.data.metrics : []);
+        setComputedAt(String(payload.computedAt || ''));
+      }
+      if (!cancelled) setLoadingSummary(false);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +92,7 @@ export default function PclHomePage() {
     const atRisk = rows.filter((row) => Number(row.healthScore || 0) < 60).length;
     return { projects, openIssues, overdue, atRisk };
   }, [rows]);
+  const metricById = (metricId: string) => summaryMetrics.find((metric) => metric.metricId === metricId)?.value;
 
   const exceptionSummary = useMemo(() => ({
     total: alerts.length,
@@ -149,8 +176,8 @@ export default function PclHomePage() {
       actions={(
         <RoleWorkflowActionBar
           actions={[
-            { label: 'Exceptions', href: '/role-views/pcl#exceptions', permission: 'triageExceptions' },
-            { label: 'Plans + Mapping', href: '/project-controls/project-plans#pcl-plans-mapping', permission: 'editMapping' },
+            { label: 'Exceptions', href: '/role-views/pcl?section=exceptions', permission: 'triageExceptions' },
+            { label: 'Plans + Mapping', href: '/project-controls/project-plans', permission: 'editMapping' },
             { label: 'Resourcing', href: '/project-controls/resourcing', permission: 'viewPortfolioCompliance' },
             { label: 'WBS Risk Queue', href: '/project-controls/wbs-gantt-v2?lens=pcl', permission: 'editWbs' },
           ]}
@@ -160,19 +187,22 @@ export default function PclHomePage() {
       <WorkstationLayout
         focus={(
           <div style={{ display: 'grid', gap: '0.75rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.65rem' }}>
-              {[
-                { label: 'Projects', value: summary.projects },
-                { label: 'Open Issues', value: summary.openIssues, danger: summary.openIssues > 0 },
-                { label: 'Overdue Tasks', value: summary.overdue, danger: summary.overdue > 0 },
-                { label: 'At-Risk Projects', value: summary.atRisk, danger: summary.atRisk > 0 },
-              ].map((card) => (
-                <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{card.label}</div>
-                  <div style={{ marginTop: 4, fontSize: '1.25rem', fontWeight: 800, color: card.danger ? '#EF4444' : 'var(--text-primary)' }}>{card.value}</div>
-                </div>
-              ))}
-            </div>
+            <SectionHeader title="Tier-1 Operations Metrics" timestamp={computedAt} />
+            {loadingSummary ? <BlockSkeleton rows={2} /> : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: '0.65rem' }}>
+                {[
+                  { label: 'Projects', value: summary.projects },
+                  { label: 'Open Issues', value: metricById('pcl_open_exceptions') ?? summary.openIssues, danger: summary.openIssues > 0 },
+                  { label: 'Overdue Tasks', value: metricById('pcl_overdue_tasks') ?? summary.overdue, danger: summary.overdue > 0 },
+                  { label: 'At-Risk Projects', value: metricById('pcl_at_risk_projects') ?? summary.atRisk, danger: summary.atRisk > 0 },
+                ].map((card) => (
+                  <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{card.label}</div>
+                    <div style={{ marginTop: 4, fontSize: '1.25rem', fontWeight: 800, color: card.danger ? '#EF4444' : 'var(--text-primary)' }}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <MetricProvenanceOverlay
               entries={[
                 {
@@ -201,9 +231,9 @@ export default function PclHomePage() {
                 },
               ]}
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '0.75rem' }}>
               <div id="schedule-health"><ComplianceMatrix rows={rows} /></div>
-              <div id="exceptions" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+              <div id="exceptions" style={{ display: section === 'overview' || section === 'exceptions' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
                 <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
                   Open Exceptions Queue
                 </div>
