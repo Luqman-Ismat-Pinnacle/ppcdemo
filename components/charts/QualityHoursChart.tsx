@@ -113,6 +113,7 @@ export default function QualityHoursChart({
           name: 'Hours',
           type: 'bar',
           barWidth: 24,
+          barMinWidth: 8,
           barGap: '100%',
           barCategoryGap: '40%',
           data: sortedHours.map((val, i) => ({
@@ -122,6 +123,7 @@ export default function QualityHoursChart({
                 isFiltered && !activeFilters.includes(sortedCodes[i])
                   ? 'rgba(64, 224, 208, 0.25)'
                   : COLORS[i % COLORS.length],
+              opacity: 1,
               borderRadius: [4, 4, 4, 4],
             },
           })),

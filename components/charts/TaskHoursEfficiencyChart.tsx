@@ -96,8 +96,8 @@ export default function TaskHoursEfficiencyChart({
         itemGap: 20,
       },
       grid: {
-        left: 280,
-        right: 60,
+        left: 200,
+        right: 40,
         top: 24,
         bottom: 50,
         containLabel: true,
@@ -121,11 +121,11 @@ export default function TaskHoursEfficiencyChart({
         axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
         axisLabel: {
           color: 'rgba(255,255,255,0.9)',
-          fontSize: 13,
-          width: 260,
+          fontSize: 12,
+          width: 180,
           overflow: 'truncate',
           ellipsis: '…',
-          margin: 16,
+          margin: 12,
           interval: 0,
         },
         axisTick: { show: false },
@@ -137,6 +137,7 @@ export default function TaskHoursEfficiencyChart({
           type: 'bar',
           stack: 'total',
           barWidth: 32,
+          barMinWidth: 8,
           barGap: '80%',
           barCategoryGap: '35%',
           data: actualWorked.map((v, i) => ({
@@ -146,6 +147,7 @@ export default function TaskHoursEfficiencyChart({
                 isFiltered && !activeFilters.includes(tasks[i])
                   ? 'rgba(64, 224, 208, 0.2)'
                   : completedColor(i),
+              opacity: 1,
               borderRadius: [6, 0, 0, 6],
             },
           })),
@@ -156,12 +158,14 @@ export default function TaskHoursEfficiencyChart({
           type: 'bar',
           stack: 'total',
           barWidth: 32,
+          barMinWidth: 8,
           barGap: '80%',
           barCategoryGap: '35%',
           data: remainingHours.map((v, i) => ({
             value: v,
             itemStyle: {
-              color: isFiltered && !activeFilters.includes(tasks[i]) ? 'rgba(100,100,100,0.15)' : 'rgba(100,100,100,0.35)',
+              color: isFiltered && !activeFilters.includes(tasks[i]) ? 'rgba(100,100,100,0.15)' : 'rgba(100,100,100,0.6)',
+              opacity: 1,
               borderRadius: [0, 6, 6, 0],
             },
           })),

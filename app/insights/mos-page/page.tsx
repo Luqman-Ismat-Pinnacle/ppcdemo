@@ -1172,7 +1172,7 @@ export default function MosPage() {
           <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr' }}>
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
               <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Task Hours Efficiency (Portfolio)</h3>
-              <div style={{ maxHeight: 340, overflowY: 'auto', paddingRight: 4 }}>
+              <div style={{ minHeight: 400, maxHeight: 500, overflowY: 'auto', paddingRight: 4 }}>
                 <TaskHoursEfficiencyChart
                   data={taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
                   onBarClick={(params) => {
@@ -1190,7 +1190,7 @@ export default function MosPage() {
 
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
               <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Quality Hours</h3>
-              <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+              <div style={{ minHeight: 400, maxHeight: 500, overflowY: 'auto', paddingRight: 4 }}>
                 <QualityHoursChart
                   data={qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
                   taskOrder={taskHoursEfficiency?.tasks}

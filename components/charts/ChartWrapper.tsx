@@ -222,9 +222,11 @@ const ChartWrapper = React.memo(function ChartWrapper({
     }
     optionRef.current = merged;
 
-    // Resize on next frame to fix 0-height init
+    // Resize on next frame to fix 0-height init; also delayed for charts inside scroll containers
     const resize = () => chartInstanceRef.current?.resize();
     const rafId = requestAnimationFrame(() => { resize(); requestAnimationFrame(resize); });
+    const t1 = setTimeout(resize, 100);
+    const t2 = setTimeout(resize, 400);
 
     const ro = new ResizeObserver(resize);
     if (chartRef.current) ro.observe(chartRef.current);
@@ -243,6 +245,8 @@ const ChartWrapper = React.memo(function ChartWrapper({
 
     return () => {
       cancelAnimationFrame(rafId);
+      clearTimeout(t1);
+      clearTimeout(t2);
       ro.disconnect();
       window.removeEventListener('resize', onWinResize);
       chart.dispose();
