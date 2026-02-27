@@ -26,6 +26,14 @@ export default function CooCommitmentsPage() {
   const { activeRole } = useRoleView();
   const { user } = useUser();
 
+  const [compliance, setCompliance] = useState<{
+    total: number;
+    submitted: number;
+    approved: number;
+    escalated: number;
+    rejected: number;
+  } | null>(null);
+
   const load = useCallback(async () => {
     const res = await fetch('/api/commitments?limit=300', {
       cache: 'no-store',
@@ -38,6 +46,31 @@ export default function CooCommitmentsPage() {
     if (res.ok && payload.success) {
       const allRows = Array.isArray(payload.rows) ? payload.rows : [];
       setRows(allRows.filter((row: CommitmentRecord) => row.status !== 'draft'));
+    }
+
+    const aggregateRes = await fetch('/api/commitments?aggregate=coo-summary&limit=1', {
+      cache: 'no-store',
+      headers: {
+        'x-role-view': activeRole.key,
+        'x-actor-email': user?.email || '',
+      },
+    });
+    const aggregatePayload = await aggregateRes.json().catch(() => ({}));
+    if (aggregateRes.ok && aggregatePayload.success && Array.isArray(aggregatePayload.aggregates) && aggregatePayload.aggregates[0]) {
+      const agg = aggregatePayload.aggregates[0] as {
+        total: number;
+        submitted: number;
+        approved: number;
+        escalated: number;
+        rejected: number;
+      };
+      setCompliance({
+        total: agg.total || 0,
+        submitted: agg.submitted || 0,
+        approved: agg.approved || 0,
+        escalated: agg.escalated || 0,
+        rejected: agg.rejected || 0,
+      });
     }
   }, [activeRole.key, user?.email]);
 
@@ -78,9 +111,9 @@ export default function CooCommitmentsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.65rem' }}>
         {[
           { label: 'Decision Queue', value: summary.total },
-          { label: 'Submitted', value: summary.submitted },
-          { label: 'Escalated', value: summary.escalated, danger: summary.escalated > 0 },
-          { label: 'Approved', value: summary.approved },
+          { label: 'Submitted', value: compliance?.submitted ?? summary.submitted },
+          { label: 'Escalated', value: compliance?.escalated ?? summary.escalated, danger: (compliance?.escalated ?? summary.escalated) > 0 },
+          { label: 'Approved', value: compliance?.approved ?? summary.approved },
         ].map((card) => (
           <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem' }}>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{card.label}</div>

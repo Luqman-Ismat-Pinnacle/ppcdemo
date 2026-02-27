@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
     const ownerRole = searchParams.get('ownerRole');
     const authorEmail = searchParams.get('authorEmail');
     const limit = Math.min(500, Number(searchParams.get('limit') || 100));
+    const aggregate = searchParams.get('aggregate') === 'coo-summary';
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -85,6 +86,26 @@ export async function GET(req: NextRequest) {
     if (periodKey) add('period_key', periodKey);
     if (ownerRole) add('owner_role', ownerRole);
     if (authorEmail) add('author_email', authorEmail);
+
+    if (aggregate) {
+      const rows = await pool.query(
+        `SELECT
+           period_key AS "periodKey",
+           owner_role AS "ownerRole",
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE status IN ('submitted'))::int AS submitted,
+           COUNT(*) FILTER (WHERE status IN ('reviewed','approved'))::int AS approved,
+           COUNT(*) FILTER (WHERE status IN ('escalated'))::int AS escalated,
+           COUNT(*) FILTER (WHERE status IN ('rejected'))::int AS rejected
+         FROM commitments
+         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+         GROUP BY period_key, owner_role
+         ORDER BY period_key DESC`,
+        params,
+      );
+
+      return NextResponse.json({ success: true, aggregates: rows.rows });
+    }
 
     const result = await pool.query(
       `SELECT
