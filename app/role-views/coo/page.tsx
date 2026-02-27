@@ -78,12 +78,21 @@ export default function CooRoleViewPage() {
 
   const wbsHealthRows = useMemo(() => {
     const projects = (filteredData.projects || []) as any[];
+    const tasks = (filteredData.tasks || []) as any[];
     const milestones = (filteredData.milestones || []) as any[];
     const deliverables = (filteredData.deliverables || []) as any[];
 
+    const tasksByProject = new Map<string, any[]>();
+    tasks.forEach((t: any) => {
+      const pid = String(t.projectId ?? t.project_id ?? '').trim();
+      if (!pid) return;
+      if (!tasksByProject.has(pid)) tasksByProject.set(pid, []);
+      tasksByProject.get(pid)!.push(t);
+    });
+
     const milestonesByProject = new Map<string, any[]>();
     milestones.forEach((m: any) => {
-      const pid = String(m.projectId || m.project_id || '');
+      const pid = String(m.projectId || m.project_id || '').trim();
       if (!pid) return;
       if (!milestonesByProject.has(pid)) milestonesByProject.set(pid, []);
       milestonesByProject.get(pid)!.push(m);
@@ -91,7 +100,7 @@ export default function CooRoleViewPage() {
 
     const deliverablesByProject = new Map<string, any[]>();
     deliverables.forEach((d: any) => {
-      const pid = String(d.projectId || d.project_id || '');
+      const pid = String(d.projectId || d.project_id || '').trim();
       if (!pid) return;
       if (!deliverablesByProject.has(pid)) deliverablesByProject.set(pid, []);
       deliverablesByProject.get(pid)!.push(d);
@@ -113,16 +122,32 @@ export default function CooRoleViewPage() {
     const rows: Row[] = [];
 
     projects.forEach((project: any) => {
-      const projectId = String(project.id || project.projectId || '');
+      const projectId = String(project.id || project.projectId || '').trim();
       const name = String(project.name || project.projectName || projectId || 'Unnamed project');
       if (!projectId) return;
 
-      const baselineHours = Number(project.baselineHours ?? project.baseline_hours ?? 0) || 0;
-      const actualHours = Number(project.actualHours ?? project.actual_hours ?? 0) || 0;
-      const percentComplete = Number(project.percentComplete ?? project.percent_complete ?? 0) || 0;
+      const projectTasks = tasksByProject.get(projectId) || [];
+      let baselineHours = Number(project.baselineHours ?? project.baseline_hours ?? 0) || 0;
+      let actualHours = Number(project.actualHours ?? project.actual_hours ?? 0) || 0;
+      let percentComplete = Number(project.percentComplete ?? project.percent_complete ?? 0) || 0;
+
+      if (baselineHours === 0 && projectTasks.length > 0) {
+        baselineHours = projectTasks.reduce((s: number, t: any) => s + (Number(t.baselineHours ?? t.baseline_hours ?? 0) || 0), 0);
+      }
+      if (actualHours === 0 && projectTasks.length > 0) {
+        actualHours = projectTasks.reduce((s: number, t: any) => s + (Number(t.actualHours ?? t.actual_hours ?? 0) || 0), 0);
+      }
+      if (percentComplete === 0 && projectTasks.length > 0 && baselineHours > 0) {
+        const earned = projectTasks.reduce((s: number, t: any) => {
+          const bl = Number(t.baselineHours ?? t.baseline_hours ?? 0) || 0;
+          const pct = Number(t.percentComplete ?? t.percent_complete ?? 0) || 0;
+          return s + bl * (pct / 100);
+        }, 0);
+        percentComplete = (earned / baselineHours) * 100;
+      }
 
       const projectMilestones = milestonesByProject.get(projectId) || [];
-      const lateMilestones = projectMilestones.filter((m) => Number(m.varianceDays || 0) > 0);
+      const lateMilestones = projectMilestones.filter((m) => Number(m.varianceDays ?? m.variance_days ?? 0) > 0);
       const scheduleHealth: Row['scheduleHealth'] =
         lateMilestones.length === 0 ? 'good' : percentComplete >= 80 ? 'warning' : 'bad';
 
@@ -150,8 +175,6 @@ export default function CooRoleViewPage() {
       const maintenanceScore = 100 - Math.min(maintenancePct, 100);
       const overallCompliance =
         (scheduleScore + costScore + docsScore + maintenanceScore) / 4;
-
-      if (baselineHours === 0 && actualHours === 0 && docsPct === 0) return;
 
       rows.push({
         projectId,

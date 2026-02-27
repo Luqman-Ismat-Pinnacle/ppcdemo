@@ -913,25 +913,31 @@ export function DataProvider({ children }: DataProviderProps) {
     if (activeRole.key === 'coo') {
       const allEmployees = (filtered.employees || []) as any[];
       const allowedEmployees = allEmployees.filter((emp: any) => {
-        const dept = String(emp.department || '').trim().toLowerCase();
+        const dept = String(emp.department ?? emp.department_id ?? '').trim().toLowerCase();
         return dept === '1111 services';
       });
 
-      const allowedEmployeeIds = new Set(
-        allowedEmployees
-          .map((emp: any) => String(emp.id || emp.employeeId || emp.employee_id || '').trim())
-          .filter(Boolean),
-      );
+      const allowedEmployeeIds = new Set<string>();
+      allowedEmployees.forEach((emp: any) => {
+        const id = String(emp.id ?? '').trim();
+        const empId = String(emp.employeeId ?? emp.employee_id ?? '').trim();
+        if (id) allowedEmployeeIds.add(id);
+        if (empId) allowedEmployeeIds.add(empId);
+      });
 
       if (filtered.employees) {
         filtered.employees = allowedEmployees as any;
       }
 
-      if (filtered.hours && allowedEmployeeIds.size > 0) {
-        filtered.hours = (filtered.hours as any[]).filter((h: any) => {
-          const eid = String(h.employeeId ?? h.employee_id ?? '').trim();
-          return eid && allowedEmployeeIds.has(eid);
-        });
+      if (filtered.hours) {
+        if (allowedEmployeeIds.size === 0) {
+          filtered.hours = [];
+        } else {
+          filtered.hours = (filtered.hours as any[]).filter((h: any) => {
+            const eid = String(h.employeeId ?? h.employee_id ?? '').trim();
+            return eid && allowedEmployeeIds.has(eid);
+          });
+        }
       }
     }
     if (filtered.snapshots) {
