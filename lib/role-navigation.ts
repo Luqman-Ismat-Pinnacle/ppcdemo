@@ -26,7 +26,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
       { label: 'Milestones', href: '/insights/milestones' },
       { label: 'Documents', href: '/insights/documents' },
       { label: 'Hours', href: '/insights/hours' },
-      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Resourcing', href: '/project-controls/resourcing' },
       { label: 'Project Plans', href: '/project-controls/project-plans' },
       { label: 'Mapping', href: '/project-controls/mapping' },
@@ -44,7 +44,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     primary: [
       { label: 'Overviews', href: '/insights/overview-v2' },
       { label: "Mo's Page", href: '/insights/mos-page' },
-      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Commitments', href: '/role-views/coo/commitments', badgeKey: 'coo_commitments' },
     ],
     tools: [],
@@ -54,7 +54,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     title: 'PCL',
     primary: [
       { label: 'Overview', href: '/role-views/pcl' },
-      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Resourcing', href: '/project-controls/resourcing' },
       { label: 'Project Plans', href: '/project-controls/project-plans' },
       { label: 'Forecasting', href: '/project-management/forecast' },
@@ -67,7 +67,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     title: 'PCA',
     primary: [
       { label: 'Overview', href: '/role-views/pca' },
-      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Mapping', href: '/project-controls/mapping', badgeKey: 'pca_mapping' },
       { label: 'Project Plans', href: '/project-controls/project-plans' },
       { label: 'Sprint Planning', href: '/project-management/sprint' },
@@ -82,7 +82,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     primary: [
       { label: 'Project Health', href: '/role-views/project-lead/project-health' },
       { label: 'Tasks', href: '/insights/tasks', badgeKey: 'pl_due' },
-      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Sprint Planning', href: '/project-management/sprint' },
       { label: 'Forecasting', href: '/project-management/forecast', badgeKey: 'pl_report' },
     ],
@@ -94,7 +94,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     primary: [
       { label: 'Overview', href: '/insights/overview-v2' },
       { label: 'Portfolio Health', href: '/role-views/senior-manager/portfolio-health' },
-      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt' },
+      { label: 'WBS Gantt', href: '/project-controls/wbs-gantt-v2' },
       { label: 'Forecasting', href: '/project-management/forecast', badgeKey: 'sm_commitments' },
     ],
     tools: [],

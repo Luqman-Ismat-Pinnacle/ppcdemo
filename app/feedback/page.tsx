@@ -302,7 +302,7 @@ export default function FeedbackPage() {
           <h3 style={{ margin: 0, marginBottom: '0.7rem', fontSize: '0.95rem' }}>Log an Issue</h3>
           <form onSubmit={onCreateIssue} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
             <input required value={issueForm.title} onChange={e => setIssueForm(s => ({ ...s, title: e.target.value }))} placeholder="Issue title (required)" style={inputStyle} />
-            <input value={issueForm.pagePath} onChange={e => setIssueForm(s => ({ ...s, pagePath: e.target.value }))} placeholder="Page route (e.g. /project-controls/wbs-gantt or /insights/overview)" style={inputStyle} />
+            <input value={issueForm.pagePath} onChange={e => setIssueForm(s => ({ ...s, pagePath: e.target.value }))} placeholder="Page route (e.g. /project-controls/wbs-gantt-v2 or /insights/overview)" style={inputStyle} />
             <input required value={issueForm.userAction} onChange={e => setIssueForm(s => ({ ...s, userAction: e.target.value }))} placeholder="What action caused it?" style={inputStyle} />
             <select value={issueForm.environment} onChange={e => setIssueForm(s => ({ ...s, environment: e.target.value }))} style={inputStyle}>
               <option value="production">Environment: Production</option>

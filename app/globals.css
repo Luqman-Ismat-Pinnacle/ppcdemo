@@ -30,6 +30,10 @@
   --bg-glass: rgba(8, 9, 10, 0.82);
   --surface-raised: #1a1d22;
   --surface-overlay: #242830;
+  --surface-glass: rgba(15, 18, 22, 0.54);
+  --surface-glass-strong: rgba(10, 12, 16, 0.72);
+  --surface-glass-soft: rgba(20, 24, 30, 0.42);
+  --surface-blur: 14px;
 
   --text-primary: #f4f5f6;
   --text-secondary: #c8ccd2;
@@ -55,7 +59,7 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  --radius-xl: 12px;
+  --radius-xl: 10px;
 
   /* Flatter shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -113,6 +117,10 @@
   --bg-glass: rgba(255, 255, 255, 0.58);
   --surface-raised: rgba(255, 255, 255, 0.66);
   --surface-overlay: rgba(248, 252, 255, 0.8);
+  --surface-glass: rgba(255, 255, 255, 0.52);
+  --surface-glass-strong: rgba(248, 252, 255, 0.68);
+  --surface-glass-soft: rgba(255, 255, 255, 0.4);
+  --surface-blur: 14px;
 
   --text-primary: #0b1220;
   --text-secondary: #1f3348;
@@ -386,11 +394,11 @@ button {
   flex-direction: column;
   gap: 0.75rem;
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  background: var(--gradient-glass);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  box-shadow: var(--shadow-glass);
+  border-radius: var(--radius-xl);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--surface-blur)) saturate(138%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(138%);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.1);
 }
 
 .dashboard-grid {
@@ -412,7 +420,7 @@ button {
 
 .chart-card:hover {
   border-color: var(--border-hover);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
 }
 
 /* WBS Table Styling */
@@ -656,9 +664,9 @@ body {
   top: 100%;
   left: 0;
   min-width: 180px;
-  background: var(--bg-secondary);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(140%);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
@@ -735,9 +743,9 @@ body {
   max-width: 480px;
   max-height: 70vh;
   padding: 0;
-  background: var(--bg-card);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(140%);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
@@ -1057,12 +1065,14 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  background: var(--bg-secondary);
+  background: var(--surface-glass-strong);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   min-width: 150px;
   z-index: 1000;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(var(--surface-blur)) saturate(138%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(138%);
   margin-top: 0.25rem;
   overflow: hidden;
 }
@@ -1096,14 +1106,16 @@ body {
   position: absolute;
   top: 100%;
   right: 0;
-  background: var(--bg-secondary);
+  background: var(--surface-glass-strong);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   min-width: 180px;
   z-index: 1000;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   margin-top: 0.5rem;
   overflow: hidden;
+  backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(140%);
 }
 
 .theme-toggle-btn {
@@ -1169,7 +1181,7 @@ body {
 
 .main-content {
   flex: 1;
-  padding: 0.75rem;
+  padding: 0.6rem;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
@@ -1178,7 +1190,7 @@ body {
 
 /* Page Styles */
 .page-panel {
-  padding: 1.5rem;
+  padding: 0.95rem;
   animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1235,14 +1247,16 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: slideIn 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
 }
 
 .page-description {
   color: var(--text-muted);
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 550;
   line-height: 1.6;
   animation: slideIn 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
 }
 
 /* Insights pages: large containers (override inline styles), consistent spacing */
@@ -1392,13 +1406,13 @@ body {
 /* Chart Card Styles */
 /* Shared dropdown/container theme - solid, not transparent */
 .dropdown-container {
-  background: var(--gradient-glass);
+  background: var(--surface-glass-strong);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  backdrop-filter: blur(16px) saturate(145%);
-  -webkit-backdrop-filter: blur(16px) saturate(145%);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
 }
 
 /* Snapshot dropdown: stay inside viewport (no overflow on right) */
@@ -1407,13 +1421,13 @@ body {
 }
 
 .chart-card {
-  background: var(--gradient-card);
+  background: var(--surface-glass);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(var(--surface-blur)) saturate(138%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(138%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
 }
 
 .chart-card-header {
@@ -1424,11 +1438,13 @@ body {
   border-bottom: 1px solid var(--border-color);
   flex-wrap: wrap;
   gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--surface-glass-soft);
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
 }
 
 [data-theme="light"] .chart-card-header {
-  background: var(--bg-tertiary);
+  background: var(--surface-glass-soft);
 }
 
 .chart-card-title {
@@ -2258,7 +2274,7 @@ button {
   flex-direction: column;
   height: calc(100vh - 48px);
   /* App Header height */
-  background: var(--bg-primary);
+  background: transparent;
   overflow: hidden;
 }
 
@@ -2267,8 +2283,10 @@ button {
   align-items: center;
   gap: 12px;
   padding: 12px 20px;
-  background: var(--bg-secondary);
+  background: var(--surface-glass-strong);
   border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(var(--surface-blur)) saturate(138%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(138%);
   z-index: 100;
 }
 
@@ -2277,7 +2295,7 @@ button {
   overflow-x: auto;
   overflow-y: visible;
   position: relative;
-  background: var(--bg-primary);
+  background: transparent;
 }
 
 .premium-table {
@@ -2293,9 +2311,9 @@ button {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(26, 26, 26, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--surface-glass-strong);
+  backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(140%);
   padding: 10px 12px;
   text-align: left;
   font-weight: 600;
@@ -2307,7 +2325,7 @@ button {
 }
 
 .premium-table thead th:hover {
-  background: rgba(42, 42, 42, 0.95);
+  background: var(--surface-glass-strong);
 }
 
 .premium-table tbody td {
@@ -2672,8 +2690,8 @@ button {
 /* AI panel */
 .workstation-ai-panel {
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(20, 22, 26, 0.92) 0%, rgba(15, 17, 21, 0.88) 100%);
+  border-radius: 12px;
+  background: var(--surface-glass-strong);
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
@@ -2682,8 +2700,14 @@ button {
   min-height: 420px;
 }
 
+[data-theme='light'] .workstation-ai-panel,
+[data-theme='dark'] .workstation-ai-panel {
+  backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--surface-blur)) saturate(140%);
+}
+
 [data-theme='light'] .workstation-ai-panel {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(245, 249, 252, 0.95) 100%);
+  background: var(--surface-glass-strong);
 }
 
 .workstation-ai-header {
@@ -2757,6 +2781,7 @@ button {
   white-space: pre-wrap;
   line-height: 1.42;
   font-size: 0.76rem;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
 }
 
 .workstation-ai-message.user {

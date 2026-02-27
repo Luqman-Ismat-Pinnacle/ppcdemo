@@ -1,30 +1,23 @@
 'use client';
 
 /**
- * @fileoverview Canonical WBS/Gantt entry.
+ * @fileoverview Legacy WBS route shim.
  *
- * Uses role-scoped workstation wrappers to keep WBS access functional without
- * duplicating heavy renderer dependencies in this shell route.
+ * Redirects to the active WBS/Gantt V2 page while preserving query params.
  */
 
-import React from 'react';
-import RoleScopedWbsWorkspace from '@/components/role-workstations/RoleScopedWbsWorkspace';
-import { useRoleView } from '@/lib/role-view-context';
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function WbsGanttPage() {
-  const { activeRole } = useRoleView();
+export default function WbsGanttRedirectPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  return (
-    <div className="page-panel" style={{ display: 'grid', gap: '0.85rem' }}>
-      <div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Project Controls</div>
-        <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.45rem' }}>WBS / Gantt</h1>
-        <div style={{ marginTop: '0.3rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          Role-scoped schedule workspace with capability controls and workflow links.
-        </div>
-      </div>
+  useEffect(() => {
+    const query = searchParams?.toString();
+    router.replace(query ? `/project-controls/wbs-gantt-v2?${query}` : '/project-controls/wbs-gantt-v2');
+  }, [router, searchParams]);
 
-      <RoleScopedWbsWorkspace role={activeRole.key} />
-    </div>
-  );
+  return null;
 }
+

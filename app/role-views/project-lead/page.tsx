@@ -176,7 +176,7 @@ export default function ProjectLeadRoleViewPage() {
                           Due {String(task.finishDate || task.finish_date || task.endDate || task.end_date)}
                         </div>
                         <div style={{ marginTop: 4, display: 'flex', gap: '0.45rem' }}>
-                          <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Update Progress</Link>
+                          <Link href="/project-controls/wbs-gantt-v2" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Update Progress</Link>
                           <Link href="/project-controls/resourcing" style={{ fontSize: '0.68rem', color: 'var(--text-secondary)' }}>Reassign</Link>
                         </div>
                       </div>

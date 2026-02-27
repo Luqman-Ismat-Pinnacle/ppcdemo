@@ -152,7 +152,7 @@ export default function PclHomePage() {
             { label: 'Exceptions', href: '/role-views/pcl#exceptions', permission: 'triageExceptions' },
             { label: 'Plans + Mapping', href: '/project-controls/project-plans#pcl-plans-mapping', permission: 'editMapping' },
             { label: 'Resourcing', href: '/project-controls/resourcing', permission: 'viewPortfolioCompliance' },
-            { label: 'WBS Risk Queue', href: '/project-controls/wbs-gantt?lens=pcl', permission: 'editWbs' },
+            { label: 'WBS Risk Queue', href: '/project-controls/wbs-gantt-v2?lens=pcl', permission: 'editWbs' },
           ]}
         />
       )}

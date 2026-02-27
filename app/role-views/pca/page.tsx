@@ -143,7 +143,7 @@ export default function PcaRoleHomePage() {
             { label: 'Open Upload + Parser', href: '/project-controls/project-plans#pca-plan-uploads', permission: 'uploadPlans' },
             { label: 'Open Mapping Queue', href: '/project-controls/mapping', permission: 'editMapping' },
             { label: 'Open Data Quality', href: '/role-views/pca#data-quality', permission: 'editMapping' },
-            { label: 'Open WBS', href: '/project-controls/wbs-gantt?lens=pca', permission: 'editWbs' },
+            { label: 'Open WBS', href: '/project-controls/wbs-gantt-v2?lens=pca', permission: 'editWbs' },
           ]}
         />
       )}

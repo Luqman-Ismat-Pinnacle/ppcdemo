@@ -39,7 +39,7 @@ export default function RoleScopedWbsWorkspace({ role }: { role: RoleViewKey }) 
           );
         })}
       </div>
-      <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+      <Link href="/project-controls/wbs-gantt-v2" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
         Open WBS/Gantt Engine
       </Link>
     </div>

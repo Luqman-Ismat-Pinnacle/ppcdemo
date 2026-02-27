@@ -77,7 +77,7 @@ export default function ProjectLeadProjectHealthPage() {
       subtitle="Project-level health, phase schedule integrity, and critical-path intervention controls."
       actions={(
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href="/project-controls/wbs-gantt" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open WBS/Gantt</Link>
+          <Link href="/project-controls/wbs-gantt-v2" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open WBS/Gantt</Link>
           <Link href="/project-management/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecasting</Link>
           <Link href="/insights/tasks" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Production Floor Tasks</Link>
         </div>

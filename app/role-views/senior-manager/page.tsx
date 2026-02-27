@@ -104,7 +104,7 @@ export default function SeniorManagerRoleViewPage() {
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
           <Link href="/role-views/senior-manager/portfolio-health" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Portfolio Health</Link>
           <Link href="#commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
-          <Link href="/project-controls/wbs-gantt?lens=senior_manager" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
+          <Link href="/project-controls/wbs-gantt-v2?lens=senior_manager" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
         </div>
       </div>
 

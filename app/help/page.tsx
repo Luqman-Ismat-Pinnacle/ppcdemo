@@ -24,7 +24,7 @@ const guides: Guide[] = [
   {
     id: 'wbs-gantt',
     title: 'WBS Gantt',
-    route: '/project-controls/wbs-gantt',
+    route: '/project-controls/wbs-gantt-v2',
     owner: 'Project Controls',
     status: 'current',
     summary: 'Master schedule management with hierarchy navigation, CPM analysis, dependency mapping, baseline ghosting, and variance views.',

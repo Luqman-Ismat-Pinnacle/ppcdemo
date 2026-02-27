@@ -91,7 +91,7 @@ export default function CooRoleViewPage() {
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
               <Link href="/insights/overview-v2#coo-period-review" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Period Review</Link>
               <Link href="/role-views/coo/commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
-              <Link href="/project-controls/wbs-gantt?lens=coo" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
+              <Link href="/project-controls/wbs-gantt-v2?lens=coo" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
             </div>
           </div>
 
