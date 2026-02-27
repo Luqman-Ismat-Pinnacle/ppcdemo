@@ -1285,7 +1285,7 @@ export default function ForecastPage() {
   const data = filteredData;
   const [fteLimit, setFteLimit] = useState(10);
   const [engineParams, setEngineParams] = useState<EngineParams>(DEFAULT_ENGINE_PARAMS);
-  const [activeTab, setActiveTab] = useState<'overview' | 'margin' | 'cascade' | 'scenarios'>('margin');
+  const [activeTab, setActiveTab] = useState<'overview' | 'margin'>('overview');
 
   // Check for empty data state
   const hasData = (data.tasks?.length ?? 0) > 0 || (data.projects?.length ?? 0) > 0 || (data.hours?.length ?? 0) > 0;
@@ -1481,14 +1481,12 @@ export default function ForecastPage() {
         {/* Tab Selector */}
         <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '4px', borderRadius: '12px' }}>
           {[
-            { key: 'margin', label: 'Profit Margin' },
-            { key: 'overview', label: 'Cost Analysis' },
-            { key: 'cascade', label: 'Cascade Impact' },
-            { key: 'scenarios', label: 'Scenarios' },
+            { key: 'overview', label: 'Forecast Summary' },
+            { key: 'margin', label: 'Finance Alignment' },
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
+              onClick={() => setActiveTab(tab.key as 'overview' | 'margin')}
               style={{ 
                 padding: '0.5rem 1rem',
                 borderRadius: '8px',
@@ -1619,213 +1617,7 @@ export default function ForecastPage() {
         </div>
       )}
 
-      {/* CASCADE ANALYSIS TAB */}
-      {activeTab === 'cascade' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <SectionCard 
-            title="Milestone Cascade Impact Analyzer" 
-            subtitle="Select a milestone and adjust delay to see downstream effects"
-            accent="#EF4444"
-          >
-            <CascadeImpactChart milestones={milestones} tasks={data.tasks || []} />
-          </SectionCard>
-          
-          {/* CPM Summary */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Project Duration</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--pinnacle-teal)' }}>{cpmResult?.projectDuration || 0}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>working days</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Critical Tasks</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#EF4444' }}>{cpmResult?.stats.criticalTasksCount || 0}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>zero float</div>
-          </div>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Average Float</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#10B981' }}>{(cpmResult?.stats?.averageFloat || 0).toFixed(1)}</div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>days buffer</div>
-            </div>
-            <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Dangling Logic</div>
-              <div style={{ fontSize: '2rem', fontWeight: 800, color: (cpmResult?.stats.danglingTasks?.length || 0) > 0 ? '#F59E0B' : '#10B981' }}>
-                {cpmResult?.stats.danglingTasks?.length || 0}
-          </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>open ends</div>
-            </div>
-          </div>
-            </div>
-      )}
-
-      {/* SCENARIOS TAB */}
-      {activeTab === 'scenarios' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Scenario Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
-            <SectionCard title="P10 Best Case" subtitle="10% probability" accent="#10B981">
-              <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-                <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#10B981' }}>
-                  {formatCurrency(forecastResult?.monteCarloCost.p10 || 0)}
-          </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {Math.round(forecastResult?.monteCarloDuration.p10 || 0)} days
-                </div>
-                <div style={{ 
-                  marginTop: '1rem', 
-                  padding: '0.75rem', 
-                  background: 'rgba(16,185,129,0.1)', 
-                    borderRadius: '10px',
-                  fontSize: '0.75rem',
-                  color: '#10B981'
-                }}>
-                  {formatCurrency((forecastResult?.monteCarloCost.p10 || 0) - projectState.state.bac)} vs BAC
-                </div>
-            </div>
-            </SectionCard>
-            
-            <SectionCard title="P50 Most Likely" subtitle="50% probability" accent="#3B82F6">
-              <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-                <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#3B82F6' }}>
-                  {formatCurrency(forecastResult?.monteCarloCost.p50 || 0)}
-              </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {Math.round(forecastResult?.monteCarloDuration.p50 || 0)} days
-            </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  Est. Completion: {forecastResult?.completionDateEstimate || '-'}
-          </div>
-                <div style={{ 
-                  marginTop: '1rem', 
-                  padding: '0.75rem', 
-                  background: 'rgba(59,130,246,0.1)', 
-                  borderRadius: '10px',
-                  fontSize: '0.75rem',
-                  color: '#3B82F6',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}>
-                  TCPI to BAC: {forecastResult?.tcpi?.toBac != null ? toNumber(forecastResult.tcpi.toBac).toFixed(2) : '-'}
-                  <MetricProvenanceChip provenance={tcpiProvenance} />
-        </div>
-          </div>
-            </SectionCard>
-            
-            <SectionCard title="P90 Worst Case" subtitle="90% probability" accent="#EF4444">
-              <div style={{ textAlign: 'center', padding: '1.5rem' }}>
-                <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#EF4444' }}>
-                  {formatCurrency(forecastResult?.monteCarloCost.p90 || 0)}
-          </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  {Math.round(forecastResult?.monteCarloDuration.p90 || 0)} days
-          </div>
-                <div style={{ 
-                  marginTop: '1rem', 
-                  padding: '0.75rem', 
-                  background: 'rgba(239,68,68,0.1)', 
-                  borderRadius: '10px',
-                  fontSize: '0.75rem',
-                  color: '#EF4444'
-                }}>
-                  +{formatCurrency((forecastResult?.monteCarloCost.p90 || 0) - projectState.state.bac)} overrun risk
-        </div>
-          </div>
-            </SectionCard>
-        </div>
-
-          {/* Engine Parameters */}
-          <SectionCard title="Simulation Parameters" subtitle="Adjust to model different scenarios">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-              {[
-                { key: 'optimismFactor', label: 'Optimism Bias', min: 0.5, max: 2, step: 0.1 },
-                { key: 'riskBuffer', label: 'Risk Buffer %', min: 0, max: 0.5, step: 0.05, isPct: true },
-                { key: 'resourceEfficiency', label: 'Resource Efficiency', min: 0.5, max: 1, step: 0.05, isPct: true },
-                { key: 'scopeContingency', label: 'Scope Growth %', min: 0, max: 0.3, step: 0.05, isPct: true },
-                { key: 'laborCostMultiplier', label: 'Labor Rate Multi', min: 0.8, max: 1.5, step: 0.05 },
-              ].map(param => (
-                <div key={param.key} style={{ 
-                  padding: '1rem', 
-                  background: 'var(--bg-tertiary)',
-                  borderRadius: '12px',
-                  border: '1px solid var(--border-color)'
-                }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-                    {param.label}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <input
-                      type="range"
-                      min={param.min}
-                      max={param.max}
-                      step={param.step}
-                      value={(engineParams as any)[param.key]}
-                      onChange={(e) => setEngineParams({ ...engineParams, [param.key]: parseFloat(e.target.value) })}
-                      style={{ flex: 1, accentColor: 'var(--pinnacle-teal)' }}
-                    />
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--pinnacle-teal)', minWidth: '50px', textAlign: 'right' }}>
-                      {param.isPct 
-                        ? `${(((engineParams as any)[param.key] || 0) * 100).toFixed(0)}%`
-                        : ((engineParams as any)[param.key] || 0).toFixed(2)
-                      }
-              </span>
-            </div>
-          </div>
-              ))}
-                </div>
-          </SectionCard>
-
-          {/* IEAC Comparison */}
-          <SectionCard title="IEAC Methods Comparison" subtitle="Different forecasting approaches">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-              <div style={{ 
-                padding: '1.25rem', 
-                background: 'rgba(16,185,129,0.1)', 
-                borderRadius: '12px',
-                borderLeft: '4px solid #10B981'
-              }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Budget Rate (Optimistic)</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10B981' }}>
-                  {formatCurrency(forecastResult?.ieac.budgetRate || 0)}
-          </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Assumes remaining work at budget rate
-                      </div>
-                  </div>
-              <div style={{ 
-                padding: '1.25rem', 
-                background: 'rgba(64,224,208,0.1)', 
-                borderRadius: '12px',
-                borderLeft: '4px solid var(--pinnacle-teal)'
-              }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
-                  CPI Method (Status Quo)
-                  <MetricProvenanceChip provenance={ieacProvenance} />
-                </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--pinnacle-teal)' }}>
-                  {formatCurrency(forecastResult?.ieac.cpi || 0)}
-            </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Assumes current CPI continues
-          </div>
-        </div>
-              <div style={{ 
-                padding: '1.25rem', 
-                background: 'rgba(139,92,246,0.1)', 
-                borderRadius: '12px',
-                borderLeft: '4px solid #8B5CF6'
-              }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Monte Carlo P50</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#8B5CF6' }}>
-                  {formatCurrency(forecastResult?.monteCarloCost.p50 || 0)}
-                  </div>
-                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Probabilistic simulation result
-                    </div>
-                </div>
-            </div>
-          </SectionCard>
-        </div>
-      )}
+      {/* Advanced tabs intentionally removed for clarity in daily operations */}
         </div>
       )}
     </div>

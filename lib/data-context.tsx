@@ -33,6 +33,7 @@ const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
 const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
 const TAB_SYNC_CHANNEL_NAME = 'ppc:data-sync:v1';
 const TAB_SYNC_STORAGE_EVENT_KEY = 'ppc:data-sync:event:v1';
+const DATA_FETCH_TIMEOUT_MS = 120 * 1000;
 let memoryBootstrapCache: { savedAt: number; data: SampleData } | null = null;
 
 // ============================================================================
@@ -467,10 +468,20 @@ export function DataProvider({ children }: DataProviderProps) {
 
       try {
         logger.debug('Fetching data from database...');
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        const response = await fetch('/api/data', { cache: 'no-store', signal: controller.signal })
-          .finally(() => clearTimeout(timeoutId));
+        const fetchWithTimeout = async () => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
+          try {
+            return await fetch('/api/data', { cache: 'no-store', signal: controller.signal });
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        };
+        let response = await fetchWithTimeout();
+        if (!response.ok) {
+          // One retry for transient gateway/timeout failures.
+          response = await fetchWithTimeout();
+        }
         const result = await response.json();
 
         if (result.error) {
@@ -543,7 +554,7 @@ export function DataProvider({ children }: DataProviderProps) {
     setIsLoading(true);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
       const response = await fetch(`/api/data?t=${Date.now()}`, {
         cache: 'no-store',
         signal: controller.signal,

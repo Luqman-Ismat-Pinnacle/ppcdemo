@@ -15,6 +15,7 @@ import { fromSupabaseFormat } from './supabase';
 // Supabase fallback (only used if DATABASE_URL is not set)
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 type DbRow = Record<string, unknown>;
 type PgErrorLike = { code?: string; message?: string };
 
@@ -22,7 +23,8 @@ type DatabaseType = 'postgresql' | 'supabase' | 'mock';
 
 function detectDatabaseType(): DatabaseType {
   if (isPostgresConfigured()) return 'postgresql';
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) return 'supabase';
+  // Server-side API routes should still run when anon key is absent or RLS-restricted.
+  if (SUPABASE_URL && (SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY)) return 'supabase';
   return 'mock';
 }
 
@@ -263,7 +265,11 @@ function convertArrayFromSupabase<T>(arr: DbRow[]): T[] {
 
 async function fetchFromSupabase() {
   const { createClient } = await import('@supabase/supabase-js');
-  const supabaseClient = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!);
+  const supabaseKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !supabaseKey) {
+    return null;
+  }
+  const supabaseClient = createClient(SUPABASE_URL, supabaseKey);
 
   const hourEntriesPromise = fetchAllHourEntries(supabaseClient as unknown as SupabaseClientLike);
 

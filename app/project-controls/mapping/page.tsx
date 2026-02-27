@@ -13,6 +13,7 @@ import MetricProvenanceOverlay from '@/components/role-workstations/MetricProven
 import { useData } from '@/lib/data-context';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
+import { parseHourDescription } from '@/lib/hours-description';
 
 type Suggestion = {
   id: number;
@@ -35,24 +36,53 @@ type SuggestionStats = {
   avgPendingConfidence: number;
 };
 
+type PhaseBucket = {
+  id: string;
+  name: string;
+  unit?: string;
+};
+
 export default function MappingWorkspacePage() {
   const { filteredData, data: fullData, refreshData } = useData();
   const { activeRole } = useRoleView();
   const { user } = useUser();
 
   const projects = useMemo(() => {
-    const active = filteredData?.projects?.length ? filteredData.projects : fullData?.projects;
-    return (active || [])
+    // Drive project options from full data so mapping remains operational even when role
+    // scope filters hide portions of data in the current view.
+    const activeProjects = (fullData?.projects || filteredData?.projects || []) as unknown as Array<Record<string, unknown>>;
+    const docs = (fullData?.projectDocuments || filteredData?.projectDocuments || []) as unknown as Array<Record<string, unknown>>;
+    const workdayPhases = (fullData?.workdayPhases || filteredData?.workdayPhases || []) as unknown as Array<Record<string, unknown>>;
+    const projectsWithDocs = new Set(
+      docs.map((doc) => String(doc.projectId || doc.project_id || '')).filter(Boolean),
+    );
+    const projectsWithWorkdayPhases = new Set(
+      workdayPhases.map((phase) => String(phase.projectId || phase.project_id || '')).filter(Boolean),
+    );
+    return (activeProjects || [])
       .map((project) => {
-        const row = project as unknown as Record<string, unknown>;
-        const id = String(row.id || row.projectId || '');
-        const name = String(row.name || row.projectName || row.id || 'Unknown');
-        return { id, name };
+        const id = String(project.id || project.projectId || '');
+        const name = String(project.name || project.projectName || project.id || 'Unknown');
+        const hasPlan = Boolean(
+          project.has_schedule ||
+          project.hasSchedule ||
+          projectsWithDocs.has(id) ||
+          projectsWithWorkdayPhases.has(id),
+        );
+        return { id, name, hasPlan };
       })
-      .filter((project) => project.id);
-  }, [filteredData?.projects, fullData?.projects]);
+      .filter((project) => project.id && project.hasPlan);
+  }, [
+    filteredData?.projects,
+    fullData?.projects,
+    fullData?.projectDocuments,
+    filteredData?.projectDocuments,
+    fullData?.workdayPhases,
+    filteredData?.workdayPhases,
+  ]);
 
   const [projectId, setProjectId] = useState('');
+  const [mappingSearch, setMappingSearch] = useState('');
   const [status, setStatus] = useState<'pending' | 'applied' | 'dismissed' | 'all'>('pending');
   const [minConfidence, setMinConfidence] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -61,6 +91,7 @@ export default function MappingWorkspacePage() {
   const [message, setMessage] = useState<string | null>(null);
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
+  const [mappingTaskPickerByBucket, setMappingTaskPickerByBucket] = useState<Record<string, string | null>>({});
 
   const apiHeaders = useMemo(
     () => ({
@@ -72,7 +103,13 @@ export default function MappingWorkspacePage() {
   );
 
   useEffect(() => {
-    if (!projectId && projects.length > 0) setProjectId(projects[0].id);
+    if (projects.length === 0) {
+      if (projectId) setProjectId('');
+      return;
+    }
+    if (!projectId || !projects.some((project) => project.id === projectId)) {
+      setProjectId(projects[0].id);
+    }
   }, [projectId, projects]);
 
   const loadStats = useCallback(async (selectedProjectId: string) => {
@@ -204,17 +241,58 @@ export default function MappingWorkspacePage() {
 
   const scopedHours = useMemo(() => {
     if (!projectId) return [];
-    const rows = ((filteredData.hours?.length ? filteredData.hours : fullData.hours) || []) as unknown as Array<Record<string, unknown>>;
-    return rows.filter((row) => String(row.projectId || row.project_id || '') === projectId);
-  }, [filteredData.hours, fullData.hours, projectId]);
+    const rows = ((fullData.hours?.length ? fullData.hours : filteredData.hours) || []) as unknown as Array<Record<string, unknown>>;
+    let scoped = rows.filter((row) => String(row.projectId || row.project_id || '') === projectId);
+    if (mappingSearch.trim()) {
+      const query = mappingSearch.trim().toLowerCase();
+      scoped = scoped.filter((row) => {
+        const parsed = parseHourDescription(String(row.description || ''));
+        const haystack = [
+          row.id,
+          row.description,
+          row.phases,
+          row.task,
+          row.chargeCode,
+          row.charge_code,
+          parsed.phases,
+          parsed.task,
+          parsed.chargeCode,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(query);
+      });
+    }
+    return scoped;
+  }, [fullData.hours, filteredData.hours, projectId, mappingSearch]);
+
+  const scopedTasks = useMemo(() => {
+    if (!projectId) return [];
+    const rows = ((fullData.tasks?.length ? fullData.tasks : filteredData.tasks) || []) as unknown as Array<Record<string, unknown>>;
+    let scoped = rows.filter((row) => String(row.projectId || row.project_id || '') === projectId);
+    if (mappingSearch.trim()) {
+      const query = mappingSearch.trim().toLowerCase();
+      scoped = scoped.filter((row) => {
+        const haystack = [
+          row.id,
+          row.taskId,
+          row.name,
+          row.taskName,
+          row.wbsCode,
+          row.workdayPhaseId,
+          row.workday_phase_id,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(query);
+      });
+    }
+    return scoped;
+  }, [fullData.tasks, filteredData.tasks, projectId, mappingSearch]);
 
   const scopedWorkdayPhases = useMemo(() => {
     if (!projectId) return [];
-    const rows = ((filteredData.workdayPhases?.length ? filteredData.workdayPhases : fullData.workdayPhases) || []) as unknown as Array<Record<string, unknown>>;
+    const rows = ((fullData.workdayPhases?.length ? fullData.workdayPhases : filteredData.workdayPhases) || []) as unknown as Array<Record<string, unknown>>;
     return rows
       .filter((row) => String(row.projectId || row.project_id || '') === projectId)
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-  }, [filteredData.workdayPhases, fullData.workdayPhases, projectId]);
+  }, [fullData.workdayPhases, filteredData.workdayPhases, projectId]);
 
   const bucketedHours = useMemo(() => {
     const buckets = new Map<string, { entries: number; hours: number }>();
@@ -228,10 +306,140 @@ export default function MappingWorkspacePage() {
     return buckets;
   }, [scopedHours]);
 
+  const hoursByWorkdayPhaseForProject = useMemo(() => {
+    const buckets = new Map<string, Array<Record<string, unknown>>>();
+    buckets.set('unassigned', []);
+    scopedHours.forEach((hour) => {
+      const key = String(hour.workdayPhaseId || hour.workday_phase_id || 'unassigned');
+      const current = buckets.get(key) || [];
+      current.push(hour);
+      buckets.set(key, current);
+    });
+    return buckets;
+  }, [scopedHours]);
+
+  const tasksByWorkdayPhaseForProject = useMemo(() => {
+    const buckets = new Map<string, Array<Record<string, unknown>>>();
+    buckets.set('unassigned', []);
+    scopedTasks.forEach((task) => {
+      const key = String(task.workdayPhaseId || task.workday_phase_id || 'unassigned');
+      const current = buckets.get(key) || [];
+      current.push(task);
+      buckets.set(key, current);
+    });
+    return buckets;
+  }, [scopedTasks]);
+
+  const hoursByTaskForMappingProject = useMemo(() => {
+    const map = new Map<string, Array<Record<string, unknown>>>();
+    scopedHours.forEach((hour) => {
+      const taskId = String(hour.taskId || hour.task_id || '');
+      if (!taskId) return;
+      const current = map.get(taskId) || [];
+      current.push(hour);
+      map.set(taskId, current);
+    });
+    return map;
+  }, [scopedHours]);
+
+  const taskOptionsForSelectedProject = useMemo(() => {
+    return scopedTasks
+      .map((task) => ({
+        id: String(task.id || task.taskId || ''),
+        name: String(task.name || task.taskName || task.id || ''),
+      }))
+      .filter((task) => task.id);
+  }, [scopedTasks]);
+
   const unmappedHours = useMemo(
     () => scopedHours.filter((hour) => !String(hour.workdayPhaseId || hour.workday_phase_id || '').trim()),
     [scopedHours],
   );
+
+  const assignHourToWorkdayPhase = useCallback(async (hourId: string, workdayPhaseId: string | null) => {
+    if (!hourId) return;
+    setMappingSaving(true);
+    try {
+      const response = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({ action: 'assignHourToWorkdayPhase', hourId, workdayPhaseId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to assign hour to phase');
+      await refreshData();
+      await loadSuggestions();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      setMessage(detail);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [apiHeaders, refreshData, loadSuggestions]);
+
+  const assignHourToTask = useCallback(async (hourId: string, taskId: string | null) => {
+    if (!hourId) return;
+    setMappingSaving(true);
+    try {
+      const response = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({ action: 'assignHourToTask', hourId, taskId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to assign hour to task');
+      await refreshData();
+      await loadSuggestions();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      setMessage(detail);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [apiHeaders, refreshData, loadSuggestions]);
+
+  const assignTaskToWorkdayPhase = useCallback(async (taskId: string, workdayPhaseId: string | null) => {
+    if (!taskId) return;
+    setMappingSaving(true);
+    try {
+      const response = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({ action: 'assignTaskToWorkdayPhase', taskId, workdayPhaseId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to assign task to phase');
+      await refreshData();
+      await loadSuggestions();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      setMessage(detail);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [apiHeaders, refreshData, loadSuggestions]);
+
+  const autoMatchHoursToTasksInBucket = useCallback(async (workdayPhaseId: string) => {
+    if (!projectId || !workdayPhaseId) return;
+    setMappingSaving(true);
+    try {
+      const response = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({ action: 'autoMatchHoursToTasksInWorkdayPhaseBucket', projectId, workdayPhaseId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to auto-match bucket');
+      setMessage(`Auto-match in bucket complete: ${Number(result.matched || 0)} matched, ${Number(result.unmatched || 0)} unmatched.`);
+      await refreshData();
+      await loadSuggestions();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      setMessage(detail);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [apiHeaders, loadSuggestions, projectId, refreshData]);
 
   return (
     <div className="page-panel" style={{ display: 'grid', gap: '0.75rem' }}>
@@ -299,6 +507,16 @@ export default function MappingWorkspacePage() {
         <div style={{ minWidth: 150 }}>
           <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4 }}>Min Confidence</label>
           <input type="number" min={0} max={1} step={0.01} value={minConfidence} onChange={(event) => setMinConfidence(Math.min(1, Math.max(0, Number(event.target.value || 0))))} style={{ width: '100%', padding: '0.48rem 0.56rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }} />
+        </div>
+        <div style={{ minWidth: 220 }}>
+          <label style={{ display: 'block', fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4 }}>Search (tasks + hours)</label>
+          <input
+            type="text"
+            value={mappingSearch}
+            onChange={(event) => setMappingSearch(event.target.value)}
+            placeholder="Filter entries..."
+            style={{ width: '100%', padding: '0.48rem 0.56rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+          />
         </div>
         <button type="button" onClick={() => { void loadSuggestions(); }} style={{ padding: '0.48rem 0.75rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
           Refresh
@@ -378,6 +596,152 @@ export default function MappingWorkspacePage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '0.85rem', alignItems: 'start' }}>
+        {([
+          { id: 'unassigned', name: 'Unassigned' },
+          ...scopedWorkdayPhases.map((phase) => ({
+            id: String(phase.id || ''),
+            name: String(phase.name || phase.id || ''),
+            unit: String(phase.unit || ''),
+          })),
+        ] as PhaseBucket[]).map((bucket) => {
+          const bucketKey = bucket.id;
+          const bucketPhaseId = bucketKey === 'unassigned' ? null : bucketKey;
+          const bucketTasks = tasksByWorkdayPhaseForProject.get(bucketKey) || [];
+          const bucketHours = hoursByWorkdayPhaseForProject.get(bucketKey) || [];
+          const selectedTaskForBucket = mappingTaskPickerByBucket[bucketKey] || '';
+          const taskIdsInBucket = new Set(bucketTasks.map((task) => String(task.id || task.taskId || '')));
+          const availableTasks = taskOptionsForSelectedProject.filter((task) => !taskIdsInBucket.has(task.id));
+
+          return (
+            <div key={`bucket-${bucketKey}`} style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {bucket.unit ? `${String(bucket.unit)} -> ` : ''}{bucket.name}
+              </div>
+
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-tertiary)', padding: '0.6rem' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
+                  Tasks ({bucketTasks.length})
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <select
+                    value={selectedTaskForBucket}
+                    onChange={(event) => setMappingTaskPickerByBucket((prev) => ({ ...prev, [bucketKey]: event.target.value || null }))}
+                    style={{ flex: 1, padding: '0.25rem 0.35rem', fontSize: '0.72rem', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)' }}
+                  >
+                    <option value="">Add task to bucket...</option>
+                    {availableTasks.map((task) => (
+                      <option key={`task-opt-${bucketKey}-${task.id}`} value={task.id}>{task.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!selectedTaskForBucket) return;
+                      void assignTaskToWorkdayPhase(selectedTaskForBucket, bucketPhaseId);
+                      setMappingTaskPickerByBucket((prev) => ({ ...prev, [bucketKey]: null }));
+                    }}
+                    disabled={!selectedTaskForBucket || mappingSaving}
+                    style={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer' }}
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.55rem', maxHeight: '210px', overflowY: 'auto' }}>
+                  {bucketTasks.map((task) => {
+                    const taskId = String(task.id || task.taskId || '');
+                    return (
+                      <div key={`task-${bucketKey}-${taskId}`} style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: '0.45rem', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', gap: '0.35rem' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {String(task.name || task.taskName || taskId)}
+                          </div>
+                          <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
+                            {String(task.wbsCode || taskId)} · Linked hours: {(hoursByTaskForMappingProject.get(taskId) || []).length}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void assignTaskToWorkdayPhase(taskId, null)}
+                          style={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer' }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-tertiary)', padding: '0.6rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.35rem', alignItems: 'center', marginBottom: '0.45rem' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    Hours Entries ({bucketHours.length})
+                  </div>
+                  {bucketPhaseId && (
+                    <button
+                      type="button"
+                      onClick={() => void autoMatchHoursToTasksInBucket(bucketPhaseId)}
+                      disabled={mappingSaving}
+                      style={{ border: '1px solid var(--border-color)', borderRadius: 999, padding: '0.18rem 0.45rem', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Auto-Match
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '280px', overflowY: 'auto' }}>
+                  {bucketHours.map((hour) => {
+                    const hourId = String(hour.id || '');
+                    const parsed = parseHourDescription(String(hour.description || ''));
+                    const selectedTaskId = String(hour.taskId || hour.task_id || '');
+                    return (
+                      <div key={`hour-${bucketKey}-${hourId}`} style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: '0.45rem', background: 'var(--bg-primary)', display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
+                        <div style={{ fontSize: '0.73rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                          {String(hour.date || '').slice(0, 10)} · {Number(hour.hours || 0)}h · {hourId}
+                        </div>
+                        <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
+                          Phase: {String(hour.phases || parsed.phases || 'Unspecified')}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
+                          <select
+                            value={bucketPhaseId || ''}
+                            onChange={(event) => void assignHourToWorkdayPhase(hourId, event.target.value || null)}
+                            style={{ width: '100%', padding: '0.25rem 0.35rem', fontSize: '0.7rem', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)' }}
+                          >
+                            <option value="">Unassigned phase</option>
+                            {scopedWorkdayPhases.map((phase) => (
+                              <option key={`phase-opt-${String(phase.id || '')}`} value={String(phase.id || '')}>
+                                {String(phase.name || phase.id || '')}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={selectedTaskId}
+                            onChange={(event) => void assignHourToTask(hourId, event.target.value || null)}
+                            style={{ width: '100%', padding: '0.25rem 0.35rem', fontSize: '0.7rem', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)' }}
+                          >
+                            <option value="">Link task...</option>
+                            {bucketTasks.map((task) => {
+                              const taskId = String(task.id || task.taskId || '');
+                              return (
+                                <option key={`hour-task-opt-${hourId}-${taskId}`} value={taskId}>
+                                  {String(task.name || task.taskName || taskId)}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <MappingSuggestionPanel

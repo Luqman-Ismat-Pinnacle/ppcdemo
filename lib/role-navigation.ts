@@ -73,6 +73,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
       { label: 'Sprint Planning', href: '/project-management/sprint' },
       { label: 'QC Log', href: '/project-management/qc-log' },
       { label: 'Forecasting', href: '/project-management/forecast' },
+      { label: 'Data Management', href: '/project-controls/data-management' },
     ],
     tools: [],
   },
