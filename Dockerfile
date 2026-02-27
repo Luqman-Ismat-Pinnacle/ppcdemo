@@ -1,6 +1,7 @@
-# Use Node.js LTS version mirrored in ACR to avoid Docker Hub pull limits
-ARG ACR_REGISTRY=vantageacreastus2.azurecr.io
-FROM ${ACR_REGISTRY}/base/node:20-alpine AS base
+# Use a public mirror to avoid Docker Hub unauthenticated pull rate limits in CI.
+# Can be overridden at build time with --build-arg BASE_IMAGE=...
+ARG BASE_IMAGE=mcr.microsoft.com/mirror/docker/library/node:20-alpine
+FROM ${BASE_IMAGE} AS base
 
 # Install dependencies only when needed
 FROM base AS deps
