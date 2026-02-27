@@ -133,6 +133,48 @@ function createEmptyData(): SampleData {
   };
 }
 
+/**
+ * Enrich runtime rows with employee display names so UI surfaces names
+ * instead of opaque IDs wherever employee references exist.
+ */
+function hydrateEmployeeNames(input: SampleData): SampleData {
+  const employees = (input.employees || []) as unknown as Array<Record<string, unknown>>;
+  const employeeById = new Map<string, string>();
+  employees.forEach((employee) => {
+    const id = String(employee.id || employee.employeeId || employee.employee_id || '');
+    if (!id) return;
+    const name = String(employee.name || employee.employeeName || employee.displayName || id);
+    employeeById.set(id, name);
+    const employeeCode = String(employee.employeeId || employee.employee_id || '');
+    if (employeeCode) employeeById.set(employeeCode, name);
+  });
+
+  const withName = (row: Record<string, unknown>, idKeys: string[]): Record<string, unknown> => {
+    const employeeId = idKeys.map((key) => String(row[key] || '')).find(Boolean) || '';
+    const employeeName = employeeById.get(employeeId);
+    if (!employeeName) return row;
+    return {
+      ...row,
+      employeeName,
+      employee_name: employeeName,
+      assignedTo: String(row.assignedTo || row.assigned_to || employeeName),
+      qcResource: String(row.qcResource || row.qc_resource || employeeName),
+      qcResourceName: String(row.qcResourceName || row.qc_resource_name || employeeName),
+    };
+  };
+
+  const hours = (input.hours || []).map((hour) => withName(hour as unknown as Record<string, unknown>, ['employeeId', 'employee_id']));
+  const tasks = (input.tasks || []).map((task) => withName(task as unknown as Record<string, unknown>, ['employeeId', 'employee_id', 'assignedResourceId', 'assigned_resource_id']));
+  const qctasks = (input.qctasks || []).map((qc) => withName(qc as unknown as Record<string, unknown>, ['employeeId', 'employee_id', 'qcResourceId', 'qc_resource_id']));
+
+  return {
+    ...input,
+    hours: hours as unknown as SampleData['hours'],
+    tasks: tasks as unknown as SampleData['tasks'],
+    qctasks: qctasks as unknown as SampleData['qctasks'],
+  };
+}
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
@@ -332,7 +374,7 @@ export function DataProvider({ children }: DataProviderProps) {
 
     const normalized = normalizeRuntimeData(mergedData);
     const transformedData = transformData(normalized);
-    const finalData = { ...createEmptyData(), ...normalized, ...transformedData };
+    const finalData = hydrateEmployeeNames({ ...createEmptyData(), ...normalized, ...transformedData });
     setData(finalData);
     memoryBootstrapCache = { savedAt: Date.now(), data: finalData };
 
@@ -481,7 +523,7 @@ export function DataProvider({ children }: DataProviderProps) {
       // Re-apply transformations when raw data changes
       const normalized = normalizeRuntimeData(merged);
       const transformedData = transformData(normalized);
-      return { ...merged, ...normalized, ...transformedData };
+      return hydrateEmployeeNames({ ...merged, ...normalized, ...transformedData });
     });
     broadcastDataUpdated('context-update');
   };
@@ -535,7 +577,7 @@ export function DataProvider({ children }: DataProviderProps) {
         const normalized = normalizeRuntimeData(mergedData);
         const transformedData = transformData(normalized);
         // Replace all data, not merge, to ensure fresh state
-        setData({ ...createEmptyData(), ...normalized, ...transformedData });
+        setData(hydrateEmployeeNames({ ...createEmptyData(), ...normalized, ...transformedData }));
         logger.debug('Refreshed data from database:', Object.keys(mergedData).map(k => {
           const value = (mergedData as Record<string, unknown>)[k];
           const length = Array.isArray(value) ? value.length : (value ? 1 : 0);

@@ -5,6 +5,7 @@
  */
 
 const config = require('../config');
+const crypto = require('crypto');
 
 const log = (msg, detail) => {
   const out = detail !== undefined ? `[WorkdayPhases] ${msg} ${typeof detail === 'object' ? JSON.stringify(detail) : detail}` : `[WorkdayPhases] ${msg}`;
@@ -31,12 +32,28 @@ function slug(text, maxLen = 30) {
   return safeString(text).replace(/[^A-Za-z0-9]/g, '_').replace(/_+/g, '_').substring(0, maxLen) || 'X';
 }
 
-function resolveProjectId(leading, existingProjectIds) {
-  if (!leading || !existingProjectIds.length) return null;
-  const set = new Set(existingProjectIds);
-  if (set.has(leading)) return leading;
-  if (set.has(leading + ' (Inactive)')) return leading + ' (Inactive)';
-  for (const id of existingProjectIds) {
+function makeStableId(projectId, ref, level2) {
+  const hash = crypto.createHash('sha1').update(`${projectId}|${ref}|${level2}`).digest('hex').slice(0, 16);
+  return `WP_${projectId}_${hash}`.substring(0, 50);
+}
+
+function resolveProjectId(leading, existingProjects) {
+  if (!leading || !existingProjects.length) return null;
+  const exactId = existingProjects.find((p) => p.id === leading);
+  if (exactId) return exactId.id;
+
+  const byProjectCode = existingProjects.find((p) => p.project_id === leading);
+  if (byProjectCode) return byProjectCode.id;
+
+  for (const p of existingProjects) {
+    if (!p.project_id) continue;
+    if (p.project_id === leading || p.project_id.startsWith(leading + ' ') || p.project_id.startsWith(leading + '_')) {
+      return p.id;
+    }
+  }
+
+  for (const p of existingProjects) {
+    const id = p.id || '';
     if (id === leading || id.startsWith(leading + ' ') || id.startsWith(leading + '_')) return id;
   }
   return null;
@@ -71,32 +88,46 @@ async function syncWorkdayPhases(client) {
   const records = data.Report_Entry || data.report_Entry || data.ReportEntry || [];
   log('Report parsed', { recordCount: records.length });
 
-  let projectIds = [];
+  let existingProjects = [];
   try {
-    const res = await client.query('SELECT id FROM projects');
-    projectIds = (res.rows || []).map((r) => r.id);
+    const res = await client.query('SELECT id, project_id FROM projects');
+    existingProjects = (res.rows || []).map((r) => ({
+      id: safeString(r.id),
+      project_id: safeString(r.project_id),
+    })).filter((p) => p.id);
   } catch (e) {
-    log('Could not load project ids', e.message);
+    log('Could not load projects for phase mapping', e.message);
   }
 
-  const seen = new Set();
   const rows = [];
-  for (const r of records) {
+  let skippedNoProject = 0;
+  let skippedNoLevel2 = 0;
+  for (let idx = 0; idx < records.length; idx += 1) {
+    const r = records[idx];
     const projectRaw = r.Project ?? r.project ?? '';
     const level1 = safeString(r.Level_1 ?? r.Level1 ?? r.unit ?? '');
     const level2 = safeString(r.Level_2 ?? r.Level2 ?? r.name ?? r.Phase ?? '');
+    const subPhaseRef = safeString(r.SubPhase_Reference_ID ?? r.subphase_reference_id ?? '');
+    const parentRef = safeString(r.Parent_Reference_ID ?? r.parent_reference_id ?? '');
     const leading = leadingDigits(projectRaw);
-    const projectId = resolveProjectId(leading, projectIds);
-    if (!projectId) continue;
-    if (!level2) continue;
+    const resolvedProjectId = resolveProjectId(leading, existingProjects);
+    const projectId = resolvedProjectId || null;
+    if (!projectId) {
+      skippedNoProject += 1;
+      continue;
+    }
+    if (!level2) {
+      skippedNoLevel2 += 1;
+      continue;
+    }
 
-    const id = `WP_${projectId}_${slug(level1, 20)}_${slug(level2, 25)}`.replace(/-/g, 'M').substring(0, 50);
-    if (seen.has(id)) continue;
-    seen.add(id);
+    const reference = subPhaseRef || parentRef || `${level1}|${level2}|${idx}`;
+    const stableKey = `${projectId || 'UNMAPPED'}|${reference}|${projectRaw}|${level1}|${level2}|${idx}`;
+    const id = makeStableId(projectId || 'UNMAPPED', stableKey, level2);
 
     rows.push({
       id,
-      phase_id: id,
+      phase_id: (subPhaseRef || parentRef || `${id}_${idx}`).substring(0, 50),
       project_id: projectId,
       unit_id: null,
       unit: level1.substring(0, 255),
@@ -110,6 +141,12 @@ async function syncWorkdayPhases(client) {
       updated_at: new Date().toISOString(),
     });
   }
+
+  log('Prepared rows', {
+    rows: rows.length,
+    skippedNoProject,
+    skippedNoLevel2,
+  });
 
   if (rows.length === 0) {
     log('No rows to upsert');

@@ -1221,6 +1221,18 @@ export default function DocumentsPage() {
     return allTasks;
   }, [data?.tasks, filteredData?.tasks, mappingProjectFilter]);
 
+  const employeeNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    const employees = (data?.employees || filteredData?.employees || []) as unknown as Array<Record<string, unknown>>;
+    employees.forEach((employee) => {
+      const id = String(employee.id || employee.employeeId || employee.employee_id || '');
+      if (!id) return;
+      const name = String(employee.name || employee.employeeName || employee.displayName || id);
+      map.set(id, name);
+    });
+    return map;
+  }, [data?.employees, filteredData?.employees]);
+
   const handleAssignHourToWorkdayPhase = useCallback(async (hourId: string, workdayPhaseId: string | null) => {
     if (!hourId) return;
     setMappingSaving(true);
@@ -1516,11 +1528,13 @@ export default function DocumentsPage() {
 
   const buildHourTooltip = useCallback((h: any) => {
     const parsed = parseHourDescription(String(h.description ?? ''));
+    const employeeId = String(h.employeeId ?? h.employee_id ?? '');
+    const employeeName = employeeNameById.get(employeeId) || employeeId;
     return {
       title: `Hour Entry ${h.id || ''}`,
       description: `${String(h.date || '').slice(0, 10)} · ${h.hours ?? 0}h`,
       details: [
-        `Employee: ${h.employeeId ?? h.employee_id ?? ''}`,
+        `Employee: ${employeeName || '-'}`,
         `Charge Code: ${h.chargeCode ?? h.charge_code ?? parsed.chargeCode ?? ''}`,
         `Phase: ${h.phases ?? parsed.phases ?? ''}`,
         `Task: ${h.task ?? parsed.task ?? ''}`,
@@ -1528,7 +1542,7 @@ export default function DocumentsPage() {
         `Description: ${h.description ?? ''}`,
       ],
     };
-  }, []);
+  }, [employeeNameById]);
 
   useEffect(() => {
     if (!mappingProjectFilter) {
@@ -2300,383 +2314,32 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Mapping: guided project-scoped workflow */}
+        {/* Mapping section moved to canonical workspace route */}
         <div className="chart-card grid-full">
           <div className="chart-card-header">
             <h3 className="chart-card-title">Mapping</h3>
           </div>
           <div className="chart-card-body" style={{ padding: '1.25rem 1.5rem' }}>
-            <p style={{ marginBottom: '1rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              Select a project to open one combined mapping board. Each Workday phase bucket contains both project tasks and hour entries.
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem', alignItems: 'center' }}>
-              <div style={{ minWidth: '180px' }}>
-                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Project
-                </label>
-                <select
-                  value={mappingProjectFilter}
-                  onChange={(e) => setMappingProjectFilter(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
-                >
-                  <option value="">Select project...</option>
-                  {mappingProjectOptions.map((p: { id: string; name: string }) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ minWidth: '220px' }}>
-                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Search (tasks + hours)
-                </label>
-                <input
-                  type="text"
-                  value={mappingSearch}
-                  onChange={(e) => setMappingSearch(e.target.value)}
-                  placeholder="Filter entries..."
-                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
-                />
-              </div>
-              <div style={{ minWidth: '170px' }}>
-                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Suggestion Status
-                </label>
-                <select
-                  value={mappingSuggestionStatusFilter}
-                  onChange={(e) => setMappingSuggestionStatusFilter(e.target.value as 'pending' | 'applied' | 'dismissed' | 'all')}
-                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="applied">Applied</option>
-                  <option value="dismissed">Dismissed</option>
-                  <option value="all">All</option>
-                </select>
-              </div>
-              <div style={{ minWidth: '160px' }}>
-                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
-                  Min Confidence
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={mappingSuggestionMinConfidenceFilter}
-                  onChange={(e) => setMappingSuggestionMinConfidenceFilter(Math.min(1, Math.max(0, Number(e.target.value || 0))))}
-                  style={{ width: '100%', padding: '0.5rem 0.6rem', fontSize: '0.875rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
-                />
-              </div>
-              <div style={{ minWidth: '220px', display: 'flex', alignItems: 'flex-end' }}>
-                <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleAutoMatchWorkdayPhaseToHours(true)}
-                    disabled={mappingSaving || !mappingProjectFilter}
-                    style={{
-                      padding: '0.55rem 0.9rem',
-                      background: !mappingSaving && mappingProjectFilter ? 'var(--pinnacle-teal)' : 'var(--bg-tertiary)',
-                      color: !mappingSaving && mappingProjectFilter ? '#000' : 'var(--text-muted)',
-                      border: 'none',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      cursor: !mappingSaving && mappingProjectFilter ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    {mappingSaving ? 'Matching...' : 'Re-Match Hours by Phase Name'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleGenerateMappingSuggestions}
-                    disabled={mappingSaving || mappingSuggestionsLoading || !mappingProjectFilter}
-                    style={{
-                      padding: '0.55rem 0.9rem',
-                      background: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
-                      color: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--text-primary)' : 'var(--text-muted)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      cursor: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    {mappingSuggestionsLoading ? 'Scanning...' : 'Generate Suggestions'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyHighConfidenceSuggestions}
-                    disabled={mappingSaving || mappingSuggestionsLoading || !mappingProjectFilter || mappingSuggestions.length === 0}
-                    style={{
-                      padding: '0.55rem 0.9rem',
-                      background: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter && mappingSuggestions.length > 0 ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)',
-                      color: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter && mappingSuggestions.length > 0 ? '#10b981' : 'var(--text-muted)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      cursor: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter && mappingSuggestions.length > 0 ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    Apply High-Confidence
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handlePruneClosedSuggestions}
-                    disabled={mappingSaving || mappingSuggestionsLoading || !mappingProjectFilter}
-                    style={{
-                      padding: '0.55rem 0.9rem',
-                      background: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--bg-secondary)' : 'var(--bg-tertiary)',
-                      color: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'var(--text-primary)' : 'var(--text-muted)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      cursor: !mappingSaving && !mappingSuggestionsLoading && mappingProjectFilter ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    Prune Closed (14d+)
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {!mappingProjectFilter ? (
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Select a project to begin mapping.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
+              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                The full mapping workspace has moved to a dedicated page with project-scoped phase buckets, hour matching, and suggestion triage.
               </p>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '1rem', background: 'var(--bg-card)' }}>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      Hours: <strong style={{ color: 'var(--text-primary)' }}>{mappingProjectHours.length}</strong>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      Mapped Hours: <strong style={{ color: 'var(--text-primary)' }}>{mappingProjectHours.filter((h: any) => Boolean(h.workdayPhaseId ?? h.workday_phase_id)).length}</strong>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      Unassigned Hours: <strong style={{ color: 'var(--text-primary)' }}>{(hoursByWorkdayPhaseForProject.get('unassigned') || []).length}</strong>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      Tasks Assigned to Buckets: <strong style={{ color: 'var(--text-primary)' }}>{mappingProjectTasks.filter((t: any) => Boolean(t.workdayPhaseId ?? t.workday_phase_id)).length}</strong>
-                    </div>
-                  </div>
-                  {mappingSuggestionStats && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem', alignItems: 'center', marginTop: '0.7rem' }}>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                        Pending: <strong style={{ color: 'var(--text-primary)' }}>{mappingSuggestionStats.pending_count}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                        Applied: <strong style={{ color: 'var(--text-primary)' }}>{mappingSuggestionStats.applied_count}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                        Dismissed: <strong style={{ color: 'var(--text-primary)' }}>{mappingSuggestionStats.dismissed_count}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                        Stale Pending (&gt;3d): <strong style={{ color: '#f59e0b' }}>{mappingSuggestionStats.stale_pending_count}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-                        Avg Pending Confidence: <strong style={{ color: 'var(--text-primary)' }}>{(Number(mappingSuggestionStats.avg_pending_confidence || 0) * 100).toFixed(1)}%</strong>
-                      </div>
-                    </div>
-                  )}
-                  {mappingResult && (
-                    <div style={{
-                      marginTop: '0.75rem',
-                      padding: '0.6rem 0.8rem',
-                      borderRadius: '8px',
-                      border: '1px solid var(--border-color)',
-                      background: 'var(--bg-secondary)',
-                      fontSize: '0.8rem',
-                      color: 'var(--text-primary)',
-                    }}>
-                      Last phase matching run: {mappingResult.matched} matched, {mappingResult.unmatched} unmatched, {mappingResult.considered} considered.
-                    </div>
-                  )}
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
-                      Mapping Suggestions ({mappingSuggestions.length})
-                    </div>
-                    {mappingSuggestions.length === 0 ? (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        No pending suggestions. Click <strong>Generate Suggestions</strong> to scan unmatched hours.
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', maxHeight: '220px', overflowY: 'auto' }}>
-                        {mappingSuggestions.slice(0, 30).map((s) => (
-                          <div
-                            key={`mapping-suggestion-${s.id}`}
-                            style={{
-                              border: '1px solid var(--border-color)',
-                              borderRadius: 8,
-                              padding: '0.55rem 0.65rem',
-                              background: 'var(--bg-secondary)',
-                              display: 'grid',
-                              gridTemplateColumns: '1fr auto',
-                              gap: '0.6rem',
-                              alignItems: 'center',
-                            }}
-                          >
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                {s.targetValue || s.taskName || s.taskNameAlt || s.taskId}
-                                <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontWeight: 600 }}>
-                                  {(Number(s.confidence || 0) * 100).toFixed(1)}%
-                                </span>
-                              </div>
-                              <div style={{ fontSize: '0.71rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                Source: {s.sourceValue || s.hourDescription || s.hourEntryId}
-                              </div>
-                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                Why: {s.reason}
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.35rem' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleApplyMappingSuggestion(s.id)}
-                                disabled={mappingSaving || mappingSuggestionsLoading}
-                                style={{ border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.15)', color: '#10b981', borderRadius: 6, padding: '0.22rem 0.5rem', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
-                              >
-                                Apply
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDismissMappingSuggestion(s.id)}
-                                disabled={mappingSaving || mappingSuggestionsLoading}
-                                style={{ border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderRadius: 6, padding: '0.22rem 0.5rem', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer' }}
-                              >
-                                Dismiss
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '0.85rem', alignItems: 'start' }}>
-                  {[{ id: 'unassigned', name: 'Unassigned' }, ...mappingProjectWorkdayPhases.map((wp: any) => ({ id: String(wp.id), name: String(wp.name || wp.id), unit: wp.unit }))].map((bucket: any) => {
-                    const bucketKey = bucket.id;
-                    const bucketPhaseId = bucketKey === 'unassigned' ? null : bucketKey;
-                    const bucketTasks = tasksByWorkdayPhaseForProject.get(bucketKey as any) || [];
-                    const bucketHours = hoursByWorkdayPhaseForProject.get(bucketKey as any) || [];
-                    const pickerValue = mappingTaskPickerByBucket[bucketKey] || null;
-                    const bucketTaskIds = new Set(bucketTasks.map((t: any) => String(t.id)));
-                    const taskOptions = taskOptionsForSelectedProject.filter((opt) => !bucketTaskIds.has(opt.id));
-                    return (
-                      <div key={bucketKey} style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {bucket.unit ? `${bucket.unit} -> ` : ''}{bucket.name}
-                        </div>
-
-                        <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-tertiary)', padding: '0.6rem' }}>
-                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
-                            Tasks ({bucketTasks.length})
-                          </div>
-                          <SearchableDropdown
-                            value={pickerValue}
-                            options={taskOptions}
-                            onChange={(id) => {
-                              setMappingTaskPickerByBucket((prev) => ({ ...prev, [bucketKey]: id }));
-                              void handleSelectTaskForBucket(bucketPhaseId, id);
-                            }}
-                            placeholder="Add task to this bucket..."
-                            searchable={true}
-                            clearable={false}
-                            width="100%"
-                          />
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.55rem', maxHeight: '210px', overflowY: 'auto' }}>
-                            {bucketTasks.map((task: any) => (
-                              <div key={`task-${bucketKey}-${task.id}`} style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: '0.45rem', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', gap: '0.35rem' }}>
-                                <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {task.name || task.taskName || task.id}
-                                  </div>
-                                  <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
-                                    {task.wbsCode || task.id} · Linked hours: {(hoursByTaskForMappingProject.get(String(task.id)) || []).length}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAssignTaskToWorkdayPhase(String(task.id), null)}
-                                  style={{ border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', borderRadius: 6, padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer' }}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-tertiary)', padding: '0.6rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.35rem', alignItems: 'center', marginBottom: '0.45rem' }}>
-                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                              Hours Entries ({bucketHours.length})
-                            </div>
-                            {bucketPhaseId && (
-                              <button
-                                type="button"
-                                onClick={() => handleAutoMatchHoursToTasksInBucket(bucketPhaseId)}
-                                disabled={mappingSaving}
-                                style={{ border: '1px solid var(--border-color)', borderRadius: 999, padding: '0.18rem 0.45rem', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: '0.66rem', fontWeight: 700, cursor: 'pointer' }}
-                              >
-                                Auto-Match
-                              </button>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '280px', overflowY: 'auto' }}>
-                            {bucketHours.map((h: any) => {
-                              const parsed = parseHourDescription(String(h.description ?? ''));
-                              const selectedTaskId = String(h.taskId ?? h.task_id ?? '');
-                              return (
-                                <EnhancedTooltip key={`hour-${bucketKey}-${h.id}`} content={buildHourTooltip(h)}>
-                                  <div style={{ border: '1px solid var(--border-color)', borderRadius: 6, padding: '0.45rem', background: 'var(--bg-primary)', display: 'grid', gridTemplateColumns: '1fr', gap: '0.35rem' }}>
-                                    <div style={{ fontSize: '0.73rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-                                      {String(h.date || '').slice(0, 10)} · {h.hours ?? 0}h · {h.id}
-                                    </div>
-                                    <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
-                                      Phase: {String(h.phases ?? parsed.phases ?? 'Unspecified')}
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
-                                      <select
-                                        value={bucketPhaseId || ''}
-                                        onChange={(e) => handleAssignHourToWorkdayPhase(String(h.id), e.target.value || null)}
-                                        style={{ width: '100%', padding: '0.25rem 0.35rem', fontSize: '0.7rem', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)' }}
-                                      >
-                                        <option value="">Unassigned phase</option>
-                                        {mappingProjectWorkdayPhases.map((wp: any) => (
-                                          <option key={`phase-opt-${wp.id}`} value={String(wp.id)}>
-                                            {wp.name || wp.id}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <select
-                                        value={selectedTaskId}
-                                        onChange={(e) => handleAssignHourToTask(String(h.id), e.target.value || null)}
-                                        style={{ width: '100%', padding: '0.25rem 0.35rem', fontSize: '0.7rem', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 6, color: 'var(--text-primary)' }}
-                                      >
-                                        <option value="">Link task...</option>
-                                        {bucketTasks.map((task: any) => (
-                                          <option key={`hour-task-opt-${h.id}-${task.id}`} value={String(task.id)}>
-                                            {task.name || task.taskName || task.id}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  </div>
-                                </EnhancedTooltip>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              <button
+                type="button"
+                onClick={() => router.push('/project-controls/mapping')}
+                style={{
+                  padding: '0.58rem 0.92rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: 'none',
+                  background: 'var(--pinnacle-teal)',
+                  color: '#05201d',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Open Mapping Workspace
+              </button>
+            </div>
           </div>
         </div>
 

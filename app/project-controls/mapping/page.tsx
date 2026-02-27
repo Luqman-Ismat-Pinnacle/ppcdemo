@@ -59,6 +59,8 @@ export default function MappingWorkspacePage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [stats, setStats] = useState<SuggestionStats | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingResult, setMappingResult] = useState<{ matched: number; unmatched: number; considered: number } | null>(null);
 
   const apiHeaders = useMemo(
     () => ({
@@ -168,6 +170,69 @@ export default function MappingWorkspacePage() {
     await loadSuggestions();
   }, [apiHeaders, loadSuggestions, minConfidence, projectId, refreshData]);
 
+  const rematchHoursByPhaseName = useCallback(async () => {
+    if (!projectId) return;
+    setMappingSaving(true);
+    setMessage(null);
+    setMappingResult(null);
+    try {
+      const response = await fetch('/api/data/mapping', {
+        method: 'POST',
+        headers: apiHeaders,
+        body: JSON.stringify({
+          action: 'matchWorkdayPhaseToHoursPhases',
+          projectId,
+          rematchAll: true,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to match hours by phase name');
+      setMappingResult({
+        matched: Number(result.matched || 0),
+        unmatched: Number(result.unmatched || 0),
+        considered: Number(result.considered || 0),
+      });
+      await refreshData();
+      await loadSuggestions();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      setMessage(detail);
+    } finally {
+      setMappingSaving(false);
+    }
+  }, [apiHeaders, loadSuggestions, projectId, refreshData]);
+
+  const scopedHours = useMemo(() => {
+    if (!projectId) return [];
+    const rows = ((filteredData.hours?.length ? filteredData.hours : fullData.hours) || []) as unknown as Array<Record<string, unknown>>;
+    return rows.filter((row) => String(row.projectId || row.project_id || '') === projectId);
+  }, [filteredData.hours, fullData.hours, projectId]);
+
+  const scopedWorkdayPhases = useMemo(() => {
+    if (!projectId) return [];
+    const rows = ((filteredData.workdayPhases?.length ? filteredData.workdayPhases : fullData.workdayPhases) || []) as unknown as Array<Record<string, unknown>>;
+    return rows
+      .filter((row) => String(row.projectId || row.project_id || '') === projectId)
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  }, [filteredData.workdayPhases, fullData.workdayPhases, projectId]);
+
+  const bucketedHours = useMemo(() => {
+    const buckets = new Map<string, { entries: number; hours: number }>();
+    scopedHours.forEach((hour) => {
+      const phaseId = String(hour.workdayPhaseId || hour.workday_phase_id || 'unassigned');
+      const next = buckets.get(phaseId) || { entries: 0, hours: 0 };
+      next.entries += 1;
+      next.hours += Number(hour.hours || 0);
+      buckets.set(phaseId, next);
+    });
+    return buckets;
+  }, [scopedHours]);
+
+  const unmappedHours = useMemo(
+    () => scopedHours.filter((hour) => !String(hour.workdayPhaseId || hour.workday_phase_id || '').trim()),
+    [scopedHours],
+  );
+
   return (
     <div className="page-panel" style={{ display: 'grid', gap: '0.75rem' }}>
       <div>
@@ -241,9 +306,79 @@ export default function MappingWorkspacePage() {
         <button type="button" onClick={() => { void applyBatch(); }} style={{ padding: '0.48rem 0.75rem', borderRadius: 8, border: 'none', background: 'var(--pinnacle-teal)', color: '#05201d', fontWeight: 700 }}>
           Apply Batch (&gt;= 0.85)
         </button>
+        <button
+          type="button"
+          disabled={mappingSaving || !projectId}
+          onClick={() => { void rematchHoursByPhaseName(); }}
+          style={{
+            padding: '0.48rem 0.75rem',
+            borderRadius: 8,
+            border: '1px solid var(--border-color)',
+            background: mappingSaving ? 'var(--bg-tertiary)' : 'rgba(16,185,129,0.16)',
+            color: mappingSaving ? 'var(--text-muted)' : '#10b981',
+            fontWeight: 700,
+          }}
+        >
+          {mappingSaving ? 'Matching...' : 'Re-Match Hours by Phase Name'}
+        </button>
       </div>
 
       {message ? <div style={{ fontSize: '0.78rem', color: '#F59E0B' }}>{message}</div> : null}
+      {mappingResult ? (
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          Phase-name matching complete: <strong>{mappingResult.matched}</strong> matched, <strong>{mappingResult.unmatched}</strong> unmatched, <strong>{mappingResult.considered}</strong> considered.
+        </div>
+      ) : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.6rem' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, padding: '0.65rem' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Project Hours</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{scopedHours.length}</div>
+        </div>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, padding: '0.65rem' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Workday Phases</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{scopedWorkdayPhases.length}</div>
+        </div>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, padding: '0.65rem' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Unmapped Hours</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800 }}>{unmappedHours.length}</div>
+        </div>
+      </div>
+
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          Workday Phase Buckets (hours grouped by mapped phase id)
+        </div>
+        <div style={{ maxHeight: 280, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-secondary)' }}>
+                <th style={{ textAlign: 'left', padding: '0.45rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>Phase</th>
+                <th style={{ textAlign: 'left', padding: '0.45rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>Entries</th>
+                <th style={{ textAlign: 'left', padding: '0.45rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>Hours</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scopedWorkdayPhases.map((phase) => {
+                const id = String(phase.id || '');
+                const bucket = bucketedHours.get(id) || { entries: 0, hours: 0 };
+                return (
+                  <tr key={`phase-${id}`}>
+                    <td style={{ padding: '0.42rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>{String(phase.name || id || '-')}</td>
+                    <td style={{ padding: '0.42rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>{bucket.entries}</td>
+                    <td style={{ padding: '0.42rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>{bucket.hours.toFixed(1)}</td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td style={{ padding: '0.42rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>Unassigned</td>
+                <td style={{ padding: '0.42rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>{(bucketedHours.get('unassigned') || { entries: 0 }).entries}</td>
+                <td style={{ padding: '0.42rem 0.6rem', borderBottom: '1px solid var(--border-color)' }}>{(bucketedHours.get('unassigned') || { hours: 0 }).hours.toFixed(1)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <MappingSuggestionPanel
         loading={loading}

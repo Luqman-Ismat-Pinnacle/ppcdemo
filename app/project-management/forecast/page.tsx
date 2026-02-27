@@ -1387,8 +1387,37 @@ export default function ForecastPage() {
     }));
   }, [data.milestoneStatus]);
 
-  // PO Amount (simulated from total budget + 10% contingency)
-  const poAmount = projectState.state.bac * 1.1;
+  // Revenue/PO amount from customer contracts for the active project scope.
+  const contractSummary = useMemo(() => {
+    const scopedProjectIds = new Set(
+      (data.projects || [])
+        .map((project) => {
+          const projectRecord = project as unknown as Record<string, unknown>;
+          return String(projectRecord.id || projectRecord.projectId || '');
+        })
+        .filter(Boolean),
+    );
+    const contracts = ((data.customerContracts?.length ? data.customerContracts : fullData.customerContracts) || []) as unknown as Array<Record<string, unknown>>;
+    const scoped = contracts.filter((contract) => {
+      const projectId = String(contract.projectId || contract.project_id || '');
+      if (!projectId) return scopedProjectIds.size === 0;
+      return scopedProjectIds.size === 0 || scopedProjectIds.has(projectId);
+    });
+
+    const contractAmount = scoped.reduce((sum, contract) => {
+      const amountUsd = toNumber(contract.amountUsd ?? contract.amount_usd);
+      const lineAmount = toNumber(contract.lineAmount ?? contract.line_amount);
+      return sum + (amountUsd > 0 ? amountUsd : lineAmount);
+    }, 0);
+
+    return {
+      rowCount: scoped.length,
+      totalAmount: contractAmount,
+    };
+  }, [data.customerContracts, data.projects, fullData.customerContracts]);
+
+  // PO amount now prefers customer contracts and only falls back to derived BAC.
+  const poAmount = contractSummary.totalAmount > 0 ? contractSummary.totalAmount : projectState.state.bac * 1.1;
 
   // Format currency
   const formatCurrency = (v: unknown) => {
@@ -1481,7 +1510,7 @@ export default function ForecastPage() {
         <KPICard 
           label="Purchase Order" 
           value={formatCurrency(poAmount || 0)} 
-          subValue="Total Budget + Contingency"
+          subValue={contractSummary.rowCount > 0 ? `${contractSummary.rowCount} contract lines` : 'Fallback: Budget + Contingency'}
           color="#10B981" 
           icon="$"
         />
