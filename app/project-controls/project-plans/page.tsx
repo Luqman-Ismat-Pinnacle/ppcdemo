@@ -2314,35 +2314,6 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {/* Mapping section moved to canonical workspace route */}
-        <div className="chart-card grid-full">
-          <div className="chart-card-header">
-            <h3 className="chart-card-title">Mapping</h3>
-          </div>
-          <div className="chart-card-body" style={{ padding: '1.25rem 1.5rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'flex-start' }}>
-              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                The full mapping workspace has moved to a dedicated page with project-scoped phase buckets, hour matching, and suggestion triage.
-              </p>
-              <button
-                type="button"
-                onClick={() => router.push('/project-controls/mapping')}
-                style={{
-                  padding: '0.58rem 0.92rem',
-                  borderRadius: 'var(--radius-md)',
-                  border: 'none',
-                  background: 'var(--pinnacle-teal)',
-                  color: '#05201d',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Open Mapping Workspace
-              </button>
-            </div>
-          </div>
-        </div>
-
       </div>
 
       {/* Hierarchy Selection Modal */}

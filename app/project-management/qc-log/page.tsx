@@ -630,6 +630,15 @@ export default function QCLogPage() {
     getTaskName,
     saveEdit,
   } = useQCLogData();
+  const visibleOrderRows = useMemo(() => sorted.slice(0, 300), [sorted]);
+  const nonConformanceRows = useMemo(
+    () => sorted.filter((q) => (q.qcCriticalErrors ?? 0) > 0 || (q.qcNonCriticalErrors ?? 0) > 0),
+    [sorted],
+  );
+  const capaRows = useMemo(
+    () => sorted.filter((q) => (q.qcCriticalErrors ?? 0) > 0 || ((q.qcScore ?? 0) < 80 && (q.qcScore ?? 0) > 0)),
+    [sorted],
+  );
 
   const startEdit = (taskId: string, field: string, current: unknown) => {
     setEditing({ taskId, field });
@@ -929,7 +938,7 @@ export default function QCLogPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map((qc, idx) => (
+                    {visibleOrderRows.map((qc, idx) => (
                       <tr
                         key={qc.qcTaskId}
                         style={{
@@ -1153,6 +1162,11 @@ export default function QCLogPage() {
                   </tbody>
                 </table>
               </div>
+              {sorted.length > visibleOrderRows.length ? (
+                <div style={{ padding: '0.55rem 0.8rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  Showing {visibleOrderRows.length} of {sorted.length} rows for performance. Use filters/search to narrow scope.
+                </div>
+              ) : null}
             </Card>
           </>
         )}
@@ -1196,9 +1210,7 @@ export default function QCLogPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted
-                      .filter((q) => (q.qcCriticalErrors ?? 0) > 0 || (q.qcNonCriticalErrors ?? 0) > 0)
-                      .map((qc, idx) => (
+                    {nonConformanceRows.map((qc, idx) => (
                         <tr
                           key={qc.qcTaskId}
                           style={{ background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}
@@ -1226,7 +1238,7 @@ export default function QCLogPage() {
                           </td>
                         </tr>
                       ))}
-                    {sorted.filter((q) => (q.qcCriticalErrors ?? 0) > 0 || (q.qcNonCriticalErrors ?? 0) > 0).length === 0 && (
+                    {nonConformanceRows.length === 0 && (
                       <tr>
                         <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                           No tasks with errors
@@ -1291,9 +1303,7 @@ export default function QCLogPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted
-                      .filter((q) => (q.qcCriticalErrors ?? 0) > 0 || ((q.qcScore ?? 0) < 80 && (q.qcScore ?? 0) > 0))
-                      .map((qc, idx) => {
+                    {capaRows.map((qc, idx) => {
                         const hasCritical = (qc.qcCriticalErrors ?? 0) > 0;
                         const issue = hasCritical ? 'Critical errors found' : 'Score below 80%';
                         return (
@@ -1322,7 +1332,7 @@ export default function QCLogPage() {
                           </tr>
                         );
                       })}
-                    {sorted.filter((q) => (q.qcCriticalErrors ?? 0) > 0 || ((q.qcScore ?? 0) < 80 && (q.qcScore ?? 0) > 0)).length === 0 && (
+                    {capaRows.length === 0 && (
                       <tr>
                         <td colSpan={6} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                           No tasks requiring corrective action

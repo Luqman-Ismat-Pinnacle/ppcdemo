@@ -6,10 +6,8 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
 import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
-import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import SectionHeader from '@/components/ui/SectionHeader';
 import BlockSkeleton from '@/components/ui/BlockSkeleton';
@@ -39,9 +37,6 @@ function isCompleted(task: Record<string, unknown>): boolean {
 
 export default function ProjectLeadRoleViewPage() {
   const { filteredData, data: fullData } = useData();
-  const router = useRouter();
-  const params = useSearchParams();
-  const section = params.get('section') || 'overview';
   const [summaryMetrics, setSummaryMetrics] = React.useState<MetricContract[]>([]);
   const [computedAt, setComputedAt] = React.useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = React.useState(true);
@@ -132,14 +127,6 @@ export default function ProjectLeadRoleViewPage() {
       role="project_lead"
       title="Project Lead"
       subtitle="Delivery execution metrics, period efficiency, and near-term intervention queue."
-      actions={(
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href="/role-views/project-lead/project-health" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Project Health</Link>
-          <Link href="/project-management/forecast" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Forecast</Link>
-          <button type="button" onClick={() => router.push('/role-views/project-lead?section=documents')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Documents</button>
-          <button type="button" onClick={() => router.push('/role-views/project-lead?section=report')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Report</button>
-        </div>
-      )}
     >
       <WorkstationLayout
         focus={(
@@ -153,22 +140,19 @@ export default function ProjectLeadRoleViewPage() {
               variancePct={metrics.hoursVariance.value}
             />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.75rem' }}>
-              {[
-                { label: 'Health Score', value: `${metrics.health.value}%`, provenance: metrics.health.provenance },
-                { label: 'SPI', value: metrics.spi.value.toFixed(2), provenance: metrics.spi.provenance },
-                { label: 'CPI', value: metrics.cpi.value.toFixed(2), provenance: metrics.cpi.provenance },
-                { label: 'Hours Variance', value: `${metrics.hoursVariance.value}%`, provenance: metrics.hoursVariance.provenance },
-                { label: 'IEAC', value: metrics.ieac.value.toLocaleString(undefined, { maximumFractionDigits: 2 }), provenance: metrics.ieac.provenance },
-                { label: 'TCPI', value: metrics.tcpi.value.toFixed(2), provenance: metrics.tcpi.provenance },
-              ].map((item) => (
-                <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                    {item.label}
-                    <MetricProvenanceChip provenance={item.provenance} />
+                {[
+                  { label: 'Health Score', value: `${metrics.health.value}%` },
+                  { label: 'SPI', value: metrics.spi.value.toFixed(2) },
+                  { label: 'CPI', value: metrics.cpi.value.toFixed(2) },
+                  { label: 'Hours Variance', value: `${metrics.hoursVariance.value}%` },
+                  { label: 'IEAC', value: metrics.ieac.value.toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+                  { label: 'TCPI', value: metrics.tcpi.value.toFixed(2) },
+                ].map((item) => (
+                  <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{item.label}</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.35rem', color: 'var(--text-primary)' }}>{item.value}</div>
                   </div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, marginTop: '0.35rem', color: 'var(--text-primary)' }}>{item.value}</div>
-                </div>
-              ))}
+                ))}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '0.9rem' }}>
               <div id="team" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.9rem' }}>
@@ -216,12 +200,6 @@ export default function ProjectLeadRoleViewPage() {
             </div>
             <div id="week-ahead" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
               Week-ahead execution has been rolled into this command center and task queue; use WBS Gantt for direct scheduling actions.
-            </div>
-            <div id="documents" style={{ display: section === 'documents' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Document workflow now routes through canonical pages. Open <Link href="/project-management/documentation" style={{ color: 'var(--text-primary)' }}>Documentation</Link> for upload/status operations.
-            </div>
-            <div id="report" style={{ display: section === 'report' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Commitment/report submission has been consolidated into shared workflow surfaces and remains visible to SM/COO via commitments APIs.
             </div>
           </div>
         )}

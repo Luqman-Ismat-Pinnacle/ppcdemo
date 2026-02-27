@@ -5,10 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
-import MetricProvenanceOverlay from '@/components/role-workstations/MetricProvenanceOverlay';
 import ComplianceMatrix, { type ComplianceMatrixRow } from '@/components/role-workstations/ComplianceMatrix';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import { useRoleView } from '@/lib/role-view-context';
@@ -19,9 +16,6 @@ import SectionHeader from '@/components/ui/SectionHeader';
 import BlockSkeleton from '@/components/ui/BlockSkeleton';
 
 export default function PclHomePage() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const section = params.get('section') || 'overview';
   const [rows, setRows] = useState<ComplianceMatrixRow[]>([]);
   const [alerts, setAlerts] = useState<ExceptionRow[]>([]);
   const [queueMessage, setQueueMessage] = useState('');
@@ -173,16 +167,6 @@ export default function PclHomePage() {
       requiredTier="tier1"
       title="PCL Command Center"
       subtitle="Compliance posture, schedule exceptions, and portfolio intervention queue."
-      actions={(
-        <RoleWorkflowActionBar
-          actions={[
-            { label: 'Exceptions', href: '/role-views/pcl?section=exceptions', permission: 'triageExceptions' },
-            { label: 'Plans + Mapping', href: '/project-controls/project-plans', permission: 'editMapping' },
-            { label: 'Resourcing', href: '/project-controls/resourcing', permission: 'viewPortfolioCompliance' },
-            { label: 'WBS Risk Queue', href: '/project-controls/wbs-gantt-v2?lens=pcl', permission: 'editWbs' },
-          ]}
-        />
-      )}
     >
       <WorkstationLayout
         focus={(
@@ -203,37 +187,9 @@ export default function PclHomePage() {
                 ))}
               </div>
             )}
-            <MetricProvenanceOverlay
-              entries={[
-                {
-                  metric: 'Open Issues',
-                  formulaId: 'PCL_OPEN_ISSUES_V1',
-                  formula: 'Count(tasks where start/finish dates missing)',
-                  sources: ['tasks'],
-                  scope: 'portfolio projects in current role lens',
-                  window: 'current snapshot',
-                },
-                {
-                  metric: 'Overdue Tasks',
-                  formulaId: 'PCL_OVERDUE_TASKS_V1',
-                  formula: 'Count(tasks where %complete < 100 and finish_date < today)',
-                  sources: ['tasks'],
-                  scope: 'portfolio projects in current role lens',
-                  window: 'current day',
-                },
-                {
-                  metric: 'Health Score',
-                  formulaId: 'PCL_HEALTH_PROXY_V1',
-                  formula: '100 - (open_issues*10) - (overdue_tasks*2), floored at 0',
-                  sources: ['tasks'],
-                  scope: 'per project, command-center matrix',
-                  window: 'current snapshot',
-                },
-              ]}
-            />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '0.75rem' }}>
               <div id="schedule-health"><ComplianceMatrix rows={rows} /></div>
-              <div id="exceptions" style={{ display: section === 'overview' || section === 'exceptions' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+              <div id="exceptions" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
                 <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
                   Open Exceptions Queue
                 </div>

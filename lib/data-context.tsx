@@ -760,20 +760,22 @@ export function DataProvider({ children }: DataProviderProps) {
     if (filtered.projects && activePortfolioIds.size > 0) {
       filtered.projects = (filtered.projects as any[]).filter((p: any) => {
         const pid = p.portfolioId ?? p.portfolio_id;
-        return !!pid && activePortfolioIds.has(String(pid));
+        // Keep orphaned projects visible so role pages do not appear empty when
+        // upstream hierarchy links are incomplete.
+        return !pid || activePortfolioIds.has(String(pid));
       });
     }
     if (filtered.customers && activePortfolioIds.size > 0) {
       filtered.customers = (filtered.customers as any[]).filter((c: any) => {
         const pid = c.portfolioId ?? c.portfolio_id;
-        return !!pid && activePortfolioIds.has(String(pid));
+        return !pid || activePortfolioIds.has(String(pid));
       });
     }
     const activeCustomerIds = new Set((filtered.customers || []).map((c: any) => c.id || c.customerId).filter(Boolean));
     if (filtered.sites) {
       filtered.sites = (filtered.sites as any[]).filter((s: any) => {
         const cid = s.customerId ?? s.customer_id;
-        return !!cid && activeCustomerIds.has(cid);
+        return !cid || activeCustomerIds.has(cid);
       });
     }
 
@@ -858,6 +860,51 @@ export function DataProvider({ children }: DataProviderProps) {
     if (filtered.moPeriodNotes) {
       filtered.moPeriodNotes = filterEntitiesByProjectScope(filtered.moPeriodNotes as any[], Array.from(visibleProjectIds));
     }
+
+    // =========================================================================
+    // RDA PERSON-SCOPED FILTERING
+    // Restrict tasks/hours to the logged-in employee identity.
+    // =========================================================================
+    if (activeRole.key === 'rda') {
+      const normalizedEmail = String(user?.email || '').trim().toLowerCase();
+      const employeeIdCandidates = new Set<string>();
+      if (user?.employeeId) employeeIdCandidates.add(String(user.employeeId).trim());
+
+      for (const emp of (filtered.employees || []) as any[]) {
+        const email = String(emp.email || '').trim().toLowerCase();
+        if (normalizedEmail && email && email === normalizedEmail) {
+          const id = String(emp.id || emp.employeeId || emp.employee_id || '').trim();
+          const code = String(emp.employeeId || emp.employee_id || '').trim();
+          if (id) employeeIdCandidates.add(id);
+          if (code) employeeIdCandidates.add(code);
+        }
+      }
+
+      if (employeeIdCandidates.size > 0) {
+        const matchesEmployee = (value: any): boolean => {
+          const rowIds = [
+            value.employeeId,
+            value.employee_id,
+            value.assignedResourceId,
+            value.assigned_resource_id,
+            value.assigneeId,
+            value.assignee_id,
+            value.resourceId,
+            value.resource_id,
+            value.qcResourceId,
+            value.qc_resource_id,
+          ]
+            .map((entry) => String(entry || '').trim())
+            .filter(Boolean);
+          return rowIds.some((rowId) => employeeIdCandidates.has(rowId));
+        };
+
+        filtered.tasks = ((filtered.tasks || []) as any[]).filter(matchesEmployee);
+        filtered.subTasks = ((filtered.subTasks || []) as any[]).filter(matchesEmployee);
+        filtered.hours = ((filtered.hours || []) as any[]).filter(matchesEmployee);
+        filtered.qctasks = ((filtered.qctasks || []) as any[]).filter(matchesEmployee);
+      }
+    }
     if (filtered.snapshots) {
       filtered.snapshots = (filtered.snapshots as any[]).filter((snap: any) => {
         if (!snap || snap.scope === 'all') return true;
@@ -870,6 +917,9 @@ export function DataProvider({ children }: DataProviderProps) {
     if (filtered.sites) {
       filtered.sites = (filtered.sites as any[]).filter((site: any) => {
         const siteId = String(site.id ?? site.siteId ?? site.site_id ?? '').trim();
+        // If no project references a site in current scope, keep site rows
+        // available for pages that render hierarchy metadata.
+        if (visibleSiteIds.size === 0) return true;
         return !siteId || visibleSiteIds.has(siteId);
       });
     }
@@ -877,16 +927,11 @@ export function DataProvider({ children }: DataProviderProps) {
     if (filtered.customers) {
       filtered.customers = (filtered.customers as any[]).filter((customer: any) => {
         const customerId = String(customer.id ?? customer.customerId ?? customer.customer_id ?? '').trim();
+        if (visibleCustomerIds.size === 0) return true;
         return !customerId || visibleCustomerIds.has(customerId);
       });
     }
-    const visiblePortfolioIds = new Set((filtered.customers || []).map((c: any) => String(c.portfolioId ?? c.portfolio_id ?? '')).filter(Boolean));
-    if (filtered.portfolios) {
-      filtered.portfolios = (filtered.portfolios as any[]).filter((portfolio: any) => {
-        const portfolioId = String(portfolio.id ?? portfolio.portfolioId ?? portfolio.portfolio_id ?? '').trim();
-        return !portfolioId || visiblePortfolioIds.has(portfolioId);
-      });
-    }
+    // Preserve active portfolios in scope even if customer links are sparse.
 
     // Filter WBS tree: only active portfolios, exclude empty portfolios (no children), then deep-clone and renumber
     if (filtered.wbsData?.items?.length) {

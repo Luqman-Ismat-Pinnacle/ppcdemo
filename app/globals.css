@@ -87,7 +87,7 @@
   --workspace-gap-sm: 0.75rem;
   --workspace-gap-md: 1.1rem;
   --workspace-gap-lg: 1.5rem;
-  --workspace-max-width: 1440px;
+  --workspace-max-width: 100%;
   --workspace-padding-x: clamp(0.8rem, 2vw, 1.4rem);
   --workspace-padding-y: 0.75rem;
   --kpi-card-min-width: 200px;
@@ -2889,7 +2889,7 @@ button {
 .workstation-layout {
   width: 100%;
   max-width: var(--workspace-max-width);
-  margin: 0 auto;
+  margin: 0;
 }
 
 .workstation-split {

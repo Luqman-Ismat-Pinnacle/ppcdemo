@@ -8,9 +8,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import RoleWorkflowActionBar from '@/components/role-workstations/RoleWorkflowActionBar';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import { useData } from '@/lib/data-context';
 import { useRoleView } from '@/lib/role-view-context';
@@ -31,9 +29,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 export default function PcaRoleHomePage() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const section = params.get('section') || 'overview';
   const { filteredData, data: fullData } = useData();
   const { activeRole } = useRoleView();
   const { user } = useUser();
@@ -164,16 +159,6 @@ export default function PcaRoleHomePage() {
       role="pca"
       title="PCA Workstation"
       subtitle="Assigned-project operations: mapping, data quality, MPP parser publish, and scoped WBS edits."
-      actions={(
-        <RoleWorkflowActionBar
-          actions={[
-            { label: 'Open Upload + Parser', href: '/project-controls/project-plans', permission: 'uploadPlans' },
-            { label: 'Open Mapping Queue', href: '/project-controls/mapping', permission: 'editMapping' },
-            { label: 'Open Data Quality', href: '/role-views/pca?section=data-quality', permission: 'editMapping' },
-            { label: 'Open WBS', href: '/project-controls/wbs-gantt-v2?lens=pca', permission: 'editWbs' },
-          ]}
-        />
-      )}
     >
       <WorkstationLayout
         focus={(
@@ -196,7 +181,7 @@ export default function PcaRoleHomePage() {
               </div>
             )}
 
-            <div id="data-quality" style={{ display: section === 'overview' || section === 'data-quality' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div id="data-quality" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
               <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 Today&apos;s Priority Queue
               </div>

@@ -5,11 +5,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
-import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import PeriodEfficiencyBanner from '@/components/role-workstations/PeriodEfficiencyBanner';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
@@ -23,9 +20,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 export default function CooRoleViewPage() {
   const { filteredData, data: fullData } = useData();
-  const router = useRouter();
-  const params = useSearchParams();
-  const section = params.get('section') || 'overview';
   const [topMetrics, setTopMetrics] = useState<MetricContract[]>([]);
   const [computedAt, setComputedAt] = useState<string | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
@@ -78,36 +72,25 @@ export default function CooRoleViewPage() {
       role="coo"
       title="COO Command Center"
       subtitle="Executive operating picture with live priorities and decision queue."
-      actions={(
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => router.push('/role-views/coo?section=overview')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Overview</button>
-          <button type="button" onClick={() => router.push('/role-views/coo?section=decisions')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Decision Queue</button>
-          <Link href="/role-views/coo/commitments" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Commitments</Link>
-          <Link href="/project-controls/wbs-gantt-v2?lens=coo" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
-        </div>
-      )}
     >
       <WorkstationLayout
         focus={(
-          <div className="page-panel" style={{ minHeight: 0 }}>
+          <div style={{ minHeight: 0, display: 'grid', gap: '0.75rem' }}>
             <SectionHeader title="Tier-1 Executive Metrics" timestamp={computedAt} />
             {loadingSummary ? <BlockSkeleton rows={2} /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: 'var(--workspace-gap-sm)' }}>
                 {[
-                  { label: 'Portfolio Health', value: `${aggregate.healthScore}%`, provenance: aggregate.provenance.health },
-                  { label: 'SPI', value: aggregate.spi.toFixed(2), provenance: aggregate.provenance.spi },
-                  { label: 'CPI', value: aggregate.cpi.toFixed(2), provenance: aggregate.provenance.cpi },
-                  { label: 'Hours Variance', value: `${aggregate.hrsVariance}%`, provenance: aggregate.provenance.hoursVariance },
+                  { label: 'Portfolio Health', value: `${aggregate.healthScore}%` },
+                  { label: 'SPI', value: aggregate.spi.toFixed(2) },
+                  { label: 'CPI', value: aggregate.cpi.toFixed(2) },
+                  { label: 'Hours Variance', value: `${aggregate.hrsVariance}%` },
                   { label: 'Projects At Risk', value: `${atRisk}/${aggregate.projectCount}` },
                   { label: 'Task Completion', value: `${completedTasks}/${totalTasks}` },
                   { label: 'Open Exceptions', value: String(metricById('coo_open_exceptions') ?? 0) },
                   { label: 'Decision Queue', value: String(metricById('coo_decision_queue') ?? 0) },
                 ].map((item) => (
                   <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                      {item.label}
-                      {'provenance' in item && item.provenance ? <MetricProvenanceChip provenance={item.provenance} /> : null}
-                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{item.label}</div>
                     <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: '0.35rem', color: 'var(--text-primary)' }}>{item.value}</div>
                   </div>
                 ))}
@@ -141,10 +124,6 @@ export default function CooRoleViewPage() {
                   ))}
                 </div>
               )}
-            </div>
-
-            <div style={{ display: section === 'decisions' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-              Open the detailed queue in <Link href="/role-views/coo/commitments" style={{ color: 'var(--text-primary)' }}>Commitments</Link>.
             </div>
           </div>
         )}

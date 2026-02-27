@@ -4,7 +4,7 @@
  * @fileoverview Role-native header navigation with direct desktop links and mobile hamburger menu.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRoleView } from '@/lib/role-view-context';
@@ -23,6 +23,7 @@ export default function Navigation() {
   const { user } = useUser();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsRef = useRef<HTMLDivElement | null>(null);
   const [badges, setBadges] = useState<Record<string, BadgeValue>>({});
 
   const navConfig = useMemo(() => ROLE_NAV_CONFIG[activeRole.key], [activeRole.key]);
@@ -31,6 +32,15 @@ export default function Navigation() {
     setMobileOpen(false);
     setToolsOpen(false);
   }, [pathname, activeRole.key]);
+
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (!toolsRef.current) return;
+      if (!toolsRef.current.contains(event.target as Node)) setToolsOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -60,36 +70,21 @@ export default function Navigation() {
           </Link>
         ))}
         {navConfig.tools.length > 0 ? (
-          <div style={{ position: 'relative' }}>
+          <div ref={toolsRef} className="role-nav-tools-wrap">
             <button
               type="button"
-              className="role-nav-link"
+              className={`role-nav-tools-trigger ${toolsOpen ? 'active' : ''}`}
               onClick={() => setToolsOpen((value) => !value)}
+              aria-expanded={toolsOpen}
+              aria-haspopup="menu"
             >
               <span>All Tools</span>
               <span style={{ opacity: 0.8 }}>▼</span>
             </button>
             {toolsOpen ? (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  marginTop: 8,
-                  minWidth: 240,
-                  zIndex: 120,
-                  borderRadius: 10,
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--bg-glass)',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: '0 12px 26px rgba(0,0,0,0.28)',
-                  padding: '0.35rem',
-                  display: 'grid',
-                  gap: '0.2rem',
-                }}
-              >
+              <div className="role-nav-tools-panel" role="menu">
                 {navConfig.tools.map((tool) => (
-                  <Link key={tool.href} href={tool.href} className={`role-nav-mobile-item ${isActive(tool.href) ? 'active' : ''}`}>
+                  <Link key={tool.href} href={tool.href} className={`role-nav-tool-item ${isActive(tool.href) ? 'active' : ''}`}>
                     <span>{tool.label}</span>
                   </Link>
                 ))}

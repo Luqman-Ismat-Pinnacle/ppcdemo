@@ -21,8 +21,8 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
     title: 'Product Owner',
     primary: [
       { label: 'Command Center', href: '/role-views/product-owner' },
-      { label: 'Portfolio', href: '/insights/overview-v2' },
       { label: 'System Health', href: '/role-views/product-owner/system-health' },
+      { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       { label: 'Data Management', href: '/project-controls/data-management' },
     ],
     tools: [
@@ -41,7 +41,6 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
       { label: 'Backlog', href: '/project-management/backlog' },
       { label: 'Boards', href: '/project-management/boards' },
       { label: 'Resource Leveling', href: '/project-controls/resource-leveling' },
-      { label: 'Metric Provenance', href: '/insights/metric-provenance' },
     ],
   },
   coo: {
@@ -64,6 +63,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
       { label: 'Resourcing', href: '/project-controls/resourcing' },
       { label: 'Project Plans', href: '/project-controls/project-plans' },
       { label: 'Forecasting', href: '/project-management/forecast' },
+      { label: 'Metric Provenance', href: '/insights/metric-provenance' },
       { label: 'Data Management', href: '/project-controls/data-management' },
     ],
     tools: [],

@@ -256,6 +256,16 @@ export async function getIterations(
 }
 
 /**
+ * Get all iterations for a team without timeframe filtering.
+ * Some Azure DevOps teams do not have timeframe settings and return 400 for
+ * the $timeframe endpoint.
+ */
+export async function getIterationsAll(config: AzureDevOpsConfig): Promise<any> {
+  const endpoint = `/${config.team}/_apis/work/teamsettings/iterations?api-version=7.1`;
+  return adoRequest(config, endpoint);
+}
+
+/**
  * Get work items for a specific iteration (sprint)
  */
 export async function getSprintWorkItems(

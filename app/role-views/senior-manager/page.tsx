@@ -5,11 +5,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { useData } from '@/lib/data-context';
 import { buildPortfolioAggregate, buildProjectBreakdown, type ProjectBreakdownItem } from '@/lib/calculations/selectors';
-import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
 import ClientHealthGrid from '@/components/role-workstations/ClientHealthGrid';
 import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
@@ -42,9 +39,6 @@ function projectRiskScore(project: ProjectBreakdownItem): number {
 
 export default function SeniorManagerRoleViewPage() {
   const { filteredData, data: fullData } = useData();
-  const router = useRouter();
-  const params = useSearchParams();
-  const section = params.get('section') || 'overview';
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [metrics, setMetrics] = useState<MetricContract[]>([]);
   const [computedAt, setComputedAt] = useState<string | null>(null);
@@ -124,35 +118,24 @@ export default function SeniorManagerRoleViewPage() {
       role="senior_manager"
       title="Senior Manager Command Center"
       subtitle="Portfolio health posture, escalation queue, and alert triage."
-      actions={(
-        <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => router.push('/role-views/senior-manager?section=overview')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Overview</button>
-          <button type="button" onClick={() => router.push('/role-views/senior-manager?section=commitments')} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>Commitments</button>
-          <Link href="/role-views/senior-manager/portfolio-health" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Portfolio Health</Link>
-          <Link href="/project-controls/wbs-gantt-v2?lens=senior_manager" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>WBS</Link>
-        </div>
-      )}
     >
       <WorkstationLayout
         focus={(
-          <div className="page-panel" style={{ minHeight: 0 }}>
+          <div style={{ minHeight: 0, display: 'grid', gap: '0.75rem' }}>
             <SectionHeader title="Tier-1 Portfolio Metrics" timestamp={computedAt} />
             {loadingSummary ? <BlockSkeleton rows={2} /> : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: 'var(--workspace-gap-sm)' }}>
                 {[
-                  { label: 'Portfolio Health', value: topMetricById('sm_portfolio_health_proxy')?.value ?? `${aggregate.healthScore}%`, provenance: aggregate.provenance.health },
-                  { label: 'SPI', value: aggregate.spi.toFixed(2), provenance: aggregate.provenance.spi },
-                  { label: 'CPI', value: aggregate.cpi.toFixed(2), provenance: aggregate.provenance.cpi },
-                  { label: 'Hours Variance', value: `${aggregate.hrsVariance}%`, provenance: aggregate.provenance.hoursVariance },
+                  { label: 'Portfolio Health', value: topMetricById('sm_portfolio_health_proxy')?.value ?? `${aggregate.healthScore}%` },
+                  { label: 'SPI', value: aggregate.spi.toFixed(2) },
+                  { label: 'CPI', value: aggregate.cpi.toFixed(2) },
+                  { label: 'Hours Variance', value: `${aggregate.hrsVariance}%` },
                   { label: 'Projects At Risk', value: `${riskProjects.length} (${portfolioAtRiskPct}%)` },
                   { label: 'Critical Alerts', value: String(criticalAlerts), accent: '#EF4444' },
                   { label: 'Warning Alerts', value: String(warningAlerts), accent: '#F59E0B' },
                 ].map((item) => (
                   <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                      {item.label}
-                      {'provenance' in item && item.provenance ? <MetricProvenanceChip provenance={item.provenance} /> : null}
-                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{item.label}</div>
                     <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: '0.35rem', color: item.accent || 'var(--text-primary)' }}>{item.value}</div>
                   </div>
                 ))}
@@ -219,9 +202,14 @@ export default function SeniorManagerRoleViewPage() {
                   percentComplete: project.percentComplete,
                 }))}
             />
-
-            <div id="commitments" style={{ display: section === 'commitments' ? 'block' : 'none', border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.7rem', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
-              Open commitments workflow in <Link href="/role-views/coo/commitments" style={{ color: 'var(--text-primary)' }}>Commitments</Link>.
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>How Risk Is Calculated</div>
+              <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                Risk score = +2 (SPI &lt; 0.9) +2 (CPI &lt; 0.9) +2 (variance &gt; 20) +1 (progress &lt; 60% while actual hours exceed 80% of baseline).
+              </div>
+              <div style={{ marginTop: 3, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                At-risk projects: score &gt; 0. High-risk projects: score 5+.
+              </div>
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
               Total Planned Hours: {aggregate.baselineHours.toLocaleString()} · Actual Hours: {aggregate.totalHours.toLocaleString()} · Timesheet Hours: {toNumber(aggregate.timesheetHours).toLocaleString()}

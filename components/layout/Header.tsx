@@ -25,7 +25,6 @@ import { useRoleView } from '@/lib/role-view-context';
 import Navigation from './Navigation';
 import HierarchyFilter from './HierarchyFilter';
 import DateFilterControl from './DateFilterControl';
-import StatusAndLogsDropdown from './StatusAndLogsDropdown';
 import NotificationBell from './NotificationBell';
 
 /**
@@ -89,12 +88,6 @@ export default function Header() {
       </div>
       <div className="header-right">
         <div className="header-controls">
-          {activeRole.key === 'product_owner' ? (
-            <>
-              <StatusAndLogsDropdown />
-              <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
-            </>
-          ) : null}
           <DateFilterControl />
           <div className="nav-divider" style={{ height: '24px', margin: '0 0.5rem' }}></div>
           <HierarchyFilter />

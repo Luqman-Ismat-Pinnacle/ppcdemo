@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getADOConfig, getIterations, getSprintWorkItems } from '@/lib/azure-devops';
+import { getADOConfig, getIterations, getIterationsAll, getSprintWorkItems } from '@/lib/azure-devops';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -44,7 +44,28 @@ export async function GET(request: Request) {
       return NextResponse.json({ workItems: workItems.workItems || [] });
     } else {
       log('Fetching iterations', { timeframe, team: scopedConfig.team });
-      const iterations = await getIterations(scopedConfig, timeframe);
+      let iterations: { value?: Array<Record<string, unknown>> } = { value: [] };
+      try {
+        iterations = await getIterations(scopedConfig, timeframe);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const isTimeframeConfigError =
+          message.includes('InvalidTeamSettingsIterationException') ||
+          message.toLowerCase().includes('timeframe');
+        if (!isTimeframeConfigError) throw error;
+        log('Timeframe endpoint failed, falling back to unfiltered iterations', { timeframe, team: scopedConfig.team, error: message });
+        iterations = await getIterationsAll(scopedConfig);
+        const now = Date.now();
+        const classify = (row: Record<string, unknown>) => {
+          const attrs = (row.attributes || {}) as Record<string, unknown>;
+          const start = attrs.startDate ? new Date(String(attrs.startDate)).getTime() : null;
+          const finish = attrs.finishDate ? new Date(String(attrs.finishDate)).getTime() : null;
+          if (timeframe === 'current') return start != null && finish != null && start <= now && finish >= now;
+          if (timeframe === 'past') return finish != null && finish < now;
+          return start != null && start > now;
+        };
+        iterations.value = (iterations.value || []).filter(classify);
+      }
       log('Iterations fetched', { count: iterations.value?.length ?? 0 });
       return NextResponse.json({ iterations: iterations.value || [] });
     }
