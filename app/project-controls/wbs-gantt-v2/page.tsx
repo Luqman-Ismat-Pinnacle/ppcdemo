@@ -255,14 +255,18 @@ export default function WBSGanttV2Page() {
     textPrimary: '#e5e7eb',
     textSecondary: '#cbd5e1',
     textMuted: '#94a3b8',
-    bgPrimary: 'rgba(0,0,0,0.5)',
-    bgSecondary: 'rgba(0,0,0,0.82)',
-    bgTertiary: 'rgba(7,13,19,0.92)',
+    bgPrimary: 'rgba(15,18,22,0.54)',
+    bgSecondary: 'rgba(10,12,16,0.72)',
+    bgTertiary: 'rgba(20,24,30,0.42)',
     border: '#334155',
-    teal: '#40e0d0',
+    teal: '#10b981',
+    danger: '#ef4444',
+    warning: '#f59e0b',
+    success: '#22c55e',
+    overlay: 'rgba(0, 0, 0, 0.45)',
   });
   const [timelineColors, setTimelineColors] = useState({
-    header: 'rgba(0,0,0,0.88)',
+    header: 'rgba(10,12,16,0.72)',
     gridMinor: 'rgba(100,131,167,0.2)',
     gridMajor: 'rgba(100,131,167,0.42)',
     rowLine: 'rgba(95,126,163,0.26)',
@@ -277,24 +281,24 @@ export default function WBSGanttV2Page() {
 
     setGridTheme({
       accentColor: pick('--pinnacle-teal', '#2ed3c6'),
-      accentFg: '#010509',
-      accentLight: 'rgba(64,224,208,0.32)',
+      accentFg: pick('--bg-primary', '#041717'),
+      accentLight: 'rgba(16,185,129,0.28)',
       textDark: pick('--text-primary', '#e5e7eb'),
       textMedium: pick('--text-secondary', '#cbd5e1'),
       textLight: pick('--text-muted', '#94a3b8'),
-      textBubble: '#e2e8f0',
-      bgIconHeader: 'rgba(6,10,14,0.96)',
+      textBubble: pick('--text-primary', '#e2e8f0'),
+      bgIconHeader: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
       fgIconHeader: pick('--text-secondary', '#cbd5e1'),
       textHeader: pick('--text-primary', '#e5e7eb'),
       textHeaderSelected: pick('--text-primary', '#e5e7eb'),
-      bgCell: 'rgba(0,0,0,0.56)',
-      bgCellMedium: 'rgba(0,0,0,0.72)',
-      bgHeader: 'rgba(0,0,0,0.88)',
-      bgHeaderHasFocus: 'rgba(0,0,0,0.96)',
-      bgHeaderHovered: 'rgba(6,10,14,0.95)',
-      bgBubble: 'rgba(0,0,0,0.84)',
-      bgBubbleSelected: 'rgba(0,0,0,0.9)',
-      bgSearchResult: 'rgba(46,211,198,0.2)',
+      bgCell: pick('--surface-glass', 'rgba(15,18,22,0.54)'),
+      bgCellMedium: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
+      bgHeader: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
+      bgHeaderHasFocus: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
+      bgHeaderHovered: pick('--surface-glass-soft', 'rgba(20,24,30,0.42)'),
+      bgBubble: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
+      bgBubbleSelected: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
+      bgSearchResult: 'rgba(16,185,129,0.2)',
       borderColor: pick('--border-color', '#334155'),
       drilldownBorder: pick('--border-color', '#334155'),
       linkColor: pick('--pinnacle-teal', '#2ed3c6'),
@@ -313,7 +317,7 @@ export default function WBSGanttV2Page() {
     });
 
     setTimelineColors({
-      header: 'rgba(0,0,0,0.88)',
+      header: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
       gridMinor: 'rgba(100,131,167,0.2)',
       gridMajor: 'rgba(100,131,167,0.42)',
       rowLine: 'rgba(95,126,163,0.26)',
@@ -325,11 +329,15 @@ export default function WBSGanttV2Page() {
       textPrimary: pick('--text-primary', '#e5e7eb'),
       textSecondary: pick('--text-secondary', '#cbd5e1'),
       textMuted: pick('--text-muted', '#94a3b8'),
-      bgPrimary: 'rgba(0,0,0,0.5)',
-      bgSecondary: 'rgba(0,0,0,0.82)',
-      bgTertiary: 'rgba(7,13,19,0.92)',
+      bgPrimary: pick('--surface-glass', 'rgba(15,18,22,0.54)'),
+      bgSecondary: pick('--surface-glass-strong', 'rgba(10,12,16,0.72)'),
+      bgTertiary: pick('--surface-glass-soft', 'rgba(20,24,30,0.42)'),
       border: pick('--border-color', '#334155'),
-      teal: '#40e0d0',
+      teal: pick('--pinnacle-teal', '#10b981'),
+      danger: pick('--color-error', '#ef4444'),
+      warning: pick('--color-warning', '#f59e0b'),
+      success: pick('--color-success', '#22c55e'),
+      overlay: 'rgba(0,0,0,0.45)',
     });
   }, []);
 
@@ -778,30 +786,30 @@ export default function WBSGanttV2Page() {
     if (showVariance && def.id === 'blh') {
       const taskId = normalizeTaskId(r.taskId || r.id);
       const snap = taskId ? getSnapshotValue('planHours', { taskId }) : null;
-      if (snap != null) color = (r.baselineHours - snap) > 0 ? '#ef4444' : '#22c55e';
+      if (snap != null) color = (r.baselineHours - snap) > 0 ? uiColors.danger : uiColors.success;
     }
-    if (showVariance && def.id === 'acth' && r.varianceHours != null) color = r.varianceHours > 0 ? '#ef4444' : '#22c55e';
+    if (showVariance && def.id === 'acth' && r.varianceHours != null) color = r.varianceHours > 0 ? uiColors.danger : uiColors.success;
     if (showVariance && def.id === 'remh') {
       const taskId = normalizeTaskId(r.taskId || r.id);
       const snapP = taskId ? getSnapshotValue('planHours', { taskId }) : null;
       const snapA = taskId ? getSnapshotValue('actualHours', { taskId }) : null;
-      if (snapP != null && snapA != null) color = (r.remainingHours - Math.max(0, snapP - snapA)) > 0 ? '#ef4444' : '#22c55e';
+      if (snapP != null && snapA != null) color = (r.remainingHours - Math.max(0, snapP - snapA)) > 0 ? uiColors.danger : uiColors.success;
     }
     if (showVariance && def.id === 'blc') {
       const taskId = normalizeTaskId(r.taskId || r.id);
       const snap = taskId ? getSnapshotValue('planCost', { taskId }) : null;
-      if (snap != null) color = (r.baselineCost - snap) > 0 ? '#ef4444' : '#22c55e';
+      if (snap != null) color = (r.baselineCost - snap) > 0 ? uiColors.danger : uiColors.success;
     }
-    if (showVariance && def.id === 'actc' && r.varianceCost != null) color = r.varianceCost > 0 ? '#ef4444' : '#22c55e';
+    if (showVariance && def.id === 'actc' && r.varianceCost != null) color = r.varianceCost > 0 ? uiColors.danger : uiColors.success;
     if (showVariance && def.id === 'remc') {
       const taskId = normalizeTaskId(r.taskId || r.id);
       const snapP = taskId ? getSnapshotValue('planCost', { taskId }) : null;
       const snapA = taskId ? getSnapshotValue('actualCost', { taskId }) : null;
-      if (snapP != null && snapA != null) color = (r.remainingCost - Math.max(0, snapP - snapA)) > 0 ? '#ef4444' : '#22c55e';
+      if (snapP != null && snapA != null) color = (r.remainingCost - Math.max(0, snapP - snapA)) > 0 ? uiColors.danger : uiColors.success;
     }
     if (def.id === 'pct') color = getProgressColor(r.percentComplete, r.isCritical);
-    if (def.id === 'tf' && r.totalFloat <= 0) color = '#ef4444';
-    if (def.id === 'cp' && r.isCritical) color = '#ef4444';
+    if (def.id === 'tf' && r.totalFloat <= 0) color = uiColors.danger;
+    if (def.id === 'cp' && r.isCritical) color = uiColors.danger;
     if (def.id === 'name' || def.id === 'wbs') color = uiColors.textPrimary;
 
     const text = getDisplayText(def, r);
@@ -862,7 +870,7 @@ export default function WBSGanttV2Page() {
       ctx.stroke();
 
       const progressX = plotX + (Math.max(0, Math.min(100, r.percentComplete)) / 100) * plotW;
-      ctx.strokeStyle = '#40e0d0';
+      ctx.strokeStyle = uiColors.teal;
       ctx.lineWidth = 1;
       ctx.setLineDash([3, 2]);
       ctx.beginPath();
@@ -1232,12 +1240,12 @@ export default function WBSGanttV2Page() {
             <button type="button" onClick={expandAll} style={{ padding: '0.3rem 0.5rem', fontSize: '0.62rem', background: 'transparent', color: 'var(--text-secondary)', border: 'none', borderRadius: 4, cursor: 'pointer' }}>All</button>
           </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: '#6b7280' }}>
-            <input type="checkbox" checked={showBaseline} onChange={(e) => setShowBaseline(e.target.checked)} style={{ accentColor: '#6b7280' }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: uiColors.textMuted }}>
+            <input type="checkbox" checked={showBaseline} onChange={(e) => setShowBaseline(e.target.checked)} style={{ accentColor: uiColors.textMuted }} />
             <span>Baseline</span>
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: '#40e0d0' }}>
-            <input type="checkbox" checked={showDependencies} onChange={(e) => setShowDependencies(e.target.checked)} style={{ accentColor: '#40e0d0' }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: uiColors.teal }}>
+            <input type="checkbox" checked={showDependencies} onChange={(e) => setShowDependencies(e.target.checked)} style={{ accentColor: uiColors.teal }} />
             <span>Dependencies</span>
           </label>
           <button
@@ -1251,19 +1259,19 @@ export default function WBSGanttV2Page() {
               borderRadius: 5,
               border: `1px solid ${showVariance ? 'rgba(34,197,94,0.5)' : 'var(--border-color)'}`,
               background: showVariance ? 'rgba(34,197,94,0.18)' : 'transparent',
-              color: hasComparison ? (showVariance ? '#22c55e' : 'var(--text-secondary)') : '#6b7280',
+              color: hasComparison ? (showVariance ? uiColors.success : 'var(--text-secondary)') : uiColors.textMuted,
               cursor: hasComparison ? 'pointer' : 'not-allowed',
             }}
           >
             Variance
           </button>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: '#f59e0b' }}>
-            <input type="checkbox" checked={runCpm} onChange={(e) => setRunCpm(e.target.checked)} style={{ accentColor: '#f59e0b' }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.66rem', color: uiColors.warning }}>
+            <input type="checkbox" checked={runCpm} onChange={(e) => setRunCpm(e.target.checked)} style={{ accentColor: uiColors.warning }} />
             <span>CPM</span>
           </label>
 
           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{filteredRows.length} rows</div>
-          <div style={{ color: '#f59e0b', fontSize: '0.7rem', fontWeight: 600 }}>CP: {cpmStats.critical}/{cpmStats.total}</div>
+          <div style={{ color: uiColors.warning, fontSize: '0.7rem', fontWeight: 600 }}>CP: {cpmStats.critical}/{cpmStats.total}</div>
         </div>
       </div>
 
@@ -1273,11 +1281,13 @@ export default function WBSGanttV2Page() {
           style={{
             width: 320,
             maxWidth: '100%',
-            background: 'var(--bg-secondary)',
+            background: uiColors.bgSecondary,
             border: '1px solid var(--border-color)',
             borderRadius: 8,
             padding: 8,
-            boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.14)',
+            backdropFilter: 'blur(12px) saturate(138%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(138%)',
           }}
         >
           <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 700 }}>
@@ -1318,7 +1328,7 @@ export default function WBSGanttV2Page() {
         </div>
       )}
 
-      <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: 'rgba(0,0,0,0.46)' }}>
+      <div ref={splitHostRef} style={{ flex: 1, minHeight: 0, display: 'flex', gap: 0, border: '1px solid var(--border-color)', borderRadius: 12, overflow: 'hidden', background: uiColors.bgTertiary }}>
         {isLoading ? (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ContainerLoader message="Loading WBS Gantt..." minHeight={400} />
@@ -1328,7 +1338,7 @@ export default function WBSGanttV2Page() {
         <div
           ref={leftPanel.ref}
           className="wbs-gantt-grid"
-          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
+          style={{ width: `${leftPanePct}%`, minHeight: 0, minWidth: 0, overflow: 'hidden', background: uiColors.bgPrimary, position: 'relative' }}
         >
           {leftPanel.size.width > 20 && leftPanel.size.height > 20 ? (
             <DataEditor
@@ -1361,7 +1371,7 @@ export default function WBSGanttV2Page() {
         </div>
 
         <div
-          style={{ width: 8, cursor: 'col-resize', background: 'rgba(7,13,19,0.92)', borderLeft: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', display: 'grid', placeItems: 'center', userSelect: 'none' }}
+          style={{ width: 8, cursor: 'col-resize', background: uiColors.bgSecondary, borderLeft: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', display: 'grid', placeItems: 'center', userSelect: 'none' }}
           onMouseDown={() => setDraggingSplit(true)}
           title="Resize panels"
         >
@@ -1370,7 +1380,7 @@ export default function WBSGanttV2Page() {
 
         <div
           ref={rightPanel.ref}
-          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: 'rgba(0,0,0,0.26)', position: 'relative' }}
+          style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', background: uiColors.bgPrimary, position: 'relative' }}
         >
           {rightPanelWidth > 20 && rightPanelHeight > 20 ? (
             <div
@@ -1429,8 +1439,8 @@ export default function WBSGanttV2Page() {
                     if (x < 0 || x > timelineInnerWidth) return null;
                     return (
                       <React.Fragment>
-                        <Line points={[x, 0, x, rightPanelHeight]} stroke="#ef4444" strokeWidth={1.2} dash={[6, 4]} />
-                        <Text x={x + 4} y={30} text="Today" fill="#ef4444" fontSize={12} fontStyle="bold" />
+                        <Line points={[x, 0, x, rightPanelHeight]} stroke={uiColors.danger} strokeWidth={1.2} dash={[6, 4]} />
+                        <Text x={x + 4} y={30} text="Today" fill={uiColors.danger} fontSize={12} fontStyle="bold" />
                       </React.Fragment>
                     );
                   })()}
@@ -1479,7 +1489,7 @@ export default function WBSGanttV2Page() {
                                   width={Math.max(2, barEnd - Math.max(barStart, toX(baselineEnd)))}
                                   height={ROW_HEIGHT - 14}
                                   fill={'rgba(245,158,11,0.25)'}
-                                  stroke={'#f59e0b'}
+                                  stroke={uiColors.warning}
                                   strokeWidth={1}
                                   dash={[4, 2]}
                                   cornerRadius={4}
@@ -1549,7 +1559,7 @@ export default function WBSGanttV2Page() {
                           ? [sourceX, sourceY, routeX, sourceY, routeX, targetY, targetX - 10, targetY]
                           : [sourceX, sourceY, routeX, sourceY, routeX, targetY, leftDetourX, targetY, targetX - 10, targetY];
 
-                        const stroke = source.isCritical || targetRow.isCritical ? '#ef4444' : '#40e0d0';
+                        const stroke = source.isCritical || targetRow.isCritical ? uiColors.danger : uiColors.teal;
 
                         return [
                           <Line
@@ -1595,61 +1605,62 @@ export default function WBSGanttV2Page() {
             zIndex: 10000,
             width: 320,
             maxWidth: 'calc(100vw - 24px)',
-            background: 'rgba(18, 18, 22, 0.97)',
-            border: '1px solid rgba(255,255,255,0.12)',
+            background: uiColors.bgSecondary,
+            border: '1px solid var(--border-color)',
             borderRadius: 10,
             padding: '12px 14px',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+            boxShadow: '0 12px 28px rgba(0,0,0,0.2)',
             pointerEvents: 'none',
-            backdropFilter: 'blur(20px)',
-            color: '#d0d0d0',
+            backdropFilter: 'blur(14px) saturate(138%)',
+            WebkitBackdropFilter: 'blur(14px) saturate(138%)',
+            color: uiColors.textSecondary,
             fontSize: '0.84rem',
             lineHeight: 1.45,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#fff', flex: 1, marginRight: 8 }}>{barTip.row.name}</div>
+            <div style={{ fontWeight: 800, fontSize: '0.98rem', color: uiColors.textPrimary, flex: 1, marginRight: 8 }}>{barTip.row.name}</div>
             <span style={{ fontSize: '0.52rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: `${TYPE_COLOR[barTip.row.type] || '#666'}33`, color: TYPE_COLOR[barTip.row.type] || '#999', whiteSpace: 'nowrap' }}>
               {barTip.row.type.replace('_', ' ')}
             </span>
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#777', marginBottom: 8 }}>WBS {barTip.row.wbsCode}</div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ fontSize: '0.72rem', color: uiColors.textMuted, marginBottom: 8 }}>WBS {barTip.row.wbsCode}</div>
+          <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
             <span>{barTip.row.startDate ? new Date(barTip.row.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
-            <span style={{ color: '#555' }}>→</span>
+            <span style={{ color: uiColors.textMuted }}>→</span>
             <span>{barTip.row.endDate ? new Date(barTip.row.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</span>
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#777', marginBottom: 8 }}>{barTip.row.daysRequired} working days</div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ fontSize: '0.72rem', color: uiColors.textMuted, marginBottom: 8 }}>{barTip.row.daysRequired} working days</div>
+          <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', marginBottom: 6 }}>
-            <span style={{ color: '#8d96a6' }}>Baseline</span>
+            <span style={{ color: uiColors.textMuted }}>Baseline</span>
             <span>{barTip.row.baselineStart ? new Date(barTip.row.baselineStart).toLocaleDateString() : '-'} → {barTip.row.baselineEnd ? new Date(barTip.row.baselineEnd).toLocaleDateString() : '-'}</span>
           </div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <div style={{ flex: 1, height: 7, background: '#333', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ flex: 1, height: 7, background: uiColors.bgTertiary, borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ width: `${barTip.row.percentComplete || 0}%`, height: '100%', background: getProgressColor(barTip.row.percentComplete || 0, barTip.row.isCritical), borderRadius: 4 }} />
             </div>
             <span style={{ fontWeight: 700, color: getProgressColor(barTip.row.percentComplete || 0, barTip.row.isCritical), fontSize: '0.78rem', minWidth: 36, textAlign: 'right' }}>{Math.round(barTip.row.percentComplete || 0)}%</span>
           </div>
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '6px 0' }} />
+          <div style={{ height: 1, background: 'var(--border-color)', margin: '6px 0' }} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', fontSize: '0.74rem' }}>
-            <div><span style={{ color: '#777' }}>BL Hours: </span>{barTip.row.baselineHours.toLocaleString()}</div>
-            <div><span style={{ color: '#777' }}>Act Hours: </span><span style={{ color: uiColors.teal }}>{barTip.row.actualHours.toLocaleString()}</span></div>
-            <div><span style={{ color: '#777' }}>BL Cost: </span>{formatCurrency(barTip.row.baselineCost)}</div>
-            <div><span style={{ color: '#777' }}>Act Cost: </span><span style={{ color: uiColors.teal }}>{formatCurrency(barTip.row.actualCost)}</span></div>
+            <div><span style={{ color: uiColors.textMuted }}>BL Hours: </span>{barTip.row.baselineHours.toLocaleString()}</div>
+            <div><span style={{ color: uiColors.textMuted }}>Act Hours: </span><span style={{ color: uiColors.teal }}>{barTip.row.actualHours.toLocaleString()}</span></div>
+            <div><span style={{ color: uiColors.textMuted }}>BL Cost: </span>{formatCurrency(barTip.row.baselineCost)}</div>
+            <div><span style={{ color: uiColors.textMuted }}>Act Cost: </span><span style={{ color: uiColors.teal }}>{formatCurrency(barTip.row.actualCost)}</span></div>
             {showVariance && hasComparison && (
               <>
                 <div>
-                  <span style={{ color: '#777' }}>Var Hrs: </span>
-                  <span style={{ color: (barTip.row.varianceHours || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+                  <span style={{ color: uiColors.textMuted }}>Var Hrs: </span>
+                  <span style={{ color: (barTip.row.varianceHours || 0) > 0 ? uiColors.danger : uiColors.success }}>
                     {barTip.row.varianceHours == null ? '-' : `${barTip.row.varianceHours > 0 ? '+' : ''}${Math.round(barTip.row.varianceHours)}`}
                   </span>
                 </div>
                 <div>
-                  <span style={{ color: '#777' }}>Var Cost: </span>
-                  <span style={{ color: (barTip.row.varianceCost || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+                  <span style={{ color: uiColors.textMuted }}>Var Cost: </span>
+                  <span style={{ color: (barTip.row.varianceCost || 0) > 0 ? uiColors.danger : uiColors.success }}>
                     {barTip.row.varianceCost == null ? '-' : `${barTip.row.varianceCost > 0 ? '+' : ''}${formatCurrency(barTip.row.varianceCost)}`}
                   </span>
                 </div>
@@ -1665,7 +1676,7 @@ export default function WBSGanttV2Page() {
             position: 'fixed',
             inset: 0,
             zIndex: 10020,
-            background: 'rgba(0,0,0,0.62)',
+            background: uiColors.overlay,
             display: 'grid',
             placeItems: 'center',
             padding: 16,
@@ -1677,52 +1688,54 @@ export default function WBSGanttV2Page() {
               width: 'min(920px, 100%)',
               maxHeight: '88vh',
               overflow: 'auto',
-              background: 'rgba(12,15,19,0.97)',
-              border: '1px solid rgba(100,131,167,0.35)',
+              background: uiColors.bgSecondary,
+              border: '1px solid var(--border-color)',
               borderRadius: 12,
-              boxShadow: '0 18px 48px rgba(0,0,0,0.56)',
+              boxShadow: '0 18px 36px rgba(0,0,0,0.2)',
               padding: 14,
+              backdropFilter: 'blur(14px) saturate(138%)',
+              WebkitBackdropFilter: 'blur(14px) saturate(138%)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div>
-                <div style={{ color: '#f4f4f5', fontWeight: 700, fontSize: '0.92rem' }}>Actual Hours Breakdown</div>
-                <div style={{ color: '#9ca3af', fontSize: '0.68rem' }}>{hoursBreakdownRow.name} ({hoursBreakdownRow.wbsCode})</div>
+                <div style={{ color: uiColors.textPrimary, fontWeight: 700, fontSize: '0.92rem' }}>Actual Hours Breakdown</div>
+                <div style={{ color: uiColors.textMuted, fontSize: '0.68rem' }}>{hoursBreakdownRow.name} ({hoursBreakdownRow.wbsCode})</div>
               </div>
               <button
                 type="button"
                 onClick={() => setHoursBreakdownRow(null)}
-                style={{ background: 'transparent', border: '1px solid rgba(148,163,184,0.35)', color: '#cbd5e1', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: '1px solid var(--border-color)', color: uiColors.textSecondary, borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}
               >
                 Close
               </button>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginBottom: 10 }}>
-              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Task Actual Hours</div>
-                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.taskHours).toLocaleString()}h</div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: 8, background: uiColors.bgPrimary }}>
+                <div style={{ color: uiColors.textMuted, fontSize: '0.62rem' }}>Task Actual Hours</div>
+                <div style={{ color: uiColors.textPrimary, fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.taskHours).toLocaleString()}h</div>
               </div>
-              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Phase ({hoursBreakdown.phaseName})</div>
-                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.phaseHours).toLocaleString()}h</div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: 8, background: uiColors.bgPrimary }}>
+                <div style={{ color: uiColors.textMuted, fontSize: '0.62rem' }}>Phase ({hoursBreakdown.phaseName})</div>
+                <div style={{ color: uiColors.textPrimary, fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.phaseHours).toLocaleString()}h</div>
               </div>
-              <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, padding: 8 }}>
-                <div style={{ color: '#9ca3af', fontSize: '0.62rem' }}>Unit ({hoursBreakdown.unitName})</div>
-                <div style={{ color: '#f4f4f5', fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.unitHours).toLocaleString()}h</div>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: 8, background: uiColors.bgPrimary }}>
+                <div style={{ color: uiColors.textMuted, fontSize: '0.62rem' }}>Unit ({hoursBreakdown.unitName})</div>
+                <div style={{ color: uiColors.textPrimary, fontSize: '0.95rem', fontWeight: 700 }}>{Math.round(hoursBreakdown.unitHours).toLocaleString()}h</div>
               </div>
             </div>
 
-            <div style={{ border: '1px solid rgba(100,131,167,0.28)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', background: 'rgba(17,24,39,0.82)', color: '#a1a1aa', fontSize: '0.63rem', fontWeight: 700, padding: '7px 8px' }}>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', background: uiColors.bgPrimary, color: uiColors.textMuted, fontSize: '0.63rem', fontWeight: 700, padding: '7px 8px' }}>
                 <span>Date</span><span>Employee</span><span>Charge Type</span><span style={{ textAlign: 'right' }}>Hours</span>
               </div>
               <div style={{ maxHeight: 320, overflow: 'auto' }}>
                 {hoursBreakdown.entries.length === 0 ? (
-                  <div style={{ color: '#94a3b8', fontSize: '0.72rem', padding: 10 }}>No timecard entries mapped to this task.</div>
+                  <div style={{ color: uiColors.textMuted, fontSize: '0.72rem', padding: 10 }}>No timecard entries mapped to this task.</div>
                 ) : hoursBreakdown.entries.map((entry, idx) => (
-                  <div key={`hb-${idx}`} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', color: '#e2e8f0', fontSize: '0.68rem', padding: '6px 8px', borderTop: '1px solid rgba(100,131,167,0.18)' }}>
+                  <div key={`hb-${idx}`} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 110px 100px', color: uiColors.textSecondary, fontSize: '0.68rem', padding: '6px 8px', borderTop: '1px solid var(--border-color)' }}>
                     <span>{formatDate(readDate(entry, 'date', 'entryDate', 'createdAt'))}</span>
                     <span>{readString(entry, 'employeeName', 'employeeId', 'employee_id') || '-'}</span>
                     <span>{readString(entry, 'chargeType', 'charge_type') || '-'}</span>
@@ -1745,16 +1758,18 @@ export default function WBSGanttV2Page() {
             zIndex: 11000,
             width: 240,
             maxWidth: 'calc(100vw - 20px)',
-            background: 'rgba(8,12,18,0.96)',
-            border: '1px solid rgba(64,224,208,0.22)',
+            background: uiColors.bgSecondary,
+            border: '1px solid var(--border-color)',
             borderRadius: 8,
-            boxShadow: '0 10px 24px rgba(0,0,0,0.42)',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.18)',
             padding: 8,
             pointerEvents: 'auto',
+            backdropFilter: 'blur(12px) saturate(138%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(138%)',
           }}
         >
-          <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#e6f7ff', marginBottom: 6 }}>Column Options</div>
-          <div style={{ fontSize: '0.62rem', color: '#9fb1c9', marginBottom: 8 }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: 700, color: uiColors.textPrimary, marginBottom: 6 }}>Column Options</div>
+          <div style={{ fontSize: '0.62rem', color: uiColors.textMuted, marginBottom: 8 }}>
             {ALL_COLUMNS.find((c) => c.id === headerMenu.columnId)?.title}
           </div>
           <button
