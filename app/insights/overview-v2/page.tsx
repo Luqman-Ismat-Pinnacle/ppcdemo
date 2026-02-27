@@ -30,7 +30,8 @@ import {
   type VariancePeriod,
 } from '@/lib/variance-engine';
 import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
-import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import EnhancedTooltip from '@/components/ui/EnhancedTooltip';
+import type { MetricProvenance } from '@/lib/calculations/types';
 
 /* ================================================================== */
 /*  CONSTANTS                                                          */
@@ -53,6 +54,24 @@ const truncName = (s: string, max = 25) => s.length > max ? s.slice(0, max) + '.
 const fmtHrs = (h: number) => h >= 1000 ? `${(h / 1000).toFixed(1)}K` : h.toLocaleString();
 const fmtCost = (c: number) => c >= 1000 ? `$${(c / 1000).toFixed(1)}K` : `$${c.toLocaleString()}`;
 const varColor = (v: number) => v > 10 ? C.red : v > 0 ? C.amber : C.green;
+
+function provenanceToTooltip(prov: MetricProvenance | undefined, fallbackTitle: string) {
+  if (!prov) {
+    return {
+      title: fallbackTitle,
+      description: 'No provenance metadata available for this metric.',
+    };
+  }
+  return {
+    title: prov.label || fallbackTitle,
+    description: `${prov.scope} · ${prov.timeWindow}`,
+    calculation: prov.trace.formula,
+    details: [
+      prov.dataSources.length ? `Sources: ${prov.dataSources.join(', ')}` : '',
+      `Computed at: ${new Date(prov.trace.computedAt).toLocaleString()}`,
+    ].filter(Boolean),
+  };
+}
 
 const TT = {
   backgroundColor: 'rgba(15,15,18,0.96)', borderColor: C.border, borderWidth: 1,
@@ -1318,18 +1337,30 @@ export default function OverviewV2Page() {
                 <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 1fr', minHeight: 0 }}>
                   {/* ── Col 1: Health Score hero ── */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.25rem 0.75rem', borderRight: `1px solid ${C.border}`, background: `linear-gradient(180deg, ${hsColor}08, transparent)` }}>
-                    <div style={{ fontSize: '2.5rem', fontWeight: 900, color: hsColor, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
-                      {portfolio.healthScore}
-                      <MetricProvenanceChip provenance={portfolio.provenance.health} />
-                    </div>
+                    <EnhancedTooltip
+                      content={provenanceToTooltip(portfolio.provenance.health, 'Portfolio Health Score')}
+                      placement="right"
+                      maxWidth={420}
+                    >
+                      <div style={{ fontSize: '2.5rem', fontWeight: 900, color: hsColor, lineHeight: 1, display: 'flex', alignItems: 'center', gap: 4, cursor: 'help' }}>
+                        <span>{portfolio.healthScore}</span>
+                        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>ⓘ</span>
+                      </div>
+                    </EnhancedTooltip>
                     <div style={{ fontSize: '0.6rem', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4 }}>Health</div>
                     <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, marginTop: 8 }}>
                       <div style={{ width: `${portfolio.healthScore}%`, height: '100%', background: hsColor, borderRadius: 2, transition: 'width 0.5s' }} />
                     </div>
-                    <div style={{ fontSize: '0.6rem', color: varColor(portfolio.hrsVariance), fontWeight: 700, marginTop: 6, display: 'flex', alignItems: 'center' }}>
-                      {portfolio.hrsVariance > 0 ? '+' : ''}{portfolio.hrsVariance}% variance
-                      <MetricProvenanceChip provenance={portfolio.provenance.hoursVariance} />
-                    </div>
+                    <EnhancedTooltip
+                      content={provenanceToTooltip(portfolio.provenance.hoursVariance, 'Hours Variance')}
+                      placement="right"
+                      maxWidth={420}
+                    >
+                      <div style={{ fontSize: '0.6rem', color: varColor(portfolio.hrsVariance), fontWeight: 700, marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, cursor: 'help' }}>
+                        <span>{portfolio.hrsVariance > 0 ? '+' : ''}{portfolio.hrsVariance}% variance</span>
+                        <span style={{ fontSize: '0.7rem', color: C.textMuted }}>ⓘ</span>
+                      </div>
+                    </EnhancedTooltip>
                   </div>
 
                   {/* ── Col 2: Metrics ── */}

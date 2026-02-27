@@ -42,6 +42,9 @@ export default function TaskHoursEfficiencyChart({
       valid.push({ task, actual, remaining, progress });
     });
 
+    // Sort from greatest to least by total baseline hours so the heaviest tasks appear at the top.
+    valid.sort((a, b) => (b.actual + b.remaining) - (a.actual + a.remaining));
+
     const tasks = valid.map((v) => v.task);
     const actualWorked = valid.map((v) => v.actual);
     const remainingHours = valid.map((v) => v.remaining);

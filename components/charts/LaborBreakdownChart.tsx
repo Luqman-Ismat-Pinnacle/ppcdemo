@@ -235,13 +235,30 @@ export default function LaborBreakdownChart({
         selectedMode: true,
         selector: false,
       },
-      grid: { 
-        left: 60, 
-        right: 20, 
-        top: 35, 
-        bottom: 55,
-        containLabel: false
+      grid: {
+        left: 60,
+        right: 20,
+        top: 35,
+        bottom: 72,
+        containLabel: false,
       },
+      dataZoom: [
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+          filterMode: 'none',
+        },
+        {
+          type: 'slider',
+          xAxisIndex: 0,
+          height: 18,
+          bottom: 46,
+          borderColor: 'rgba(148,163,184,0.6)',
+          fillerColor: 'rgba(64,224,208,0.22)',
+          handleStyle: { color: '#40E0D0', borderWidth: 0 },
+          showDetail: false,
+        },
+      ],
       xAxis: {
         type: 'category',
         data: chartMonths,

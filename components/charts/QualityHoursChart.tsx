@@ -33,17 +33,32 @@ export default function QualityHoursChart({
   const isFiltered = activeFilters.length > 0;
   // Use qualityHours.tasks when present; otherwise same order as Task Hours Efficiency so chart shows same rows (zeros if no QC)
   const chargeCodes = (data.tasks?.length ? data.tasks : (taskOrder?.length ? taskOrder : [])) || [];
-  const hoursData = useMemo(() => {
-    if (!chargeCodes.length) return [];
-    if (!data.data?.length) return chargeCodes.map(() => 0);
-    return chargeCodes.map((_, i) => (data.data?.[i]?.[0] ?? (Array.isArray(data.data?.[i]) ? (data.data[i] as number[]).reduce((a, b) => a + b, 0) : 0) ?? 0));
+  const { sortedCodes, sortedHours } = useMemo(() => {
+    if (!chargeCodes.length) return { sortedCodes: [] as string[], sortedHours: [] as number[] };
+    const baseHours = chargeCodes.map((_, i) => {
+      const raw = data.data?.[i];
+      if (Array.isArray(raw)) {
+        return (raw as number[]).reduce((a, b) => a + b, 0);
+      }
+      const v = (raw as number | undefined) ?? 0;
+      return typeof v === 'number' ? v : 0;
+    });
+
+    // Sort from greatest to least so the most QC-heavy items appear at the top.
+    const pairs = chargeCodes.map((code, idx) => ({ code, hours: baseHours[idx] || 0 }));
+    pairs.sort((a, b) => b.hours - a.hours);
+
+    return {
+      sortedCodes: pairs.map((p) => p.code),
+      sortedHours: pairs.map((p) => p.hours),
+    };
   }, [data.data, chargeCodes]);
 
   const heightNum = typeof height === 'number' ? height : parseInt(String(height), 10) || 440;
-  const chartHeight = Math.max(MIN_HEIGHT, heightNum, chargeCodes.length * ROW_HEIGHT + 90);
+  const chartHeight = Math.max(MIN_HEIGHT, heightNum, sortedCodes.length * ROW_HEIGHT + 90);
 
   const option: EChartsOption = useMemo(() => {
-    if (chargeCodes.length === 0) return {};
+    if (sortedCodes.length === 0) return {};
 
     return {
       backgroundColor: 'transparent',
@@ -53,9 +68,9 @@ export default function QualityHoursChart({
         formatter: (params: any) => {
           if (!params?.length) return '';
           const idx = params[0]?.dataIndex;
-          const name = chargeCodes[idx];
-          const hrs = hoursData[idx] ?? 0;
-          const total = hoursData.reduce((a, b) => a + b, 0);
+          const name = sortedCodes[idx];
+          const hrs = sortedHours[idx] ?? 0;
+          const total = sortedHours.reduce((a, b) => a + b, 0);
           const pct = total > 0 ? ((hrs / total) * 100).toFixed(1) : '0';
           return `<div style="font-weight:bold;margin-bottom:4px">${name}</div>
             <div>Hours: <strong>${hrs.toLocaleString()}</strong></div>
@@ -76,7 +91,7 @@ export default function QualityHoursChart({
       },
       yAxis: {
         type: 'category',
-        data: chargeCodes,
+        data: sortedCodes,
         axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
         axisLabel: {
           color: 'rgba(255,255,255,0.9)',
@@ -97,11 +112,11 @@ export default function QualityHoursChart({
           barWidth: 24,
           barGap: '100%',
           barCategoryGap: '40%',
-          data: hoursData.map((val, i) => ({
+          data: sortedHours.map((val, i) => ({
             value: val,
             itemStyle: {
               color:
-                isFiltered && !activeFilters.includes(chargeCodes[i])
+                isFiltered && !activeFilters.includes(sortedCodes[i])
                   ? 'rgba(64, 224, 208, 0.25)'
                   : COLORS[i % COLORS.length],
               borderRadius: [4, 4, 4, 4],
@@ -111,17 +126,17 @@ export default function QualityHoursChart({
         },
       ],
     };
-  }, [chargeCodes, hoursData, isFiltered, activeFilters]);
+  }, [sortedCodes, sortedHours, isFiltered, activeFilters]);
 
   const handleClick = useMemo(() => {
     if (!onBarClick) return undefined;
     return (params: { dataIndex?: number }) => {
       const idx = params?.dataIndex;
-      if (idx != null && chargeCodes[idx]) onBarClick({ name: chargeCodes[idx], dataIndex: idx });
+      if (idx != null && sortedCodes[idx]) onBarClick({ name: sortedCodes[idx], dataIndex: idx });
     };
-  }, [onBarClick, chargeCodes]);
+  }, [onBarClick, sortedCodes]);
 
-  if (chargeCodes.length === 0) {
+  if (sortedCodes.length === 0) {
     return (
       <div
         style={{

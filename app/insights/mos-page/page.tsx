@@ -149,6 +149,7 @@ export default function MosPage() {
   const [periodCommentDraft, setPeriodCommentDraft] = useState('');
   const [savingPeriodComment, setSavingPeriodComment] = useState(false);
   const [periodCommentSaved, setPeriodCommentSaved] = useState(false);
+  const [laborView, setLaborView] = useState<'phase' | 'worker' | 'role'>('phase');
 
   const periods = useMemo(() => derivePeriods(dateFilter), [dateFilter]);
 
@@ -627,6 +628,60 @@ export default function MosPage() {
     () => calcHoursVariancePct(periodHours.actual, periodHours.plan, 'mos-page', `${periods.currentStart}..${periods.currentEnd}`).provenance,
     [periodHours.actual, periodHours.plan, periods.currentStart, periods.currentEnd]
   );
+
+  const laborChartData = useMemo(() => {
+    const weeks = laborBreakdown?.weeks || [];
+    const months = weeks.map((w: string) => {
+      try {
+        const d = new Date(w);
+        if (Number.isNaN(d.getTime())) return w;
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } catch {
+        return w;
+      }
+    });
+
+    const dataByCategory: Record<string, number[]> = {};
+
+    const ensureRow = (key: string) => {
+      if (!dataByCategory[key]) {
+        dataByCategory[key] = new Array(months.length).fill(0);
+      }
+      return dataByCategory[key];
+    };
+
+    if (!weeks.length || !laborBreakdown) {
+      return { months, dataByCategory };
+    }
+
+    if (laborView === 'phase') {
+      (laborBreakdown.byPhase || []).forEach((row: any) => {
+        const label = String(row.phase || row.name || row.project || 'Unknown');
+        const dest = ensureRow(label);
+        (row.data || []).forEach((v: unknown, idx: number) => {
+          if (idx < dest.length && typeof v === 'number') dest[idx] += v;
+        });
+      });
+    } else if (laborView === 'worker') {
+      (laborBreakdown.byWorker || []).forEach((row: any) => {
+        const label = String(row.name || 'Unknown');
+        const dest = ensureRow(label);
+        (row.data || []).forEach((v: unknown, idx: number) => {
+          if (idx < dest.length && typeof v === 'number') dest[idx] += v;
+        });
+      });
+    } else {
+      (laborBreakdown.byWorker || []).forEach((row: any) => {
+        const label = String(row.role || 'Unknown');
+        const dest = ensureRow(label);
+        (row.data || []).forEach((v: unknown, idx: number) => {
+          if (idx < dest.length && typeof v === 'number') dest[idx] += v;
+        });
+      });
+    }
+
+    return { months, dataByCategory };
+  }, [laborBreakdown, laborView]);
 
   const taskOption: EChartsOption = useMemo(() => {
     const top = taskRows.slice(0, 20);
@@ -1118,54 +1173,58 @@ export default function MosPage() {
           <section style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: '1fr' }}>
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
               <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Task Hours Efficiency (Portfolio)</h3>
-              <TaskHoursEfficiencyChart
-                data={taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
-                onBarClick={(params) => {
-                  const idx = params.dataIndex;
-                  const name = taskHoursEfficiency?.tasks?.[idx];
-                  if (name) {
-                    const row = taskRows.find((t) => t.name === name);
-                    if (row) setSelectedTaskId(row.id);
-                  }
-                }}
-                activeFilters={[]}
-              />
-            </div>
-
-            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
-              <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Quality & Non-Execute Hours</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)', gap: '0.75rem' }}>
-                <div>
-                  <h4 style={{ margin: '0 0 0.35rem', color: C.text, fontSize: '0.8rem' }}>Quality Hours by Charge Code</h4>
-                  <QualityHoursChart
-                    data={qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
-                    taskOrder={taskHoursEfficiency?.tasks}
-                    activeFilters={[]}
-                  />
-                </div>
-                <div>
-                  <h4 style={{ margin: '0 0 0.35rem', color: C.text, fontSize: '0.8rem' }}>Non-Execute Hours (TPW)</h4>
-                  <NonExecutePieChart
-                    data={nonExecuteHours?.tpwComparison || []}
-                    height={220}
-                    showLabels
-                    visualId="mos-non-execute"
-                    enableCompare={false}
-                  />
-                </div>
+              <div style={{ maxHeight: 340, overflowY: 'auto', paddingRight: 4 }}>
+                <TaskHoursEfficiencyChart
+                  data={taskHoursEfficiency || { tasks: [], actualWorked: [], estimatedAdded: [], efficiency: [], project: [] }}
+                  onBarClick={(params) => {
+                    const idx = params.dataIndex;
+                    const name = taskHoursEfficiency?.tasks?.[idx];
+                    if (name) {
+                      const row = taskRows.find((t) => t.name === name);
+                      if (row) setSelectedTaskId(row.id);
+                    }
+                  }}
+                  activeFilters={[]}
+                />
               </div>
             </div>
 
             <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
-              <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Labor Breakdown (Phase / Role / Worker)</h3>
+              <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Quality Hours</h3>
+              <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+                <QualityHoursChart
+                  data={qualityHours || { tasks: [], categories: [], data: [], qcPercent: [], poorQualityPercent: [], project: [] }}
+                  taskOrder={taskHoursEfficiency?.tasks}
+                  activeFilters={[]}
+                />
+              </div>
+            </div>
+
+            <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ margin: 0, color: C.text, fontSize: '0.9rem' }}>Labor Breakdown</h3>
+                <select
+                  value={laborView}
+                  onChange={(e) => setLaborView(e.target.value as 'phase' | 'worker' | 'role')}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '0.75rem',
+                    borderRadius: 6,
+                    border: `1px solid ${C.border}`,
+                    background: 'rgba(0,0,0,0.4)',
+                    color: C.text,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="phase">By Phase</option>
+                  <option value="worker">By Worker</option>
+                  <option value="role">By Role</option>
+                </select>
+              </div>
               <LaborBreakdownChart
-                months={laborBreakdown?.weeks || []}
-                dataByCategory={(laborBreakdown?.byPhase || []).reduce((acc: Record<string, number[]>, row: any) => {
-                  const name = String(row.phase || row.name || row.project || 'Unknown');
-                  acc[name] = (row.data || []) as number[];
-                  return acc;
-                }, {})}
-                height={320}
+                months={laborChartData.months}
+                dataByCategory={laborChartData.dataByCategory}
+                height={460}
                 activeFilters={[]}
               />
             </div>
