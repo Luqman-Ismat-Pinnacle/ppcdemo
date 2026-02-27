@@ -98,13 +98,13 @@ async function ensureProductionBuild(nextBin) {
 
 async function main() {
   const port = await resolvePort(DEFAULT_PORT);
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const baseUrl = `http://localhost:${port}`;
   global.__ROLE_SMOKE_BASE_URL__ = baseUrl;
   const nextBin = path.join(process.cwd(), 'node_modules', '.bin', 'next');
   await ensureProductionBuild(nextBin);
-  const server = spawn(nextBin, ['start', '-p', String(port)], {
+  const server = spawn(nextBin, ['dev', '-p', String(port)], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PORT: String(port), NODE_ENV: 'production' },
+    env: { ...process.env, PORT: String(port), NODE_ENV: 'development' },
   });
 
   let startupLogs = '';
