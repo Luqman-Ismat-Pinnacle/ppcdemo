@@ -25,6 +25,15 @@ import pg from 'pg';
 
 const MIN_SCORE_STRICT = 0.72;
 const MIN_SCORE_FUZZY = 0.78;
+const MIN_UNIQUENESS_GAP = 0.04;
+const SHORT_CODE_ALIAS = {
+  itm: 'internal team meetings',
+  gps: 'general project support',
+  pri: 'project reporting invoicing',
+  sch: 'project schedule resource management',
+  tex: 'technical excellence',
+  nbill: 'non billable time',
+};
 
 function loadEnvLocal() {
   const envPath = resolve(process.cwd(), '.env.local');
@@ -65,13 +74,39 @@ function normalize(v) {
     .trim();
 }
 
+function canonicalize(v) {
+  let text = normalize(v);
+  if (!text) return '';
+  text = text
+    .replace(/\b\d{3,6}\b/g, ' ')
+    .replace(/\b(mnc|plan|nbill|tm)\b/g, ' ')
+    .replace(/\b[a-z]{1,4}\.\w+\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  for (const [code, alias] of Object.entries(SHORT_CODE_ALIAS)) {
+    const codeRe = new RegExp(`\\b${code}\\b`, 'g');
+    if (codeRe.test(text)) {
+      text = `${text} ${alias}`.trim();
+    }
+  }
+  return normalize(text);
+}
+
+function extractTaskSuffix(v) {
+  const text = String(v || '').trim();
+  if (!text) return '';
+  if (text.includes(' - ')) return canonicalize(text.split(' - ').slice(1).join(' - '));
+  if (text.includes('_')) return canonicalize(text.split('_').slice(-1)[0]);
+  return '';
+}
+
 function tokenize(v) {
-  return normalize(v).split(' ').filter(Boolean);
+  return canonicalize(v).split(' ').filter(Boolean);
 }
 
 function similarity(a, b) {
-  const aa = normalize(a);
-  const bb = normalize(b);
+  const aa = canonicalize(a);
+  const bb = canonicalize(b);
   if (!aa || !bb) return 0;
   if (aa === bb) return 1;
   if (aa.includes(bb) || bb.includes(aa)) {
@@ -89,22 +124,48 @@ function similarity(a, b) {
   return (jaccard * 0.7) + (cover * 0.3);
 }
 
-function chooseBest(text, candidates, minScore = MIN_SCORE_FUZZY) {
-  const target = normalize(text);
+function chooseBest(text, candidates, minScore = MIN_SCORE_FUZZY, minGap = MIN_UNIQUENESS_GAP) {
+  const target = canonicalize(text);
   if (!target) return null;
   let best = null;
-  let bestScore = minScore;
+  let bestScore = 0;
+  let secondBestScore = 0;
   for (const c of candidates) {
-    const name = c.normName || normalize(c.name);
+    const name = c.normName || canonicalize(c.name);
     if (!name) continue;
     const score = similarity(target, name);
     if (score > bestScore) {
+      secondBestScore = bestScore;
       bestScore = score;
       best = c;
       if (score >= 0.999) break;
+    } else if (score > secondBestScore) {
+      secondBestScore = score;
     }
   }
-  return best ? { candidate: best, score: bestScore } : null;
+  if (!best || bestScore < minScore) return null;
+  if (bestScore < 0.999 && bestScore - secondBestScore < minGap) {
+    return { ambiguous: true, score: bestScore, secondScore: secondBestScore };
+  }
+  return {
+    candidate: best,
+    score: bestScore,
+    secondScore: secondBestScore,
+    ambiguous: false,
+  };
+}
+
+function pushMapValue(map, key, value) {
+  if (!value) return;
+  if (!map.has(key)) map.set(key, new Set());
+  map.get(key).add(value);
+}
+
+function uniqueValueFromMap(map, key) {
+  const values = map.get(key);
+  if (!values || values.size !== 1) return null;
+  const [single] = [...values];
+  return single || null;
 }
 
 async function scalar(client, sql, params = []) {
@@ -116,6 +177,7 @@ async function main() {
   loadEnvLocal();
   const dryRun = hasFlag('--dry-run');
   const projectFilter = argValue('--project');
+  const runId = argValue('--run-id') || `mapping-${new Date().toISOString()}`;
   const dbUrl =
     process.env.DATABASE_URL ||
     process.env.AZURE_POSTGRES_CONNECTION_STRING ||
@@ -184,6 +246,8 @@ async function main() {
     const phaseById = new Map();
     const learnedTaskByProjectText = new Map();
     const learnedPhaseByProjectText = new Map();
+    const learnedWorkdayByTaskText = new Map();
+    const learnedWorkdayByPhaseText = new Map();
 
     for (const wp of wpRes.rows) {
       const pid = String(wp.project_id || '');
@@ -193,9 +257,9 @@ async function main() {
         id: String(wp.id),
         name: String(wp.name || ''),
         unit: String(wp.unit || ''),
-        normName: normalize(wp.name),
+        normName: canonicalize(wp.name),
       });
-      const norm = normalize(wp.name);
+      const norm = canonicalize(wp.name);
       if (norm) wpByNormByProject.get(pid).set(norm, String(wp.id));
     }
 
@@ -206,7 +270,7 @@ async function main() {
         phaseId: String(t.phase_id || ''),
         unitId: String(t.unit_id || ''),
         name: String(t.name || ''),
-        normName: normalize(t.name),
+        normName: canonicalize(t.name),
         workdayPhaseId: String(t.workday_phase_id || '') || null,
       };
       taskById.set(task.id, task);
@@ -220,7 +284,7 @@ async function main() {
         projectId: String(p.project_id || ''),
         unitId: String(p.unit_id || ''),
         name: String(p.name || ''),
-        normName: normalize(p.name),
+        normName: canonicalize(p.name),
         workdayPhaseId: String(p.workday_phase_id || '') || null,
       };
       phaseById.set(phase.id, phase);
@@ -235,7 +299,7 @@ async function main() {
         c.inferredWorkdayPhaseId = c.workdayPhaseId;
         if (!c.inferredWorkdayPhaseId && wps.length > 0) {
           const byTaskName = chooseBest(c.name, wps, MIN_SCORE_STRICT);
-          if (byTaskName) c.inferredWorkdayPhaseId = byTaskName.candidate.id;
+          if (byTaskName?.candidate) c.inferredWorkdayPhaseId = byTaskName.candidate.id;
         }
       }
     }
@@ -245,7 +309,7 @@ async function main() {
         c.inferredWorkdayPhaseId = c.workdayPhaseId;
         if (!c.inferredWorkdayPhaseId && wps.length > 0) {
           const byPhaseName = chooseBest(c.name, wps, MIN_SCORE_STRICT);
-          if (byPhaseName) c.inferredWorkdayPhaseId = byPhaseName.candidate.id;
+          if (byPhaseName?.candidate) c.inferredWorkdayPhaseId = byPhaseName.candidate.id;
         }
       }
     }
@@ -255,10 +319,17 @@ async function main() {
       const pid = String(h.project_id || '');
       if (!learnedTaskByProjectText.has(pid)) learnedTaskByProjectText.set(pid, new Map());
       if (!learnedPhaseByProjectText.has(pid)) learnedPhaseByProjectText.set(pid, new Map());
-      const taskText = normalize(h.task || deriveTaskFromDescription(h.description));
-      const phaseText = normalize(h.phases);
-      if (taskText && h.task_id) learnedTaskByProjectText.get(pid).set(taskText, String(h.task_id));
-      if (phaseText && h.phase_id) learnedPhaseByProjectText.get(pid).set(phaseText, String(h.phase_id));
+      if (!learnedWorkdayByTaskText.has(pid)) learnedWorkdayByTaskText.set(pid, new Map());
+      if (!learnedWorkdayByPhaseText.has(pid)) learnedWorkdayByPhaseText.set(pid, new Map());
+      const taskText = canonicalize(h.task || deriveTaskFromDescription(h.description));
+      const taskSuffix = extractTaskSuffix(h.task);
+      const phaseText = canonicalize(h.phases);
+      if (taskText && h.task_id) pushMapValue(learnedTaskByProjectText.get(pid), taskText, String(h.task_id));
+      if (phaseText && h.phase_id) pushMapValue(learnedPhaseByProjectText.get(pid), phaseText, String(h.phase_id));
+      if (taskSuffix && h.task_id) pushMapValue(learnedTaskByProjectText.get(pid), taskSuffix, String(h.task_id));
+      if (taskText && h.workday_phase_id) pushMapValue(learnedWorkdayByTaskText.get(pid), taskText, String(h.workday_phase_id));
+      if (taskSuffix && h.workday_phase_id) pushMapValue(learnedWorkdayByTaskText.get(pid), taskSuffix, String(h.workday_phase_id));
+      if (phaseText && h.workday_phase_id) pushMapValue(learnedWorkdayByPhaseText.get(pid), phaseText, String(h.workday_phase_id));
     }
 
     const projectMode = new Map();
@@ -281,6 +352,7 @@ async function main() {
       gate3: 0,
       gate4: 0,
       gate5: 0,
+      skippedAmbiguous: 0,
       withWorkdayPhaseBefore: 0,
       withWorkdayPhaseAfter: 0,
       withTaskMapBefore: 0,
@@ -343,6 +415,7 @@ async function main() {
       const taskTextFromDescription = deriveTaskFromDescription(h.description);
       const phaseText = String(h.phases || '').trim();
       const preferText = taskText || taskTextFromDescription || phaseText;
+      const taskSuffix = extractTaskSuffix(taskText);
 
       let selectedKind = null;
       let selected = null;
@@ -350,8 +423,28 @@ async function main() {
       // Gate 5: learned project-local direct text reuse.
       const learnedTasks = learnedTaskByProjectText.get(pid) || new Map();
       const learnedPhases = learnedPhaseByProjectText.get(pid) || new Map();
-      const learnedTaskId = learnedTasks.get(normalize(preferText));
-      const learnedPhaseId = learnedPhases.get(normalize(phaseText));
+      const learnedWpTaskMap = learnedWorkdayByTaskText.get(pid) || new Map();
+      const learnedWpPhaseMap = learnedWorkdayByPhaseText.get(pid) || new Map();
+      const learnedTaskId =
+        uniqueValueFromMap(learnedTasks, canonicalize(preferText))
+        || uniqueValueFromMap(learnedTasks, taskSuffix);
+      const learnedPhaseId = uniqueValueFromMap(learnedPhases, canonicalize(phaseText));
+      const learnedWpTask =
+        uniqueValueFromMap(learnedWpTaskMap, canonicalize(preferText))
+        || uniqueValueFromMap(learnedWpTaskMap, taskSuffix);
+      const learnedWpPhase = uniqueValueFromMap(learnedWpPhaseMap, canonicalize(phaseText));
+      if (!next.workday_phase_id && learnedWpTask) {
+        next.workday_phase_id = learnedWpTask;
+        const wp = workdayCandidates.find((x) => x.id === learnedWpTask);
+        next.workday_phase = wp?.name || next.workday_phase;
+        stats.gate5 += 1;
+      }
+      if (!next.workday_phase_id && learnedWpPhase) {
+        next.workday_phase_id = learnedWpPhase;
+        const wp = workdayCandidates.find((x) => x.id === learnedWpPhase);
+        next.workday_phase = wp?.name || next.workday_phase;
+        stats.gate5 += 1;
+      }
       if (!selected && learnedTaskId) {
         const lt = taskById.get(learnedTaskId);
         if (lt) {
@@ -372,10 +465,12 @@ async function main() {
       if (!selected && preferText) {
         const pBest = chooseBest(preferText, primary, MIN_SCORE_FUZZY);
         const fBest = chooseBest(preferText, fallback, MIN_SCORE_FUZZY);
-        if (pBest && (!fBest || pBest.score >= fBest.score)) {
+        if ((pBest?.ambiguous || fBest?.ambiguous) && !pBest?.candidate && !fBest?.candidate) {
+          stats.skippedAmbiguous += 1;
+        } else if (pBest?.candidate && (!fBest?.candidate || pBest.score >= fBest.score)) {
           selected = pBest.candidate;
           selectedKind = primary === taskCandidates ? 'task' : 'phase';
-        } else if (fBest) {
+        } else if (fBest?.candidate) {
           selected = fBest.candidate;
           selectedKind = fallback === taskCandidates ? 'task' : 'phase';
         }
@@ -421,10 +516,12 @@ async function main() {
       if (!next.workday_phase_id && workdayCandidates.length > 0) {
         const bucketText = next.mpp_phase_unit || next.mpp_task_phase || phaseText;
         const g3 = chooseBest(bucketText, workdayCandidates, MIN_SCORE_FUZZY);
-        if (g3) {
+        if (g3?.candidate) {
           next.workday_phase_id = g3.candidate.id;
           next.workday_phase = g3.candidate.name;
           stats.gate3 += 1;
+        } else if (g3?.ambiguous) {
+          stats.skippedAmbiguous += 1;
         }
       }
 
@@ -436,21 +533,23 @@ async function main() {
         const tBest = chooseBest(finalText, bucketTasks, MIN_SCORE_FUZZY);
         const pBest = chooseBest(finalText, bucketPhases, MIN_SCORE_FUZZY);
 
-        if (tBest || pBest) {
+        if (tBest?.candidate || pBest?.candidate) {
           stats.gate4 += 1;
-          if (tBest && (!pBest || tBest.score >= pBest.score)) {
+          if (tBest?.candidate && (!pBest?.candidate || tBest.score >= pBest.score)) {
             const t = tBest.candidate;
             const phase = phaseById.get(t.phaseId);
             next.mpp_task_phase = t.name || next.mpp_task_phase;
             next.mpp_phase_unit = phase?.name || unitsById.get(t.unitId) || next.mpp_phase_unit;
             if (!next.task_id) next.task_id = t.id;
             if (!next.phase_id && t.phaseId) next.phase_id = t.phaseId;
-          } else if (pBest) {
+          } else if (pBest?.candidate) {
             const p = pBest.candidate;
             next.mpp_task_phase = p.name || next.mpp_task_phase;
             next.mpp_phase_unit = p.name || unitsById.get(p.unitId) || next.mpp_phase_unit;
             if (!next.phase_id) next.phase_id = p.id;
           }
+        } else if (tBest?.ambiguous || pBest?.ambiguous) {
+          stats.skippedAmbiguous += 1;
         }
       }
 
@@ -527,9 +626,11 @@ async function main() {
           projectFilter || null,
           projectFilter || 'all',
           JSON.stringify({
+            runId,
             message: `Hour-entry bucket refresh completed (${updates.length} updated rows).`,
             updated: updates.length,
             stats,
+            updatedRowSample: updates.slice(0, 200).map((x) => x.id),
           }),
         ],
       );
@@ -544,6 +645,8 @@ async function main() {
     console.log(`[Buckets] gate3_mpp_to_workday=${stats.gate3}`);
     console.log(`[Buckets] gate4_bucket_fill=${stats.gate4}`);
     console.log(`[Buckets] gate5_learned_text_reuse=${stats.gate5}`);
+    console.log(`[Buckets] skipped_ambiguous=${stats.skippedAmbiguous}`);
+    console.log(`[Buckets] run_id=${runId}`);
     console.log(`[Buckets] workday_phase mapped: ${stats.withWorkdayPhaseBefore} -> ${stats.withWorkdayPhaseAfter}`);
     console.log(`[Buckets] mpp task/phase mapped: ${stats.withTaskMapBefore} -> ${stats.withTaskMapAfter}`);
   } catch (error) {

@@ -19,7 +19,9 @@
     "check:role-workstation-smoke": "node scripts/check-role-workstation-smoke.js",
     "check:command-center-content-contracts": "node scripts/check-command-center-content-contracts.js",
     "alerts:scan": "node scripts/run-alert-scan.mjs",
-    "hours:match-buckets": "node scripts/match-hours-workday-mpp-buckets.mjs"
+    "hours:match-buckets": "node scripts/match-hours-workday-mpp-buckets.mjs",
+    "mpp:import-local": "tsx scripts/import-local-mpp-files.ts",
+    "mapping:lift-campaign": "node scripts/mapping-lift-campaign.mjs"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^3.8.0",
