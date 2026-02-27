@@ -15,6 +15,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/lib/data-context';
+import { useUser } from '@/lib/user-context';
 import ChartWrapper from '@/components/charts/ChartWrapper';
 import ContainerLoader from '@/components/ui/ContainerLoader';
 import SprintBurndownChart from '@/components/charts/SprintBurndownChart';
@@ -24,9 +25,11 @@ import type { EChartsOption } from 'echarts';
 import {
   fetchAzureIterations,
   fetchAzureSprintWorkItems,
+  fetchAzureTeams,
   getAdoAssignedName,
   mapAdoStateToLocal,
   type AzureIterationDto,
+  type AzureTeamDto,
   type AzureWorkItemDto,
 } from '@/lib/azure-devops-client';
 
@@ -99,6 +102,15 @@ function formatDateRange(start: string | null, end: string | null): string {
   const e = new Date(end);
   const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   return `${fmt(s)} - ${fmt(e)}`;
+}
+
+function normalizeEmail(value: string | null | undefined): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function sprintTeamStorageKey(email: string | null | undefined): string {
+  const normalized = normalizeEmail(email) || 'anonymous';
+  return `ppc:sprint-team:${normalized}`;
 }
 
 function mapIterationToViewModel(iter: AzureIterationDto): Iteration | null {
@@ -592,6 +604,7 @@ const VIEW_CONFIG: Record<ViewType, { label: string; icon: React.ReactElement }>
 
 export default function SprintPlanningPage() {
   const { filteredData, isLoading } = useData();
+  const { user } = useUser();
   const data = filteredData;
   
   const [selectedView, setSelectedView] = useState<ViewType>('board');
@@ -603,15 +616,28 @@ export default function SprintPlanningPage() {
   const [adoLoading, setAdoLoading] = useState(false);
   const [adoError, setAdoError] = useState<string | null>(null);
   const [lastAdoSync, setLastAdoSync] = useState<string | null>(null);
+  const [adoTeams, setAdoTeams] = useState<AzureTeamDto[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<string>('');
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamNotice, setTeamNotice] = useState<string | null>(null);
 
-  const refreshAdoData = useCallback(async (signal?: AbortSignal) => {
+  const teamStorage = useMemo(() => sprintTeamStorageKey(user?.email), [user?.email]);
+
+  useEffect(() => {
+    if (!selectedTeam) return;
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(teamStorage, selectedTeam);
+  }, [selectedTeam, teamStorage]);
+
+  const refreshAdoData = useCallback(async (team: string, signal?: AbortSignal) => {
+    if (!team) return;
     setAdoLoading(true);
     setAdoError(null);
     try {
       const [past, current, future] = await Promise.all([
-        fetchAzureIterations('past', signal),
-        fetchAzureIterations('current', signal),
-        fetchAzureIterations('future', signal),
+        fetchAzureIterations('past', signal, team),
+        fetchAzureIterations('current', signal, team),
+        fetchAzureIterations('future', signal, team),
       ]);
 
       const merged = [...past, ...current, ...future];
@@ -641,8 +667,9 @@ export default function SprintPlanningPage() {
         mappedIterations[0]?.id;
 
       if (selectedPath) {
-        const rawWorkItems = await fetchAzureSprintWorkItems(selectedPath, signal);
+        const rawWorkItems = await fetchAzureSprintWorkItems(selectedPath, signal, team);
         setAdoTasks(rawWorkItems.map(mapAdoTaskToSprintTask));
+        setSelectedIterationId(selectedPath);
       } else {
         setAdoTasks([]);
       }
@@ -660,9 +687,56 @@ export default function SprintPlanningPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    refreshAdoData(controller.signal);
+    let cancelled = false;
+
+    async function loadTeams() {
+      setTeamsLoading(true);
+      setTeamNotice(null);
+      try {
+        const payload = await fetchAzureTeams(controller.signal);
+        if (cancelled) return;
+        const teams = payload.teams || [];
+        setAdoTeams(teams);
+
+        if (!teams.length) {
+          setSelectedTeam('');
+          setTeamNotice('No Azure DevOps teams available for this project.');
+          return;
+        }
+
+        const savedTeam = typeof window !== 'undefined' ? window.localStorage.getItem(teamStorage) : null;
+        const isValidTeam = (name: string | null | undefined) => Boolean(name && teams.some((team) => team.name === name));
+        const nextTeam = isValidTeam(savedTeam)
+          ? String(savedTeam)
+          : (isValidTeam(payload.defaultTeam) ? String(payload.defaultTeam) : teams[0].name);
+
+        if (savedTeam && !isValidTeam(savedTeam)) {
+          setTeamNotice(`Saved team "${savedTeam}" is no longer valid. Switched to "${nextTeam}".`);
+        }
+        setSelectedTeam(nextTeam);
+      } catch (error) {
+        if (cancelled) return;
+        setAdoTeams([]);
+        setSelectedTeam('');
+        setAdoError(error instanceof Error ? error.message : 'Unable to load Azure teams');
+      } finally {
+        if (!cancelled) setTeamsLoading(false);
+      }
+    }
+
+    void loadTeams();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [teamStorage]);
+
+  useEffect(() => {
+    if (!selectedTeam) return;
+    const controller = new AbortController();
+    refreshAdoData(selectedTeam, controller.signal);
     return () => controller.abort();
-  }, [refreshAdoData]);
+  }, [refreshAdoData, selectedTeam]);
 
   // Build iterations
   const iterations = useMemo((): Iteration[] => {
@@ -709,6 +783,29 @@ export default function SprintPlanningPage() {
     if (selectedIterationId) return iterations.find(i => i.id === selectedIterationId) || null;
     return iterations.find(i => i.isCurrent) || iterations[0] || null;
   }, [iterations, selectedIterationId]);
+
+  useEffect(() => {
+    if (!adoConnected || !selectedTeam || !selectedIteration?.id) return;
+    const selectedIterationId = selectedIteration.id;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function loadSelectedIteration() {
+      try {
+        const rawWorkItems = await fetchAzureSprintWorkItems(selectedIterationId, controller.signal, selectedTeam);
+        if (cancelled) return;
+        setAdoTasks(rawWorkItems.map(mapAdoTaskToSprintTask));
+      } catch {
+        if (!cancelled) setAdoTasks([]);
+      }
+    }
+
+    void loadSelectedIteration();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [adoConnected, selectedIteration?.id, selectedTeam]);
 
   const sourceTasks = useMemo(() => {
     if (adoConnected && adoTasks.length > 0) return adoTasks;
@@ -796,7 +893,35 @@ export default function SprintPlanningPage() {
       <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-secondary)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-            <IterationSelector iterations={iterations} selectedId={selectedIteration?.id || null} onSelect={setSelectedIterationId} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Team</span>
+                <select
+                  value={selectedTeam}
+                  onChange={(event) => {
+                    setSelectedIterationId(null);
+                    setSelectedTeam(event.target.value);
+                  }}
+                  disabled={teamsLoading || !adoTeams.length}
+                  style={{
+                    minWidth: '240px',
+                    padding: '0.5rem 0.6rem',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {!adoTeams.length ? <option value="">{teamsLoading ? 'Loading teams...' : 'No teams available'}</option> : null}
+                  {adoTeams.map((team) => (
+                    <option key={team.id} value={team.name}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+              <IterationSelector iterations={iterations} selectedId={selectedIteration?.id || null} onSelect={setSelectedIterationId} />
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{
@@ -816,8 +941,11 @@ export default function SprintPlanningPage() {
             </div>
             <button
               type="button"
-              onClick={() => refreshAdoData()}
-              disabled={adoLoading}
+              onClick={() => {
+                if (!selectedTeam) return;
+                void refreshAdoData(selectedTeam);
+              }}
+              disabled={adoLoading || !selectedTeam}
               style={{
                 padding: '8px 12px',
                 background: 'var(--bg-tertiary)',
@@ -844,9 +972,13 @@ export default function SprintPlanningPage() {
             </button>
           </div>
         </div>
-        {(adoError || lastAdoSync) && (
+        {(adoError || teamNotice || lastAdoSync) && (
           <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: adoError ? '#EF4444' : 'var(--text-muted)' }}>
-            {adoError ? `Azure sync warning: ${adoError}` : `Last Azure sync: ${new Date(lastAdoSync || '').toLocaleString()}`}
+            {adoError
+              ? `Azure sync warning: ${adoError}`
+              : teamNotice
+                ? teamNotice
+                : `Last Azure sync: ${new Date(lastAdoSync || '').toLocaleString()}`}
           </div>
         )}
       </div>

@@ -3,190 +3,343 @@
 /**
  * @fileoverview Product Owner command center.
  *
- * Global operational view for platform health, open issues/features, and
- * role/user coverage across the organization.
+ * Platform-level command center for data quality, operational pipeline health,
+ * alerts/feedback triage, and cross-role visibility.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import { useData } from '@/lib/data-context';
-import WorkstationLayout from '@/components/workstation/WorkstationLayout';
 
-type AlertRow = {
-  id: number;
-  severity: 'info' | 'warning' | 'critical';
+type Summary = {
+  activeProjects: number;
+  activePeople: number;
+  mappingCoverage: number;
+  plansCurrentPct: number;
+  openAlerts: number;
+  criticalAlerts: number;
+  commitmentRate: number;
+  openFeatures: number;
+};
+
+type FeatureRow = {
+  id: string;
   title: string;
-  message: string;
-  relatedProjectId: string | null;
+  severity: string;
+  status: string;
+  createdByName: string;
   createdAt: string;
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+type DataQualityRow = {
+  metric: string;
+  current: number;
+  target: number;
+};
+
+type RoleRow = {
+  role: string;
+  users: number;
+  lastActive: string;
+  bellCount: number;
+  topIssue: string;
+};
+
+type PulseRow = {
+  id: string;
+  name: string;
+  projects: number;
+  health: number;
+  criticalAlerts: number;
+};
+
+type PipelineCard = {
+  key: string;
+  label: string;
+  lastRunAt: string;
+  ageHours: number | null;
+  status: 'ok' | 'warn' | 'bad';
+  detail: string;
+};
+
+type OpenIssues = {
+  alerts: number;
+  feedback: Array<Record<string, unknown>>;
+  anomalies: Array<Record<string, unknown>>;
+};
+
+type PoPayload = {
+  success: boolean;
+  periodKey: string;
+  summary: Summary;
+  features: FeatureRow[];
+  roles: RoleRow[];
+  pipeline: PipelineCard[];
+  dataQuality: DataQualityRow[];
+  portfolioPulse: PulseRow[];
+  openIssues: OpenIssues;
+};
+
+function colorForMetric(current: number, target: number): string {
+  if (current >= target) return '#10B981';
+  if (current >= target * 0.8) return '#F59E0B';
+  return '#EF4444';
 }
 
-function toNumber(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+function formatSince(iso: string, hours: number | null): string {
+  if (!iso) return 'No run history';
+  if (hours === null) return new Date(iso).toLocaleString();
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m ago`;
+  if (hours < 24) return `${Math.round(hours)}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 export default function ProductOwnerCommandCenterPage() {
-  const { data } = useData();
-  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [payload, setPayload] = useState<PoPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [issueTab, setIssueTab] = useState<'alerts' | 'feedback' | 'anomalies'>('alerts');
+  const [runningAction, setRunningAction] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const response = await fetch('/api/alerts?status=open&limit=100', { cache: 'no-store' });
-        const payload = await response.json().catch(() => ({}));
-        if (cancelled || !response.ok || !payload.success) return;
-        setAlerts(Array.isArray(payload.alerts) ? payload.alerts : []);
-      } catch {
-        if (!cancelled) setAlerts([]);
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/role-views/product-owner/summary', { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.success) throw new Error(result.error || 'Failed to load Product Owner summary');
+      setPayload(result as PoPayload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load Product Owner summary');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const tasks = useMemo(() => ((data?.tasks || []) as unknown[]).map(asRecord), [data?.tasks]);
-  const employees = useMemo(() => ((data?.employees || []) as unknown[]).map(asRecord), [data?.employees]);
-  const projects = useMemo(() => ((data?.projects || []) as unknown[]).map(asRecord), [data?.projects]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const features = useMemo(() => {
-    const featureCandidates = tasks.filter((task) => {
-      const name = String(task.name || task.taskName || '').toLowerCase();
-      return name.includes('feature') || name.includes('enhancement') || name.includes('epic');
-    });
-    const source = featureCandidates.length > 0 ? featureCandidates : tasks;
-    return source.map((task, idx) => ({
-      id: String(task.id || task.taskId || idx),
-      name: String(task.name || task.taskName || task.id || 'Task'),
-      projectId: String(task.projectId || task.project_id || '-'),
-      percentComplete: toNumber(task.percentComplete ?? task.percent_complete),
-      owner: String(task.resourceName || task.owner || task.assignee || '-'),
-    }));
-  }, [tasks]);
-
-  const openFeatures = useMemo(() => features.filter((feature) => feature.percentComplete < 100), [features]);
-
-  const roleRows = useMemo(() => {
-    return employees.map((employee, idx) => ({
-      id: String(employee.id || employee.employeeId || idx),
-      name: String(employee.name || employee.employeeName || 'Unknown'),
-      email: String(employee.email || '-'),
-      role: String(employee.role || employee.jobTitle || 'Unassigned'),
-      department: String(employee.department || '-'),
-      activeProjects: projects.filter((project) => {
-        const manager = String(project.manager || project.owner || '').toLowerCase();
-        const employeeName = String(employee.name || employee.employeeName || '').toLowerCase();
-        return employeeName && manager && manager.includes(employeeName);
-      }).length,
-    }));
-  }, [employees, projects]);
-
-  const roleBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const row of roleRows) {
-      map.set(row.role, (map.get(row.role) || 0) + 1);
+  const runAction = useCallback(async (key: 'workday' | 'alerts' | 'mapping') => {
+    setRunningAction(key);
+    try {
+      if (key === 'workday') {
+        await fetch('/api/workday', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ syncType: 'unified', hoursDaysBack: 14 }),
+        });
+      }
+      if (key === 'alerts') {
+        await fetch('/api/alerts/scan', { method: 'POST' });
+      }
+      if (key === 'mapping') {
+        await fetch('/api/data/mapping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'generateMappingSuggestions', minConfidence: 0.78, limit: 200 }),
+        });
+      }
+      await load();
+    } finally {
+      setRunningAction(null);
     }
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  }, [roleRows]);
+  }, [load]);
 
-  const summary = {
-    openIssues: alerts.length,
-    criticalIssues: alerts.filter((alert) => alert.severity === 'critical').length,
-    openFeatures: openFeatures.length,
-    people: roleRows.length,
-  };
+  const cards = useMemo(() => {
+    const summary = payload?.summary;
+    if (!summary) return [];
+    return [
+      { label: 'Active Projects', value: summary.activeProjects },
+      { label: 'People in System', value: summary.activePeople },
+      { label: 'Mapping Coverage', value: `${summary.mappingCoverage.toFixed(1)}%`, tone: colorForMetric(summary.mappingCoverage, 85) },
+      { label: 'Plans Current', value: `${summary.plansCurrentPct.toFixed(1)}%`, tone: colorForMetric(summary.plansCurrentPct, 90) },
+      { label: 'Open Alerts', value: summary.openAlerts, tone: summary.openAlerts === 0 ? '#10B981' : summary.openAlerts <= 5 ? '#F59E0B' : '#EF4444' },
+      { label: 'Commitment Rate', value: `${summary.commitmentRate.toFixed(1)}%`, tone: colorForMetric(summary.commitmentRate, 80) },
+    ];
+  }, [payload?.summary]);
+
+  const features = payload?.features || [];
+  const roles = payload?.roles || [];
+  const pipeline = payload?.pipeline || [];
+  const quality = payload?.dataQuality || [];
+  const pulse = payload?.portfolioPulse || [];
 
   return (
     <RoleWorkstationShell
       role="product_owner"
       requiredTier="tier1"
       title="Product Owner Command Center"
-      subtitle="Global platform health, feature flow, role coverage, and cross-workstation control."
+      subtitle="Platform health, quality posture, issue queues, and role activity."
       actions={(
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href="/role-views/pcl" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open PCL Command Center</Link>
-          <Link href="/role-views/pca" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open PCA Command Center</Link>
-          <Link href="/role-views/project-lead" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open Project Lead Command Center</Link>
-          <Link href="/project-controls/data-management" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open Data Management</Link>
+          <button
+            type="button"
+            disabled={runningAction !== null}
+            onClick={() => { void runAction('workday'); }}
+            style={{ fontSize: '0.72rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0.35rem 0.55rem' }}
+          >
+            {runningAction === 'workday' ? 'Running Workday Sync...' : 'Run Workday Sync'}
+          </button>
+          <button
+            type="button"
+            disabled={runningAction !== null}
+            onClick={() => { void runAction('alerts'); }}
+            style={{ fontSize: '0.72rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0.35rem 0.55rem' }}
+          >
+            {runningAction === 'alerts' ? 'Running Alert Engine...' : 'Run Alert Engine'}
+          </button>
+          <button
+            type="button"
+            disabled={runningAction !== null}
+            onClick={() => { void runAction('mapping'); }}
+            style={{ fontSize: '0.72rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', padding: '0.35rem 0.55rem' }}
+          >
+            {runningAction === 'mapping' ? 'Refreshing Suggestions...' : 'Refresh Suggestions'}
+          </button>
+          <Link href="/project-controls/data-management" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Open Data Management</Link>
         </div>
       )}
     >
-      <WorkstationLayout
-        focus={(
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.65rem' }}>
-              {[
-                { label: 'Open Issues', value: summary.openIssues, danger: summary.openIssues > 0 },
-                { label: 'Critical Issues', value: summary.criticalIssues, danger: summary.criticalIssues > 0 },
-                { label: 'Open Features', value: summary.openFeatures },
-                { label: 'People in System', value: summary.people },
-              ].map((card) => (
-                <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.72rem' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{card.label}</div>
-                  <div style={{ marginTop: 4, fontSize: '1.24rem', fontWeight: 800, color: card.danger ? '#EF4444' : 'var(--text-primary)' }}>{card.value}</div>
+      {error ? <div style={{ color: '#EF4444', fontSize: '0.8rem' }}>{error}</div> : null}
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: '0.65rem' }}>
+          {cards.map((card) => (
+            <div key={card.label} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.72rem' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{card.label}</div>
+              <div style={{ marginTop: 4, fontSize: '1.2rem', fontWeight: 800, color: card.tone || 'var(--text-primary)' }}>{card.value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
+          <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Data Pipeline Status</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.6rem', padding: '0.7rem' }}>
+              {pipeline.map((card) => (
+                <div key={card.key} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.55rem' }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 700, color: card.status === 'ok' ? '#10B981' : card.status === 'warn' ? '#F59E0B' : '#EF4444' }}>
+                    {card.label}
+                  </div>
+                  <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 2 }}>{formatSince(card.lastRunAt, card.ageHours)}</div>
+                  <div style={{ fontSize: '0.67rem', color: 'var(--text-secondary)', marginTop: 3 }}>{card.detail}</div>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '0.75rem' }}>
-              <Link href="/role-views/product-owner/system-health" style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden', textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>System Health</div>
-                <div style={{ padding: '0.72rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                  Open alerts, severity posture, and source-level incident visibility have moved into a dedicated page.
+          </div>
+
+          <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Open Features (Feedback Items)</div>
+            <div style={{ maxHeight: 250, overflowY: 'auto' }}>
+              {loading ? (
+                <div style={{ padding: '0.72rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Loading features...</div>
+              ) : features.length === 0 ? (
+                <div style={{ padding: '0.72rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>No open features found.</div>
+              ) : features.map((feature) => (
+                <div key={feature.id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 100px', gap: '0.4rem', padding: '0.5rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{feature.title}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{feature.status}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{feature.createdByName || '-'}</span>
                 </div>
-                <div style={{ padding: '0 0.72rem 0.72rem', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                  Open System Health →
-                </div>
-              </Link>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
-                <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Open Features</div>
-                {openFeatures.length === 0 ? (
-                  <div style={{ padding: '0.72rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>No open features found in current dataset.</div>
-                ) : openFeatures.slice(0, 18).map((feature) => (
-                  <div key={feature.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 100px 70px', gap: '0.45rem', padding: '0.5rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.72rem' }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{feature.name}</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{feature.projectId}</span>
-                    <span>{feature.percentComplete.toFixed(0)}%</span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Data Quality</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 90px 90px 70px', gap: '0.35rem 0.55rem', padding: '0.55rem 0.7rem', fontSize: '0.72rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Metric</span><span style={{ color: 'var(--text-muted)' }}>Current</span><span style={{ color: 'var(--text-muted)' }}>Target</span><span style={{ color: 'var(--text-muted)' }}>Status</span>
+              {quality.map((row) => (
+                <React.Fragment key={row.metric}>
+                  <span>{row.metric}</span>
+                  <span>{row.current.toFixed(1)}%</span>
+                  <span>{row.target}%</span>
+                  <span style={{ color: colorForMetric(row.current, row.target), fontWeight: 700 }}>{row.current >= row.target ? 'OK' : row.current >= row.target * 0.8 ? 'WARN' : 'RISK'}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+            <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Role Activity Monitor</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 130px', gap: '0.35rem 0.55rem', padding: '0.55rem 0.7rem', fontSize: '0.72rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Role</span><span style={{ color: 'var(--text-muted)' }}>Users</span><span style={{ color: 'var(--text-muted)' }}>Top Issue</span>
+              {roles.map((row) => (
+                <React.Fragment key={row.role}>
+                  <span>{row.role}</span>
+                  <span>{row.users}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.topIssue}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+          <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Portfolio Pulse</div>
+          <div style={{ display: 'grid', gap: '0.4rem', padding: '0.65rem' }}>
+            {pulse.map((row) => (
+              <div key={row.id} style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.55rem', display: 'flex', justifyContent: 'space-between', gap: '0.8rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 600 }}>{row.name}</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  Health {row.health.toFixed(0)}/100 · {row.projects} projects · {row.criticalAlerts} critical alerts
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
+          <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            {(['alerts', 'feedback', 'anomalies'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setIssueTab(tab)}
+                style={{
+                  border: issueTab === tab ? '1px solid var(--pinnacle-teal)' : '1px solid var(--border-color)',
+                  borderRadius: 999,
+                  padding: '0.2rem 0.55rem',
+                  fontSize: '0.68rem',
+                  color: issueTab === tab ? 'var(--pinnacle-teal)' : 'var(--text-secondary)',
+                  background: 'transparent',
+                }}
+              >
+                {tab === 'alerts' ? 'System Alerts' : tab === 'feedback' ? 'User Feedback' : 'Data Anomalies'}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ padding: '0.7rem', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+            {issueTab === 'alerts' ? (
+              <div>Open alerts in queue: <strong>{payload?.openIssues.alerts || 0}</strong></div>
+            ) : null}
+            {issueTab === 'feedback' ? (
+              <div style={{ display: 'grid', gap: '0.35rem' }}>
+                {(payload?.openIssues.feedback || []).slice(0, 20).map((row, index) => (
+                  <div key={`${String(row.id || index)}`} style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: '0.45rem 0.55rem' }}>
+                    <div style={{ fontWeight: 600 }}>{String(row.title || 'Feedback')}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{String(row.itemType || 'item')} · {String(row.status || 'open')} · {String(row.createdByName || 'Unknown')}</div>
                   </div>
                 ))}
               </div>
-            </div>
-            <div id="role-monitor" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
-                <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>Role Distribution</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '0.35rem 0.55rem', padding: '0.55rem 0.7rem', fontSize: '0.74rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Role</span><span style={{ color: 'var(--text-muted)' }}>People</span>
-                  {roleBreakdown.map(([role, count]) => (
-                    <React.Fragment key={role}>
-                      <span>{role}</span><span>{count}</span>
-                    </React.Fragment>
-                  ))}
-                </div>
+            ) : null}
+            {issueTab === 'anomalies' ? (
+              <div style={{ display: 'grid', gap: '0.35rem' }}>
+                {(payload?.openIssues.anomalies || []).slice(0, 20).map((row, index) => (
+                  <div key={`${String(row.id || index)}`} style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: '0.45rem 0.55rem' }}>
+                    <div style={{ fontWeight: 600 }}>{String(row.issue || 'Anomaly')}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{String(row.name || row.projectId || row.id || '')}</div>
+                  </div>
+                ))}
               </div>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', overflow: 'hidden' }}>
-                <div style={{ padding: '0.55rem 0.7rem', borderBottom: '1px solid var(--border-color)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>People + Roles</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 120px', gap: '0.35rem 0.55rem', padding: '0.55rem 0.7rem', fontSize: '0.72rem', maxHeight: 320, overflowY: 'auto' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Person</span><span style={{ color: 'var(--text-muted)' }}>Role</span><span style={{ color: 'var(--text-muted)' }}>Dept</span>
-                  {roleRows.slice(0, 120).map((row) => (
-                    <React.Fragment key={row.id}>
-                      <span title={row.email}>{row.name}</span>
-                      <span>{row.role}</span>
-                      <span>{row.department}</span>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
+            ) : null}
           </div>
-        )}
-      />
+        </div>
+      </div>
     </RoleWorkstationShell>
   );
 }
+

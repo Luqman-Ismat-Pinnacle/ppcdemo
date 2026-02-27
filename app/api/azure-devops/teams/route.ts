@@ -19,7 +19,10 @@ export async function GET() {
       );
     }
     const teams = await getProjectTeams(config);
-    return NextResponse.json({ teams });
+    return NextResponse.json({
+      teams,
+      defaultTeam: config.team || config.project || null,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch teams';
     console.error('[Azure DevOps] GET /api/azure-devops/teams error:', message);

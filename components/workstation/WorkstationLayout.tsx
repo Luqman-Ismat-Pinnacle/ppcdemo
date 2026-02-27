@@ -5,16 +5,16 @@
  */
 
 import React from 'react';
-import WorkstationAIPanel from '@/components/ai/WorkstationAIPanel';
 
 export default function WorkstationLayout({
   focus,
-  aiPanel = <WorkstationAIPanel />,
+  aiPanel = null,
 }: {
   focus: React.ReactNode;
-  aiPanel?: React.ReactNode;
+  aiPanel?: React.ReactNode | null;
 }) {
   const [mobileAiOpen, setMobileAiOpen] = React.useState(false);
+  const hasAiPanel = Boolean(aiPanel);
 
   return (
     <div className="workstation-layout">
@@ -22,25 +22,29 @@ export default function WorkstationLayout({
         className="workstation-split"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.55fr) minmax(300px, 1fr)',
+          gridTemplateColumns: hasAiPanel ? 'minmax(0, 1.55fr) minmax(300px, 1fr)' : 'minmax(0, 1fr)',
           gap: '0.8rem',
           alignItems: 'start',
         }}
       >
         <section style={{ minWidth: 0 }}>{focus}</section>
-        <div className="workstation-ai-desktop" style={{ position: 'sticky', top: 84, alignSelf: 'start' }}>{aiPanel}</div>
+        {hasAiPanel ? <div className="workstation-ai-desktop" style={{ position: 'sticky', top: 84, alignSelf: 'start' }}>{aiPanel}</div> : null}
       </div>
-      <button
-        type="button"
-        className="workstation-ai-mobile-toggle"
-        onClick={() => setMobileAiOpen((value) => !value)}
-        aria-expanded={mobileAiOpen}
-      >
-        {mobileAiOpen ? 'Hide AI Copilot' : 'Open AI Copilot'}
-      </button>
-      <div className={`workstation-ai-mobile-sheet ${mobileAiOpen ? 'open' : ''}`}>
-        {aiPanel}
-      </div>
+      {hasAiPanel ? (
+        <>
+          <button
+            type="button"
+            className="workstation-ai-mobile-toggle"
+            onClick={() => setMobileAiOpen((value) => !value)}
+            aria-expanded={mobileAiOpen}
+          >
+            {mobileAiOpen ? 'Hide AI Copilot' : 'Open AI Copilot'}
+          </button>
+          <div className={`workstation-ai-mobile-sheet ${mobileAiOpen ? 'open' : ''}`}>
+            {aiPanel}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

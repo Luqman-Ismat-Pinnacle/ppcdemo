@@ -34,6 +34,7 @@ import HelpButton from '@/components/help/HelpButton';
 import RoleViewSwitcher from '@/components/layout/RoleViewSwitcher';
 import { RoleViewProvider } from '@/lib/role-view-context';
 import AmbientBackground from '@/components/background/AmbientBackground';
+import GlobalAIToolbar from '@/components/ai/GlobalAIToolbar';
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
@@ -81,6 +82,7 @@ export default function RootLayout({
                               </main>
                               <HelpButton />
                               <RoleViewSwitcher />
+                              <GlobalAIToolbar />
                               <SnapshotPopup />
                             </div>
                           </SnapshotProvider>

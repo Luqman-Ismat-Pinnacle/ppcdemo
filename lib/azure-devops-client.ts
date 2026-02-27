@@ -15,6 +15,11 @@ export interface AzureWorkItemDto {
   fields: Record<string, unknown>;
 }
 
+export interface AzureTeamDto {
+  id: string;
+  name: string;
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
@@ -32,8 +37,11 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 export async function fetchAzureIterations(
   timeframe: 'past' | 'current' | 'future',
   signal?: AbortSignal,
+  team?: string,
 ): Promise<AzureIterationDto[]> {
-  const response = await fetch(`/api/azure-devops/iterations?timeframe=${timeframe}`, {
+  const query = new URLSearchParams({ timeframe });
+  if (team) query.set('team', team);
+  const response = await fetch(`/api/azure-devops/iterations?${query.toString()}`, {
     method: 'GET',
     cache: 'no-store',
     signal,
@@ -45,15 +53,32 @@ export async function fetchAzureIterations(
 export async function fetchAzureSprintWorkItems(
   iterationPath: string,
   signal?: AbortSignal,
+  team?: string,
 ): Promise<AzureWorkItemDto[]> {
-  const query = encodeURIComponent(iterationPath);
-  const response = await fetch(`/api/azure-devops/iterations?iterationId=${query}`, {
+  const query = new URLSearchParams({ iterationId: iterationPath });
+  if (team) query.set('team', team);
+  const response = await fetch(`/api/azure-devops/iterations?${query.toString()}`, {
     method: 'GET',
     cache: 'no-store',
     signal,
   });
   const payload = await parseJsonResponse<{ workItems?: AzureWorkItemDto[] }>(response);
   return payload.workItems || [];
+}
+
+export async function fetchAzureTeams(
+  signal?: AbortSignal,
+): Promise<{ teams: AzureTeamDto[]; defaultTeam: string | null }> {
+  const response = await fetch('/api/azure-devops/teams', {
+    method: 'GET',
+    cache: 'no-store',
+    signal,
+  });
+  const payload = await parseJsonResponse<{ teams?: AzureTeamDto[]; defaultTeam?: string | null }>(response);
+  return {
+    teams: payload.teams || [],
+    defaultTeam: payload.defaultTeam || null,
+  };
 }
 
 export async function fetchAzureQcWorkItems(signal?: AbortSignal): Promise<AzureWorkItemDto[]> {

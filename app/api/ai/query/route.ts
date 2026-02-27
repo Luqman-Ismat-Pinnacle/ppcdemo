@@ -7,6 +7,7 @@ import { getPool } from '@/lib/postgres';
 import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
 import { writeWorkflowAudit } from '@/lib/workflow-audit';
 import { buildRoleContext } from '@/lib/ai-context';
+import { runAiCompletion } from '@/lib/ai-provider';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,9 +47,7 @@ async function fetchModelAnswer(input: {
   context: string;
   sessionHistory: Array<{ role: 'user' | 'assistant'; text: string }>;
 }): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-  if (!apiKey) {
+  if (!process.env.AI_API_KEY && !process.env.OPENAI_API_KEY) {
     return fallbackAnswer(input.question, input.context);
   }
 
@@ -57,34 +56,19 @@ async function fetchModelAnswer(input: {
     .map((entry) => `${entry.role.toUpperCase()}: ${entry.text}`)
     .join('\n');
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: 'system',
-          content: `You are an operations copilot for role ${input.role}. Keep responses concise, concrete, and action-oriented. Context: ${input.context}`,
-        },
-        {
-          role: 'user',
-          content: `Conversation:\n${historyLines || '(none)'}\n\nUser question: ${input.question}`,
-        },
-      ],
-      max_output_tokens: 500,
-    }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || 'OpenAI request failed');
-  }
-
-  const answer = String(payload?.output_text || '').trim();
+  const answer = await runAiCompletion(
+    [
+      {
+        role: 'system',
+        content: `You are an operations copilot for role ${input.role}. Keep responses concise, concrete, and action-oriented. Context: ${input.context}`,
+      },
+      {
+        role: 'user',
+        content: `Conversation:\n${historyLines || '(none)'}\n\nUser question: ${input.question}`,
+      },
+    ],
+    500,
+  );
   return answer || fallbackAnswer(input.question, input.context);
 }
 
@@ -132,7 +116,12 @@ export async function POST(req: NextRequest) {
         roleKey: roleContext.roleKey,
         actorEmail: roleContext.actorEmail,
         entityType: 'ai',
-        payload: { role, questionLength: question.length, usedOpenAi: Boolean(process.env.OPENAI_API_KEY) },
+        payload: {
+          role,
+          questionLength: question.length,
+          usedAiProvider: (process.env.AI_PROVIDER || 'openai'),
+          usedOpenAiKey: Boolean(process.env.OPENAI_API_KEY || process.env.AI_API_KEY),
+        },
       });
     }
 

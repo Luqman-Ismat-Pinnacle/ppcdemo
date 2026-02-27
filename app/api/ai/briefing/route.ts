@@ -7,6 +7,7 @@ import { getPool } from '@/lib/postgres';
 import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
 import { writeWorkflowAudit } from '@/lib/workflow-audit';
 import { buildRoleContext } from '@/lib/ai-context';
+import { runAiCompletion } from '@/lib/ai-provider';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,41 +35,24 @@ function streamText(text: string): ReadableStream<Uint8Array> {
 
 async function buildBriefing(role: string, employeeId?: string | null): Promise<string> {
   const context = await buildRoleContext(role, { employeeId });
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-
-  if (!apiKey) {
+  if (!process.env.AI_API_KEY && !process.env.OPENAI_API_KEY) {
     return `Daily briefing for ${role}: prioritize highest-risk items first. ${context}`;
   }
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        {
-          role: 'system',
-          content: 'You are an operations briefing assistant. Give a concise, actionable briefing in 4-6 bullets.',
-        },
-        {
-          role: 'user',
-          content: `Generate today brief for role ${role}. Use context: ${context}`,
-        },
-      ],
-      max_output_tokens: 380,
-    }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || 'OpenAI request failed');
-  }
-
-  return String(payload?.output_text || '').trim() || `Daily briefing for ${role}: ${context}`;
+  const output = await runAiCompletion(
+    [
+      {
+        role: 'system',
+        content: 'You are an operations briefing assistant. Give a concise, actionable briefing in 4-6 bullets.',
+      },
+      {
+        role: 'user',
+        content: `Generate today brief for role ${role}. Use context: ${context}`,
+      },
+    ],
+    380,
+  );
+  return output || `Daily briefing for ${role}: ${context}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -94,7 +78,12 @@ export async function POST(req: NextRequest) {
         roleKey: roleContext.roleKey,
         actorEmail: roleContext.actorEmail,
         entityType: 'ai',
-        payload: { role, employeeId: employeeId || null, usedOpenAi: Boolean(process.env.OPENAI_API_KEY) },
+        payload: {
+          role,
+          employeeId: employeeId || null,
+          usedAiProvider: (process.env.AI_PROVIDER || 'openai'),
+          usedOpenAiKey: Boolean(process.env.OPENAI_API_KEY || process.env.AI_API_KEY),
+        },
       });
     }
 

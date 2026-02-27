@@ -34,15 +34,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const timeframe = (searchParams.get('timeframe') || 'current') as 'current' | 'past' | 'future';
     const iterationId = searchParams.get('iterationId');
+    const team = searchParams.get('team');
+    const scopedConfig = team ? { ...config, team } : config;
 
     if (iterationId) {
-      log('Fetching work items for iteration', { iterationId: iterationId.slice(0, 50) });
-      const workItems = await getSprintWorkItems(config, iterationId);
+      log('Fetching work items for iteration', { iterationId: iterationId.slice(0, 50), team: scopedConfig.team });
+      const workItems = await getSprintWorkItems(scopedConfig, iterationId);
       log('Work items fetched', { count: workItems.workItems?.length ?? 0 });
       return NextResponse.json({ workItems: workItems.workItems || [] });
     } else {
-      log('Fetching iterations', { timeframe });
-      const iterations = await getIterations(config, timeframe);
+      log('Fetching iterations', { timeframe, team: scopedConfig.team });
+      const iterations = await getIterations(scopedConfig, timeframe);
       log('Iterations fetched', { count: iterations.value?.length ?? 0 });
       return NextResponse.json({ iterations: iterations.value || [] });
     }
