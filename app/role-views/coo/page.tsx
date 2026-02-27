@@ -104,6 +104,16 @@ export default function CooRoleViewPage() {
             />
           </CommandCenterSection>
         </div>
+
+        <CommandCenterSection title="COO Data Flow">
+          <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+            <div>1. Core portfolio baseline comes from shared summary aggregates (`projects`, `tasks`, `hour_entries`, `commitments`, `alert_events`).</div>
+            <div>2. Decision queue is sourced directly from open `alert_events` and ordered by severity then age.</div>
+            <div>3. Top movers prefer `project_health`; if missing, fallback health is computed from `projects` (`cpi`, `spi`, `percent_complete`).</div>
+            <div>4. Senior manager rows are driven from `workflow_audit_log` operational activity.</div>
+            <div>5. `computedAt` indicates summary freshness for this render.</div>
+          </div>
+        </CommandCenterSection>
       </div>
     </RoleWorkstationShell>
   );

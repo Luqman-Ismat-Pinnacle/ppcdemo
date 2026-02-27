@@ -21,7 +21,7 @@ export default function RoleWorkstationShell({
 }: {
   role: RoleViewKey;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
   requiredTier?: RoleEnhanceTier;
@@ -43,7 +43,7 @@ export default function RoleWorkstationShell({
             {title}
           </div>
           <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.45rem' }}>{greeting}, {firstName}</h1>
-          <div style={{ marginTop: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{contextLine} · {subtitle}</div>
+          <div style={{ marginTop: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{contextLine}</div>
         </div>
       </div>
       <RoleContextStrip role={role} />

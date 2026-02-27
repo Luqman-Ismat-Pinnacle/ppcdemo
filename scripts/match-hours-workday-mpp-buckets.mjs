@@ -50,6 +50,13 @@ function hasFlag(flag) {
   return process.argv.includes(flag);
 }
 
+function deriveTaskFromDescription(description) {
+  const text = String(description || '');
+  if (!text.includes('>')) return '';
+  const parts = text.split('>').map((p) => p.trim()).filter(Boolean);
+  return parts.length >= 3 ? parts[2] : parts[parts.length - 1] || '';
+}
+
 function normalize(v) {
   return String(v || '')
     .toLowerCase()
@@ -136,7 +143,7 @@ async function main() {
 
     const [hoursRes, wpRes, tasksRes, phasesRes, unitsRes] = await Promise.all([
       client.query(
-        `SELECT h.id, h.project_id, h.phase_id, h.task_id, h.phases, h.task, h.workday_phase_id, h.workday_phase,
+        `SELECT h.id, h.project_id, h.phase_id, h.task_id, h.phases, h.task, h.description, h.workday_phase_id, h.workday_phase,
                 h.mpp_task_phase, h.mpp_phase_unit
            FROM hour_entries h
            ${whereSql}`,
@@ -170,20 +177,26 @@ async function main() {
 
     const unitsById = new Map(unitsRes.rows.map((u) => [String(u.id), String(u.name || '')]));
     const wpsByProject = new Map();
+    const wpByNormByProject = new Map();
     const tasksByProject = new Map();
     const phasesByProject = new Map();
     const taskById = new Map();
     const phaseById = new Map();
+    const learnedTaskByProjectText = new Map();
+    const learnedPhaseByProjectText = new Map();
 
     for (const wp of wpRes.rows) {
       const pid = String(wp.project_id || '');
       if (!wpsByProject.has(pid)) wpsByProject.set(pid, []);
+      if (!wpByNormByProject.has(pid)) wpByNormByProject.set(pid, new Map());
       wpsByProject.get(pid).push({
         id: String(wp.id),
         name: String(wp.name || ''),
         unit: String(wp.unit || ''),
         normName: normalize(wp.name),
       });
+      const norm = normalize(wp.name);
+      if (norm) wpByNormByProject.get(pid).set(norm, String(wp.id));
     }
 
     for (const t of tasksRes.rows) {
@@ -237,6 +250,17 @@ async function main() {
       }
     }
 
+    // Learn project-local text -> task/phase mapping from already-mapped hour entries.
+    for (const h of hoursRes.rows) {
+      const pid = String(h.project_id || '');
+      if (!learnedTaskByProjectText.has(pid)) learnedTaskByProjectText.set(pid, new Map());
+      if (!learnedPhaseByProjectText.has(pid)) learnedPhaseByProjectText.set(pid, new Map());
+      const taskText = normalize(h.task || deriveTaskFromDescription(h.description));
+      const phaseText = normalize(h.phases);
+      if (taskText && h.task_id) learnedTaskByProjectText.get(pid).set(taskText, String(h.task_id));
+      if (phaseText && h.phase_id) learnedPhaseByProjectText.get(pid).set(phaseText, String(h.phase_id));
+    }
+
     const projectMode = new Map();
     const projectIds = new Set([
       ...tasksByProject.keys(),
@@ -256,6 +280,7 @@ async function main() {
       gate2: 0,
       gate3: 0,
       gate4: 0,
+      gate5: 0,
       withWorkdayPhaseBefore: 0,
       withWorkdayPhaseAfter: 0,
       withTaskMapBefore: 0,
@@ -315,13 +340,36 @@ async function main() {
       const primary = mode.startsWith('tasks') ? taskCandidates : phaseCandidates;
       const fallback = mode.startsWith('tasks') ? phaseCandidates : taskCandidates;
       const taskText = String(h.task || '').trim();
+      const taskTextFromDescription = deriveTaskFromDescription(h.description);
       const phaseText = String(h.phases || '').trim();
-      const preferText = taskText || phaseText;
+      const preferText = taskText || taskTextFromDescription || phaseText;
 
       let selectedKind = null;
       let selected = null;
 
-      if (preferText) {
+      // Gate 5: learned project-local direct text reuse.
+      const learnedTasks = learnedTaskByProjectText.get(pid) || new Map();
+      const learnedPhases = learnedPhaseByProjectText.get(pid) || new Map();
+      const learnedTaskId = learnedTasks.get(normalize(preferText));
+      const learnedPhaseId = learnedPhases.get(normalize(phaseText));
+      if (!selected && learnedTaskId) {
+        const lt = taskById.get(learnedTaskId);
+        if (lt) {
+          selected = lt;
+          selectedKind = 'task';
+          stats.gate5 += 1;
+        }
+      }
+      if (!selected && learnedPhaseId) {
+        const lp = phaseById.get(learnedPhaseId);
+        if (lp) {
+          selected = lp;
+          selectedKind = 'phase';
+          stats.gate5 += 1;
+        }
+      }
+
+      if (!selected && preferText) {
         const pBest = chooseBest(preferText, primary, MIN_SCORE_FUZZY);
         const fBest = chooseBest(preferText, fallback, MIN_SCORE_FUZZY);
         if (pBest && (!fBest || pBest.score >= fBest.score)) {
@@ -360,6 +408,16 @@ async function main() {
       }
 
       // Gate 3: MPP task/phase bucket -> workday phase
+      if (!next.workday_phase_id && workdayCandidates.length > 0) {
+        const wpByNorm = wpByNormByProject.get(pid) || new Map();
+        const exact = wpByNorm.get(normalize(phaseText));
+        if (exact) {
+          next.workday_phase_id = exact;
+          const wp = workdayCandidates.find((x) => x.id === exact);
+          next.workday_phase = wp?.name || next.workday_phase;
+          stats.gate1 += 1;
+        }
+      }
       if (!next.workday_phase_id && workdayCandidates.length > 0) {
         const bucketText = next.mpp_phase_unit || next.mpp_task_phase || phaseText;
         const g3 = chooseBest(bucketText, workdayCandidates, MIN_SCORE_FUZZY);
@@ -485,6 +543,7 @@ async function main() {
     console.log(`[Buckets] gate2_hour_to_mpp=${stats.gate2}`);
     console.log(`[Buckets] gate3_mpp_to_workday=${stats.gate3}`);
     console.log(`[Buckets] gate4_bucket_fill=${stats.gate4}`);
+    console.log(`[Buckets] gate5_learned_text_reuse=${stats.gate5}`);
     console.log(`[Buckets] workday_phase mapped: ${stats.withWorkdayPhaseBefore} -> ${stats.withWorkdayPhaseAfter}`);
     console.log(`[Buckets] mpp task/phase mapped: ${stats.withTaskMapBefore} -> ${stats.withTaskMapAfter}`);
   } catch (error) {
