@@ -61,6 +61,9 @@ type CooSummary = {
 export default function CooRoleViewPage() {
   const [payload, setPayload] = useState<CooSummary | null>(null);
   const { filteredData } = useData();
+  const [expandedPeriodRowId, setExpandedPeriodRowId] = useState<string | null>(null);
+  const [wbsSortKey, setWbsSortKey] = useState<'project' | 'schedule' | 'baseline' | 'maintenance' | 'docs' | 'overall'>('overall');
+  const [wbsSortDir, setWbsSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     let cancelled = false;
@@ -74,16 +77,9 @@ export default function CooRoleViewPage() {
   }, []);
 
   const wbsHealthRows = useMemo(() => {
-    const items = (filteredData.wbsData?.items || []) as any[];
     const projects = (filteredData.projects || []) as any[];
     const milestones = (filteredData.milestones || []) as any[];
     const deliverables = (filteredData.deliverables || []) as any[];
-
-    const projectById = new Map<string, any>();
-    projects.forEach((p: any) => {
-      const id = String(p.id || p.projectId || '');
-      if (id) projectById.set(id, p);
-    });
 
     const milestonesByProject = new Map<string, any[]>();
     milestones.forEach((m: any) => {
@@ -102,11 +98,11 @@ export default function CooRoleViewPage() {
     });
 
     type Row = {
-      id: string;
+      projectId: string;
       name: string;
-      level: number;
       schedulePct: number;
       baselineHours: number;
+      actualHours: number;
       maintenancePct: number;
       scheduleHealth: 'good' | 'warning' | 'bad';
       costHealth: 'good' | 'warning' | 'bad';
@@ -116,74 +112,138 @@ export default function CooRoleViewPage() {
 
     const rows: Row[] = [];
 
-    const walk = (list: any[], level: number) => {
-      list.forEach((node: any) => {
-        const type = String(node.type || node.itemType || '').toLowerCase();
-        const id = String(node.id || '');
-        const name = String(node.name || '');
+    projects.forEach((project: any) => {
+      const projectId = String(project.id || project.projectId || '');
+      const name = String(project.name || project.projectName || projectId || 'Unnamed project');
+      if (!projectId) return;
 
-        if (type === 'project' && id.startsWith('wbs-project-')) {
-          const projectId = id.replace(/^wbs-project-/i, '');
-          const project = projectById.get(projectId);
-          if (project) {
-            const baselineHours = Number(project.baselineHours ?? project.baseline_hours ?? 0) || 0;
-            const actualHours = Number(project.actualHours ?? project.actual_hours ?? 0) || 0;
-            const percentComplete = Number(project.percentComplete ?? project.percent_complete ?? 0) || 0;
+      const baselineHours = Number(project.baselineHours ?? project.baseline_hours ?? 0) || 0;
+      const actualHours = Number(project.actualHours ?? project.actual_hours ?? 0) || 0;
+      const percentComplete = Number(project.percentComplete ?? project.percent_complete ?? 0) || 0;
 
-            const projectMilestones = milestonesByProject.get(projectId) || [];
-            const lateMilestones = projectMilestones.filter((m) => Number(m.varianceDays || 0) > 0);
-            const scheduleHealth: Row['scheduleHealth'] =
-              lateMilestones.length === 0 ? 'good' : percentComplete >= 80 ? 'warning' : 'bad';
+      const projectMilestones = milestonesByProject.get(projectId) || [];
+      const lateMilestones = projectMilestones.filter((m) => Number(m.varianceDays || 0) > 0);
+      const scheduleHealth: Row['scheduleHealth'] =
+        lateMilestones.length === 0 ? 'good' : percentComplete >= 80 ? 'warning' : 'bad';
 
-            const cpi = Number(project.cpi ?? 1);
-            const costHealth: Row['costHealth'] =
-              cpi >= 1 ? 'good' : cpi >= 0.9 ? 'warning' : 'bad';
+      const cpi = Number(project.cpi ?? 1);
+      const costHealth: Row['costHealth'] =
+        cpi >= 1 ? 'good' : cpi >= 0.9 ? 'warning' : 'bad';
 
-            const projectDeliverables = deliverablesByProject.get(projectId) || [];
-            const approvedDocs = projectDeliverables.filter((d) => {
-              const status = String(d.status || d.drdStatus || '').toLowerCase();
-              return status.includes('approved') || status.includes('signed') || status.includes('complete');
-            }).length;
-            const docsPct =
-              projectDeliverables.length > 0
-                ? (approvedDocs / projectDeliverables.length) * 100
-                : 0;
+      const projectDeliverables = deliverablesByProject.get(projectId) || [];
+      const approvedDocs = projectDeliverables.filter((d) => {
+        const status = String(d.status || d.drdStatus || '').toLowerCase();
+        return status.includes('approved') || status.includes('signed') || status.includes('complete');
+      }).length;
+      const docsPct =
+        projectDeliverables.length > 0
+          ? (approvedDocs / projectDeliverables.length) * 100
+          : 0;
 
-            const maintenanceHours = 0; // placeholder – maintenance tagging not yet wired
-            const maintenancePct =
-              baselineHours > 0 ? (maintenanceHours / baselineHours) * 100 : 0;
+      const maintenanceHours = 0; // placeholder – maintenance tagging not yet wired
+      const maintenancePct =
+        baselineHours > 0 ? (maintenanceHours / baselineHours) * 100 : 0;
 
-            const scheduleScore = scheduleHealth === 'good' ? 100 : scheduleHealth === 'warning' ? 60 : 30;
-            const costScore = costHealth === 'good' ? 100 : costHealth === 'warning' ? 60 : 30;
-            const docsScore = docsPct;
-            const maintenanceScore = 100 - Math.min(maintenancePct, 100);
-            const overallCompliance =
-              (scheduleScore + costScore + docsScore + maintenanceScore) / 4;
+      const scheduleScore = scheduleHealth === 'good' ? 100 : scheduleHealth === 'warning' ? 60 : 30;
+      const costScore = costHealth === 'good' ? 100 : costHealth === 'warning' ? 60 : 30;
+      const docsScore = docsPct;
+      const maintenanceScore = 100 - Math.min(maintenancePct, 100);
+      const overallCompliance =
+        (scheduleScore + costScore + docsScore + maintenanceScore) / 4;
 
-            rows.push({
-              id,
-              name,
-              level,
-              schedulePct: percentComplete,
-              baselineHours,
-              maintenancePct,
-              scheduleHealth,
-              costHealth,
-              docsPct,
-              overallCompliance,
-            });
-          }
-        }
+      if (baselineHours === 0 && actualHours === 0 && docsPct === 0) return;
 
-        if (Array.isArray(node.children) && node.children.length) {
-          walk(node.children, level + 1);
-        }
+      rows.push({
+        projectId,
+        name,
+        schedulePct: percentComplete,
+        baselineHours,
+        actualHours,
+        maintenancePct,
+        scheduleHealth,
+        costHealth,
+        docsPct,
+        overallCompliance,
       });
-    };
+    });
 
-    walk(items, 0);
     return rows;
   }, [filteredData]);
+
+  const sortedWbsRows = useMemo(() => {
+    const rows = [...wbsHealthRows];
+    const dir = wbsSortDir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      switch (wbsSortKey) {
+        case 'project':
+          return a.name.localeCompare(b.name) * dir;
+        case 'schedule':
+          return (a.schedulePct - b.schedulePct) * dir;
+        case 'baseline':
+          return (a.baselineHours - b.baselineHours) * dir;
+        case 'maintenance':
+          return (a.maintenancePct - b.maintenancePct) * dir;
+        case 'docs':
+          return (a.docsPct - b.docsPct) * dir;
+        case 'overall':
+        default:
+          return (a.overallCompliance - b.overallCompliance) * dir;
+      }
+    });
+    return rows;
+  }, [wbsHealthRows, wbsSortKey, wbsSortDir]);
+
+  const milestoneBuckets = useMemo(() => {
+    const rows = [
+      ...(filteredData.milestones || []),
+      ...(filteredData.milestonesTable || []),
+    ] as any[];
+
+    const buckets = {
+      completedOnTime: 0,
+      completedDelayed: 0,
+      inProgressForecastedOnTime: 0,
+      inProgressForecastedDelayed: 0,
+      notStartedForecastedOnTime: 0,
+      notStartedForecastedDelayed: 0,
+    };
+
+    rows.forEach((m) => {
+      const status = String(m.status || '').toLowerCase();
+      const pct = Number(m.percentComplete || m.percent_complete || 0);
+      const varianceDays = Number(m.varianceDays || m.variance_days || 0);
+      const delayed = varianceDays > 0;
+      const isCompleted = status.includes('complete') || pct >= 100;
+      const isNotStarted = status.includes('not') || pct === 0;
+
+      if (isCompleted) {
+        if (delayed) buckets.completedDelayed += 1;
+        else buckets.completedOnTime += 1;
+      } else if (isNotStarted) {
+        if (delayed) buckets.notStartedForecastedDelayed += 1;
+        else buckets.notStartedForecastedOnTime += 1;
+      } else {
+        if (delayed) buckets.inProgressForecastedDelayed += 1;
+        else buckets.inProgressForecastedOnTime += 1;
+      }
+    });
+
+    return buckets;
+  }, [filteredData.milestones, filteredData.milestonesTable]);
+
+  const periodRows = useMemo(() => {
+    if (!payload) return [];
+    const portfolioHealth = payload.sections.topThree.portfolioHealth ?? 0;
+    return (payload.sections.periodPerformance.topMovers || []).map((row, index) => {
+      const delta = (row.health ?? 0) - portfolioHealth;
+      return {
+        id: `${row.name}-${index}`,
+        name: row.name,
+        health: row.health,
+        deltaVsPortfolio: delta,
+      };
+    });
+  }, [payload]);
 
   return (
     <RoleWorkstationShell role="coo" title="COO Command Center" subtitle="Executive decision surface for portfolio health, commitments, and escalations.">
@@ -256,18 +316,129 @@ export default function CooRoleViewPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
           <CommandCenterSection title="Period Performance">
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <div style={{ fontSize: '0.74rem' }}>Task completion rate: {payload?.sections.periodPerformance.completionRate || 0}%</div>
-              <div style={{ fontSize: '0.74rem' }}>Open commitments: {payload?.sections.periodPerformance.openCommitments || 0}</div>
-              <OffenderList
-                rows={(payload?.sections.periodPerformance.topMovers || []).map((row, index) => ({
-                  id: `${row.name}-${index}`,
-                  label: row.name,
-                  value: `Health ${row.health}`,
-                }))}
-                empty="No project movers."
-              />
-            </div>
+            {payload ? (
+              <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.78rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ padding: '0.45rem 0.65rem', borderRadius: 999, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', minWidth: 160 }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Task Completion Rate</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>
+                      {payload.sections.periodPerformance.completionRate.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.45rem 0.65rem', borderRadius: 999, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', minWidth: 160 }}>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Open Commitments</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>
+                      {payload.sections.periodPerformance.openCommitments}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                  Variance in health is calculated as **project health – portfolio health**, highlighting the biggest movers for this period.
+                </div>
+
+                <div style={{ borderRadius: 10, border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 0.9fr 0.8fr', gap: 4, padding: '0.4rem 0.6rem', fontSize: '0.7rem', background: 'var(--bg-secondary)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    <span>Project / Unit</span>
+                    <span style={{ textAlign: 'right' }}>Health</span>
+                    <span style={{ textAlign: 'right' }}>Δ vs portfolio</span>
+                    <span />
+                  </div>
+                  {periodRows.length === 0 ? (
+                    <div style={{ padding: '0.5rem 0.6rem', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      No movers for this period.
+                    </div>
+                  ) : (
+                    periodRows.map((row) => {
+                      const positive = row.deltaVsPortfolio > 0;
+                      const neutral = row.deltaVsPortfolio === 0;
+                      const deltaColor = neutral
+                        ? 'var(--text-muted)'
+                        : positive
+                          ? '#22C55E'
+                          : '#EF4444';
+                      return (
+                        <div
+                          key={row.id}
+                          style={{
+                            borderTop: '1px solid rgba(148,163,184,0.25)',
+                            background:
+                              expandedPeriodRowId === row.id ? 'rgba(15,23,42,0.85)' : 'transparent',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedPeriodRowId(
+                                expandedPeriodRowId === row.id ? null : row.id,
+                              )
+                            }
+                            style={{
+                              width: '100%',
+                              padding: '0.4rem 0.6rem',
+                              display: 'grid',
+                              gridTemplateColumns: '2fr 0.7fr 0.9fr 0.8fr',
+                              gap: 4,
+                              alignItems: 'center',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontSize: '0.76rem',
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                              {row.name}
+                            </span>
+                            <span style={{ textAlign: 'right' }}>{row.health.toFixed(1)}</span>
+                            <span
+                              style={{ textAlign: 'right', color: deltaColor }}
+                              title="Project health – portfolio health for this period"
+                            >
+                              {row.deltaVsPortfolio > 0 ? '+' : ''}
+                              {row.deltaVsPortfolio.toFixed(1)} pts
+                            </span>
+                            <span style={{ textAlign: 'right', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                              {expandedPeriodRowId === row.id ? 'Hide details' : 'Show details'}
+                            </span>
+                          </button>
+                          {expandedPeriodRowId === row.id && (
+                            <div
+                              style={{
+                                padding: '0.35rem 0.8rem 0.65rem',
+                                fontSize: '0.72rem',
+                                color: 'var(--text-secondary)',
+                                background: 'rgba(15,23,42,0.9)',
+                              }}
+                            >
+                              <div style={{ marginBottom: 4 }}>
+                                This row is {Math.abs(row.deltaVsPortfolio).toFixed(1)} pts
+                                {row.deltaVsPortfolio > 0 ? ' above' : row.deltaVsPortfolio < 0 ? ' below' : ' at'}
+                                {' '}portfolio health for this period.
+                              </div>
+                              <a
+                                href="/project-controls/wbs-gantt-v2?lens=coo"
+                                style={{
+                                  fontSize: '0.7rem',
+                                  color: '#38BDF8',
+                                  textDecoration: 'underline',
+                                }}
+                              >
+                                Open WBS Gantt for underlying tasks
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                No period performance data available.
+              </div>
+            )}
           </CommandCenterSection>
 
         </div>
@@ -323,7 +494,7 @@ export default function CooRoleViewPage() {
         </CommandCenterSection>
 
         <CommandCenterSection title="Milestone Status (Portfolio-Wide)">
-          {payload?.sections.commandCenter ? (
+          {Object.values(milestoneBuckets).some((v) => v > 0) ? (
             <div style={{ display: 'grid', gap: '0.45rem', fontSize: '0.78rem' }}>
               {[
                 { key: 'completedOnTime', label: 'Completed On Time', color: '#22C55E' },
@@ -333,7 +504,7 @@ export default function CooRoleViewPage() {
                 { key: 'notStartedForecastedOnTime', label: 'Not Started · Forecasted On Time', color: '#3B82F6' },
                 { key: 'notStartedForecastedDelayed', label: 'Not Started · Forecasted Delayed', color: '#A855F7' },
               ].map((bucket) => {
-                const value = payload.sections.commandCenter.milestoneStatus[bucket.key as keyof typeof payload.sections.commandCenter.milestoneStatus] as number;
+                const value = milestoneBuckets[bucket.key as keyof typeof milestoneBuckets] as number;
                 return (
                   <div key={bucket.key} style={{ display: 'grid', gap: 3 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -355,40 +526,153 @@ export default function CooRoleViewPage() {
               })}
             </div>
           ) : (
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No milestone status summary available.</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No milestone status summary available for the current scope.</div>
           )}
         </CommandCenterSection>
 
         <CommandCenterSection title="WBS Health by Project">
-          {wbsHealthRows.length === 0 ? (
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No WBS / project health data available.</div>
+          {sortedWbsRows.length === 0 ? (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No WBS / project health data available for the current scope.</div>
           ) : (
             <div style={{ maxHeight: 380, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
-                    <th style={{ padding: '0.4rem 0.5rem' }}>Project</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Schedule</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Baseline</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Maintenance</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>Schedule Health</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>Cost Health</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Documents</th>
-                    <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>Overall Compliance</th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', cursor: 'pointer' }}
+                      onClick={() =>
+                        setWbsSortKey((prev) => {
+                          if (prev === 'project') {
+                            setWbsSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            return prev;
+                          }
+                          setWbsSortDir('asc');
+                          return 'project';
+                        })
+                      }
+                    >
+                      Project
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'right', cursor: 'pointer' }}
+                      title="Project percent complete aggregated from tasks and milestones."
+                      onClick={() =>
+                        setWbsSortKey((prev) => {
+                          if (prev === 'schedule') {
+                            setWbsSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            return prev;
+                          }
+                          setWbsSortDir('desc');
+                          return 'schedule';
+                        })
+                      }
+                    >
+                      Schedule
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'right', cursor: 'pointer' }}
+                      title="Baseline hours (planned effort) at project level."
+                      onClick={() =>
+                        setWbsSortKey((prev) => {
+                          if (prev === 'baseline') {
+                            setWbsSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            return prev;
+                          }
+                          setWbsSortDir('desc');
+                          return 'baseline';
+                        })
+                      }
+                    >
+                      Baseline
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'right', cursor: 'pointer' }}
+                      title="Share of hours tagged as maintenance (placeholder until maintenance tagging is wired)."
+                      onClick={() =>
+                        setWbsSortKey((prev) => {
+                          if (prev === 'maintenance') {
+                            setWbsSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            return prev;
+                          }
+                          setWbsSortDir('desc');
+                          return 'maintenance';
+                        })
+                      }
+                    >
+                      Maintenance
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}
+                      title="Traffic-light classification based on milestone delay and percent complete."
+                    >
+                      Schedule Health
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}
+                      title="Traffic-light classification based on CPI (cost performance index)."
+                    >
+                      Cost Health
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'right', cursor: 'pointer' }}
+                      title="Percent of deliverables in an approved / signed / complete status."
+                      onClick={() =>
+                        setWbsSortKey((prev) => {
+                          if (prev === 'docs') {
+                            setWbsSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            return prev;
+                          }
+                          setWbsSortDir('desc');
+                          return 'docs';
+                        })
+                      }
+                    >
+                      Documents
+                    </th>
+                    <th
+                      style={{ padding: '0.4rem 0.5rem', textAlign: 'right', cursor: 'pointer' }}
+                      title="Simple average of schedule, cost, documents, and maintenance sub-scores."
+                      onClick={() =>
+                        setWbsSortKey((prev) => {
+                          if (prev === 'overall') {
+                            setWbsSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+                            return prev;
+                          }
+                          setWbsSortDir('desc');
+                          return 'overall';
+                        })
+                      }
+                    >
+                      Overall Compliance
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {wbsHealthRows.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid rgba(148,163,184,0.25)' }}>
+                  {sortedWbsRows.map((row) => (
+                    <tr
+                      key={row.projectId}
+                      style={{ borderBottom: '1px solid rgba(148,163,184,0.25)', cursor: 'pointer' }}
+                      onClick={() => {
+                        window.open(`/project-controls/wbs-gantt-v2?lens=coo&project=${encodeURIComponent(row.projectId)}`, '_blank');
+                      }}
+                    >
                       <td style={{ padding: '0.35rem 0.5rem' }}>
-                        <span style={{ paddingLeft: `${row.level * 12}px` }}>{row.name}</span>
-                      </td>
-                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>{row.schedulePct.toFixed(0)}%</td>
-                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
-                        {Math.round(row.baselineHours).toLocaleString()}h
+                        <span>{row.name}</span>
                       </td>
                       <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
-                        {row.maintenancePct.toFixed(1)}%
+                        <span title="Project percent complete aggregated from tasks and milestones.">
+                          {row.schedulePct.toFixed(0)}%
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
+                        <span title="Baseline (planned) hours at project level.">
+                          {Math.round(row.baselineHours).toLocaleString()}h
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
+                        <span title="Share of hours tagged as maintenance (placeholder until maintenance tagging is wired).">
+                          {row.maintenancePct.toFixed(1)}%
+                        </span>
                       </td>
                       <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center' }}>
                         <span
@@ -475,20 +759,22 @@ export default function CooRoleViewPage() {
                         </span>
                       </td>
                       <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
-                        {row.docsPct.toFixed(0)}%
+                        <span title="Percent of deliverables in an approved / signed / complete status.">
+                          {row.docsPct.toFixed(0)}%
+                        </span>
                       </td>
                       <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right' }}>
-                        {row.overallCompliance.toFixed(0)}%
+                        <span title="Simple average of schedule, cost, documents, and maintenance sub-scores.">
+                          {row.overallCompliance.toFixed(0)}%
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                Schedule = project percent complete; Baseline = planned hours; Maintenance = share of
-                hours tagged as maintenance (placeholder); Schedule &amp; Cost Health are traffic‑light
-                categories; Documents = % of deliverables approved/signed; Overall Compliance is the
-                simple average of these sub‑scores.
+                Hover or tap each metric for its calculation. Click a row to open the project in WBS
+                Gantt (COO lens).
               </div>
             </div>
           )}

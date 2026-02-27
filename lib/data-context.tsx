@@ -905,6 +905,35 @@ export function DataProvider({ children }: DataProviderProps) {
         filtered.qctasks = ((filtered.qctasks || []) as any[]).filter(matchesEmployee);
       }
     }
+
+    // =========================================================================
+    // COO ROLE FILTERING
+    // Limit COO views to employees and hours for department "1111 Services".
+    // =========================================================================
+    if (activeRole.key === 'coo') {
+      const allEmployees = (filtered.employees || []) as any[];
+      const allowedEmployees = allEmployees.filter((emp: any) => {
+        const dept = String(emp.department || '').trim().toLowerCase();
+        return dept === '1111 services';
+      });
+
+      const allowedEmployeeIds = new Set(
+        allowedEmployees
+          .map((emp: any) => String(emp.id || emp.employeeId || emp.employee_id || '').trim())
+          .filter(Boolean),
+      );
+
+      if (filtered.employees) {
+        filtered.employees = allowedEmployees as any;
+      }
+
+      if (filtered.hours && allowedEmployeeIds.size > 0) {
+        filtered.hours = (filtered.hours as any[]).filter((h: any) => {
+          const eid = String(h.employeeId ?? h.employee_id ?? '').trim();
+          return eid && allowedEmployeeIds.has(eid);
+        });
+      }
+    }
     if (filtered.snapshots) {
       filtered.snapshots = (filtered.snapshots as any[]).filter((snap: any) => {
         if (!snap || snap.scope === 'all') return true;
