@@ -81,7 +81,10 @@ export default function QualityHoursChart({
       grid: { left: 120, right: 60, top: 16, bottom: 24, containLabel: true },
       xAxis: {
         type: 'value',
-        axisLine: { show: false },
+        min: 0,
+        show: true,
+        axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.12)' } },
+        axisTick: { show: false },
         axisLabel: {
           color: 'rgba(255,255,255,0.6)',
           fontSize: 10,

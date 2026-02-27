@@ -760,7 +760,7 @@ function HoursVarianceWaterfall({ projectBreakdown, tasks }: { projectBreakdown:
 /*  5. PREDICTIVE BURN — Enhanced confidence band + rich tooltips       */
 /* ================================================================== */
 
-function PredictiveBurn({ portfolio }: { portfolio: any }) {
+function PredictiveBurn({ portfolio, metricsHistory = [] }: { portfolio: any; metricsHistory?: Array<{ recordedDate?: string; actualHours?: number }> }) {
   const [cpiOverride, setCpiOverride] = useState<string>('');
   const [projectionMonths, setProjectionMonths] = useState(6);
   const [confidenceWidth, setConfidenceWidth] = useState(20);
@@ -775,14 +775,35 @@ function PredictiveBurn({ portfolio }: { portfolio: any }) {
     const cpi = effectiveCpi > 0 ? effectiveCpi : 1;
     const todayIdx = 11;
     const baseline = months.map((_, i) => Math.round(totalBl * Math.min(1, (i + 1) / (totalMonths - 2))));
-    const actual: (number | null)[] = months.map((_, i) => i > todayIdx ? null : Math.round(totalAc * ((i + 1) / (todayIdx + 1))));
+    const actual: (number | null)[] = months.map((_, i) => i > todayIdx ? null : null);
+    if (metricsHistory && metricsHistory.length > 0) {
+      const sorted = [...metricsHistory].sort((a, b) => (a.recordedDate || (a as any).recorded_date || '').localeCompare(b.recordedDate || (b as any).recorded_date || ''));
+      const now = new Date();
+      let lastIdx = -1;
+      for (const m of sorted) {
+        const dateStr = m.recordedDate || (m as any).recorded_date;
+        const d = dateStr ? new Date(dateStr) : null;
+        if (!d || !Number.isFinite(d.getTime())) continue;
+        const hrs = Number(m.actualHours ?? (m as any).actual_hours) || 0;
+        const monthIdx = (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth()) + 11;
+        if (monthIdx >= 0 && monthIdx < totalMonths && monthIdx <= todayIdx) {
+          for (let j = lastIdx + 1; j < monthIdx; j++) actual[j] = j === 0 ? 0 : actual[j - 1];
+          actual[monthIdx] = Math.round(hrs);
+          lastIdx = monthIdx;
+        }
+      }
+      for (let j = lastIdx + 1; j <= todayIdx; j++) actual[j] = lastIdx >= 0 ? actual[lastIdx] : Math.round(totalAc * ((j + 1) / (todayIdx + 1)));
+    } else {
+      for (let i = 0; i <= todayIdx; i++) actual[i] = Math.round(totalAc * ((i + 1) / (todayIdx + 1)));
+    }
+    const currentAc = (actual[todayIdx] != null ? actual[todayIdx]! : totalAc);
     const projectedFinish = cpi > 0 ? Math.round(totalBl / cpi) : totalBl * 1.5;
-    const projected: (number | null)[] = months.map((_, i) => { if (i < todayIdx) return null; const rem = projectedFinish - totalAc; return Math.round(totalAc + rem * Math.min(1, (i - todayIdx) / Math.max(1, totalMonths - 1 - todayIdx))); });
+    const projected: (number | null)[] = months.map((_, i) => { if (i < todayIdx) return null; const rem = projectedFinish - currentAc; return Math.round(currentAc + rem * Math.min(1, (i - todayIdx) / Math.max(1, totalMonths - 1 - todayIdx))); });
     const confPct = confidenceWidth / 100;
     const confUpper: (number | null)[] = months.map((_, i) => i < todayIdx ? null : projected[i] != null ? Math.round(projected[i]! * (1 + confPct)) : null);
     const confLower: (number | null)[] = months.map((_, i) => i < todayIdx ? null : projected[i] != null ? Math.round(projected[i]! * (1 - confPct)) : null);
     const overBudget = projectedFinish > totalBl;
-    const variance = totalBl > 0 ? Math.round(((totalAc - totalBl) / totalBl) * 100) : 0;
+    const variance = totalBl > 0 ? Math.round(((currentAc - totalBl) / totalBl) * 100) : 0;
 
     return {
       tooltip: { ...TT, trigger: 'axis', formatter: (params: any) => {
@@ -812,7 +833,7 @@ function PredictiveBurn({ portfolio }: { portfolio: any }) {
       markLine: { silent: true, data: [{ xAxis: todayIdx, lineStyle: { color: C.teal, type: 'solid', width: 2 }, label: { formatter: 'TODAY', color: C.teal, fontSize: 10, fontWeight: 'bold' } }] },
       graphic: [{ type: 'text', right: 35, top: 10, style: { text: overBudget ? `OVERRUN: +${fmtHrs(projectedFinish - totalBl)} hrs (${Math.abs(variance)}% over)` : `ON TRACK — EAC: ${fmtHrs(projectedFinish)} hrs`, fill: overBudget ? C.red : C.green, fontSize: 10, fontWeight: 'bold' } }],
     };
-  }, [portfolio, effectiveCpi, projectionMonths, confidenceWidth]);
+  }, [portfolio, effectiveCpi, projectionMonths, confidenceWidth, metricsHistory]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -1412,7 +1433,7 @@ export default function OverviewV2Page() {
 
           {/* ═══ 5. PREDICTIVE BURN ═══ */}
           <SectionCard title="Predictive Burn" subtitle="Projected hours at completion with configurable CPI, projection range, and confidence interval" badge={<Badge label="Forecast" color={C.green} />}>
-            <PredictiveBurn portfolio={portfolio} />
+            <PredictiveBurn portfolio={portfolio} metricsHistory={metricsHistory} />
           </SectionCard>
 
           {/* ═══ 6. WORKFORCE BURN RATE ═══ */}

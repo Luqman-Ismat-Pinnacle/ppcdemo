@@ -924,7 +924,6 @@ export default function MosPage() {
         </div>
         <div style={{ display: 'inline-flex', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 36 }}>
           <button onClick={() => setTab('dashboard')} style={{ background: tab === 'dashboard' ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: 'none', padding: '0 0.9rem', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>Dashboard</button>
-          <button onClick={() => setTab('qa')} style={{ background: tab === 'qa' ? 'rgba(16,185,129,0.2)' : 'transparent', color: C.text, border: 'none', padding: '0 0.9rem', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>Q&A</button>
         </div>
       </header>
 

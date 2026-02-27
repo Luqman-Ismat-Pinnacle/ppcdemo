@@ -12,6 +12,8 @@ export async function GET() {
     moversRows,
     fallbackMoversRows,
     portfolioRollupRows,
+    projectsRollupRows,
+    hourEntriesRollupRows,
     milestoneBucketsRows,
     efficiencyRows,
   ] = await Promise.all([
@@ -31,9 +33,15 @@ export async function GET() {
        LIMIT 12`,
     ),
     safeRows(
-      `SELECT COALESCE(name, id::text) AS name, COALESCE(health_score, score, 0)::float AS health
-       FROM project_health
-       ORDER BY updated_at DESC NULLS LAST
+      `SELECT COALESCE(p.name, ph.project_id, ph.id::text) AS name, COALESCE(ph.health_score, 0)::float AS health
+       FROM project_health ph
+       LEFT JOIN projects p ON p.id = ph.project_id
+       WHERE ph.project_id IN (
+         SELECT id FROM projects WHERE COALESCE(has_schedule, false) = true
+         UNION
+         SELECT DISTINCT project_id FROM hour_entries WHERE project_id IS NOT NULL
+       )
+       ORDER BY ph.updated_at DESC NULLS LAST
        LIMIT 20`,
     ),
     safeRows(
@@ -50,6 +58,8 @@ export async function GET() {
            0
          )::float AS health
        FROM projects p
+       WHERE COALESCE(p.has_schedule, false) = true
+          OR EXISTS (SELECT 1 FROM hour_entries he WHERE he.project_id = p.id)
        ORDER BY p.updated_at DESC NULLS LAST
        LIMIT 50`,
     ),
@@ -78,6 +88,37 @@ export async function GET() {
          ), 0)::float AS pv_hours
        FROM portfolios
        WHERE COALESCE(is_active, true) = true`,
+    ),
+    safeRows(
+      `SELECT
+         COALESCE(SUM(p.baseline_hours), 0)::float AS baseline_hours,
+         COALESCE(SUM(p.actual_hours), 0)::float AS actual_hours,
+         COALESCE(SUM(p.remaining_hours), 0)::float AS remaining_hours,
+         COALESCE(SUM(p.baseline_hours * COALESCE(p.percent_complete, 0) / 100.0), 0)::float AS ev_hours,
+         COALESCE(SUM(
+           p.baseline_hours *
+           CASE
+             WHEN p.baseline_start_date IS NOT NULL
+               AND p.baseline_end_date IS NOT NULL
+               AND p.baseline_end_date > p.baseline_start_date
+             THEN LEAST(
+               1.0,
+               GREATEST(
+                 0.0,
+                 (DATE_PART('epoch', CURRENT_DATE::timestamp - p.baseline_start_date::timestamp) / 86400.0) /
+                 NULLIF(DATE_PART('epoch', p.baseline_end_date::timestamp - p.baseline_start_date::timestamp) / 86400.0, 0)
+               )
+             )
+             ELSE 0.0
+           END
+         ), 0)::float AS pv_hours
+       FROM projects p
+       WHERE COALESCE(p.is_active, true) = true`,
+    ),
+    safeRows(
+      `SELECT
+         COALESCE(SUM(he.hours), 0)::float AS actual_hours
+       FROM hour_entries he`,
     ),
     safeRows(
       `SELECT
@@ -159,11 +200,13 @@ export async function GET() {
   };
 
   const portfolioRollup = portfolioRollupRows[0] || {};
-  const baselineHours = asNumber(portfolioRollup.baseline_hours);
-  const actualHours = asNumber(portfolioRollup.actual_hours);
-  const remainingHours = asNumber(portfolioRollup.remaining_hours);
-  const evHours = asNumber(portfolioRollup.ev_hours);
-  const pvHours = asNumber(portfolioRollup.pv_hours);
+  const projectsRollup = projectsRollupRows[0] || {};
+  const hourEntriesRollup = hourEntriesRollupRows[0] || {};
+  const baselineHours = asNumber(portfolioRollup.baseline_hours) || asNumber(projectsRollup.baseline_hours);
+  const actualHours = asNumber(portfolioRollup.actual_hours) || asNumber(projectsRollup.actual_hours) || asNumber(hourEntriesRollup.actual_hours);
+  const remainingHours = asNumber(portfolioRollup.remaining_hours) || asNumber(projectsRollup.remaining_hours);
+  const evHours = asNumber(portfolioRollup.ev_hours) || asNumber(projectsRollup.ev_hours);
+  const pvHours = asNumber(portfolioRollup.pv_hours) || asNumber(projectsRollup.pv_hours);
 
   const hoursSummary = buildPeriodHoursSummary([{ baseline: baselineHours, actual: actualHours }]);
   const workingDaysApprox = 10; // Approximate two-week period; refined in period-review API.

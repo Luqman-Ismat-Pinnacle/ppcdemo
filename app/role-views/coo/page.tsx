@@ -63,7 +63,7 @@ export default function CooRoleViewPage() {
   const { filteredData } = useData();
   const [expandedPeriodRowId, setExpandedPeriodRowId] = useState<string | null>(null);
   const [wbsSortKey, setWbsSortKey] = useState<'project' | 'schedule' | 'baseline' | 'maintenance' | 'docs' | 'overall'>('overall');
-  const [wbsSortDir, setWbsSortDir] = useState<'asc' | 'desc'>('desc');
+  const [wbsSortDir, setWbsSortDir] = useState<'asc' | 'desc'>('desc'); // highest to lowest
 
   useEffect(() => {
     let cancelled = false;
