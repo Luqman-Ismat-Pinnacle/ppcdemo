@@ -735,6 +735,19 @@ export default function DataManagementPage() {
     });
   }, []);
 
+  const hasCoreRuntimeRows = useMemo(() => {
+    const projectsCount = Array.isArray(data.projects) ? data.projects.length : 0;
+    const tasksCount = Array.isArray(data.tasks) ? data.tasks.length : 0;
+    const hoursCount = Array.isArray(data.hours) ? data.hours.length : 0;
+    return projectsCount > 0 || tasksCount > 0 || hoursCount > 0;
+  }, [data.projects, data.tasks, data.hours]);
+
+  useEffect(() => {
+    if (contextLoading) return;
+    if (hasCoreRuntimeRows) return;
+    void refreshData();
+  }, [contextLoading, hasCoreRuntimeRows, refreshData]);
+
   useEffect(() => {
     if (currentUserName !== 'System' && snapshotCreatedBy === 'System') {
       setSnapshotCreatedBy(currentUserName);
@@ -4248,7 +4261,6 @@ export default function DataManagementPage() {
     </div>
   );
 }
-
 
 
 

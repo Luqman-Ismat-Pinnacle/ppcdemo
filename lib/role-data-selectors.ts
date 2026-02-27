@@ -46,6 +46,12 @@ export function selectRoleProjectIds(params: {
     .map((project) => asString(project.id || project.projectId || project.project_id))
     .filter(Boolean);
 
+  if (assigned.length === 0) {
+    return projects
+      .map((project) => asString(project.id || project.projectId || project.project_id))
+      .filter(Boolean);
+  }
+
   return assigned;
 }
 

@@ -5,8 +5,6 @@
  */
 
 import React from 'react';
-import Link from 'next/link';
-import { ROLE_NAV_CONFIG } from '@/lib/role-navigation';
 import { useUser } from '@/lib/user-context';
 import { useRoleView } from '@/lib/role-view-context';
 import type { RoleViewKey } from '@/types/role-workstation';
@@ -28,7 +26,6 @@ export default function RoleWorkstationShell({
   actions?: React.ReactNode;
   requiredTier?: RoleEnhanceTier;
 }) {
-  const nav = ROLE_NAV_CONFIG[role];
   const enabled = isRoleEnhancementTierEnabled(requiredTier);
   const { user } = useUser();
   const { activeRole } = useRoleView();
@@ -48,7 +45,6 @@ export default function RoleWorkstationShell({
           <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.45rem' }}>{greeting}, {firstName}</h1>
           <div style={{ marginTop: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{contextLine} · {subtitle}</div>
         </div>
-        <Link href="/role-views" style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>Back to role hub</Link>
       </div>
       <RoleContextStrip role={role} />
 
@@ -57,11 +53,6 @@ export default function RoleWorkstationShell({
         <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.85rem' }}>
           <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
             This workstation section is currently behind rollout flag `{requiredTier}`.
-          </div>
-          <div style={{ marginTop: '0.45rem' }}>
-            <Link href={nav.primary[0]?.href || '/role-views'} style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-              Open role home
-            </Link>
           </div>
         </div>
       ) : children}
