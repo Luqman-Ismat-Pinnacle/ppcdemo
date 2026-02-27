@@ -1,11 +1,16 @@
-# Use a public mirror to avoid Docker Hub unauthenticated pull rate limits in CI.
+# Use Microsoft Container Registry Node base to avoid Docker Hub pull limits in ACR Tasks.
 # Can be overridden at build time with --build-arg BASE_IMAGE=...
-ARG BASE_IMAGE=mcr.microsoft.com/mirror/docker/library/node:20-alpine
+ARG BASE_IMAGE=mcr.microsoft.com/devcontainers/javascript-node:20-bookworm
 FROM ${BASE_IMAGE} AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+# Install libc compatibility only when required and available on the base OS.
+RUN if command -v apk >/dev/null 2>&1; then \
+      apk add --no-cache libc6-compat; \
+    elif command -v apt-get >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y --no-install-recommends libc6 && rm -rf /var/lib/apt/lists/*; \
+    fi
 WORKDIR /app
 
 # Copy package files
