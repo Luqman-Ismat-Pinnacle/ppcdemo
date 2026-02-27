@@ -1,37 +1,82 @@
 'use client';
 
-/**
- * @fileoverview Client portal command center.
- */
+import React, { useEffect, useState } from 'react';
+import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
+import CommandCenterSection from '@/components/command-center/CommandCenterSection';
+import OffenderList from '@/components/command-center/OffenderList';
 
-import React from 'react';
-import Link from 'next/link';
+type ClientSummary = {
+  success: boolean;
+  computedAt: string;
+  warnings?: string[];
+  sections: {
+    projectStatus: { projectId: string; projectName: string; plainStatus: string; percentComplete: number; scheduleStatus: string };
+    milestones: Array<{ id: string; name: string; status: string; plannedDate: string; actualDate: string }>;
+    deliverables: Array<{ id: string; name: string; status: string; updatedAt: string }>;
+    upcomingWork: string[];
+  };
+};
 
 export default function ClientPortalCommandCenterPage() {
-  const cards = [
-    { title: 'WBS Gantt', href: '/role-views/client-portal/wbs', body: 'Client-safe schedule visibility and timeline context.' },
-    { title: 'Progress', href: '/role-views/client-portal/progress', body: 'Percent complete and planned-vs-done summary.' },
-    { title: 'Updates', href: '/role-views/client-portal/updates', body: 'Latest approved and in-review client-facing documents.' },
-    { title: 'Milestones', href: '/role-views/client-portal/milestones', body: 'Client-visible milestone commitments and statuses.' },
-  ];
+  const [payload, setPayload] = useState<ClientSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const response = await fetch('/api/role-views/client-portal/summary', { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!cancelled && response.ok && result.success) setPayload(result as ClientSummary);
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
-    <div className="page-panel" style={{ display: 'grid', gap: '0.75rem' }}>
-      <div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Client Portal</div>
-        <h1 style={{ margin: '0.2rem 0 0', fontSize: '1.42rem' }}>Client Command Center</h1>
-        <div style={{ marginTop: '0.25rem', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-          Entry point for client-safe project visibility routes.
+    <RoleWorkstationShell role="client_portal" title="Client Command Center" subtitle="Client-safe project status, milestones, deliverables, and upcoming work.">
+      {payload?.warnings?.length ? <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{payload.warnings.join(' ')}</div> : null}
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        <CommandCenterSection title="Project Status Card" freshness={payload?.computedAt || null}>
+          <div style={{ display: 'grid', gap: '0.25rem' }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700 }}>{payload?.sections.projectStatus.projectName || 'Project'}</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{payload?.sections.projectStatus.plainStatus || 'Status unavailable'}</div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>{payload?.sections.projectStatus.percentComplete || 0}% complete</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{payload?.sections.projectStatus.scheduleStatus || ''}</div>
+          </div>
+        </CommandCenterSection>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <CommandCenterSection title="Milestones">
+            <OffenderList
+              rows={(payload?.sections.milestones || []).map((row) => ({
+                id: row.id,
+                label: `${row.name} · ${row.status}`,
+                value: row.plannedDate || 'TBD',
+                href: '/role-views/client-portal/milestones',
+              }))}
+              empty="No client-visible milestones."
+            />
+          </CommandCenterSection>
+
+          <CommandCenterSection title="Recent Deliverables">
+            <OffenderList
+              rows={(payload?.sections.deliverables || []).map((row) => ({
+                id: row.id,
+                label: `${row.name} · ${row.status}`,
+                value: row.updatedAt || 'Unknown',
+                href: '/role-views/client-portal/updates',
+              }))}
+              empty="No client-safe deliverables."
+            />
+          </CommandCenterSection>
         </div>
+
+        <CommandCenterSection title="Upcoming Work">
+          <OffenderList
+            rows={(payload?.sections.upcomingWork || []).map((row, index) => ({ id: `${index}`, label: row, value: '' }))}
+            empty="No upcoming work narrative available."
+          />
+        </CommandCenterSection>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.65rem' }}>
-        {cards.map((card) => (
-          <Link key={card.href} href={card.href} style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.8rem', textDecoration: 'none', color: 'inherit' }}>
-            <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>{card.title}</div>
-            <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--text-secondary)' }}>{card.body}</div>
-          </Link>
-        ))}
-      </div>
-    </div>
+    </RoleWorkstationShell>
   );
 }

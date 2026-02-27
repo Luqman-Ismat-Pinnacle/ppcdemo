@@ -1,80 +1,95 @@
 import { NextResponse } from 'next/server';
-import { basePortfolioSummary, safeRows, asNumber } from '@/lib/role-summary-db';
-import { buildMetric, type RoleSummaryResponse } from '@/lib/metrics/contracts';
+import { safeRows, asNumber, ageLabel } from '@/lib/role-summary-db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const base = await basePortfolioSummary();
-  const [planRows, issuesRows] = await Promise.all([
+  const [mappingRows, planRows, issuesRows] = await Promise.all([
     safeRows(
-      `SELECT COUNT(DISTINCT p.id)::int AS overdue_plans
+      `SELECT project_id, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE task_id IS NOT NULL)::int AS mapped
+       FROM hour_entries
+       GROUP BY project_id
+       ORDER BY (COUNT(*) - COUNT(*) FILTER (WHERE task_id IS NOT NULL)) DESC
+       LIMIT 25`,
+    ),
+    safeRows(
+      `SELECT p.id AS project_id, COALESCE(p.name, p.id::text) AS project_name, MAX(d.uploaded_at) AS last_upload
        FROM projects p
        LEFT JOIN project_documents d ON d.project_id = p.id
        WHERE COALESCE(p.status,'active') ILIKE 'active%'
-       GROUP BY p.id
-       HAVING MAX(d.uploaded_at) IS NULL OR MAX(d.uploaded_at) < NOW() - INTERVAL '14 days'`,
+       GROUP BY p.id, p.name
+       ORDER BY last_upload ASC NULLS FIRST
+       LIMIT 20`,
     ),
-    safeRows("SELECT COUNT(*)::int AS count FROM tasks WHERE employee_id IS NULL"),
+    safeRows(
+      `SELECT COUNT(*)::int AS unassigned_tasks
+       FROM tasks
+       WHERE employee_id IS NULL`,
+    ),
   ]);
-  const overduePlans = planRows.length;
-  const dataIssues = asNumber(issuesRows[0]?.count);
-  const unmappedHours = Math.max(0, Math.round((100 - base.mappingCoverage) * 10) / 10);
 
-  const data = {
-    metrics: [
-      buildMetric({
-        metricId: 'pca_unmapped_hours_proxy',
-        formulaId: 'unmapped_proxy_v1',
-        label: 'Unmapped Hours',
-        value: unmappedHours,
-        unit: 'hours',
-        sourceTables: ['hour_entries'],
-        nullSemantics: 'no unmapped hours',
-        drillDownUrl: '/project-controls/mapping',
-        computedAt: base.computedAt,
-      }),
-      buildMetric({
-        metricId: 'pca_overdue_plans',
-        formulaId: 'plans_overdue_14d_v1',
-        label: 'Overdue Plan Uploads',
-        value: overduePlans,
-        unit: 'count',
-        sourceTables: ['project_documents', 'projects'],
-        nullSemantics: 'all plans current',
-        drillDownUrl: '/project-controls/project-plans',
-        computedAt: base.computedAt,
-      }),
-      buildMetric({
-        metricId: 'pca_data_issues',
-        formulaId: 'unassigned_task_count_v1',
-        label: 'Data Issues',
-        value: dataIssues,
-        unit: 'count',
-        sourceTables: ['tasks'],
-        nullSemantics: 'no data issues',
-        drillDownUrl: '/role-views/pca?section=data-quality',
-        computedAt: base.computedAt,
-      }),
-      buildMetric({
-        metricId: 'pca_mapping_coverage',
-        formulaId: 'mapped_hours_over_total_v1',
-        label: 'Mapping Coverage',
-        value: Number(base.mappingCoverage.toFixed(1)),
-        unit: 'percent',
-        sourceTables: ['hour_entries'],
-        nullSemantics: 'no hour entries',
-        drillDownUrl: '/project-controls/mapping',
-        computedAt: base.computedAt,
-      }),
-    ],
-  };
+  const projectCards = mappingRows.map((row) => {
+    const total = asNumber(row.total);
+    const mapped = asNumber(row.mapped);
+    const unmapped = Math.max(0, total - mapped);
+    const coverage = total > 0 ? Math.round((mapped / total) * 100) : 100;
+    return {
+      projectId: String(row.project_id || ''),
+      mappingCoverage: coverage,
+      unmappedHours: unmapped,
+      planFreshness: 'Unknown',
+      dataIssues: unmapped > 0 ? 1 : 0,
+    };
+  });
 
-  const response: RoleSummaryResponse<typeof data> = {
+  const overduePlans = planRows.filter((row) => {
+    const label = ageLabel(String(row.last_upload || ''));
+    return label === 'No run history' || label.endsWith('d ago');
+  });
+
+  const myQueue = [
+    ...(asNumber(issuesRows[0]?.unassigned_tasks) > 0 ? [{
+      id: 'critical-data-issues',
+      severity: 'critical',
+      title: `${asNumber(issuesRows[0]?.unassigned_tasks)} tasks missing assignment`,
+      actionHref: '/project-controls/data-management',
+      reason: 'Blocks role-scoped queues and assignment health.',
+    }] : []),
+    ...(projectCards.filter((row) => row.unmappedHours > 0).slice(0, 5).map((row) => ({
+      id: `map-${row.projectId}`,
+      severity: row.unmappedHours > 50 ? 'critical' : 'warning',
+      title: `Map ${row.unmappedHours} unmapped hours`,
+      actionHref: '/project-controls/mapping',
+      reason: `Project ${row.projectId} mapping coverage is ${row.mappingCoverage}%`,
+    }))),
+    ...(overduePlans.slice(0, 5).map((row) => ({
+      id: `plan-${String(row.project_id || '')}`,
+      severity: 'warning',
+      title: `Upload/update project plan`,
+      actionHref: '/project-controls/project-plans',
+      reason: `${String(row.project_name || row.project_id || 'Project')} has stale plan data.`,
+    }))),
+  ];
+
+  const response = {
     success: true,
     scope: 'pca:command-center',
-    computedAt: base.computedAt,
-    data,
+    computedAt: new Date().toISOString(),
+    sections: {
+      myQueue,
+      projectCards,
+      periodProgress: {
+        mappedThisPeriod: projectCards.reduce((sum, row) => sum + row.unmappedHours, 0),
+        issuesResolvedThisPeriod: 0,
+      },
+    },
+    warnings: [
+      'PCA assignment scoping is inferred from available project data; explicit PCA ownership mapping is not present.',
+    ],
+    actions: {
+      mapping: { href: '/project-controls/mapping', method: 'GET' as const },
+      plans: { href: '/project-controls/project-plans', method: 'GET' as const },
+    },
   };
   return NextResponse.json(response);
 }

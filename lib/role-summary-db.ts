@@ -52,3 +52,26 @@ export async function basePortfolioSummary() {
     computedAt: new Date().toISOString(),
   };
 }
+
+export function toIso(value: unknown): string {
+  const text = String(value || '');
+  if (!text) return '';
+  const date = new Date(text);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : '';
+}
+
+export function ageLabel(isoText: string): string {
+  if (!isoText) return 'No run history';
+  const ts = Date.parse(isoText);
+  if (!Number.isFinite(ts)) return 'No run history';
+  const hours = (Date.now() - ts) / 3_600_000;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m ago`;
+  if (hours < 24) return `${Math.round(hours)}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+export function severityRank(value: string): number {
+  if (value === 'critical') return 0;
+  if (value === 'warning') return 1;
+  return 2;
+}

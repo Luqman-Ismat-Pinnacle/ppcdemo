@@ -74,6 +74,20 @@ export interface RolePageDataResponse<TData> {
   error?: string;
 }
 
+export interface RoleActionLink {
+  href: string;
+  method: 'GET' | 'POST' | 'PATCH';
+}
+
+export interface RoleSummarySectionEnvelope<TSections> {
+  success: boolean;
+  scope: string;
+  computedAt: string;
+  sections: TSections;
+  warnings?: string[];
+  actions?: Record<string, RoleActionLink>;
+}
+
 export interface RoleQueueItem {
   id: string;
   queueType: 'mapping' | 'plan_upload' | 'data_quality' | 'exception' | 'task';

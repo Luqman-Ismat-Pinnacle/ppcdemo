@@ -1,222 +1,97 @@
 'use client';
 
-/**
- * @fileoverview Senior Manager command center.
- */
-
-import React, { useEffect, useMemo, useState } from 'react';
-import { useData } from '@/lib/data-context';
-import { buildPortfolioAggregate, buildProjectBreakdown, type ProjectBreakdownItem } from '@/lib/calculations/selectors';
-import ClientHealthGrid from '@/components/role-workstations/ClientHealthGrid';
-import WorkstationLayout from '@/components/workstation/WorkstationLayout';
+import React, { useEffect, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import SectionHeader from '@/components/ui/SectionHeader';
-import BlockSkeleton from '@/components/ui/BlockSkeleton';
-import type { MetricContract } from '@/lib/metrics/contracts';
+import CommandCenterSection from '@/components/command-center/CommandCenterSection';
+import ClientRiskCard from '@/components/command-center/ClientRiskCard';
+import QueueCardList, { type QueueCard } from '@/components/command-center/QueueCardList';
+import OffenderList from '@/components/command-center/OffenderList';
 
-type AlertRow = {
-  id: number;
-  severity: 'info' | 'warning' | 'critical';
-  title: string;
-  message: string;
-  relatedProjectId: string | null;
-  createdAt: string;
+type SmSummary = {
+  success: boolean;
+  computedAt: string;
+  warnings?: string[];
+  sections: {
+    portfolioHealth: { healthScore: number; atRiskProjects: number; clientAttentionNeeded: number; reportCompliance: number };
+    clients: Array<{ name: string; projects: number; health: number; issue: string; trend: string }>;
+    projectLeads: Array<{ leadName: string; openTasks: number; reportStatus: string; trend: string }>;
+    escalations: Array<{ id: string; severity: string; title: string; detail: string; age: string }>;
+  };
 };
 
-function toNumber(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function projectRiskScore(project: ProjectBreakdownItem): number {
-  let score = 0;
-  if (project.spi < 0.9) score += 2;
-  if (project.cpi < 0.9) score += 2;
-  if (project.variance > 20) score += 2;
-  if (project.percentComplete < 60 && project.actualHours > project.baselineHours * 0.8) score += 1;
-  return score;
-}
-
 export default function SeniorManagerRoleViewPage() {
-  const { filteredData, data: fullData } = useData();
-  const [alerts, setAlerts] = useState<AlertRow[]>([]);
-  const [metrics, setMetrics] = useState<MetricContract[]>([]);
-  const [computedAt, setComputedAt] = useState<string | null>(null);
-  const [loadingSummary, setLoadingSummary] = useState(true);
-
-  const data = useMemo(() => ({
-    tasks: (filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || [],
-    projects: (filteredData?.projects?.length ? filteredData.projects : fullData?.projects) || [],
-    hours: (filteredData?.hours?.length ? filteredData.hours : fullData?.hours) || [],
-    sites: (filteredData?.sites?.length ? filteredData.sites : fullData?.sites) || [],
-  }), [filteredData, fullData]);
-
-  const projectBreakdown = useMemo(
-    () => buildProjectBreakdown(data.tasks, data.projects, data.hours, data.sites, 'project'),
-    [data.tasks, data.projects, data.hours, data.sites]
-  );
-
-  const aggregate = useMemo(
-    () => buildPortfolioAggregate(projectBreakdown, 'project'),
-    [projectBreakdown]
-  );
-
-  const riskProjects = useMemo(
-    () => [...projectBreakdown]
-      .map((project) => ({ project, riskScore: projectRiskScore(project) }))
-      .filter((row) => row.riskScore > 0)
-      .sort((a, b) => b.riskScore - a.riskScore || b.project.variance - a.project.variance)
-      .slice(0, 12),
-    [projectBreakdown]
-  );
+  const [payload, setPayload] = useState<SmSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const loadAlerts = async () => {
-      try {
-        const response = await fetch('/api/alerts?status=open&limit=50', { cache: 'no-store' });
-        const result = await response.json();
-        if (!response.ok || !result.success || cancelled) return;
-        setAlerts(Array.isArray(result.alerts) ? result.alerts : []);
-      } catch {
-        if (!cancelled) setAlerts([]);
-      }
+    const run = async () => {
+      const response = await fetch('/api/role-views/senior-manager/summary', { cache: 'no-store' });
+      const result = await response.json().catch(() => ({}));
+      if (!cancelled && response.ok && result.success) setPayload(result as SmSummary);
     };
-    void loadAlerts();
+    void run();
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadSummary = async () => {
-      setLoadingSummary(true);
-      try {
-        const response = await fetch('/api/role-views/senior-manager/summary', { cache: 'no-store' });
-        const result = await response.json().catch(() => ({}));
-        if (!cancelled && response.ok && result.success) {
-          setMetrics(Array.isArray(result.data?.metrics) ? result.data.metrics : []);
-          setComputedAt(String(result.computedAt || ''));
-        }
-      } finally {
-        if (!cancelled) setLoadingSummary(false);
-      }
-    };
-    void loadSummary();
-    return () => { cancelled = true; };
-  }, []);
-
-  const criticalAlerts = alerts.filter((alert) => alert.severity === 'critical').length;
-  const warningAlerts = alerts.filter((alert) => alert.severity === 'warning').length;
-  const portfolioAtRiskPct = aggregate.projectCount > 0
-    ? Math.round((riskProjects.length / aggregate.projectCount) * 100)
-    : 0;
-
-  const topMetricById = (metricId: string) => metrics.find((metric) => metric.metricId === metricId);
+  const escalationCards: QueueCard[] = (payload?.sections.escalations || []).map((row) => ({
+    id: row.id,
+    severity: row.severity as 'info' | 'warning' | 'critical',
+    title: row.title,
+    detail: row.detail,
+    ageLabel: row.age,
+    actions: [{ label: 'Review', href: '/role-views/senior-manager/commitments' }],
+  }));
 
   return (
-    <RoleWorkstationShell
-      role="senior_manager"
-      title="Senior Manager Command Center"
-      subtitle="Portfolio health posture, escalation queue, and alert triage."
-    >
-      <WorkstationLayout
-        focus={(
-          <div style={{ minHeight: 0, display: 'grid', gap: '0.75rem' }}>
-            <SectionHeader title="Tier-1 Portfolio Metrics" timestamp={computedAt} />
-            {loadingSummary ? <BlockSkeleton rows={2} /> : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: 'var(--workspace-gap-sm)' }}>
-                {[
-                  { label: 'Portfolio Health', value: topMetricById('sm_portfolio_health_proxy')?.value ?? `${aggregate.healthScore}%` },
-                  { label: 'SPI', value: aggregate.spi.toFixed(2) },
-                  { label: 'CPI', value: aggregate.cpi.toFixed(2) },
-                  { label: 'Hours Variance', value: `${aggregate.hrsVariance}%` },
-                  { label: 'Projects At Risk', value: `${riskProjects.length} (${portfolioAtRiskPct}%)` },
-                  { label: 'Critical Alerts', value: String(criticalAlerts), accent: '#EF4444' },
-                  { label: 'Warning Alerts', value: String(warningAlerts), accent: '#F59E0B' },
-                ].map((item) => (
-                  <div key={item.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.75rem' }}>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>{item.label}</div>
-                    <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: '0.35rem', color: item.accent || 'var(--text-primary)' }}>{item.value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--workspace-gap-sm)', minHeight: 0 }}>
-              <div id="team" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.85rem', minHeight: 280 }}>
-                <SectionHeader title="Escalation Queue" timestamp={computedAt} />
-                {riskProjects.length === 0 ? (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No high-risk projects in current scope.</div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(4, minmax(70px, 1fr))', gap: '0.4rem 0.55rem', fontSize: '0.72rem' }}>
-                    <div style={{ color: 'var(--text-muted)' }}>Project</div>
-                    <div style={{ color: 'var(--text-muted)' }}>SPI</div>
-                    <div style={{ color: 'var(--text-muted)' }}>CPI</div>
-                    <div style={{ color: 'var(--text-muted)' }}>Variance</div>
-                    <div style={{ color: 'var(--text-muted)' }}>Risk</div>
-                    {riskProjects.map(({ project, riskScore }) => (
-                      <React.Fragment key={project.id}>
-                        <div style={{ color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</div>
-                        <div style={{ color: project.spi < 0.9 ? '#EF4444' : 'var(--text-secondary)' }}>{project.spi.toFixed(2)}</div>
-                        <div style={{ color: project.cpi < 0.9 ? '#EF4444' : 'var(--text-secondary)' }}>{project.cpi.toFixed(2)}</div>
-                        <div style={{ color: project.variance > 20 ? '#EF4444' : 'var(--text-secondary)' }}>{project.variance}%</div>
-                        <div style={{ color: riskScore >= 5 ? '#EF4444' : '#F59E0B', fontWeight: 700 }}>{riskScore}</div>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div id="alerts" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '0.85rem', maxHeight: 360, overflowY: 'auto' }}>
-                <SectionHeader title="Open Alerts" timestamp={computedAt} />
-                {alerts.length === 0 ? (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No open alerts.</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                    {alerts.slice(0, 16).map((alert) => (
-                      <div key={alert.id} style={{ padding: '0.55rem', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: alert.severity === 'critical' ? '#EF4444' : alert.severity === 'warning' ? '#F59E0B' : 'var(--text-secondary)' }}>
-                          {alert.title}
-                        </div>
-                        <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: 2 }}>{alert.message}</div>
-                        <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 3 }}>
-                          {alert.relatedProjectId ? `Project ${alert.relatedProjectId} · ` : ''}{new Date(alert.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+    <RoleWorkstationShell role="senior_manager" title="Senior Manager Command Center" subtitle="Client-level portfolio oversight and PL follow-through management.">
+      {payload?.warnings?.length ? <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{payload.warnings.join(' ')}</div> : null}
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        <CommandCenterSection title="My Portfolio Health" freshness={payload?.computedAt || null}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '0.55rem' }}>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Portfolio Health</div>
+              <div style={{ marginTop: 3, fontWeight: 800 }}>{payload?.sections.portfolioHealth.healthScore || 0}</div>
             </div>
-
-            <ClientHealthGrid
-              rows={[...projectBreakdown]
-                .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
-                .slice(0, 12)
-                .map((project) => ({
-                  id: project.id,
-                  name: project.name,
-                  spi: project.spi,
-                  cpi: project.cpi,
-                  variance: project.variance,
-                  percentComplete: project.percentComplete,
-                }))}
-            />
-            <div style={{ border: '1px solid var(--border-color)', borderRadius: 12, background: 'var(--bg-card)', padding: '0.75rem' }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>How Risk Is Calculated</div>
-              <div style={{ marginTop: 4, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                Risk score = +2 (SPI &lt; 0.9) +2 (CPI &lt; 0.9) +2 (variance &gt; 20) +1 (progress &lt; 60% while actual hours exceed 80% of baseline).
-              </div>
-              <div style={{ marginTop: 3, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                At-risk projects: score &gt; 0. High-risk projects: score 5+.
-              </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>At-Risk Projects</div>
+              <div style={{ marginTop: 3, fontWeight: 800 }}>{payload?.sections.portfolioHealth.atRiskProjects || 0}</div>
             </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              Total Planned Hours: {aggregate.baselineHours.toLocaleString()} · Actual Hours: {aggregate.totalHours.toLocaleString()} · Timesheet Hours: {toNumber(aggregate.timesheetHours).toLocaleString()}
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Client Attention Needed</div>
+              <div style={{ marginTop: 3, fontWeight: 800 }}>{payload?.sections.portfolioHealth.clientAttentionNeeded || 0}</div>
+            </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Report Compliance</div>
+              <div style={{ marginTop: 3, fontWeight: 800 }}>{payload?.sections.portfolioHealth.reportCompliance || 0}%</div>
             </div>
           </div>
-        )}
-      />
+        </CommandCenterSection>
+
+        <CommandCenterSection title="My Clients">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '0.45rem' }}>
+            {(payload?.sections.clients || []).map((client) => (
+              <ClientRiskCard key={client.name} name={client.name} projects={client.projects} health={client.health} issue={client.issue} trend={client.trend} />
+            ))}
+          </div>
+        </CommandCenterSection>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <CommandCenterSection title="My Project Leads">
+            <OffenderList
+              rows={(payload?.sections.projectLeads || []).map((row) => ({
+                id: row.leadName,
+                label: `${row.leadName} · ${row.reportStatus} · ${row.trend}`,
+                value: `${row.openTasks} open tasks`,
+              }))}
+              empty="No PL rows."
+            />
+          </CommandCenterSection>
+
+          <CommandCenterSection title="Escalations and Alerts">
+            <QueueCardList cards={escalationCards} empty="No SM-level escalations." />
+          </CommandCenterSection>
+        </div>
+      </div>
     </RoleWorkstationShell>
   );
 }

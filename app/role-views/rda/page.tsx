@@ -1,73 +1,97 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstationShell';
-import RDATaskCard from '@/components/role-workstations/RDATaskCard';
-import { useData } from '@/lib/data-context';
-import WorkstationLayout from '@/components/workstation/WorkstationLayout';
-import SectionHeader from '@/components/ui/SectionHeader';
-import type { MetricContract } from '@/lib/metrics/contracts';
+import CommandCenterSection from '@/components/command-center/CommandCenterSection';
+import QueueCardList, { type QueueCard } from '@/components/command-center/QueueCardList';
+import OffenderList from '@/components/command-center/OffenderList';
+
+type RdaSummary = {
+  success: boolean;
+  computedAt: string;
+  warnings?: string[];
+  sections: {
+    dayGlance: { tasksDueThisWeek: number; hoursThisWeek: number; sprintProgress: number; activeTasks: number };
+    taskQueue: Array<{ id: string; title: string; percentComplete: number; dueDate: string; overdue: boolean }>;
+    sprintMiniBoard: { notStarted: number; inProgress: number; done: number };
+    weeklyHours: Array<{ day: string; hours: number }>;
+    overdueCount: number;
+  };
+};
 
 export default function RdaHomePage() {
-  const { filteredData, data: fullData } = useData();
-  const [summaryMetrics, setSummaryMetrics] = React.useState<MetricContract[]>([]);
-  const [computedAt, setComputedAt] = React.useState<string | null>(null);
-  const tasks = ((filteredData?.tasks?.length ? filteredData.tasks : fullData?.tasks) || []) as unknown[];
-  const cards = tasks
-    .map((task) => task as Record<string, unknown>)
-    .filter((task) => Number(task.percentComplete ?? task.percent_complete ?? 0) < 100)
-    .slice(0, 6);
+  const [payload, setPayload] = useState<RdaSummary | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    const run = async () => {
       const response = await fetch('/api/role-views/rda/summary', { cache: 'no-store' });
       const result = await response.json().catch(() => ({}));
-      if (!cancelled && response.ok && result.success) {
-        setSummaryMetrics(Array.isArray(result.data?.metrics) ? result.data.metrics : []);
-        setComputedAt(String(result.computedAt || ''));
-      }
+      if (!cancelled && response.ok && result.success) setPayload(result as RdaSummary);
     };
-    void load();
+    void run();
     return () => { cancelled = true; };
   }, []);
 
-  const metricById = (metricId: string) => summaryMetrics.find((metric) => metric.metricId === metricId)?.value;
+  const queueCards: QueueCard[] = (payload?.sections.taskQueue || []).slice(0, 12).map((row) => ({
+    id: row.id,
+    severity: row.overdue ? 'critical' : 'info',
+    title: row.title,
+    detail: `Progress ${row.percentComplete}% · Due ${row.dueDate || 'TBD'}`,
+    actions: [{ label: 'Update Progress', href: '/role-views/rda/tasks' }, { label: 'Flag Blocker', href: '/role-views/rda/tasks' }],
+  }));
 
   return (
-    <RoleWorkstationShell role="rda" title="RDA Workstation" subtitle="Task-level execution lane with hours, work queue, and schedule progress updates.">
-      <WorkstationLayout
-        focus={(
-          <>
-            <SectionHeader title="Tier-1 Personal Queue" timestamp={computedAt} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(var(--kpi-card-min-width), 1fr))', gap: '0.55rem' }}>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-card)', padding: '0.6rem' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Overdue Tasks</div>
-                <div style={{ marginTop: 3, fontSize: '1.15rem', fontWeight: 800 }}>{metricById('rda_overdue_tasks') ?? 0}</div>
+    <RoleWorkstationShell role="rda" title="RDA Command Center" subtitle="Personal daily planner for assigned task execution and hour logging awareness.">
+      {payload?.warnings?.length ? <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{payload.warnings.join(' ')}</div> : null}
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        <CommandCenterSection title="My Day at a Glance" freshness={payload?.computedAt || null}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: '0.45rem' }}>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Tasks Due This Week</div>
+              <div style={{ marginTop: 2, fontWeight: 800 }}>{payload?.sections.dayGlance.tasksDueThisWeek || 0}</div>
+            </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Hours This Week</div>
+              <div style={{ marginTop: 2, fontWeight: 800 }}>{(payload?.sections.dayGlance.hoursThisWeek || 0).toFixed(1)}h / 40h</div>
+            </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Sprint Progress</div>
+              <div style={{ marginTop: 2, fontWeight: 800 }}>{payload?.sections.dayGlance.sprintProgress || 0}%</div>
+            </div>
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-secondary)', padding: '0.5rem' }}>
+              <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>Active Tasks</div>
+              <div style={{ marginTop: 2, fontWeight: 800 }}>{payload?.sections.dayGlance.activeTasks || 0}</div>
+            </div>
+          </div>
+        </CommandCenterSection>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem' }}>
+          <CommandCenterSection title="My Tasks">
+            <QueueCardList cards={queueCards} empty="No open tasks." />
+          </CommandCenterSection>
+
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <CommandCenterSection title="My Sprint Board">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '0.45rem' }}>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: '0.45rem', fontSize: '0.72rem' }}>Not Started: {payload?.sections.sprintMiniBoard.notStarted || 0}</div>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: '0.45rem', fontSize: '0.72rem' }}>In Progress: {payload?.sections.sprintMiniBoard.inProgress || 0}</div>
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, background: 'var(--bg-secondary)', padding: '0.45rem', fontSize: '0.72rem' }}>Done: {payload?.sections.sprintMiniBoard.done || 0}</div>
               </div>
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, background: 'var(--bg-card)', padding: '0.6rem' }}>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Open Tasks</div>
-                <div style={{ marginTop: 3, fontSize: '1.15rem', fontWeight: 800 }}>{metricById('rda_open_tasks') ?? cards.length}</div>
-              </div>
-            </div>
-            <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
-              Use Hours, Work, Schedule, and Sprint for scoped execution updates.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.55rem' }}>
-              {cards.length === 0 ? (
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>No open tasks in current role scope.</div>
-              ) : cards.map((task, idx) => (
-                <RDATaskCard
-                  key={String(task.id || task.taskId || idx)}
-                  title={String(task.name || task.taskName || task.id || 'Unnamed Task')}
-                  due={String(task.finishDate || task.finish_date || task.endDate || task.end_date || '-')}
-                  progress={Number(task.percentComplete ?? task.percent_complete ?? 0)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      />
+            </CommandCenterSection>
+            <CommandCenterSection title="My Hours This Week">
+              <OffenderList
+                rows={(payload?.sections.weeklyHours || []).map((row, index) => ({
+                  id: `${row.day}-${index}`,
+                  label: row.day,
+                  value: `${row.hours.toFixed(1)}h`,
+                }))}
+                empty="No hours logged this week."
+              />
+            </CommandCenterSection>
+          </div>
+        </div>
+      </div>
     </RoleWorkstationShell>
   );
 }

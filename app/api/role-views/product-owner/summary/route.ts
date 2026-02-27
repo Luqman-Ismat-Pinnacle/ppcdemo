@@ -1,22 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/postgres';
-import { buildMetric } from '@/lib/metrics/contracts';
+import { asNumber, ageLabel } from '@/lib/role-summary-db';
 
 export const dynamic = 'force-dynamic';
 
 type Dict = Record<string, unknown>;
-
-function asNumber(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function currentPeriodKey(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-}
 
 async function safeRows(pool: import('pg').Pool, sql: string, params: unknown[] = []): Promise<Dict[]> {
   try {
@@ -27,9 +15,14 @@ async function safeRows(pool: import('pg').Pool, sql: string, params: unknown[] 
   }
 }
 
-function statusFromAge(hours: number, okHours: number, warnHours: number) {
-  if (hours <= okHours) return 'ok';
-  if (hours <= warnHours) return 'warn';
+function currentPeriodKey(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function statusFromAge(label: string): 'ok' | 'warn' | 'bad' {
+  if (label.includes('m ago') || label.includes('h ago')) return 'ok';
+  if (label.includes('1d ago') || label.includes('2d ago')) return 'warn';
   return 'bad';
 }
 
@@ -40,345 +33,143 @@ export async function GET() {
   }
 
   const periodKey = currentPeriodKey();
-
   const [
-    activeProjectsRows,
-    activePeopleRows,
+    projectsRows,
     mappingRows,
-    plansCurrentRows,
     alertsRows,
+    peopleRows,
     commitmentsRows,
     feedbackRows,
-    roleRows,
-    roleActivityRows,
-    portfolioRows,
     pipelineRows,
-    suggestionRows,
+    activityRows,
     qualityRows,
-    anomaliesRows,
   ] = await Promise.all([
     safeRows(pool, "SELECT COUNT(*)::int AS count FROM projects WHERE COALESCE(status,'active') ILIKE 'active%'"),
-    safeRows(pool, "SELECT COUNT(*)::int AS count FROM employees WHERE COALESCE(status,'active') ILIKE 'active%'"),
+    safeRows(pool, "SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE task_id IS NOT NULL)::int AS mapped FROM hour_entries"),
+    safeRows(pool, "SELECT COUNT(*)::int AS open_alerts FROM alert_events WHERE COALESCE(status,'open')='open'"),
+    safeRows(pool, "SELECT COUNT(*)::int AS people FROM employees WHERE COALESCE(status,'active') ILIKE 'active%'"),
+    safeRows(pool, "SELECT COUNT(*)::int AS submitted FROM commitments WHERE period_key = $1 AND status='submitted'", [periodKey]),
+    safeRows(pool, "SELECT id, title, status, severity, created_by_name AS created_by, created_at, item_type FROM feedback_items ORDER BY created_at DESC LIMIT 80"),
     safeRows(
       pool,
-      `SELECT
-         COUNT(*)::int AS total,
-         COUNT(*) FILTER (WHERE task_id IS NOT NULL)::int AS mapped
-       FROM hour_entries`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         COUNT(DISTINCT p.id)::int AS total,
-         COUNT(DISTINCT CASE WHEN d.uploaded_at >= NOW() - INTERVAL '14 days' THEN p.id END)::int AS current
-       FROM projects p
-       LEFT JOIN project_documents d ON d.project_id = p.id
-       WHERE COALESCE(p.status,'active') ILIKE 'active%'`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         COUNT(*)::int AS open_alerts,
-         COUNT(*) FILTER (WHERE severity = 'critical')::int AS critical_alerts
-       FROM alert_events
-       WHERE COALESCE(status,'open') = 'open'`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         COUNT(*)::int AS submitted
-       FROM commitments
-       WHERE period_key = $1
-         AND status = 'submitted'`,
-      [periodKey],
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         id,
-         item_type AS "itemType",
-         title,
-         severity,
-         status,
-         created_by_name AS "createdByName",
-         created_at AS "createdAt"
-       FROM feedback_items
-       ORDER BY created_at DESC
-       LIMIT 120`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         COALESCE(role, 'Unassigned') AS role,
-         COUNT(*)::int AS users
-       FROM employees
-       WHERE COALESCE(status,'active') ILIKE 'active%'
-       GROUP BY 1
-       ORDER BY 2 DESC`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         COALESCE(role_key, 'unknown') AS role,
-         MAX(created_at) AS "lastActive"
-       FROM workflow_audit_log
-       GROUP BY 1`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         p.id,
-         p.name,
-         COUNT(pr.id)::int AS projects,
-         ROUND(AVG(COALESCE(ph.score, ph.health_score, 100))::numeric, 1) AS health
-       FROM portfolios p
-       LEFT JOIN projects pr ON pr.portfolio_id = p.id
-       LEFT JOIN project_health ph ON ph.project_id = pr.id
-       GROUP BY p.id, p.name
-       ORDER BY p.name ASC
-       LIMIT 50`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         source,
-         MAX(created_at) AS "lastRun",
-         COUNT(*)::int AS runs
+      `SELECT source, MAX(created_at) AS last_run
        FROM workflow_audit_log
        WHERE event_type IN ('workday_sync','mpp_parser','alert_scan','mapping_refresh')
        GROUP BY source`,
     ),
     safeRows(
       pool,
-      `SELECT
-         COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
-         ROUND(AVG(CASE WHEN status = 'pending' THEN confidence END)::numeric, 2) AS avg_conf
-       FROM mapping_suggestions`,
+      `SELECT COALESCE(role_key,'unknown') AS role_key, MAX(created_at) AS last_active, COUNT(*)::int AS queue_count
+       FROM workflow_audit_log
+       GROUP BY role_key
+       ORDER BY queue_count DESC
+       LIMIT 20`,
     ),
     safeRows(
       pool,
       `SELECT
+         COUNT(*) FILTER (WHERE employee_id IS NOT NULL)::int AS assigned_tasks,
          COUNT(*)::int AS total_tasks,
-         COUNT(*) FILTER (WHERE employee_id IS NOT NULL)::int AS assigned_tasks
+         COUNT(*) FILTER (WHERE charge_code_v2 IS NOT NULL AND charge_code_v2 <> '')::int AS coded_hours,
+         (SELECT COUNT(*)::int FROM hour_entries) AS total_hours
        FROM tasks`,
-    ),
-    safeRows(
-      pool,
-      `SELECT
-         t.id,
-         t.name,
-         t.project_id AS "projectId",
-         'Task missing assignment'::text AS issue
-       FROM tasks t
-       WHERE t.employee_id IS NULL
-       ORDER BY t.updated_at DESC NULLS LAST
-       LIMIT 50`,
     ),
   ]);
 
-  const activeProjects = asNumber(activeProjectsRows[0]?.count);
-  const activePeople = asNumber(activePeopleRows[0]?.count);
+  const activeProjects = asNumber(projectsRows[0]?.count);
   const totalHours = asNumber(mappingRows[0]?.total);
   const mappedHours = asNumber(mappingRows[0]?.mapped);
-  const mappingCoverage = totalHours > 0 ? (mappedHours / totalHours) * 100 : 100;
-
-  const plansTotal = asNumber(plansCurrentRows[0]?.total);
-  const plansCurrent = asNumber(plansCurrentRows[0]?.current);
-  const plansCurrentPct = plansTotal > 0 ? (plansCurrent / plansTotal) * 100 : 100;
-
+  const mappingCoverage = totalHours > 0 ? Math.round((mappedHours / totalHours) * 100) : 100;
   const openAlerts = asNumber(alertsRows[0]?.open_alerts);
-  const criticalAlerts = asNumber(alertsRows[0]?.critical_alerts);
+  const peopleActiveToday = asNumber(peopleRows[0]?.people);
+  const commitmentCompliance = activeProjects > 0 ? Math.round((asNumber(commitmentsRows[0]?.submitted) / activeProjects) * 100) : 100;
 
-  const submittedCommitments = asNumber(commitmentsRows[0]?.submitted);
-  const commitmentRate = activeProjects > 0 ? (submittedCommitments / activeProjects) * 100 : 100;
+  const pipelineMap = new Map(
+    pipelineRows.map((row) => [String(row.source || ''), String(row.last_run || '')]),
+  );
+  const workdayLabel = ageLabel(pipelineMap.get('api/workday') || pipelineMap.get('workday') || '');
+  const parserLabel = ageLabel(pipelineMap.get('api/documents/process-mpp') || pipelineMap.get('mpp') || '');
+  const alertLabel = ageLabel(pipelineMap.get('api/alerts/scan') || pipelineMap.get('alerts') || '');
+  const mappingLabel = ageLabel(pipelineMap.get('api/data/mapping') || pipelineMap.get('mapping') || '');
 
-  const features = feedbackRows
-    .filter((row) => String(row.itemType || '').toLowerCase() === 'feature')
+  const pipelineStatus = [
+    { key: 'workday', label: 'Workday Sync', ageLabel: workdayLabel, status: statusFromAge(workdayLabel), summary: `${mappedHours} mapped entries` },
+    { key: 'mpp', label: 'MPP Parser', ageLabel: parserLabel, status: statusFromAge(parserLabel), summary: 'Plan parser status' },
+    { key: 'alerts', label: 'Alert Engine', ageLabel: alertLabel, status: statusFromAge(alertLabel), summary: `${openAlerts} open alerts` },
+    { key: 'mapping', label: 'Mapping Suggestions', ageLabel: mappingLabel, status: statusFromAge(mappingLabel), summary: `${mappingCoverage}% coverage` },
+  ];
+
+  const quality = qualityRows[0] || {};
+  const totalTasks = asNumber(quality.total_tasks);
+  const assignedTasks = asNumber(quality.assigned_tasks);
+  const totalHoursAll = asNumber(quality.total_hours);
+  const codedHours = asNumber(quality.coded_hours);
+  const tasksAssignedPct = totalTasks > 0 ? Math.round((assignedTasks / totalTasks) * 100) : 0;
+  const chargeCodePct = totalHoursAll > 0 ? Math.round((codedHours / totalHoursAll) * 100) : 0;
+
+  const roleActivity = activityRows.map((row) => ({
+    role: String(row.role_key || 'unknown'),
+    users: 1,
+    lastActive: ageLabel(String(row.last_active || '')),
+    queueCount: asNumber(row.queue_count),
+    topIssue: openAlerts > 0 ? 'Open alerts pending' : 'No active queue issues',
+  }));
+
+  const openFeatures = feedbackRows
+    .filter((row) => String(row.item_type || '').toLowerCase() === 'feature')
+    .filter((row) => {
+      const status = String(row.status || '').toLowerCase();
+      return status !== 'released' && status !== 'closed';
+    })
     .map((row) => ({
       id: String(row.id || ''),
       title: String(row.title || 'Untitled'),
       severity: String(row.severity || 'low'),
       status: String(row.status || 'open'),
-      createdByName: String(row.createdByName || 'Unknown'),
-      createdAt: String(row.createdAt || ''),
+      createdBy: String(row.created_by || 'Unknown'),
+      createdAt: String(row.created_at || ''),
     }));
-
-  const openFeatures = features.filter((row) => {
-    const status = row.status.toLowerCase();
-    return status !== 'released' && status !== 'closed';
-  });
-
-  const rolesByActivity = roleRows.map((row) => {
-    const roleName = String(row.role || 'Unassigned');
-    const activity = roleActivityRows.find((activityRow) => String(activityRow.role || '') === roleName.toLowerCase().replace(/\s+/g, '_'));
-    return {
-      role: roleName,
-      users: asNumber(row.users),
-      lastActive: String(activity?.lastActive || ''),
-      bellCount: openAlerts,
-      topIssue: criticalAlerts > 0 ? 'Critical alerts pending' : 'No critical incidents',
-    };
-  });
-
-  const tasksTotal = asNumber(qualityRows[0]?.total_tasks);
-  const tasksAssigned = asNumber(qualityRows[0]?.assigned_tasks);
-  const tasksAssignedPct = tasksTotal > 0 ? (tasksAssigned / tasksTotal) * 100 : 100;
-
-  const dataQuality = [
-    { metric: 'Mapping Coverage', current: Number(mappingCoverage.toFixed(1)), target: 85 },
-    { metric: 'Projects with Active Plans', current: Number(plansCurrentPct.toFixed(1)), target: 90 },
-    { metric: 'Tasks with Assignments', current: Number(tasksAssignedPct.toFixed(1)), target: 75 },
-    { metric: 'Milestones Populated', current: 0, target: 60 },
-    { metric: 'Hour Entries with Charge Code', current: 0, target: 95 },
-  ];
-
-  const now = Date.now();
-  const computedAt = new Date().toISOString();
-  const pipeline = [
-    {
-      key: 'workday',
-      label: 'Workday Sync',
-      lastRunAt: '',
-      ageHours: null as number | null,
-      status: 'warn',
-      detail: 'Run via quick action',
-    },
-    {
-      key: 'mpp',
-      label: 'MPP Parser',
-      lastRunAt: '',
-      ageHours: null as number | null,
-      status: 'warn',
-      detail: 'Tracks latest project plan parse',
-    },
-    {
-      key: 'alerts',
-      label: 'Alert Engine',
-      lastRunAt: '',
-      ageHours: null as number | null,
-      status: 'warn',
-      detail: `${openAlerts} open alerts`,
-    },
-    {
-      key: 'mapping',
-      label: 'Mapping Suggestions',
-      lastRunAt: '',
-      ageHours: null as number | null,
-      status: 'warn',
-      detail: `${asNumber(suggestionRows[0]?.pending)} pending · avg ${asNumber(suggestionRows[0]?.avg_conf).toFixed(2)}`,
-    },
-  ];
-
-  for (const card of pipeline) {
-    const row = pipelineRows.find((entry) => String(entry.source || '').includes(card.key));
-    if (!row?.lastRun) continue;
-    const timestamp = new Date(String(row.lastRun)).getTime();
-    if (!Number.isFinite(timestamp)) continue;
-    const ageHours = Math.max(0, (now - timestamp) / 3600000);
-    card.lastRunAt = String(row.lastRun);
-    card.ageHours = ageHours;
-    if (card.key === 'workday') card.status = statusFromAge(ageHours, 6, 24);
-    if (card.key === 'mpp') card.status = statusFromAge(ageHours, 24, 72);
-    if (card.key === 'alerts') card.status = statusFromAge(ageHours, 2, 8);
-    if (card.key === 'mapping') card.status = statusFromAge(ageHours, 24, 48);
-  }
 
   return NextResponse.json({
     success: true,
-    computedAt,
-    periodKey,
-    metrics: [
-      buildMetric({
-        metricId: 'po_active_projects',
-        formulaId: 'active_project_count_v1',
-        label: 'Active Projects',
-        value: activeProjects,
-        unit: 'count',
-        sourceTables: ['projects'],
-        nullSemantics: 'no active projects',
-        drillDownUrl: '/insights/overview-v2',
-        computedAt,
-      }),
-      buildMetric({
-        metricId: 'po_people_in_system',
-        formulaId: 'active_people_count_v1',
-        label: 'People in System',
-        value: activePeople,
-        unit: 'count',
-        sourceTables: ['employees'],
-        nullSemantics: 'no active employees',
-        computedAt,
-      }),
-      buildMetric({
-        metricId: 'po_mapping_coverage',
-        formulaId: 'mapped_hours_over_total_v1',
-        label: 'Mapping Coverage',
-        value: Number(mappingCoverage.toFixed(1)),
-        unit: 'percent',
-        sourceTables: ['hour_entries'],
-        nullSemantics: 'no hour entries',
-        drillDownUrl: '/project-controls/mapping',
-        computedAt,
-      }),
-      buildMetric({
-        metricId: 'po_plans_current',
-        formulaId: 'plans_current_14d_v1',
-        label: 'Plans Current',
-        value: Number(plansCurrentPct.toFixed(1)),
-        unit: 'percent',
-        sourceTables: ['project_documents', 'projects'],
-        nullSemantics: 'no active projects',
-        drillDownUrl: '/project-controls/project-plans',
-        computedAt,
-      }),
-      buildMetric({
-        metricId: 'po_open_alerts',
-        formulaId: 'open_alert_count_v1',
-        label: 'Open Alerts',
-        value: openAlerts,
-        unit: 'count',
-        sourceTables: ['alert_events'],
-        nullSemantics: 'no open alerts',
-        drillDownUrl: '/role-views/product-owner/system-health',
-        computedAt,
-      }),
-      buildMetric({
-        metricId: 'po_commitment_rate',
-        formulaId: 'submitted_commitments_over_projects_v1',
-        label: 'Commitment Rate',
-        value: Number(commitmentRate.toFixed(1)),
-        unit: 'percent',
-        sourceTables: ['commitments', 'projects'],
-        nullSemantics: 'no active projects',
-        drillDownUrl: '/role-views/coo/commitments',
-        computedAt,
-      }),
-    ],
-    summary: {
-      activeProjects,
-      activePeople,
-      mappingCoverage,
-      plansCurrentPct,
-      openAlerts,
-      criticalAlerts,
-      commitmentRate,
-      openFeatures: openFeatures.length,
+    scope: 'product-owner:command-center',
+    computedAt: new Date().toISOString(),
+    sections: {
+      vitalSigns: {
+        activeProjects,
+        mappingCoverage,
+        pipelineFreshness: pipelineStatus.every((item) => item.status === 'ok') ? 'Healthy' : pipelineStatus.some((item) => item.status === 'bad') ? 'Failed/Stale' : 'Degraded',
+        openAlerts,
+        commitmentCompliance,
+        peopleActiveToday,
+      },
+      pipelineStatus,
+      dataQuality: [
+        { name: 'Mapping Coverage', value: mappingCoverage, target: 85 },
+        { name: 'Projects with Active Plans', value: 0, target: 90, note: 'Requires reliable project_documents upload timestamps.' },
+        { name: 'Tasks with Assignments', value: tasksAssignedPct, target: 75 },
+        { name: 'Milestones Populated', value: 0, target: 60, note: 'Milestone population metric requires consistent milestone ownership keys.' },
+        { name: 'Hour Entries with Charge Code', value: chargeCodePct, target: 95 },
+      ],
+      roleActivity,
+      issues: {
+        systemAlerts: openAlerts,
+        userFeedback: feedbackRows.slice(0, 20).map((row) => ({
+          id: String(row.id || ''),
+          title: String(row.title || ''),
+          status: String(row.status || 'open'),
+          type: String(row.item_type || 'feedback'),
+        })),
+        openFeatures,
+      },
     },
-    features: openFeatures.slice(0, 50),
-    roles: rolesByActivity.slice(0, 12),
-    pipeline,
-    dataQuality,
-    portfolioPulse: portfolioRows.map((row) => ({
-      id: String(row.id || ''),
-      name: String(row.name || 'Portfolio'),
-      projects: asNumber(row.projects),
-      health: asNumber(row.health),
-      criticalAlerts,
-    })),
-    openIssues: {
-      alerts: openAlerts,
-      feedback: feedbackRows.slice(0, 50),
-      anomalies: anomaliesRows,
+    warnings: [
+      'Plan freshness and milestone population rely on incomplete source fields in current schema; showing explicit unavailable placeholders.',
+    ],
+    actions: {
+      workdaySync: { href: '/api/workday', method: 'POST' as const },
+      alertScan: { href: '/api/alerts/scan', method: 'POST' as const },
+      dataManagement: { href: '/project-controls/data-management', method: 'GET' as const },
     },
   });
 }
