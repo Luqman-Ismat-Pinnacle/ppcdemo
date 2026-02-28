@@ -67,7 +67,7 @@ const checks = [
 
   // Phase 8
   { id: '8.1-light-border', msg: 'Light theme border-color rgba(0,0,0,0.08)', pass: () => hasContent(join(ROOT, 'app/globals.css'), 'rgba(0, 0, 0, 0.08)', 'rgba(0, 0, 0, 0.14)') },
-  { id: '8.2-no-bg-png', msg: 'No Final Background.png in ambient-image', pass: () => !hasContent(join(ROOT, 'app/globals.css'), "url('/Final Background.png')") },
+  { id: '8.2-bg-image', msg: 'ambient-image uses PPM Background.png', pass: () => hasContent(join(ROOT, 'app/globals.css'), "url('/PPM Background.png')") },
   { id: '8.3-ambientFloat', msg: 'ambientFloat keyframes, staggered blobs', pass: () => hasContent(join(ROOT, 'app/globals.css'), 'ambientFloat', '20s', '28s', '32s') },
   { id: '8.3-reduced-motion', msg: 'prefers-reduced-motion', pass: () => hasContent(join(ROOT, 'app/globals.css'), 'prefers-reduced-motion') },
   { id: '8.4-grid-56', msg: 'ambient-grid 56px', pass: () => hasContent(join(ROOT, 'app/globals.css'), '56px') },

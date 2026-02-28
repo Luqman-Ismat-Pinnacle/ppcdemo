@@ -2520,11 +2520,7 @@ button {
 .ambient-image {
   position: absolute;
   inset: -4%;
-  background-image:
-    radial-gradient(ellipse 80% 60% at 20% 30%, rgba(16, 185, 129, 0.08), transparent 50%),
-    radial-gradient(ellipse 70% 50% at 80% 70%, rgba(59, 130, 246, 0.06), transparent 50%),
-    radial-gradient(ellipse 60% 40% at 50% 50%, rgba(139, 92, 246, 0.04), transparent 45%),
-    linear-gradient(135deg, rgba(6, 8, 12, 0.4) 0%, rgba(8, 11, 17, 0.3) 50%, rgba(6, 8, 12, 0.35) 100%);
+  background-image: url('/PPM Background.png');
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -2533,10 +2529,8 @@ button {
 }
 
 [data-theme='light'] .ambient-image {
-  background-image:
-    radial-gradient(ellipse 80% 60% at 20% 30%, rgba(16, 185, 129, 0.06), transparent 50%),
-    radial-gradient(ellipse 70% 50% at 80% 70%, rgba(59, 130, 246, 0.05), transparent 50%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(238, 246, 252, 0.12) 50%, rgba(255, 255, 255, 0.15) 100%);
+  background-image: url('/PPM Background.png');
+  opacity: 0.92;
 }
 
 .ambient-blob {
