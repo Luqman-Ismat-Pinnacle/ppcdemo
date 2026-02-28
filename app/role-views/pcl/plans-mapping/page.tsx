@@ -19,9 +19,9 @@ export default function PclPlansMappingPage() {
   const { filteredData, data } = useData();
   const source = filteredData || data;
 
-  const projects = useMemo(() => (source.projects || []) as Record<string, unknown>[], [source.projects]);
-  const hours = useMemo(() => (source.hours || []) as Record<string, unknown>[], [source.hours]);
-  const projectDocuments = useMemo(() => (source.projectDocuments || []) as Record<string, unknown>[], [source.projectDocuments]);
+  const projects = useMemo(() => (source.projects || []) as unknown as Record<string, unknown>[], [source.projects]);
+  const hours = useMemo(() => (source.hours || []) as unknown as Record<string, unknown>[], [source.hours]);
+  const projectDocuments = useMemo(() => (source.projectDocuments || []) as unknown as Record<string, unknown>[], [source.projectDocuments]);
 
   const projectMap = useMemo(() => {
     const map = new Map<string, Record<string, unknown>>();
