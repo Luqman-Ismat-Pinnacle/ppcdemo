@@ -3311,7 +3311,6 @@ export function buildResourceGantt(data: Partial<SampleData>) {
   });
 
   return { items };
-}, [dataKey]);
 }
 
 // ============================================================================
