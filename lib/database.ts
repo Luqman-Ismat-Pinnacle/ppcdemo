@@ -173,6 +173,8 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
 
     const isRda = scope?.role === 'rda' && scope?.employeeId;
     const isCoo = scope?.role === 'coo';
+    const isPca = scope?.role === 'pca' && scope?.email;
+    const isProjectLead = scope?.role === 'project_lead' && scope?.email;
     const projectFilter = scope?.projectId && mode === 'full';
     const dateFrom = scope?.from;
     const dateTo = scope?.to;
@@ -203,6 +205,11 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
           paramIdx += 1;
         } else if (isCoo) {
           conditions.push('employee_id IN (SELECT id FROM employees WHERE LOWER(COALESCE(department,\'\')) = \'1111 services\')');
+        } else if (hasPcaScope && pcaScopedProjectIds) {
+          const placeholders = pcaScopedProjectIds.map((_, i) => `$${paramIdx + i}`).join(',');
+          conditions.push(`project_id IN (${placeholders})`);
+          params.push(...pcaScopedProjectIds);
+          paramIdx += pcaScopedProjectIds.length;
         }
         const whereClause = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
         const limitClause = maxRows ? ` LIMIT ${maxRows}` : '';
@@ -239,6 +246,29 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
     }
 
     const projId = projectFilter ? scope!.projectId : null;
+
+    let pcaScopedProjectIds: string[] | null = null;
+    if ((isPca || isProjectLead) && !projId) {
+      const emailCol = isPca ? 'pca_email' : 'project_lead_email';
+      const scopedProjects = await safeQuery(
+        `SELECT id FROM projects WHERE LOWER(${emailCol}) = LOWER($1)`,
+        [scope!.email],
+      );
+      pcaScopedProjectIds = scopedProjects.map((r) => String(r.id));
+      if (pcaScopedProjectIds.length === 0) pcaScopedProjectIds = null;
+    }
+    const hasPcaScope = pcaScopedProjectIds !== null;
+    const pcaProjectInClause = hasPcaScope
+      ? `(${pcaScopedProjectIds!.map((_, i) => `$${i + 1}`).join(',')})`
+      : '';
+
+    const pcaScopedQuery = (tableSql: string, orderBy: string): Promise<DbRow[]> => {
+      if (!hasPcaScope) return safeQuery(`${tableSql} ORDER BY ${orderBy}`);
+      return safeQuery(
+        `${tableSql} WHERE project_id IN ${pcaProjectInClause} ORDER BY ${orderBy}`,
+        pcaScopedProjectIds!,
+      );
+    };
 
     const [
       portfolios,
@@ -278,41 +308,45 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
       safeQuery('SELECT * FROM portfolios ORDER BY name'),
       safeQuery('SELECT * FROM customers ORDER BY name'),
       safeQuery('SELECT * FROM sites ORDER BY name'),
-      projId ? safeQuery('SELECT * FROM units WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM units ORDER BY name'),
-      projId ? safeQuery('SELECT * FROM projects WHERE id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM projects ORDER BY name'),
-      projId ? safeQuery('SELECT * FROM subprojects WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM subprojects ORDER BY name'),
-      projId ? safeQuery('SELECT * FROM phases WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM phases ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM units WHERE project_id = $1 ORDER BY name', [projId]) : pcaScopedQuery('SELECT * FROM units', 'name'),
+      projId
+        ? safeQuery('SELECT * FROM projects WHERE id = $1 ORDER BY name', [projId])
+        : hasPcaScope
+          ? safeQuery(`SELECT * FROM projects WHERE id IN ${pcaProjectInClause} ORDER BY name`, pcaScopedProjectIds!)
+          : safeQuery('SELECT * FROM projects ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM subprojects WHERE project_id = $1 ORDER BY name', [projId]) : pcaScopedQuery('SELECT * FROM subprojects', 'name'),
+      projId ? safeQuery('SELECT * FROM phases WHERE project_id = $1 ORDER BY name', [projId]) : pcaScopedQuery('SELECT * FROM phases', 'name'),
       isRda
         ? safeQuery('SELECT * FROM tasks WHERE assigned_resource_id = $1 ORDER BY name', [scope!.employeeId])
         : projId
           ? safeQuery('SELECT * FROM tasks WHERE project_id = $1 ORDER BY name', [projId])
-          : safeQuery('SELECT * FROM tasks ORDER BY name'),
+          : pcaScopedQuery('SELECT * FROM tasks', 'name'),
       isRda
         ? safeQuery('SELECT * FROM qc_tasks WHERE assigned_to = $1 ORDER BY name', [scope!.employeeId])
         : projId
           ? safeQuery('SELECT * FROM qc_tasks WHERE project_id = $1 ORDER BY name', [projId])
-          : safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
+          : pcaScopedQuery('SELECT * FROM qc_tasks', 'name'),
       isCoo ? safeQuery("SELECT * FROM employees WHERE LOWER(COALESCE(department,'')) = '1111 services' ORDER BY name") : safeQuery('SELECT * FROM employees ORDER BY name'),
       fetchHourEntries(),
-      projId ? safeQuery("SELECT * FROM milestones WHERE project_id = $1 ORDER BY COALESCE(planned_date, created_at)", [projId]) : safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, created_at)"),
-      projId ? safeQuery('SELECT * FROM deliverables WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM deliverables ORDER BY name'),
-      projId ? safeQuery('SELECT * FROM sprints WHERE project_id = $1 ORDER BY start_date', [projId]) : safeQuery('SELECT * FROM sprints ORDER BY start_date'),
+      projId ? safeQuery("SELECT * FROM milestones WHERE project_id = $1 ORDER BY COALESCE(planned_date, created_at)", [projId]) : pcaScopedQuery('SELECT * FROM milestones', "COALESCE(planned_date, created_at)"),
+      projId ? safeQuery('SELECT * FROM deliverables WHERE project_id = $1 ORDER BY name', [projId]) : pcaScopedQuery('SELECT * FROM deliverables', 'name'),
+      projId ? safeQuery('SELECT * FROM sprints WHERE project_id = $1 ORDER BY start_date', [projId]) : pcaScopedQuery('SELECT * FROM sprints', 'start_date'),
       safeQuery('SELECT * FROM sprint_tasks'),
       safeQuery('SELECT * FROM epics ORDER BY name'),
       safeQuery('SELECT * FROM features ORDER BY name'),
       safeQuery('SELECT * FROM user_stories ORDER BY name'),
       safeQuery('SELECT * FROM forecasts ORDER BY forecast_date DESC'),
       safeQuery('SELECT * FROM snapshots ORDER BY snapshot_date DESC'),
-      projId ? safeQuery('SELECT * FROM change_requests WHERE project_id = $1 ORDER BY submitted_at DESC', [projId]) : safeQuery('SELECT * FROM change_requests ORDER BY submitted_at DESC'),
-      projId ? safeQuery('SELECT * FROM change_impacts WHERE project_id = $1', [projId]) : safeQuery('SELECT * FROM change_impacts'),
-      projId ? safeQuery('SELECT * FROM project_health WHERE project_id = $1 ORDER BY updated_at DESC', [projId]) : safeQuery('SELECT * FROM project_health ORDER BY updated_at DESC'),
-      projId ? safeQuery('SELECT * FROM project_log WHERE project_id = $1 ORDER BY entry_date DESC', [projId]) : safeQuery('SELECT * FROM project_log ORDER BY entry_date DESC'),
-      projId ? safeQuery('SELECT * FROM project_documents WHERE project_id = $1 ORDER BY uploaded_at DESC', [projId]) : safeQuery('SELECT * FROM project_documents ORDER BY uploaded_at DESC'),
+      projId ? safeQuery('SELECT * FROM change_requests WHERE project_id = $1 ORDER BY submitted_at DESC', [projId]) : pcaScopedQuery('SELECT * FROM change_requests', 'submitted_at DESC'),
+      projId ? safeQuery('SELECT * FROM change_impacts WHERE project_id = $1', [projId]) : pcaScopedQuery('SELECT * FROM change_impacts', 'project_id'),
+      projId ? safeQuery('SELECT * FROM project_health WHERE project_id = $1 ORDER BY updated_at DESC', [projId]) : pcaScopedQuery('SELECT * FROM project_health', 'updated_at DESC'),
+      projId ? safeQuery('SELECT * FROM project_log WHERE project_id = $1 ORDER BY entry_date DESC', [projId]) : pcaScopedQuery('SELECT * FROM project_log', 'entry_date DESC'),
+      projId ? safeQuery('SELECT * FROM project_documents WHERE project_id = $1 ORDER BY uploaded_at DESC', [projId]) : pcaScopedQuery('SELECT * FROM project_documents', 'uploaded_at DESC'),
       safeQuery('SELECT * FROM project_document_records ORDER BY updated_at DESC'),
       safeQuery('SELECT * FROM project_document_versions ORDER BY record_id, version_number DESC'),
       safeQuery('SELECT * FROM customer_contracts ORDER BY line_from_date DESC'),
-      projId ? safeQuery('SELECT * FROM workday_phases WHERE project_id = $1 ORDER BY project_id, unit, name', [projId]) : safeQuery('SELECT * FROM workday_phases ORDER BY project_id, unit, name'),
-      projId ? safeQuery('SELECT * FROM mo_period_notes WHERE project_id = $1 ORDER BY period_start DESC', [projId]) : safeQuery('SELECT * FROM mo_period_notes ORDER BY period_start DESC'),
+      projId ? safeQuery('SELECT * FROM workday_phases WHERE project_id = $1 ORDER BY project_id, unit, name', [projId]) : pcaScopedQuery('SELECT * FROM workday_phases', 'project_id, unit, name'),
+      projId ? safeQuery('SELECT * FROM mo_period_notes WHERE project_id = $1 ORDER BY period_start DESC', [projId]) : pcaScopedQuery('SELECT * FROM mo_period_notes', 'period_start DESC'),
       safeQuery('SELECT * FROM task_dependencies'),
       safeQuery('SELECT * FROM task_quantity_entries ORDER BY date'),
       safeQuery('SELECT * FROM visual_snapshots ORDER BY snapshot_date DESC'),

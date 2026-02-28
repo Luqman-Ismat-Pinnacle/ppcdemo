@@ -5,6 +5,7 @@ import RoleWorkstationShell from '@/components/role-workstations/RoleWorkstation
 import CommandCenterSection from '@/components/command-center/CommandCenterSection';
 import QueueCardList, { type QueueCard } from '@/components/command-center/QueueCardList';
 import OffenderList from '@/components/command-center/OffenderList';
+import { useUser } from '@/lib/user-context';
 
 type PcaSummary = {
   success: boolean;
@@ -18,18 +19,21 @@ type PcaSummary = {
 };
 
 export default function PcaRoleHomePage() {
+  const { user } = useUser();
   const [payload, setPayload] = useState<PcaSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const response = await fetch('/api/role-views/pca/summary', { cache: 'no-store' });
+      const email = user?.email || '';
+      const qs = email ? `?email=${encodeURIComponent(email)}` : '';
+      const response = await fetch(`/api/role-views/pca/summary${qs}`, { cache: 'no-store' });
       const result = await response.json().catch(() => ({}));
       if (!cancelled && response.ok && result.success) setPayload(result as PcaSummary);
     };
     void run();
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.email]);
 
   const queueCards: QueueCard[] = (payload?.sections.myQueue || []).map((row) => ({
     id: row.id,

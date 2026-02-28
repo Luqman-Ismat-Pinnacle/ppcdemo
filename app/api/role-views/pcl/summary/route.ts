@@ -4,7 +4,7 @@ import { safeRows, asNumber, ageLabel, severityRank } from '@/lib/role-summary-d
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const [alertsRows, mappingRows, plansRows, cpiRows] = await Promise.all([
+  const [alertsRows, mappingRows, plansRows, cpiRows, pcaRows] = await Promise.all([
     safeRows(
       `SELECT id, severity, title, message, related_project_id, created_at
        FROM alert_events
@@ -13,10 +13,10 @@ export async function GET() {
        LIMIT 50`,
     ),
     safeRows(
-      `SELECT project_id, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE task_id IS NOT NULL)::int AS mapped
-       FROM hour_entries
-       GROUP BY project_id
-       ORDER BY (COUNT(*) - COUNT(*) FILTER (WHERE task_id IS NOT NULL)) DESC
+      `SELECT h.project_id, COUNT(*)::int AS total, COUNT(*) FILTER (WHERE h.task_id IS NOT NULL)::int AS mapped
+       FROM hour_entries h
+       GROUP BY h.project_id
+       ORDER BY (COUNT(*) - COUNT(*) FILTER (WHERE h.task_id IS NOT NULL)) DESC
        LIMIT 20`,
     ),
     safeRows(
@@ -35,7 +35,18 @@ export async function GET() {
        ORDER BY cpi ASC NULLS LAST
        LIMIT 20`,
     ),
+    safeRows(
+      `SELECT p.id AS project_id, p.pca_email, COALESCE(e.name, p.pca_email, 'Unassigned') AS pca_name
+       FROM projects p
+       LEFT JOIN employees e ON LOWER(e.email) = LOWER(p.pca_email)
+       WHERE p.pca_email IS NOT NULL AND p.pca_email != ''`,
+    ),
   ]);
+
+  const pcaByProject = new Map<string, string>();
+  for (const row of pcaRows) {
+    pcaByProject.set(String(row.project_id || ''), String(row.pca_name || 'Unassigned'));
+  }
 
   const exceptionQueue = alertsRows
     .map((row) => ({
@@ -54,20 +65,24 @@ export async function GET() {
     const mapped = asNumber(row.mapped);
     const unmapped = Math.max(0, total - mapped);
     const coverage = total > 0 ? Math.round((mapped / total) * 100) : 100;
+    const projectId = String(row.project_id || '');
     return {
-      projectId: String(row.project_id || ''),
+      projectId,
       coverage,
       unmapped,
-      responsiblePca: 'Unassigned',
+      responsiblePca: pcaByProject.get(projectId) || 'Unassigned',
     };
   });
 
-  const planFreshness = plansRows.map((row) => ({
-    projectId: String(row.project_id || ''),
-    projectName: String(row.project_name || row.project_id || 'Project'),
-    daysSinceUpload: ageLabel(String(row.last_upload || '')),
-    responsiblePca: 'Unassigned',
-  }));
+  const planFreshness = plansRows.map((row) => {
+    const projectId = String(row.project_id || '');
+    return {
+      projectId,
+      projectName: String(row.project_name || row.project_id || 'Project'),
+      daysSinceUpload: ageLabel(String(row.last_upload || '')),
+      responsiblePca: pcaByProject.get(projectId) || 'Unassigned',
+    };
+  });
 
   const cpiDistribution = {
     buckets: {
@@ -88,9 +103,6 @@ export async function GET() {
       planFreshness,
       cpiDistribution,
     },
-    warnings: [
-      'Responsible PCA attribution is unavailable; add project-to-PCA ownership mapping for full assignment visibility.',
-    ],
     actions: {
       alerts: { href: '/api/alerts?status=open', method: 'GET' as const },
       scan: { href: '/api/alerts/scan', method: 'POST' as const },
