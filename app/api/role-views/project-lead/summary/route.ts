@@ -69,19 +69,19 @@ export async function GET() {
           id: `stall-${String(row.id || '')}`,
           severity: 'critical',
           title: `Stalled critical task: ${String(row.name || row.id || 'Task')}`,
-          actionHref: '/project-controls/wbs-gantt-v2',
+          actionHref: '/shared/wbs-gantt-v2',
         })),
         ...overdueTasks.slice(0, 8).map((row) => ({
           id: `overdue-${String(row.id || '')}`,
           severity: 'warning',
           title: `Overdue task: ${String(row.name || row.id || 'Task')}`,
-          actionHref: '/project-controls/wbs-gantt-v2',
+          actionHref: '/shared/wbs-gantt-v2',
         })),
         ...(upcomingMilestones.length ? [{
           id: 'milestone-upcoming',
           severity: 'info',
           title: `${upcomingMilestones.length} milestones due in next 14 days`,
-          actionHref: '/insights/milestones',
+          actionHref: '/shared/milestones',
         }] : []),
       ],
       periodStory: {
@@ -98,7 +98,7 @@ export async function GET() {
     },
     warnings: teamRows.length ? [] : ['Team linkage data is limited; employee-to-task ownership not fully mapped.'],
     actions: {
-      wbs: { href: '/project-controls/wbs-gantt-v2', method: 'GET' as const },
+      wbs: { href: '/shared/wbs-gantt-v2', method: 'GET' as const },
       report: { href: '/role-views/project-lead/report', method: 'GET' as const },
     },
   };

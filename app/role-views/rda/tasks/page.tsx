@@ -49,8 +49,8 @@ export default function RdaTasksPage() {
       subtitle="Personal task queue and schedule lane controls for day-to-day execution updates."
       actions={(
         <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-          <Link href="/project-controls/wbs-gantt-v2" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open WBS Gantt</Link>
-          <Link href="/project-management/sprint" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open Sprint Planning</Link>
+          <Link href="/shared/wbs-gantt-v2" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open WBS Gantt</Link>
+          <Link href="/shared/sprint" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open Sprint Planning</Link>
           <Link href="/role-views/rda/hours" style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Open Hours</Link>
         </div>
       )}
@@ -79,7 +79,7 @@ export default function RdaTasksPage() {
               <span>{row.projectId}</span>
               <span>{row.progress.toFixed(0)}%</span>
               <span style={{ color: row.overdue ? '#EF4444' : 'var(--text-secondary)' }}>{row.dueDate ? new Date(row.dueDate).toLocaleDateString() : '-'}</span>
-              <Link href="/project-controls/wbs-gantt-v2" style={{ color: 'var(--text-secondary)', fontSize: '0.69rem' }}>{row.overdue ? 'Update Now' : 'Update'}</Link>
+              <Link href="/shared/wbs-gantt-v2" style={{ color: 'var(--text-secondary)', fontSize: '0.69rem' }}>{row.overdue ? 'Update Now' : 'Update'}</Link>
             </div>
           ))}
         </div>

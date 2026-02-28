@@ -25,75 +25,37 @@ import { useData } from '@/lib/data-context';
 import type { DateFilter } from '@/types/data';
 
 /**
- * Filter option group with category
+ * Filter option (simplified presets per plan)
  */
 interface FilterOption {
   label: string;
   value: DateFilter['type'];
-  category: 'standard' | 'last_n' | 'fiscal' | 'rolling' | 'custom';
+  category: 'standard' | 'last_n' | 'custom';
   days?: number;
-  quarter?: number;
-  months?: number;
 }
 
-/**
- * All available date filter options organized by category
- */
 const DATE_OPTIONS: FilterOption[] = [
-  // Standard presets
   { label: 'All Time', value: 'all', category: 'standard' },
   { label: 'This Week', value: 'week', category: 'standard' },
   { label: 'This Month', value: 'month', category: 'standard' },
   { label: 'This Quarter', value: 'quarter', category: 'standard' },
   { label: 'YTD', value: 'ytd', category: 'standard' },
-  { label: 'This Year', value: 'year', category: 'standard' },
-  // Last N days
-  { label: 'Last 7 Days', value: 'custom', category: 'last_n', days: 7 },
-  { label: 'Last 14 Days', value: 'custom', category: 'last_n', days: 14 },
   { label: 'Last 30 Days', value: 'custom', category: 'last_n', days: 30 },
-  { label: 'Last 60 Days', value: 'custom', category: 'last_n', days: 60 },
   { label: 'Last 90 Days', value: 'custom', category: 'last_n', days: 90 },
-  // Fiscal quarters (assuming calendar year)
-  { label: 'Q1 (Jan-Mar)', value: 'custom', category: 'fiscal', quarter: 1 },
-  { label: 'Q2 (Apr-Jun)', value: 'custom', category: 'fiscal', quarter: 2 },
-  { label: 'Q3 (Jul-Sep)', value: 'custom', category: 'fiscal', quarter: 3 },
-  { label: 'Q4 (Oct-Dec)', value: 'custom', category: 'fiscal', quarter: 4 },
-  // Rolling periods
-  { label: 'Rolling 3 Months', value: 'custom', category: 'rolling', months: 3 },
-  { label: 'Rolling 6 Months', value: 'custom', category: 'rolling', months: 6 },
-  { label: 'Rolling 12 Months', value: 'custom', category: 'rolling', months: 12 },
-  // Custom range
   { label: 'Custom Range...', value: 'custom', category: 'custom' },
 ];
 
-/**
- * Calculate date range for a filter option
- */
 function getDateRange(option: FilterOption): { from: string; to: string } {
   const today = new Date();
   let from: Date;
   let to: Date = today;
-  
   if (option.days) {
-    // Last N days
     from = new Date(today);
     from.setDate(from.getDate() - option.days);
-  } else if (option.quarter) {
-    // Fiscal quarter
-    const year = today.getFullYear();
-    const quarterStartMonth = (option.quarter - 1) * 3;
-    from = new Date(year, quarterStartMonth, 1);
-    to = new Date(year, quarterStartMonth + 3, 0);
-  } else if (option.months) {
-    // Rolling months
-    from = new Date(today);
-    from.setMonth(from.getMonth() - option.months);
   } else {
-    // Default to all time
     from = new Date(2020, 0, 1);
     to = new Date(2030, 11, 31);
   }
-  
   return {
     from: from.toISOString().split('T')[0],
     to: to.toISOString().split('T')[0],
@@ -145,7 +107,7 @@ export default function DateFilterControl() {
     if (option.category === 'standard') {
       setDateFilter({ type: option.value });
       setIsOpen(false);
-    } else if (option.category === 'custom' && !option.days && !option.quarter && !option.months) {
+    } else if (option.category === 'custom' && !option.days) {
       // Open custom date picker
       setActiveCategory('custom');
     } else {
@@ -168,8 +130,6 @@ export default function DateFilterControl() {
     return {
       standard: DATE_OPTIONS.filter(o => o.category === 'standard'),
       last_n: DATE_OPTIONS.filter(o => o.category === 'last_n'),
-      fiscal: DATE_OPTIONS.filter(o => o.category === 'fiscal'),
-      rolling: DATE_OPTIONS.filter(o => o.category === 'rolling'),
       custom: DATE_OPTIONS.filter(o => o.category === 'custom'),
     };
   }, []);
@@ -177,8 +137,6 @@ export default function DateFilterControl() {
   const categories = [
     { key: 'standard', label: 'Standard' },
     { key: 'last_n', label: 'Last N Days' },
-    { key: 'fiscal', label: 'Fiscal' },
-    { key: 'rolling', label: 'Rolling' },
   ];
 
   return (

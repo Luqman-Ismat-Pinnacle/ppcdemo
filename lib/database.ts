@@ -69,15 +69,28 @@ function convertArrayToCamelCase<T>(arr: DbRow[]): T[] {
   return arr.map(item => convertRowToCamelCase<T>(item));
 }
 
+export type FetchMode = 'full' | 'shell';
+
+export interface FetchScope {
+  role?: string;
+  email?: string;
+  employeeId?: string;
+}
+
+/** Shell tables: minimal for nav, filters, and initial render */
+const SHELL_TABLES = ['portfolios', 'customers', 'sites', 'projects', 'employees'] as const;
+
 /**
  * Fetch all data from database
+ * @param mode - 'shell' for minimal nav/filter data; 'full' for complete data
+ * @param scope - optional role-scoped filtering (RDA, COO)
  */
-export async function fetchAllData() {
+export async function fetchAllData(mode: FetchMode = 'full', scope?: FetchScope | null) {
   if (dbType === 'postgresql') {
-    return await fetchFromPostgreSQL();
+    return await fetchFromPostgreSQL(mode, scope);
   }
   if (dbType === 'supabase') {
-    return await fetchFromSupabase();
+    return await fetchFromSupabase(mode, scope);
   }
   return null;
 }
@@ -89,16 +102,55 @@ export async function fetchAllData() {
 const HOUR_ENTRIES_MONTHS_LIMIT = parseInt(process.env.HOUR_ENTRIES_MONTHS_LIMIT || '24', 10);
 const HOUR_ENTRIES_MAX_ROWS = parseInt(process.env.HOUR_ENTRIES_MAX_ROWS || '0', 10);
 
-async function fetchFromPostgreSQL() {
+function emptyShellResult(): Record<string, unknown[]> {
+  return {
+    hierarchyNodes: [],
+    workItems: [],
+    portfolios: [],
+    customers: [],
+    sites: [],
+    units: [],
+    projects: [],
+    subprojects: [],
+    phases: [],
+    tasks: [],
+    qctasks: [],
+    employees: [],
+    hours: [],
+    milestones: [],
+    deliverables: [],
+    sprints: [],
+    sprintTasks: [],
+    epics: [],
+    features: [],
+    userStories: [],
+    forecasts: [],
+    snapshots: [],
+    visualSnapshots: [],
+    changeRequests: [],
+    changeImpacts: [],
+    projectHealth: [],
+    projectLog: [],
+    projectDocuments: [],
+    projectDocumentRecords: [],
+    projectDocumentVersions: [],
+    customerContracts: [],
+    workdayPhases: [],
+    moPeriodNotes: [],
+    taskDependencies: [],
+    taskQuantityEntries: [],
+  };
+}
+
+async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope | null) {
   return withClient(async (client) => {
     // Helper to safely query a table (returns empty array if table doesn't exist)
-    const safeQuery = async (sql: string): Promise<DbRow[]> => {
+    const safeQuery = async (sql: string, params?: unknown[]): Promise<DbRow[]> => {
       try {
-        const result = await client.query(sql);
+        const result = params?.length ? await client.query(sql, params) : await client.query(sql);
         return result.rows as DbRow[];
       } catch (err: unknown) {
         const pgErr = err as PgErrorLike;
-        // Table doesn't exist - return empty array
         if (pgErr.code === '42P01') return [];
         console.error(`[Database] Query error: ${sql.substring(0, 80)}...`, pgErr.message || 'Unknown error');
         return [];
@@ -114,18 +166,28 @@ async function fetchFromPostgreSQL() {
     })() : null;
     const maxRows = HOUR_ENTRIES_MAX_ROWS > 0 ? HOUR_ENTRIES_MAX_ROWS : null;
 
+    const isRda = scope?.role === 'rda' && scope?.employeeId;
+    const isCoo = scope?.role === 'coo';
+
     const fetchHourEntries = async (): Promise<DbRow[]> => {
       try {
+        const params: unknown[] = [];
+        let whereClause = '';
         if (useDateFilter && cutoffDate) {
-          const limitClause = maxRows ? ` LIMIT ${maxRows}` : '';
-          const result = await client.query(
-            `SELECT * FROM hour_entries WHERE date >= $1 ORDER BY date${limitClause}`,
-            [cutoffDate]
-          );
-          return result.rows as DbRow[];
+          whereClause = ' WHERE date >= $1';
+          params.push(cutoffDate);
+        }
+        if (isRda) {
+          whereClause += whereClause ? ' AND employee_id = $2' : ' WHERE employee_id = $1';
+          params.push(scope!.employeeId);
+        } else if (isCoo) {
+          whereClause += whereClause ? ' AND employee_id IN (SELECT id FROM employees WHERE LOWER(COALESCE(department,\'\')) = \'1111 services\')' : ' WHERE employee_id IN (SELECT id FROM employees WHERE LOWER(COALESCE(department,\'\')) = \'1111 services\')';
         }
         const limitClause = maxRows ? ` LIMIT ${maxRows}` : '';
-        const result = await client.query(`SELECT * FROM hour_entries ORDER BY date${limitClause}`);
+        const result = await client.query(
+          `SELECT * FROM hour_entries${whereClause} ORDER BY date${limitClause}`,
+          params.length ? params : undefined
+        );
         return result.rows as DbRow[];
       } catch (err: unknown) {
         const pgErr = err as PgErrorLike;
@@ -134,6 +196,25 @@ async function fetchFromPostgreSQL() {
         return [];
       }
     };
+
+    if (mode === 'shell') {
+      const [portfolios, customers, sites, projects, employees] = await Promise.all([
+        safeQuery('SELECT * FROM portfolios ORDER BY name'),
+        safeQuery('SELECT * FROM customers ORDER BY name'),
+        safeQuery('SELECT * FROM sites ORDER BY name'),
+        safeQuery('SELECT * FROM projects ORDER BY name'),
+        safeQuery('SELECT * FROM employees ORDER BY name'),
+      ]);
+      const base = emptyShellResult();
+      return {
+        ...base,
+        portfolios: convertArrayToCamelCase(portfolios),
+        customers: convertArrayToCamelCase(customers),
+        sites: convertArrayToCamelCase(sites),
+        projects: convertArrayToCamelCase(projects),
+        employees: convertArrayToCamelCase(employees),
+      };
+    }
 
     const [
       portfolios,
@@ -177,9 +258,9 @@ async function fetchFromPostgreSQL() {
       safeQuery('SELECT * FROM projects ORDER BY name'),
       safeQuery('SELECT * FROM subprojects ORDER BY name'),
       safeQuery('SELECT * FROM phases ORDER BY name'),
-      safeQuery('SELECT * FROM tasks ORDER BY name'),
-      safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
-      safeQuery('SELECT * FROM employees ORDER BY name'),
+      isRda ? safeQuery('SELECT * FROM tasks WHERE assigned_resource_id = $1 ORDER BY name', [scope!.employeeId]) : safeQuery('SELECT * FROM tasks ORDER BY name'),
+      isRda ? safeQuery('SELECT * FROM qc_tasks WHERE assigned_to = $1 ORDER BY name', [scope!.employeeId]) : safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
+      isCoo ? safeQuery("SELECT * FROM employees WHERE LOWER(COALESCE(department,'')) = '1111 services' ORDER BY name") : safeQuery('SELECT * FROM employees ORDER BY name'),
       fetchHourEntries(),
       // Keep ordering compatible with pruned schemas where due_date no longer exists.
       safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, created_at)"),
@@ -296,13 +377,32 @@ function convertArrayFromSupabase<T>(arr: DbRow[]): T[] {
   return arr.map(item => fromSupabaseFormat<T>(item));
 }
 
-async function fetchFromSupabase() {
+async function fetchFromSupabase(mode: FetchMode = 'full', _scope?: FetchScope | null) {
   const { createClient } = await import('@supabase/supabase-js');
   const supabaseKey = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
   if (!SUPABASE_URL || !supabaseKey) {
     return null;
   }
   const supabaseClient = createClient(SUPABASE_URL, supabaseKey);
+
+  if (mode === 'shell') {
+    const [portfolios, customers, sites, projects, employees] = await Promise.all([
+      supabaseClient.from('portfolios').select('*').order('name'),
+      supabaseClient.from('customers').select('*').order('name'),
+      supabaseClient.from('sites').select('*').order('name'),
+      supabaseClient.from('projects').select('*').order('name'),
+      supabaseClient.from('employees').select('*').order('name'),
+    ]);
+    const base = emptyShellResult();
+    return {
+      ...base,
+      portfolios: convertArrayFromSupabase((portfolios.data || []) as DbRow[]),
+      customers: convertArrayFromSupabase((customers.data || []) as DbRow[]),
+      sites: convertArrayFromSupabase((sites.data || []) as DbRow[]),
+      projects: convertArrayFromSupabase((projects.data || []) as DbRow[]),
+      employees: convertArrayFromSupabase((employees.data || []) as DbRow[]),
+    };
+  }
 
   const hourEntriesPromise = fetchAllHourEntries(supabaseClient as unknown as SupabaseClientLike);
 

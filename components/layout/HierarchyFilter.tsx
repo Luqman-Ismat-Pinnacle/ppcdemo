@@ -98,8 +98,11 @@ export default function HierarchyFilter() {
   // RESTORE FILTER STATE FROM CONTEXT ON MOUNT & UPDATE
   // ============================================================================
   useEffect(() => {
-    // If context filter is cleared/empty, ensure local state matches
-    if (!hierarchyFilter?.path || hierarchyFilter.path.length === 0) {
+    const hasIdFilter = hierarchyFilter?.portfolioId || hierarchyFilter?.customerId || hierarchyFilter?.siteId ||
+      hierarchyFilter?.projectId || hierarchyFilter?.unitId || hierarchyFilter?.phaseId;
+    const hasPathFilter = hierarchyFilter?.path && hierarchyFilter.path.length > 0;
+
+    if (!hasIdFilter && !hasPathFilter) {
       if (selectedPortfolioId || selectedCustomerId || selectedSiteId || selectedProjectId) {
         setSelectedPortfolioId('');
         setSelectedCustomerId('');
@@ -111,7 +114,17 @@ export default function HierarchyFilter() {
       return;
     }
 
-    const path = hierarchyFilter.path;
+    if (hasIdFilter) {
+      setSelectedPortfolioId(hierarchyFilter!.portfolioId || '');
+      setSelectedCustomerId(hierarchyFilter!.customerId || '');
+      setSelectedSiteId(hierarchyFilter!.siteId || '');
+      setSelectedProjectId(hierarchyFilter!.projectId || '');
+      setSelectedUnitId(hierarchyFilter!.unitId || '');
+      setSelectedPhaseId(hierarchyFilter!.phaseId || '');
+      return;
+    }
+
+    const path = hierarchyFilter!.path!;
     const portfoliosArr = data.portfolios as any[] || [];
     const customersArr = data.customers as any[] || [];
     const sitesArr = data.sites as any[] || [];
@@ -349,11 +362,13 @@ export default function HierarchyFilter() {
       setHierarchyFilter(null);
     } else {
       setHierarchyFilter({
+        portfolioId: resolved.p || undefined,
+        customerId: resolved.c || undefined,
+        siteId: resolved.s || undefined,
+        projectId: resolved.pr || undefined,
+        unitId: resolved.u || undefined,
+        phaseId: resolved.ph || undefined,
         path,
-        portfolio: path[0],
-        customer: path[1],
-        site: path[2],
-        project: path[3]
       });
     }
   };
@@ -385,10 +400,25 @@ export default function HierarchyFilter() {
   // ============================================================================
 
   const displayText = useMemo(() => {
+    const hasId = hierarchyFilter?.projectId || hierarchyFilter?.phaseId || hierarchyFilter?.unitId;
+    if (hasId) {
+      if (hierarchyFilter!.phaseId && data.phases) {
+        const ph = (data.phases as any[]).find(x => (x.id || x.phaseId) === hierarchyFilter!.phaseId);
+        return ph?.name || 'Phase';
+      }
+      if (hierarchyFilter!.unitId && data.units) {
+        const u = (data.units as any[]).find(x => (x.id || x.unitId) === hierarchyFilter!.unitId);
+        return u?.name || 'Unit';
+      }
+      if (hierarchyFilter!.projectId && data.projects) {
+        const p = (data.projects as any[]).find(x => (x.id || x.projectId) === hierarchyFilter!.projectId);
+        return p?.name || 'Project';
+      }
+    }
     if (!hierarchyFilter?.path || hierarchyFilter.path.length === 0) return 'All';
     const clean = hierarchyFilter.path.filter(Boolean);
     return clean[clean.length - 1] || 'All';
-  }, [hierarchyFilter]);
+  }, [hierarchyFilter, data.projects, data.phases, data.units]);
 
   const dataCount = useMemo(() => ({
     portfolios: data.portfolios?.length || 0,

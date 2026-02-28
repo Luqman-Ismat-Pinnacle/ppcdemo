@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server';
 import { getPool } from '@/lib/postgres';
 import { hasRolePermission, roleContextFromRequest } from '@/lib/api-role-guard';
 import { writeWorkflowAudit } from '@/lib/workflow-audit';
-import { buildRoleContext } from '@/lib/ai-context';
+import { buildRoleContext, buildMetricExplainContext } from '@/lib/ai-context';
 import { runAiCompletion } from '@/lib/ai-provider';
 
 export const dynamic = 'force-dynamic';
@@ -86,6 +86,8 @@ export async function POST(req: NextRequest) {
     const question = String(body.question || body.query || '').trim();
     const role = String(body.role || roleContext.roleKey || 'coo').trim();
     const employeeId = body.employeeId ? String(body.employeeId) : null;
+    const metricProvenance = body.provenance;
+    const metricValue = body.value;
     const sessionHistory = Array.isArray(body.sessionHistory)
       ? body.sessionHistory.filter((entry: unknown): entry is { role: 'user' | 'assistant'; text: string } => {
         if (!entry || typeof entry !== 'object') return false;
@@ -94,17 +96,22 @@ export async function POST(req: NextRequest) {
       })
       : [];
 
-    if (!question) {
-      return new Response(JSON.stringify({ success: false, error: 'question is required' }), {
+    const effectiveQuestion = question || (metricProvenance ? `Explain this metric: ${metricProvenance.label}` : '');
+    if (!effectiveQuestion) {
+      return new Response(JSON.stringify({ success: false, error: 'question or provenance is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const context = await buildRoleContext(role, { employeeId });
+    const metricContext = metricProvenance
+      ? buildMetricExplainContext(metricProvenance, metricValue)
+      : '';
+    const roleContextStr = await buildRoleContext(role, { employeeId });
+    const context = metricContext ? `${metricContext} | ${roleContextStr}` : roleContextStr;
     const answer = await fetchModelAnswer({
       role,
-      question,
+      question: effectiveQuestion,
       context,
       sessionHistory,
     });

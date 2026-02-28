@@ -17,8 +17,10 @@
  */
 
 import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import type { SampleData, HierarchyFilter, DateFilter, Snapshot } from '@/types/data';
 import { transformData } from '@/lib/data-transforms';
+import { getViewsForPath } from '@/lib/route-data-config';
 import { logger } from '@/lib/logger';
 import { ensurePortfoliosForSeniorManagers } from '@/lib/sync-utils';
 import { VariancePeriod, MetricsHistory } from '@/lib/variance-engine';
@@ -28,6 +30,7 @@ import { normalizeRuntimeData } from '@/lib/data-normalization';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
 import { filterEntitiesByProjectScope, selectRoleProjectIds } from '@/lib/role-data-selectors';
+import { getValidProjectIdsFromHierarchyFilter, getDateRangeFromFilter, persistDateFilter, restoreDateFilter } from '@/lib/filter-utils';
 
 const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
 const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -278,6 +281,7 @@ interface TabSyncEvent {
 export function DataProvider({ children }: DataProviderProps) {
   const { activeRole } = useRoleView();
   const { user } = useUser();
+  const pathname = usePathname() ?? '/';
 
   // State starts EMPTY - populated from Supabase on mount
   const [data, setData] = useState<SampleData>(createEmptyData);
@@ -285,7 +289,11 @@ export function DataProvider({ children }: DataProviderProps) {
 
   // State for active filters
   const [hierarchyFilter, setHierarchyFilter] = useState<HierarchyFilter | null>(null);
-  const [dateFilter, setDateFilter] = useState<DateFilter | null>(null);
+  const [dateFilter, setDateFilterState] = useState<DateFilter | null>(() => restoreDateFilter());
+  const setDateFilter = useCallback((filter: DateFilter | null) => {
+    setDateFilterState(filter);
+    if (filter) persistDateFilter(filter);
+  }, []);
 
   // Variance trending state
   const [variancePeriod, setVariancePeriod] = useState<VariancePeriod>(() => {
@@ -339,7 +347,7 @@ export function DataProvider({ children }: DataProviderProps) {
     }
   }, [getTabId]);
 
-  const applyLoadedData = useCallback((dbData: Record<string, unknown>) => {
+  const applyLoadedData = useCallback((dbData: Record<string, unknown>, options?: { views?: import('@/lib/route-data-config').TransformView[] }) => {
     const mergedData: Partial<SampleData> = {};
     for (const [key, value] of Object.entries(dbData)) {
       if (Array.isArray(value)) {
@@ -374,7 +382,8 @@ export function DataProvider({ children }: DataProviderProps) {
     }
 
     const normalized = normalizeRuntimeData(mergedData);
-    const transformedData = transformData(normalized);
+    const views = options?.views;
+    const transformedData = transformData(normalized, { views });
     const finalData = hydrateEmployeeNames({ ...createEmptyData(), ...normalized, ...transformedData });
     setData(finalData);
     memoryBootstrapCache = { savedAt: Date.now(), data: finalData };
@@ -457,42 +466,74 @@ export function DataProvider({ children }: DataProviderProps) {
   }, []);
 
   /**
-   * Fetch data from database on app initialization
+   * Fetch data from database on app initialization.
+   * Shell load first (portfolios, projects, employees, hierarchy) for fast nav/filters, then full load.
    */
   useEffect(() => {
     const loadData = async () => {
       const hydratedFromCache = hydrateFromBootstrapCache();
       if (hydratedFromCache) {
         setIsLoading(false);
+        return;
       }
 
-      try {
-        logger.debug('Fetching data from database...');
-        const fetchWithTimeout = async () => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
-          try {
-            return await fetch('/api/data', { cache: 'no-store', signal: controller.signal });
-          } finally {
-            clearTimeout(timeoutId);
-          }
-        };
-        let response = await fetchWithTimeout();
-        if (!response.ok) {
-          // One retry for transient gateway/timeout failures.
-          response = await fetchWithTimeout();
-        }
-        const result = await response.json();
+      const scopeParams = (() => {
+        const r = activeRole?.key;
+        const e = user?.email;
+        const emp = user?.employeeId;
+        if (!r || r === 'product_owner' || r === 'pcl' || r === 'senior_manager') return '';
+        if (r === 'rda' && emp) return `&role=rda&employeeId=${encodeURIComponent(emp)}`;
+        if (r === 'coo') return '&role=coo';
+        if ((r === 'project_lead' || r === 'pca') && e) return `&role=${encodeURIComponent(r)}&email=${encodeURIComponent(e)}`;
+        return '';
+      })();
 
-        if (result.error) {
-          logger.warn('Database not configured or error:', result.error);
+      const fetchWithTimeout = async (url: string) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
+        try {
+          return await fetch(url, { cache: 'no-store', signal: controller.signal });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      };
+
+      try {
+        logger.debug('Fetching shell data from database...');
+        let shellResponse = await fetchWithTimeout(`/api/data?shell=true${scopeParams}`);
+        if (!shellResponse.ok) {
+          shellResponse = await fetchWithTimeout(`/api/data?shell=true${scopeParams}`);
+        }
+        const shellResult = await shellResponse.json();
+
+        if (shellResult.error) {
+          logger.warn('Database not configured or error:', shellResult.error);
+          setIsLoading(false);
           return;
         }
 
-        const dbData = result.data;
+        const shellData = shellResult.data;
+        if (shellData && Object.keys(shellData).length > 0) {
+          applyLoadedData(shellData as Record<string, unknown>, { views: ['hierarchy'] });
+          setIsLoading(false);
+        }
 
-        if (dbData && Object.keys(dbData).length > 0) {
-          applyLoadedData(dbData as Record<string, unknown>);
+        logger.debug('Fetching full data from database...');
+        let fullResponse = await fetchWithTimeout(`/api/data${scopeParams ? '?' + scopeParams.slice(1) : ''}`);
+        if (!fullResponse.ok) {
+          fullResponse = await fetchWithTimeout(`/api/data${scopeParams ? '?' + scopeParams.slice(1) : ''}`);
+        }
+        const fullResult = await fullResponse.json();
+
+        if (fullResult.error) {
+          logger.warn('Full load error:', fullResult.error);
+          return;
+        }
+
+        const fullData = fullResult.data;
+        if (fullData && Object.keys(fullData).length > 0) {
+          const views = getViewsForPath(pathname);
+          applyLoadedData(fullData as Record<string, unknown>, { views });
         }
       } catch (err) {
         logger.error('Error fetching data from database', err);
@@ -502,7 +543,7 @@ export function DataProvider({ children }: DataProviderProps) {
     };
 
     loadData();
-  }, [applyLoadedData, hydrateFromBootstrapCache]);
+  }, [applyLoadedData, hydrateFromBootstrapCache, pathname, activeRole?.key, user?.email, user?.employeeId]);
 
   /**
    * Update data - called by Data Management, Sprint Board, etc.
@@ -553,9 +594,19 @@ export function DataProvider({ children }: DataProviderProps) {
   const refreshData = useCallback(async (): Promise<Partial<SampleData> | undefined> => {
     setIsLoading(true);
     try {
+      const scopeParams = (() => {
+        const r = activeRole?.key;
+        const e = user?.email;
+        const emp = user?.employeeId;
+        if (!r || r === 'product_owner' || r === 'pcl' || r === 'senior_manager') return '';
+        if (r === 'rda' && emp) return `&role=rda&employeeId=${encodeURIComponent(emp)}`;
+        if (r === 'coo') return '&role=coo';
+        if ((r === 'project_lead' || r === 'pca') && e) return `&role=${encodeURIComponent(r)}&email=${encodeURIComponent(e)}`;
+        return '';
+      })();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
-      const response = await fetch(`/api/data?t=${Date.now()}`, {
+      const response = await fetch(`/api/data?t=${Date.now()}${scopeParams}`, {
         cache: 'no-store',
         signal: controller.signal,
       }).finally(() => clearTimeout(timeoutId));
@@ -605,7 +656,7 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [activeRole?.key, user?.email, user?.employeeId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1019,7 +1070,82 @@ export function DataProvider({ children }: DataProviderProps) {
     // =========================================================================
     // APPLY HIERARCHY FILTER
     // =========================================================================
-    if (hierarchyFilter?.path && hierarchyFilter.path.length > 0) {
+    const hasIdBasedFilter = hierarchyFilter && (
+      hierarchyFilter.projectId || hierarchyFilter.portfolioId || hierarchyFilter.customerId ||
+      hierarchyFilter.siteId || hierarchyFilter.unitId || hierarchyFilter.phaseId
+    );
+    if (hasIdBasedFilter) {
+      const validProjectIds = getValidProjectIdsFromHierarchyFilter(filtered, hierarchyFilter);
+      if (validProjectIds.size > 0) {
+        const filterByProjectIds = (arr: unknown[] | undefined, projectIdKey: string): unknown[] => {
+          if (!arr || !Array.isArray(arr)) return [];
+          return arr.filter((row) => {
+            const r = row as Record<string, unknown>;
+            const snakeKey = projectIdKey.replace(/([A-Z])/g, '_$1').toLowerCase();
+            const pid = String(r[projectIdKey] ?? r[snakeKey] ?? '').trim();
+            return !pid || validProjectIds.has(pid);
+          });
+        };
+        if (filtered.projects) {
+          filtered.projects = (filtered.projects as any[]).filter((p: any) =>
+            validProjectIds.has(String(p.id ?? p.projectId ?? p.project_id ?? '').trim())
+          );
+        }
+        filtered.units = filterByProjectIds(filtered.units as unknown[], 'projectId') as any;
+        filtered.phases = filterByProjectIds(filtered.phases as unknown[], 'projectId') as any;
+        filtered.tasks = filterByProjectIds(filtered.tasks as unknown[], 'projectId') as any;
+        filtered.subTasks = filterByProjectIds(filtered.subTasks as unknown[], 'projectId') as any;
+        filtered.qctasks = filterByProjectIds(filtered.qctasks as unknown[], 'projectId') as any;
+        filtered.hours = filterByProjectIds(filtered.hours as unknown[], 'projectId') as any;
+        filtered.costTransactions = filterByProjectIds(filtered.costTransactions as unknown[], 'projectId') as any;
+        filtered.projectDocuments = filterByProjectIds(filtered.projectDocuments as unknown[], 'projectId') as any;
+        filtered.projectHealth = filterByProjectIds(filtered.projectHealth as unknown[], 'projectId') as any;
+        filtered.projectLog = filterByProjectIds(filtered.projectLog as unknown[], 'projectId') as any;
+        filtered.changeRequests = filterByProjectIds(filtered.changeRequests as unknown[], 'projectId') as any;
+        filtered.changeImpacts = filterByProjectIds(filtered.changeImpacts as unknown[], 'projectId') as any;
+        filtered.moPeriodNotes = filterByProjectIds(filtered.moPeriodNotes as unknown[], 'projectId') as any;
+        const validProjectNames = new Set((filtered.projects || []).map((p: any) => String(p.name ?? p.projectNum ?? '')));
+        if (filtered.milestones) {
+          filtered.milestones = (filtered.milestones as any[]).filter((m: any) =>
+            !m.projectNum || validProjectNames.has(String(m.projectNum)) || validProjectIds.has(String(m.projectId ?? m.project_id ?? ''))
+          );
+        }
+        if (filtered.deliverables) {
+          filtered.deliverables = (filtered.deliverables as any[]).filter((d: any) =>
+            !d.projectNum && !d.projectId || validProjectIds.has(String(d.projectId ?? d.project_id ?? '')) || validProjectNames.has(String(d.projectNum ?? ''))
+          );
+        }
+        if (filtered.laborBreakdown) {
+          filtered.laborBreakdown = {
+            ...filtered.laborBreakdown,
+            byWorker: (filtered.laborBreakdown.byWorker || []).filter((w: any) => !filtered.projects?.length || validProjectNames.has(String(w.project ?? ''))),
+            byPhase: (filtered.laborBreakdown.byPhase || []).filter((p: any) => !filtered.projects?.length || validProjectNames.has(String(p.project ?? ''))),
+            byTask: (filtered.laborBreakdown.byTask || []).filter((t: any) => !filtered.projects?.length || validProjectNames.has(String(t.project ?? ''))),
+          };
+        }
+        if (filtered.resourceGantt?.items) {
+          filtered.resourceGantt = {
+            ...filtered.resourceGantt,
+            items: filtered.resourceGantt.items.filter((item: any) => !filtered.projects?.length || validProjectNames.has(String(item.project ?? ''))),
+          };
+        }
+        if (filtered.qcTransactionByProject) {
+          filtered.qcTransactionByProject = filtered.qcTransactionByProject.filter((p: any) =>
+            validProjectIds.has(String(p.projectId ?? '')) || validProjectNames.has(String(p.project ?? ''))
+          );
+        }
+        if (filtered.projectsEfficiencyMetrics) {
+          filtered.projectsEfficiencyMetrics = filtered.projectsEfficiencyMetrics.filter((p: any) =>
+            validProjectNames.has(String(p.project ?? ''))
+          );
+        }
+        if (filtered.countMetricsAnalysis) {
+          filtered.countMetricsAnalysis = filtered.countMetricsAnalysis.filter((m: any) =>
+            validProjectNames.has(String(m.project ?? ''))
+          );
+        }
+      }
+    } else if (hierarchyFilter?.path && hierarchyFilter.path.length > 0) {
       const path = hierarchyFilter.path;
 
       // Filter milestones by hierarchy path
@@ -1418,41 +1544,10 @@ export function DataProvider({ children }: DataProviderProps) {
       : undefined;
 
     if (dateFilter && dateFilter.type !== 'all') {
-      const now = new Date();
-      let startDate: Date, endDate: Date;
-
-      if (dateFilter.type === 'custom' && dateFilter.from && dateFilter.to) {
-        startDate = new Date(dateFilter.from);
-        endDate = new Date(dateFilter.to);
-      } else {
-        switch (dateFilter.type) {
-          case 'week':
-            startDate = new Date(now);
-            startDate.setDate(now.getDate() - now.getDay());
-            endDate = new Date(startDate);
-            endDate.setDate(startDate.getDate() + 6);
-            break;
-          case 'month':
-            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            break;
-          case 'quarter':
-            const quarter = Math.floor(now.getMonth() / 3);
-            startDate = new Date(now.getFullYear(), quarter * 3, 1);
-            endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
-            break;
-          case 'ytd':
-            startDate = new Date(now.getFullYear(), 0, 1);
-            endDate = now;
-            break;
-          case 'year':
-            startDate = new Date(now.getFullYear(), 0, 1);
-            endDate = new Date(now.getFullYear(), 11, 31);
-            break;
-          default:
-            return filtered;
-        }
-      }
+      const { from: fromStr, to: toStr } = getDateRangeFromFilter(dateFilter);
+      const startDate = new Date(fromStr);
+      const endDate = new Date(toStr);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return filtered;
 
       const parseDate = (dateStr: string): Date | null => {
         if (!dateStr) return null;
@@ -1486,7 +1581,7 @@ export function DataProvider({ children }: DataProviderProps) {
 
     // Rebuild computed views (taskHoursEfficiency, qualityHours, laborBreakdown, wbsData, etc.)
     // from the filtered raw data so hierarchy/date filters apply across the entire website
-    const hasActiveFilter = (hierarchyFilter?.path?.length ?? 0) > 0 || (dateFilter && dateFilter.type !== 'all');
+    const hasActiveFilter = hasIdBasedFilter || (hierarchyFilter?.path?.length ?? 0) > 0 || (dateFilter && dateFilter.type !== 'all');
     if (hasActiveFilter) {
       const transformed = transformData(filtered, {
         allHoursForWeekRange: hoursForWeekRange,

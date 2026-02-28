@@ -4,9 +4,16 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 import { fetchAllData } from '@/lib/database';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const data = await fetchAllData();
+    const { searchParams } = new URL(request.url);
+    const shell = searchParams.get('shell') === 'true';
+    const mode = shell ? 'shell' : 'full';
+    const role = searchParams.get('role') ?? undefined;
+    const email = searchParams.get('email') ?? undefined;
+    const employeeId = searchParams.get('employeeId') ?? undefined;
+    const scope = (role || email || employeeId) ? { role, email, employeeId } : undefined;
+    const data = await fetchAllData(mode, scope);
     
     if (!data) {
       return NextResponse.json({ data: null, error: 'No database configured' }, { status: 200 });

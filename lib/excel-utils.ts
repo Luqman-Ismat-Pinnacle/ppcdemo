@@ -44,10 +44,11 @@ export function generateExportFilename(
   // Add hierarchy parts (or "Pinnacle" if none selected)
   if (hierarchyFilter) {
     const hierarchyParts: string[] = [];
-    if (hierarchyFilter.portfolio) hierarchyParts.push(hierarchyFilter.portfolio);
-    if (hierarchyFilter.customer) hierarchyParts.push(hierarchyFilter.customer);
-    if (hierarchyFilter.site) hierarchyParts.push(hierarchyFilter.site);
-    if (hierarchyFilter.project) hierarchyParts.push(hierarchyFilter.project);
+    const path = hierarchyFilter.path || [];
+    if (path[0]) hierarchyParts.push(path[0]);
+    if (path[1]) hierarchyParts.push(path[1]);
+    if (path[2]) hierarchyParts.push(path[2]);
+    if (path[3]) hierarchyParts.push(path[3]);
 
     if (hierarchyParts.length > 0) {
       parts.push(hierarchyParts.join('-'));

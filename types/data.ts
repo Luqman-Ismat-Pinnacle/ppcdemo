@@ -2300,10 +2300,13 @@ export interface MetricProvenance {
  * @property {string[]} [path] - Breadcrumb path of selected hierarchy
  */
 export interface HierarchyFilter {
-  portfolio?: string;
-  customer?: string;
-  site?: string;
-  project?: string;
+  portfolioId?: string;
+  customerId?: string;
+  siteId?: string;
+  projectId?: string;
+  unitId?: string;
+  phaseId?: string;
+  /** @deprecated Use ID fields; kept for backward compatibility */
   path?: string[];
 }
 

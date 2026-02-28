@@ -46,7 +46,7 @@ export default function PclHomePage() {
     actions: [
       { label: 'Acknowledge', href: '/role-views/pcl/exceptions' },
       { label: 'Escalate to SM', href: '/role-views/senior-manager' },
-      { label: 'Go to Project', href: '/project-controls/wbs-gantt-v2' },
+      { label: 'Go to Project', href: '/shared/wbs-gantt-v2' },
     ],
   }));
 
@@ -65,7 +65,7 @@ export default function PclHomePage() {
                 id: row.projectId,
                 label: `${row.projectId} · PCA ${row.responsiblePca}`,
                 value: `${row.coverage}% (${row.unmapped} unmapped)`,
-                href: '/project-controls/mapping',
+                href: '/shared/mapping',
               }))}
               empty="No mapping coverage data."
             />
@@ -77,7 +77,7 @@ export default function PclHomePage() {
                 id: row.projectId,
                 label: `${row.projectName} · ${row.responsiblePca}`,
                 value: row.daysSinceUpload,
-                href: '/project-controls/project-plans',
+                href: '/shared/project-plans',
               }))}
               empty="No plan freshness data."
             />

@@ -56,6 +56,10 @@ scripts/workday-employees-sample.json
 next-env.d.ts
 ~ Data.docx
 
+# docs manual (README.md is committed; other docs are local)
+docs/*
+!docs/README.md
+
 # python
 api-python/uploads/*
 !api-python/uploads/.gitkeep

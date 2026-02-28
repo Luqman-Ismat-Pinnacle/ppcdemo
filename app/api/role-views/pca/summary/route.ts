@@ -52,21 +52,21 @@ export async function GET() {
       id: 'critical-data-issues',
       severity: 'critical',
       title: `${asNumber(issuesRows[0]?.unassigned_tasks)} tasks missing assignment`,
-      actionHref: '/project-controls/data-management',
+      actionHref: '/shared/data-management',
       reason: 'Blocks role-scoped queues and assignment health.',
     }] : []),
     ...(projectCards.filter((row) => row.unmappedHours > 0).slice(0, 5).map((row) => ({
       id: `map-${row.projectId}`,
       severity: row.unmappedHours > 50 ? 'critical' : 'warning',
       title: `Map ${row.unmappedHours} unmapped hours`,
-      actionHref: '/project-controls/mapping',
+      actionHref: '/shared/mapping',
       reason: `Project ${row.projectId} mapping coverage is ${row.mappingCoverage}%`,
     }))),
     ...(overduePlans.slice(0, 5).map((row) => ({
       id: `plan-${String(row.project_id || '')}`,
       severity: 'warning',
       title: `Upload/update project plan`,
-      actionHref: '/project-controls/project-plans',
+      actionHref: '/shared/project-plans',
       reason: `${String(row.project_name || row.project_id || 'Project')} has stale plan data.`,
     }))),
   ];
@@ -87,8 +87,8 @@ export async function GET() {
       'PCA assignment scoping is inferred from available project data; explicit PCA ownership mapping is not present.',
     ],
     actions: {
-      mapping: { href: '/project-controls/mapping', method: 'GET' as const },
-      plans: { href: '/project-controls/project-plans', method: 'GET' as const },
+      mapping: { href: '/shared/mapping', method: 'GET' as const },
+      plans: { href: '/shared/project-plans', method: 'GET' as const },
     },
   };
   return NextResponse.json(response);

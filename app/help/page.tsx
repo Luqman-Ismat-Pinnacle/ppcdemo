@@ -24,7 +24,7 @@ const guides: Guide[] = [
   {
     id: 'wbs-gantt',
     title: 'WBS Gantt',
-    route: '/project-controls/wbs-gantt-v2',
+    route: '/shared/wbs-gantt-v2',
     owner: 'Project Controls',
     status: 'current',
     summary: 'Master schedule management with hierarchy navigation, CPM analysis, dependency mapping, baseline ghosting, and variance views.',
@@ -70,7 +70,7 @@ const guides: Guide[] = [
   {
     id: 'resourcing',
     title: 'Resourcing',
-    route: '/project-controls/resourcing',
+    route: '/shared/resourcing',
     owner: 'Project Controls',
     status: 'current',
     summary: 'Organization and utilization intelligence: manager tree, employee load distribution, capacity analytics, and heatmaps.',
@@ -107,7 +107,7 @@ const guides: Guide[] = [
   {
     id: 'project-plan',
     title: 'Project Plans',
-    route: '/project-controls/project-plans',
+    route: '/shared/project-plans',
     owner: 'Project Controls',
     status: 'current',
     summary: 'Plan upload and processing pipeline with parser fallback, health checks, and project synchronization.',
@@ -135,7 +135,7 @@ const guides: Guide[] = [
   {
     id: 'tasks',
     title: 'Production Floor (Tasks)',
-    route: '/insights/tasks',
+    route: '/shared/tasks',
     owner: 'Insights',
     status: 'current',
     summary: 'Task execution cockpit with sprint-focused matrix, lifecycle diagnostics, priority-demand analysis, and sprint queueing.',
@@ -163,7 +163,7 @@ const guides: Guide[] = [
   {
     id: 'overview',
     title: 'Executive Overview',
-    route: '/insights/overview-v2',
+    route: '/shared/overview-v2',
     owner: 'Insights',
     status: 'current',
     summary: 'Portfolio-level decision dashboard with KPI rollups, predictive views, and dependency impact bump chart.',
@@ -191,7 +191,7 @@ const guides: Guide[] = [
   {
     id: 'sprint',
     title: 'Sprint Planning',
-    route: '/project-management/sprint',
+    route: '/shared/sprint',
     owner: 'Project Management',
     status: 'current',
     summary: 'Planning and execution workspace across boards, backlog, tasks, and analytics.',

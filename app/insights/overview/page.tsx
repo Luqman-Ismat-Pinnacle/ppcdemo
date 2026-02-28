@@ -31,6 +31,8 @@ import {
 } from '@/lib/variance-engine';
 import { buildPortfolioAggregate, buildProjectBreakdown } from '@/lib/calculations/selectors';
 import MetricProvenanceChip from '@/components/ui/MetricProvenanceChip';
+import MetricExplainModal from '@/components/ui/MetricExplainModal';
+import { useMetricExplain } from '@/lib/hooks/useMetricExplain';
 
 /* ================================================================== */
 /*  CONSTANTS                                                          */
@@ -1282,6 +1284,7 @@ function MeetingSnapshotButton() {
 
 export default function OverviewV2Page() {
   const { filteredData, isLoading, variancePeriod, metricsHistory } = useData();
+  const { onExplain, result, loading, open, close, error } = useMetricExplain();
   const data = filteredData;
   const [aggregateBy, setAggregateBy] = useState<'project' | 'site'>('project');
 
@@ -1323,7 +1326,7 @@ export default function OverviewV2Page() {
         </div>
       </div>
 
-      {!hasData && <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4rem 2rem', background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, textAlign: 'center' }}><h2 style={{ margin: '0 0 0.75rem', fontSize: '1.1rem', fontWeight: 600, color: C.textPrimary }}>No Data</h2><p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: C.textMuted }}>Upload data from Data Management.</p><a href="/project-controls/data-management" style={{ padding: '0.6rem 1.2rem', background: C.teal, color: '#000', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>Go to Data Management</a></div>}
+      {!hasData && <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4rem 2rem', background: C.bgCard, borderRadius: 16, border: `1px solid ${C.border}`, textAlign: 'center' }}><h2 style={{ margin: '0 0 0.75rem', fontSize: '1.1rem', fontWeight: 600, color: C.textPrimary }}>No Data</h2><p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: C.textMuted }}>Upload data from Data Management.</p><a href="/shared/data-management" style={{ padding: '0.6rem 1.2rem', background: C.teal, color: '#000', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>Go to Data Management</a></div>}
 
       {hasData && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1341,7 +1344,7 @@ export default function OverviewV2Page() {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.25rem 0.75rem', borderRight: `1px solid ${C.border}`, background: `linear-gradient(180deg, ${hsColor}08, transparent)` }}>
                     <div style={{ fontSize: '2.5rem', fontWeight: 900, color: hsColor, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
                       {portfolio.healthScore}
-                      <MetricProvenanceChip provenance={portfolio.provenance.health} />
+                      <MetricProvenanceChip provenance={portfolio.provenance.health} value={portfolio.healthScore} onExplain={onExplain} />
                     </div>
                     <div style={{ fontSize: '0.6rem', color: C.textMuted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginTop: 4, display: 'flex', alignItems: 'center' }}>
                       Health
@@ -1351,7 +1354,7 @@ export default function OverviewV2Page() {
                     </div>
                     <div style={{ fontSize: '0.6rem', color: varColor(portfolio.hrsVariance), fontWeight: 700, marginTop: 6, display: 'flex', alignItems: 'center' }}>
                       {portfolio.hrsVariance > 0 ? '+' : ''}{portfolio.hrsVariance}% variance
-                      <MetricProvenanceChip provenance={portfolio.provenance.hoursVariance} />
+                      <MetricProvenanceChip provenance={portfolio.provenance.hoursVariance} value={`${portfolio.hrsVariance > 0 ? '+' : ''}${portfolio.hrsVariance}%`} onExplain={onExplain} />
                     </div>
                   </div>
 
@@ -1447,6 +1450,7 @@ export default function OverviewV2Page() {
           </SectionCard>
         </div>
       )}
+      <MetricExplainModal open={open} onClose={close} result={result} loading={loading} error={error} />
     </div>
   );
 }

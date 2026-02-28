@@ -94,7 +94,7 @@ export async function GET() {
     actions: {
       alerts: { href: '/api/alerts?status=open', method: 'GET' as const },
       scan: { href: '/api/alerts/scan', method: 'POST' as const },
-      mapping: { href: '/project-controls/mapping', method: 'GET' as const },
+      mapping: { href: '/shared/mapping', method: 'GET' as const },
     },
   };
 

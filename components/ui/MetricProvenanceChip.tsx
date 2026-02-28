@@ -5,9 +5,13 @@ import type { MetricProvenance } from '@/lib/calculations/types';
 
 interface MetricProvenanceChipProps {
   provenance: MetricProvenance;
+  /** Optional: current value for "Explain" context (e.g. for AI) */
+  value?: string | number | null;
+  /** Optional: called when user clicks "Explain" – for AI-assisted explanation */
+  onExplain?: (provenance: MetricProvenance, value?: string | number | null) => void;
 }
 
-export default function MetricProvenanceChip({ provenance }: MetricProvenanceChipProps) {
+export default function MetricProvenanceChip({ provenance, value, onExplain }: MetricProvenanceChipProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -50,15 +54,35 @@ export default function MetricProvenanceChip({ provenance }: MetricProvenanceChi
               color: 'var(--text-primary)',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
               <strong>{provenance.label}</strong>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                Close
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {onExplain && (
+                  <button
+                    type="button"
+                    onClick={() => { onExplain(provenance, value); setOpen(false); }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '0.75rem',
+                      background: 'var(--pinnacle-teal)',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Explain with AI
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
             <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 8 }}>
               Formula: <code>{provenance.trace.formula}</code>

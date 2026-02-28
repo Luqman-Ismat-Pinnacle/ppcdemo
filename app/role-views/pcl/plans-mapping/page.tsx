@@ -1,3 +1,3 @@
 /** @fileoverview Legacy redirect. */
 import { redirect } from 'next/navigation';
-export default function Page() { redirect('/project-controls/project-plans#pcl-plans-mapping'); }
+export default function Page() { redirect('/shared/project-plans#pcl-plans-mapping'); }

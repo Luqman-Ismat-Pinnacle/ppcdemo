@@ -179,7 +179,7 @@ export async function GET() {
     actions: {
       workdaySync: { href: '/api/workday', method: 'POST' as const },
       alertScan: { href: '/api/alerts/scan', method: 'POST' as const },
-      dataManagement: { href: '/project-controls/data-management', method: 'GET' as const },
+      dataManagement: { href: '/shared/data-management', method: 'GET' as const },
     },
   });
 }

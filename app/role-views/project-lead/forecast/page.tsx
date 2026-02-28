@@ -1,3 +1,3 @@
 /** @fileoverview Legacy redirect. */
 import { redirect } from 'next/navigation';
-export default function Page() { redirect('/project-management/forecast'); }
+export default function Page() { redirect('/shared/forecast'); }

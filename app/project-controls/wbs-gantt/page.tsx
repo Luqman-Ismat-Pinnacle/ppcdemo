@@ -15,7 +15,7 @@ export default function WbsGanttRedirectPage() {
 
   useEffect(() => {
     const query = searchParams?.toString();
-    router.replace(query ? `/project-controls/wbs-gantt-v2?${query}` : '/project-controls/wbs-gantt-v2');
+    router.replace(query ? `/shared/wbs-gantt-v2?${query}` : '/shared/wbs-gantt-v2');
   }, [router, searchParams]);
 
   return null;

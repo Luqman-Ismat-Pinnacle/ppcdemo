@@ -43,11 +43,11 @@ async function buildBriefing(role: string, employeeId?: string | null): Promise<
     [
       {
         role: 'system',
-        content: 'You are an operations briefing assistant. Give a concise, actionable briefing in 4-6 bullets.',
+        content: 'You are an operations briefing assistant. Give a concise, actionable briefing in 4-6 bullets. Include concrete "What should I do next?" actions from the context: exceptions to resolve, mapping suggestions to review, overdue plans, critical alerts.',
       },
       {
         role: 'user',
-        content: `Generate today brief for role ${role}. Use context: ${context}`,
+        content: `Generate today brief for role ${role}. Use context: ${context}. Prioritize actionable next steps.`,
       },
     ],
     380,

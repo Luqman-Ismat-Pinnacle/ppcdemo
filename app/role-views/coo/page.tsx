@@ -328,7 +328,7 @@ export default function CooRoleViewPage() {
                 severity={row.severity}
                 age={row.age}
                 actions={[
-                  { label: 'View Project', href: '/project-controls/wbs-gantt-v2' },
+                  { label: 'View Project', href: '/shared/wbs-gantt-v2' },
                   { label: 'Escalate', href: '/role-views/senior-manager' },
                 ]}
               />
@@ -440,7 +440,7 @@ export default function CooRoleViewPage() {
                                 {' '}portfolio health for this period.
                               </div>
                               <a
-                                href="/project-controls/wbs-gantt-v2?lens=coo"
+                                href="/shared/wbs-gantt-v2?lens=coo"
                                 style={{
                                   fontSize: '0.7rem',
                                   color: '#38BDF8',
@@ -676,7 +676,7 @@ export default function CooRoleViewPage() {
                       key={row.projectId}
                       style={{ borderBottom: '1px solid rgba(148,163,184,0.25)', cursor: 'pointer' }}
                       onClick={() => {
-                        window.open(`/project-controls/wbs-gantt-v2?lens=coo&project=${encodeURIComponent(row.projectId)}`, '_blank');
+                        window.open(`/shared/wbs-gantt-v2?lens=coo&project=${encodeURIComponent(row.projectId)}`, '_blank');
                       }}
                     >
                       <td style={{ padding: '0.35rem 0.5rem' }}>

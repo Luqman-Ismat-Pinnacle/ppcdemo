@@ -213,6 +213,26 @@ export async function buildPOContext(): Promise<string> {
   return appendChecksum('product_owner', lines).join(' | ');
 }
 
+/**
+ * Build context for "Explain this metric" AI query.
+ * Used when user clicks "Explain with AI" on MetricProvenanceChip.
+ */
+export function buildMetricExplainContext(
+  provenance: { id: string; label: string; trace: { formula: string; steps: string[] }; inputs: Array<{ key: string; label: string; value: unknown }>; dataSources: string[] },
+  value?: string | number | null
+): string {
+  const parts = [
+    `metric_id=${provenance.id}`,
+    `metric_label=${provenance.label}`,
+    `current_value=${value ?? 'N/A'}`,
+    `formula=${provenance.trace.formula}`,
+    `inputs=${provenance.inputs.map((i) => `${i.label}=${i.value}`).join('; ')}`,
+    `data_sources=${provenance.dataSources.join(', ')}`,
+    `steps=${provenance.trace.steps.join(' → ')}`,
+  ];
+  return parts.join(' | ');
+}
+
 export async function buildRoleContext(role: string, input?: CtxInput): Promise<string> {
   switch (role) {
     case 'coo':

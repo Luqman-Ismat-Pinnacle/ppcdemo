@@ -53,7 +53,7 @@ export default function PcaRoleHomePage() {
               id: row.projectId,
               label: `${row.projectId} · issues ${row.dataIssues}`,
               value: `Map ${row.mappingCoverage}% · Unmapped ${row.unmappedHours}`,
-              href: '/project-controls/mapping',
+              href: '/shared/mapping',
             }))}
             empty="No project status rows."
           />
