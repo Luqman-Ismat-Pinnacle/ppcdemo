@@ -525,7 +525,8 @@ export function DataProvider({ children }: DataProviderProps) {
         const r = activeRole?.key;
         const e = user?.email;
         const emp = user?.employeeId;
-        if (r && r !== 'product_owner' && r !== 'pcl' && r !== 'senior_manager') {
+        const isDemoCoo = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true' && r === 'coo';
+        if (r && r !== 'product_owner' && r !== 'pcl' && r !== 'senior_manager' && !isDemoCoo) {
           if (r === 'rda' && emp) {
             parts.push('role=rda', `employeeId=${encodeURIComponent(emp)}`);
           } else if (r === 'coo') {
@@ -661,7 +662,8 @@ export function DataProvider({ children }: DataProviderProps) {
       const r = activeRole?.key;
       const e = user?.email;
       const emp = user?.employeeId;
-      if (r && r !== 'product_owner' && r !== 'pcl' && r !== 'senior_manager') {
+      const isDemoCoo = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true' && r === 'coo';
+      if (r && r !== 'product_owner' && r !== 'pcl' && r !== 'senior_manager' && !isDemoCoo) {
         if (r === 'rda' && emp) {
           parts.push('role=rda', `employeeId=${encodeURIComponent(emp)}`);
         } else if (r === 'coo') {
@@ -1033,8 +1035,10 @@ export function DataProvider({ children }: DataProviderProps) {
     // =========================================================================
     // COO ROLE FILTERING
     // Limit COO views to employees and hours for department "1111 Services".
+    // Skip when auth disabled (demo) so demo user sees full data.
     // =========================================================================
-    if (activeRole.key === 'coo') {
+    const isDemoCoo = process.env.NEXT_PUBLIC_AUTH_DISABLED === 'true' && activeRole.key === 'coo';
+    if (activeRole.key === 'coo' && !isDemoCoo) {
       const allEmployees = (filtered.employees || []) as any[];
       const allowedEmployees = allEmployees.filter((emp: any) => {
         const dept = String(emp.department ?? emp.department_id ?? '').trim().toLowerCase();

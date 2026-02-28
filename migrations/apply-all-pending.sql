@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS mo_period_notes (
 CREATE INDEX IF NOT EXISTS idx_mo_period_notes_period ON mo_period_notes (period_granularity, period_start, period_end);
 CREATE INDEX IF NOT EXISTS idx_mo_period_notes_scope ON mo_period_notes (portfolio_id, customer_id, site_id, project_id);
 CREATE INDEX IF NOT EXISTS idx_mo_period_notes_type ON mo_period_notes (note_type);
+ALTER TABLE mo_period_notes ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
 
 -- Milestones is_client_visible
 ALTER TABLE milestones ADD COLUMN IF NOT EXISTS is_client_visible BOOLEAN NOT NULL DEFAULT FALSE;

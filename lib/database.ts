@@ -312,7 +312,7 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
       safeQuery('SELECT * FROM project_document_versions ORDER BY record_id, version_number DESC'),
       safeQuery('SELECT * FROM customer_contracts ORDER BY line_from_date DESC'),
       projId ? safeQuery('SELECT * FROM workday_phases WHERE project_id = $1 ORDER BY project_id, unit, name', [projId]) : safeQuery('SELECT * FROM workday_phases ORDER BY project_id, unit, name'),
-      projId ? safeQuery('SELECT * FROM mo_period_notes WHERE project_id = $1 ORDER BY period_start DESC, sort_order ASC', [projId]) : safeQuery('SELECT * FROM mo_period_notes ORDER BY period_start DESC, sort_order ASC'),
+      projId ? safeQuery('SELECT * FROM mo_period_notes WHERE project_id = $1 ORDER BY period_start DESC', [projId]) : safeQuery('SELECT * FROM mo_period_notes ORDER BY period_start DESC'),
       safeQuery('SELECT * FROM task_dependencies'),
       safeQuery('SELECT * FROM task_quantity_entries ORDER BY date'),
       safeQuery('SELECT * FROM visual_snapshots ORDER BY snapshot_date DESC'),

@@ -51,6 +51,7 @@ export const ROLE_NAV_CONFIG: Record<RoleViewKey, RoleNavConfig> = {
       { label: "Mo's Page", href: '/shared/mos-page' },
       { label: 'WBS Gantt', href: '/shared/wbs-gantt-v2' },
       { label: 'Commitments', href: '/role-views/coo/commitments', badgeKey: 'coo_commitments' },
+      { label: 'Data Management', href: '/shared/data-management' },
     ],
     tools: [],
   },
