@@ -44,11 +44,11 @@ function getInitials(name: string): string {
 }
 
 const DEMO_USER: UserInfo = {
-  name: 'Demo User',
+  name: 'Demo User (COO)',
   email: 'demo@pinnacle.com',
-  role: 'Admin',
+  role: 'COO',
   initials: 'DU',
-  canViewAll: true,
+  canViewAll: false,
 };
 
 /**
