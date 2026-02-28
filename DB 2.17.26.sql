@@ -655,7 +655,6 @@ CREATE TABLE IF NOT EXISTS qc_log_entries (
   created_by VARCHAR(255),
   created_on_excel NUMERIC,
   modified_by VARCHAR(255),
-  modified_on_excel NUMERIC,
   qc_assigned_date TIMESTAMPTZ,
   qc_complete_date TIMESTAMPTZ,
   qc_complete_date_override TIMESTAMPTZ,
