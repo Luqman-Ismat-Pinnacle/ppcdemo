@@ -86,6 +86,9 @@ export async function fetchAllData() {
 // POSTGRESQL IMPLEMENTATION
 // ============================================================================
 
+const HOUR_ENTRIES_MONTHS_LIMIT = parseInt(process.env.HOUR_ENTRIES_MONTHS_LIMIT || '24', 10);
+const HOUR_ENTRIES_MAX_ROWS = parseInt(process.env.HOUR_ENTRIES_MAX_ROWS || '0', 10);
+
 async function fetchFromPostgreSQL() {
   return withClient(async (client) => {
     // Helper to safely query a table (returns empty array if table doesn't exist)
@@ -98,6 +101,36 @@ async function fetchFromPostgreSQL() {
         // Table doesn't exist - return empty array
         if (pgErr.code === '42P01') return [];
         console.error(`[Database] Query error: ${sql.substring(0, 80)}...`, pgErr.message || 'Unknown error');
+        return [];
+      }
+    };
+
+    const monthsLimit = Number.isFinite(HOUR_ENTRIES_MONTHS_LIMIT) && HOUR_ENTRIES_MONTHS_LIMIT > 0 ? HOUR_ENTRIES_MONTHS_LIMIT : 24;
+    const useDateFilter = monthsLimit > 0;
+    const cutoffDate = useDateFilter ? (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - monthsLimit);
+      return d.toISOString().slice(0, 10);
+    })() : null;
+    const maxRows = HOUR_ENTRIES_MAX_ROWS > 0 ? HOUR_ENTRIES_MAX_ROWS : null;
+
+    const fetchHourEntries = async (): Promise<DbRow[]> => {
+      try {
+        if (useDateFilter && cutoffDate) {
+          const limitClause = maxRows ? ` LIMIT ${maxRows}` : '';
+          const result = await client.query(
+            `SELECT * FROM hour_entries WHERE date >= $1 ORDER BY date${limitClause}`,
+            [cutoffDate]
+          );
+          return result.rows as DbRow[];
+        }
+        const limitClause = maxRows ? ` LIMIT ${maxRows}` : '';
+        const result = await client.query(`SELECT * FROM hour_entries ORDER BY date${limitClause}`);
+        return result.rows as DbRow[];
+      } catch (err: unknown) {
+        const pgErr = err as PgErrorLike;
+        if (pgErr.code === '42P01') return [];
+        console.error('[Database] hour_entries query error:', pgErr.message || 'Unknown error');
         return [];
       }
     };
@@ -147,7 +180,7 @@ async function fetchFromPostgreSQL() {
       safeQuery('SELECT * FROM tasks ORDER BY name'),
       safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
       safeQuery('SELECT * FROM employees ORDER BY name'),
-      safeQuery('SELECT * FROM hour_entries ORDER BY date'),
+      fetchHourEntries(),
       // Keep ordering compatible with pruned schemas where due_date no longer exists.
       safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, created_at)"),
       safeQuery('SELECT * FROM deliverables ORDER BY name'),
@@ -173,7 +206,7 @@ async function fetchFromPostgreSQL() {
       safeQuery('SELECT * FROM visual_snapshots ORDER BY snapshot_date DESC'),
     ]);
 
-    console.log(`[Database] PostgreSQL fetch complete — ${hourEntries.length} hour entries, ${tasks.length} tasks, ${projects.length} projects, ${employees.length} employees`);
+    console.log(`[Database] PostgreSQL fetch complete — ${hourEntries.length} hour entries${useDateFilter ? ` (from ${cutoffDate})` : ''}, ${tasks.length} tasks, ${projects.length} projects, ${employees.length} employees`);
 
     return {
       hierarchyNodes: [],

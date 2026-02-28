@@ -194,7 +194,7 @@ function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
   const seen = new Set<string>();
   const taskIds = new Set(tasks.map((t) => String(t.id || t.taskId || '').trim()).filter(Boolean));
 
-  const add = (pred: string, succ: string, rel: string, lag: number) => {
+  const add = (pred: string, succ: string, rel: string, lag: number, isExternal?: boolean) => {
     if (!pred || !succ || pred === succ) return;
     if (!taskIds.has(pred) || !taskIds.has(succ)) return;
     const relationship = ['FS', 'SS', 'FF', 'SF'].includes((rel || '').toUpperCase()) ? rel.toUpperCase() : 'FS';
@@ -202,7 +202,7 @@ function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
     const key = `${pred}|${succ}|${relationship}|${lagDays}`;
     if (seen.has(key)) return;
     seen.add(key);
-    rows.push({
+    const row: Record<string, unknown> = {
       id: `dep-${pred}-${succ}-${relationship}-${lagDays}`,
       predecessorTaskId: pred,
       successorTaskId: succ,
@@ -210,7 +210,9 @@ function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
       lagDays,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    if (isExternal !== undefined) row.isExternal = isExternal;
+    rows.push(row);
   };
 
   tasks.forEach((task: any) => {
@@ -221,7 +223,8 @@ function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
         String(p.predecessorTaskId || p.predecessor_task_id || '').trim(),
         succId,
         String(p.relationship || p.relationshipType || p.relationship_type || 'FS'),
-        Number(p.lagDays || p.lag_days || p.lag || 0)
+        Number(p.lagDays || p.lag_days || p.lag || 0),
+        p.isExternal ?? p.is_external
       );
     });
 
@@ -231,7 +234,8 @@ function buildDependencyRows(tasks: any[]): Record<string, unknown>[] {
         succId,
         String(s.successorTaskId || s.successor_task_id || '').trim(),
         String(s.relationship || s.relationshipType || s.relationship_type || 'FS'),
-        Number(s.lagDays || s.lag_days || s.lag || 0)
+        Number(s.lagDays || s.lag_days || s.lag || 0),
+        s.isExternal ?? s.is_external
       );
     });
   });

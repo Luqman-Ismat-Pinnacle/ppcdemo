@@ -1,6 +1,6 @@
 # Website Data Flow and MPP Parser Flow
 
-Last updated: 2026-02-25
+Last updated: 2026-02-27
 
 ## 1) Overview
 This document focuses on how data moves through the website at runtime, and then drills into the MPP parser integration in detail.
@@ -128,6 +128,18 @@ flowchart TD
 - ID normalization and fallback ID generation where needed.
 - Batch upsert strategy for large row sets.
 
+### 6.6 Workday–MPP mapping strategy
+- **Workday sync** (Azure Functions, Supabase functions) populates: `projects`, `workday_phases`, `employees`, `customer_contracts`.
+- **MPP parser** populates: `units`, `phases`, `tasks`, `task_dependencies`.
+- **Hour mapping**: `hour_entries` link to tasks via `task_id` and to Workday phases via `workday_phase` / `workday_task`. The mapping layer (`/api/data/mapping`) and `resolveHourEntriesToTasks` in `lib/data-transforms.ts` match hours to MPP tasks by (project_id, workday_phase, workday_task) so actuals roll up correctly.
+- **Phase matching**: MPP phases (from outline level 3) and Workday phases can be matched by name and `project_id`. Ensure Workday phase names align with MPP phase names for reliable hour-to-task mapping.
+
+### 6.7 MPP parser output fields (full extraction, v18+)
+The parser in `api-python/mpp_parser.py` extracts all MPXJ-exposed fields. Task-level fields include:
+- **Core**: id, name, outline_level, hierarchy_type, is_summary, parent_id, startDate, endDate, percentComplete, baselineHours, actualHours, projectedHours, remainingHours, baselineCost, actualCost, remainingCost, assignedResource, isCritical, totalSlack, comments, predecessors, successors, folder.
+- **New (v18)**: wbsCode, outlineNumber, constraintType, constraintDate, baselineStartDate, baselineEndDate, actualStartDate, actualEndDate, duration, baselineDuration, actualDuration, remainingDuration, earlyStart, earlyFinish, lateStart, lateFinish, freeSlack, cost, fixedCost, costVariance, workVariance, durationVariance, isMilestone, isEstimated, isRecurring, isExternal, priority, deadline, calendarName, percentWorkComplete, physicalPercentComplete, contact, manager, resourceAssignments.
+- **Project-level**: name, startDate, endDate, manager, statusDate, currency, defaultCalendar, author, company, keywords.
+
 ## 7) How parser output propagates to website pages
 After successful parse/upsert:
 1. DB has fresh `units/phases/tasks/task_dependencies` for the target project.
@@ -159,4 +171,9 @@ When verifying data flow or parser issues:
 3. Confirm `/api/documents/process-mpp` returns row counts and no conversion errors.
 4. Confirm `/api/data` includes updated `tasks/phases/units/task_dependencies`.
 5. Confirm WBS/Project Plans/Forecast pages reflect new schedule data after refresh.
+
+## 11) Performance and load optimizations (2026-02-27)
+- **hour_entries**: PostgreSQL fetch uses date-range filter (last 24 months by default). Set `HOUR_ENTRIES_MONTHS_LIMIT=0` to fetch all; set `HOUR_ENTRIES_MAX_ROWS` to cap rows.
+- **Indexes**: `idx_tasks_project_critical`, `idx_hour_entries_project_date` for common filters.
+- **transformData**: `buildWBSData`, `buildResourceHeatmap`, `buildHierarchy` are memoized by data key to avoid recomputation when input is unchanged.
 

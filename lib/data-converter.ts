@@ -416,6 +416,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           predecessorName: String(link.predecessorName ?? link.predecessor_name ?? link.name ?? ''),
           relationship: normalizeRelationship(link.relationship ?? link.relationshipType ?? link.relationship_type),
           lagDays: Number(link.lagDays ?? link.lag_days ?? link.lag ?? 0) || 0,
+          isExternal: link.isExternal ?? link.is_external ?? false,
         };
       })
       .filter(Boolean);
@@ -460,12 +461,14 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           successorName: String(link.successorName ?? link.successor_name ?? link.name ?? ''),
           relationship: normalizeRelationship(link.relationship ?? link.relationshipType ?? link.relationship_type),
           lagDays: Number(link.lagDays ?? link.lag_days ?? link.lag ?? 0) || 0,
+          isExternal: link.isExternal ?? link.is_external ?? false,
         };
       })
       .filter(Boolean);
   };
 
   // Build hierarchy: level 1 = unit; level 2+ with children = phase; leaf = task. (Project -> Unit -> Phase -> Task)
+  // Preserve all existing mappings; extend with new parser fields.
   const raw = (data.tasks as any[])
     .filter((t: any) => readOutlineLevel(t as Record<string, unknown>) !== 0)
     .map((t: any, idx: number) => ({
@@ -496,6 +499,40 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       assignedResource: t.assignedResource || t.assigned_resource || '',
       predecessors: normalizePredecessors(t),
       successors: normalizeSuccessors(t),
+      folder: t.folder ?? t.folderPath ?? '',
+      wbsCode: t.wbsCode ?? t.wbs_code ?? null,
+      outlineNumber: t.outlineNumber ?? t.outline_number ?? null,
+      constraintType: t.constraintType ?? t.constraint_type ?? null,
+      constraintDate: t.constraintDate ?? t.constraint_date ?? null,
+      baselineStartDate: t.baselineStartDate ?? t.baseline_start_date ?? null,
+      baselineEndDate: t.baselineEndDate ?? t.baseline_end_date ?? null,
+      actualStartDate: t.actualStartDate ?? t.actual_start_date ?? null,
+      actualEndDate: t.actualEndDate ?? t.actual_end_date ?? null,
+      duration: t.duration ?? null,
+      baselineDuration: t.baselineDuration ?? t.baseline_duration ?? null,
+      actualDuration: t.actualDuration ?? t.actual_duration ?? null,
+      remainingDuration: t.remainingDuration ?? t.remaining_duration ?? null,
+      earlyStart: t.earlyStart ?? t.early_start ?? null,
+      earlyFinish: t.earlyFinish ?? t.early_finish ?? null,
+      lateStart: t.lateStart ?? t.late_start ?? null,
+      lateFinish: t.lateFinish ?? t.late_finish ?? null,
+      freeSlack: t.freeSlack ?? t.free_float ?? t.freeFloat ?? null,
+      cost: t.cost ?? null,
+      fixedCost: t.fixedCost ?? t.fixed_cost ?? null,
+      costVariance: t.costVariance ?? t.cost_variance ?? null,
+      workVariance: t.workVariance ?? t.work_variance ?? null,
+      durationVariance: t.durationVariance ?? t.duration_variance ?? null,
+      isMilestone: t.isMilestone ?? t.is_milestone ?? false,
+      isEstimated: t.isEstimated ?? t.is_estimated ?? false,
+      isExternal: t.isExternal ?? t.is_external ?? false,
+      priority: t.priority ?? null,
+      deadline: t.deadline ?? null,
+      calendarName: t.calendarName ?? t.calendar_name ?? null,
+      percentWorkComplete: t.percentWorkComplete ?? t.percent_work_complete ?? null,
+      physicalPercentComplete: t.physicalPercentComplete ?? t.physical_percent_complete ?? null,
+      contact: t.contact ?? null,
+      manager: t.manager ?? null,
+      resourceAssignments: t.resourceAssignments ?? t.resource_assignments ?? [],
     }));
 
   // Reconstruct missing parent links from outline levels when parent_id is absent.
@@ -567,6 +604,15 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
     }
     const rawId = String(r.id);
     const id = scopedIdByRawId.get(rawId) || rawId;
+    const toEpochDays = (val: unknown): number | null => {
+      if (val == null) return null;
+      if (typeof val === 'number' && Number.isFinite(val)) return Math.round(val);
+      const s = String(val).trim();
+      if (!s) return null;
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 86400000);
+    };
+
     const baseTask = {
       id,
       name: r.name,
@@ -595,6 +641,32 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
       projectId: projectIdOverride || '',
       createdAt: now,
       updatedAt: now,
+      wbsCode: r.wbsCode ?? null,
+      outlineNumber: r.outlineNumber ?? null,
+      baselineStartDate: r.baselineStartDate ?? null,
+      baselineEndDate: r.baselineEndDate ?? null,
+      actualStartDate: r.actualStartDate ?? null,
+      actualEndDate: r.actualEndDate ?? null,
+      constraintType: r.constraintType ?? null,
+      constraintDate: r.constraintDate ?? null,
+      deadline: r.deadline ?? null,
+      calendarName: r.calendarName ?? null,
+      durationHours: r.duration ?? null,
+      fixedCost: r.fixedCost ?? null,
+      costVariance: r.costVariance ?? null,
+      workVariance: r.workVariance ?? null,
+      durationVariance: r.durationVariance ?? null,
+      isEstimated: r.isEstimated ?? false,
+      isExternal: r.isExternal ?? false,
+      contact: r.contact ?? null,
+      earlyStart: r.earlyStart != null ? toEpochDays(r.earlyStart) : null,
+      earlyFinish: r.earlyFinish != null ? toEpochDays(r.earlyFinish) : null,
+      lateStart: r.lateStart != null ? toEpochDays(r.lateStart) : null,
+      lateFinish: r.lateFinish != null ? toEpochDays(r.lateFinish) : null,
+      freeSlack: r.freeSlack != null ? Math.round(Number(r.freeSlack)) : null,
+      isMilestone: r.isMilestone ?? false,
+      priority: r.priority ?? null,
+      resourceAssignments: r.resourceAssignments ?? [],
     };
 
     if (nodeType === 'unit') {
@@ -640,7 +712,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
         assignedResource: r.assignedResource || '',
         assignedResourceType: 'specific' as const,
         status: (r.outline_level ?? 0) > 3 && r.is_summary ? 'In Progress' : 'Not Started',
-        priority: 'medium' as const,
+        priority: (baseTask.priority != null ? String(baseTask.priority) : 'medium') as 'low' | 'medium' | 'high',
         predecessorId: firstPred?.predecessorTaskId || null,
         predecessorRelationship: (firstPred?.relationship as 'FS' | 'SS' | 'FF' | 'SF') || null,
         baselineCount: baseTask.baselineCount,
@@ -656,6 +728,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           predecessorName: p.predecessorName || '',
           relationship: (p.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF',
           lagDays: p.lagDays || 0,
+          isExternal: p.isExternal ?? false,
         })),
         successors: (Array.isArray(r.successors) ? r.successors : []).map((s: any) => ({
           id: `${id}-${s.successorTaskId}`,
@@ -664,6 +737,7 @@ export function convertMppParserOutput(data: Record<string, unknown>, projectIdO
           successorName: s.successorName || '',
           relationship: (s.relationship || 'FS') as 'FS' | 'SS' | 'FF' | 'SF',
           lagDays: s.lagDays || 0,
+          isExternal: s.isExternal ?? false,
         })),
       });
     }

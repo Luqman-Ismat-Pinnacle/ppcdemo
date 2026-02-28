@@ -51,6 +51,43 @@ class ProjectParser:
         except:
             return 0.0
 
+    def _to_duration_hours(self, duration, default_hours_per_day=8.0):
+        """Convert MPXJ Duration to hours. Uses getDuration() value; assumes hours if from Work, days if from task duration."""
+        if duration is None:
+            return None
+        try:
+            if hasattr(duration, 'getDuration'):
+                val = duration.getDuration()
+                if val is None:
+                    return None
+                hours = self._to_float(val)
+                if hasattr(duration, 'getUnits'):
+                    units = duration.getUnits()
+                    if units:
+                        u = str(units).upper()
+                        if 'DAY' in u or 'D' == u:
+                            hours = hours * default_hours_per_day
+                        elif 'WEEK' in u or 'W' == u:
+                            hours = hours * default_hours_per_day * 5
+                return hours
+            return self._to_float(duration)
+        except Exception:
+            return None
+
+    def _constraint_type_to_string(self, ct):
+        """Convert MPXJ ConstraintType enum to string."""
+        if ct is None:
+            return None
+        try:
+            s = str(ct)
+            for prefix in ['AS_SOON_AS_POSSIBLE', 'ASAP', 'ALAP', 'MUST_START_ON', 'MUST_FINISH_ON',
+                          'START_NO_EARLIER_THAN', 'START_NO_LATER_THAN', 'FINISH_NO_EARLIER_THAN', 'FINISH_NO_LATER_THAN']:
+                if prefix in s.upper():
+                    return s.replace('_', ' ').lower() if '_' in s else s.lower()
+            return s
+        except Exception:
+            return None
+
     def _normalize_relation_type(self, relation):
         try:
             rel_type_obj = relation.getType()
@@ -182,14 +219,52 @@ class ProjectParser:
         except:
             print("Scheduling analyzer not found or failed; continuing with raw data.")
 
-        # 3. Project-wide properties
+        # 3. Project-wide properties (extend project_info, do not replace existing fields)
         props = project.getProjectProperties()
         project_info = {
             'name': str(props.getProjectTitle() or "Imported Project"),
             'startDate': self._to_iso(props.getStartDate()),
             'endDate': self._to_iso(props.getFinishDate()),
-            'manager': str(props.getManager() or "")
+            'manager': str(props.getManager() or ""),
         }
+        try:
+            sd = project.getStatusDate()
+            if sd is not None:
+                project_info['statusDate'] = self._to_iso(sd)
+        except Exception:
+            pass
+        try:
+            curr = project.getCurrency()
+            if curr is not None:
+                project_info['currency'] = str(curr)
+        except Exception:
+            pass
+        try:
+            dc = project.getDefaultCalendar()
+            if dc is not None and hasattr(dc, 'getName'):
+                project_info['defaultCalendar'] = str(dc.getName() or "")
+            elif dc is not None:
+                project_info['defaultCalendar'] = str(dc)
+        except Exception:
+            pass
+        try:
+            author = props.getAuthor()
+            if author is not None:
+                project_info['author'] = str(author)
+        except Exception:
+            pass
+        try:
+            company = props.getCompany()
+            if company is not None:
+                project_info['company'] = str(company)
+        except Exception:
+            pass
+        try:
+            keywords = props.getKeywords()
+            if keywords is not None:
+                project_info['keywords'] = str(keywords)
+        except Exception:
+            pass
 
         # 4. Process all tasks in order
         all_tasks = []
@@ -208,13 +283,41 @@ class ProjectParser:
             if not parent_id:
                 parent_id = None
 
-            # Resource extraction
+            # Resource extraction (preserve assigned_resource for backward compatibility)
             res_names = []
+            resource_assignments = []
             assignments = task.getResourceAssignments()
             if assignments:
                 for a in assignments:
                     r = a.getResource()
-                    if r: res_names.append(str(r.getName() or ""))
+                    if r:
+                        res_names.append(str(r.getName() or ""))
+                        try:
+                            ra = {
+                                'resourceName': str(r.getName() or ""),
+                                'resourceId': str(r.getUniqueID()) if r.getUniqueID() is not None else str(r.getID()) if r.getID() is not None else "",
+                            }
+                            if a.getUnits() is not None:
+                                ra['units'] = self._to_float(a.getUnits())
+                            if a.getWork() and a.getWork().getDuration() is not None:
+                                ra['work'] = self._to_float(a.getWork().getDuration())
+                            if a.getActualWork() and a.getActualWork().getDuration() is not None:
+                                ra['actualWork'] = self._to_float(a.getActualWork().getDuration())
+                            if a.getRemainingWork() and a.getRemainingWork().getDuration() is not None:
+                                ra['remainingWork'] = self._to_float(a.getRemainingWork().getDuration())
+                            if a.getCost() is not None:
+                                ra['cost'] = self._to_cost(a.getCost())
+                            if a.getActualCost() is not None:
+                                ra['actualCost'] = self._to_cost(a.getActualCost())
+                            if a.getRemainingCost() is not None:
+                                ra['remainingCost'] = self._to_cost(a.getRemainingCost())
+                            if a.getStart() is not None:
+                                ra['start'] = self._to_iso(a.getStart())
+                            if a.getFinish() is not None:
+                                ra['finish'] = self._to_iso(a.getFinish())
+                            resource_assignments.append(ra)
+                        except Exception as ra_err:
+                            print(f"  Warning: Could not parse resource assignment for task {uid}: {ra_err}")
             assigned_resource = ", ".join(filter(None, res_names))
 
             # Extract work values directly from MPP file - no calculation
@@ -308,6 +411,257 @@ class ProjectParser:
             except Exception as succ_err:
                 print(f"  Warning: getSuccessors() failed for task {uid}: {succ_err}")
 
+            # New fields (append only; preserve all existing fields above)
+            wbs_code = None
+            outline_number = None
+            constraint_type = None
+            constraint_date = None
+            baseline_start_date = None
+            baseline_end_date = None
+            actual_start_date = None
+            actual_end_date = None
+            duration_hours = None
+            baseline_duration = None
+            actual_duration = None
+            remaining_duration = None
+            early_start = None
+            early_finish = None
+            late_start = None
+            late_finish = None
+            free_slack = None
+            cost = None
+            fixed_cost = None
+            cost_variance = None
+            work_variance = None
+            duration_variance = None
+            is_milestone = False
+            is_estimated = False
+            is_recurring = False
+            is_external = False
+            priority = None
+            deadline = None
+            calendar_name = None
+            calendar_unique_id = None
+            percent_work_complete = None
+            physical_percent_complete = None
+            contact = None
+            task_manager = None
+            hyperlink_address = None
+            hyperlink_sub_address = None
+            subproject_file = None
+            subproject_task_id = None
+
+            try:
+                wbs = task.getWBS()
+                if wbs is not None:
+                    wbs_code = str(wbs)
+            except Exception:
+                pass
+            try:
+                on = task.getOutlineNumber()
+                if on is not None:
+                    outline_number = str(on)
+            except Exception:
+                pass
+            try:
+                ct = task.getConstraintType()
+                if ct is not None:
+                    constraint_type = self._constraint_type_to_string(ct)
+            except Exception:
+                pass
+            try:
+                cd = task.getConstraintDate()
+                if cd is not None:
+                    constraint_date = self._to_iso(cd)
+            except Exception:
+                pass
+            try:
+                baseline_start_date = self._to_iso(task.getBaselineStart())
+            except Exception:
+                pass
+            try:
+                baseline_end_date = self._to_iso(task.getBaselineFinish())
+            except Exception:
+                pass
+            try:
+                actual_start_date = self._to_iso(task.getActualStart())
+            except Exception:
+                pass
+            try:
+                actual_end_date = self._to_iso(task.getActualFinish())
+            except Exception:
+                pass
+            try:
+                d = task.getDuration()
+                if d is not None:
+                    duration_hours = self._to_duration_hours(d)
+            except Exception:
+                pass
+            try:
+                bd = task.getBaselineDuration()
+                if bd is not None:
+                    baseline_duration = self._to_duration_hours(bd)
+            except Exception:
+                pass
+            try:
+                ad = task.getActualDuration()
+                if ad is not None:
+                    actual_duration = self._to_duration_hours(ad)
+            except Exception:
+                pass
+            try:
+                rd = task.getRemainingDuration()
+                if rd is not None:
+                    remaining_duration = self._to_duration_hours(rd)
+            except Exception:
+                pass
+            try:
+                early_start = self._to_iso(task.getEarlyStart())
+            except Exception:
+                pass
+            try:
+                early_finish = self._to_iso(task.getEarlyFinish())
+            except Exception:
+                pass
+            try:
+                late_start = self._to_iso(task.getLateStart())
+            except Exception:
+                pass
+            try:
+                late_finish = self._to_iso(task.getLateFinish())
+            except Exception:
+                pass
+            try:
+                fs = task.getFreeSlack()
+                if fs is not None and hasattr(fs, 'getDuration'):
+                    free_slack = self._to_float(fs.getDuration())
+                elif fs is not None:
+                    free_slack = self._to_float(fs)
+            except Exception:
+                pass
+            try:
+                c = task.getCost()
+                if c is not None:
+                    cost = self._to_cost(c)
+            except Exception:
+                pass
+            try:
+                fc = task.getFixedCost()
+                if fc is not None:
+                    fixed_cost = self._to_cost(fc)
+            except Exception:
+                pass
+            try:
+                cv = task.getCostVariance()
+                if cv is not None:
+                    cost_variance = self._to_cost(cv)
+            except Exception:
+                pass
+            try:
+                wv = task.getWorkVariance()
+                if wv is not None and hasattr(wv, 'getDuration'):
+                    work_variance = self._to_float(wv.getDuration())
+                elif wv is not None:
+                    work_variance = self._to_float(wv)
+            except Exception:
+                pass
+            try:
+                dv = task.getDurationVariance()
+                if dv is not None and hasattr(dv, 'getDuration'):
+                    duration_variance = self._to_float(dv.getDuration())
+                elif dv is not None:
+                    duration_variance = self._to_float(dv)
+            except Exception:
+                pass
+            try:
+                is_milestone = bool(task.getMilestone())
+            except Exception:
+                pass
+            try:
+                is_estimated = bool(task.getEstimated())
+            except Exception:
+                pass
+            try:
+                is_recurring = bool(task.getRecurring())
+            except Exception:
+                pass
+            try:
+                is_external = bool(task.getExternalTask())
+            except Exception:
+                pass
+            try:
+                p = task.getPriority()
+                if p is not None:
+                    priority = str(p) if not isinstance(p, (int, float)) else int(p)
+            except Exception:
+                pass
+            try:
+                deadline = self._to_iso(task.getDeadline())
+            except Exception:
+                pass
+            try:
+                cal = task.getCalendar()
+                if cal is not None and hasattr(cal, 'getName'):
+                    calendar_name = str(cal.getName() or "")
+                elif cal is not None:
+                    calendar_name = str(cal)
+            except Exception:
+                pass
+            try:
+                cuid = task.getCalendarUniqueID()
+                if cuid is not None:
+                    calendar_unique_id = int(cuid)
+            except Exception:
+                pass
+            try:
+                pwc = task.getPercentageWorkComplete()
+                if pwc is not None:
+                    percent_work_complete = self._to_float(pwc)
+            except Exception:
+                pass
+            try:
+                ppc = task.getPhysicalPercentComplete()
+                if ppc is not None:
+                    physical_percent_complete = self._to_float(ppc)
+            except Exception:
+                pass
+            try:
+                cont = task.getContact()
+                if cont is not None:
+                    contact = str(cont)
+            except Exception:
+                pass
+            try:
+                tm = task.getManager()
+                if tm is not None:
+                    task_manager = str(tm)
+            except Exception:
+                pass
+            try:
+                ha = task.getHyperlinkAddress()
+                if ha is not None:
+                    hyperlink_address = str(ha)
+            except Exception:
+                pass
+            try:
+                hsa = task.getHyperlinkSubAddress()
+                if hsa is not None:
+                    hyperlink_sub_address = str(hsa)
+            except Exception:
+                pass
+            try:
+                spf = task.getSubprojectFile()
+                if spf is not None:
+                    subproject_file = str(spf)
+            except Exception:
+                pass
+            try:
+                spt = task.getSubprojectTaskID()
+                if spt is not None:
+                    subproject_task_id = int(spt)
+            except Exception:
+                pass
+
             node = {
                 'id': uid,
                 'name': name,
@@ -321,16 +675,55 @@ class ProjectParser:
                 'baselineHours': baseline_work,
                 'actualHours': actual_work,
                 'projectedHours': total_work,
-                'remainingHours': remaining_work,  # Direct from MPP file, not calculated
+                'remainingHours': remaining_work,
                 'baselineCost': baseline_cost,
                 'actualCost': actual_cost,
-                'remainingCost': remaining_cost,  # Direct from MPP file
+                'remainingCost': remaining_cost,
                 'assignedResource': assigned_resource,
                 'isCritical': bool(task.getCritical()),
                 'totalSlack': self._to_float(task.getTotalSlack().getDuration()) if task.getTotalSlack() else 0.0,
                 'comments': str(task.getNotes() or ""),
                 'predecessors': predecessors,
-                'successors': successors
+                'successors': successors,
+                'wbsCode': wbs_code,
+                'outlineNumber': outline_number,
+                'constraintType': constraint_type,
+                'constraintDate': constraint_date,
+                'baselineStartDate': baseline_start_date,
+                'baselineEndDate': baseline_end_date,
+                'actualStartDate': actual_start_date,
+                'actualEndDate': actual_end_date,
+                'duration': duration_hours,
+                'baselineDuration': baseline_duration,
+                'actualDuration': actual_duration,
+                'remainingDuration': remaining_duration,
+                'earlyStart': early_start,
+                'earlyFinish': early_finish,
+                'lateStart': late_start,
+                'lateFinish': late_finish,
+                'freeSlack': free_slack,
+                'cost': cost,
+                'fixedCost': fixed_cost,
+                'costVariance': cost_variance,
+                'workVariance': work_variance,
+                'durationVariance': duration_variance,
+                'isMilestone': is_milestone,
+                'isEstimated': is_estimated,
+                'isRecurring': is_recurring,
+                'isExternal': is_external,
+                'priority': priority,
+                'deadline': deadline,
+                'calendarName': calendar_name,
+                'calendarUniqueId': calendar_unique_id,
+                'percentWorkComplete': percent_work_complete,
+                'physicalPercentComplete': physical_percent_complete,
+                'contact': contact,
+                'manager': task_manager,
+                'hyperlinkAddress': hyperlink_address,
+                'hyperlinkSubAddress': hyperlink_sub_address,
+                'subprojectFile': subproject_file,
+                'subprojectTaskId': subproject_task_id,
+                'resourceAssignments': resource_assignments,
             }
             all_tasks.append(node)
 
@@ -454,7 +847,7 @@ def ui():
     return render_template('index.html')
 
 @app.route('/health')
-def health(): return jsonify(status="ok", version="v17-dependency-coverage")
+def health(): return jsonify(status="ok", version="v18-full-mpxj-extraction")
 
 @app.route('/parse', methods=['POST'])
 def parse():

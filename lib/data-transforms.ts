@@ -2927,6 +2927,14 @@ export function buildResourceHeatmap(data: Partial<SampleData>, _options?: { all
   const employees = data.employees || [];
   const hours = data.hours || [];
 
+  const dataKey = JSON.stringify({
+    taskCount: tasks.length,
+    projectCount: projects.length,
+    employeeCount: employees.length,
+    hoursCount: hours.length,
+  });
+
+  return memoize('buildResourceHeatmap', () => {
   const HOURS_PER_WEEK = 40;
 
   function toDate(s: string | Date | null | undefined): string | null {
@@ -3057,6 +3065,7 @@ export function buildResourceHeatmap(data: Partial<SampleData>, _options?: { all
   });
 
   return { resources, weeks: formattedWeeks, data: dataMatrix };
+}, [dataKey]);
 }
 
 // ============================================================================
@@ -3302,6 +3311,7 @@ export function buildResourceGantt(data: Partial<SampleData>) {
   });
 
   return { items };
+}, [dataKey]);
 }
 
 // ============================================================================
