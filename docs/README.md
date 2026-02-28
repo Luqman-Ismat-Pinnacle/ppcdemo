@@ -2,6 +2,8 @@
 
 High-level architecture and module reference for the Pinnacle Project Controls (PPC) application.
 
+- **[Local Dev Setup](LOCAL_DEV_SETUP.md)** – Run PPC locally with PostgreSQL for verification
+
 ## Architecture Overview
 
 ```mermaid

@@ -12,8 +12,18 @@ export async function GET(request: Request) {
     const role = searchParams.get('role') ?? undefined;
     const email = searchParams.get('email') ?? undefined;
     const employeeId = searchParams.get('employeeId') ?? undefined;
-    const scope = (role || email || employeeId) ? { role, email, employeeId } : undefined;
-    const data = await fetchAllData(mode, scope);
+    const projectId = searchParams.get('project')?.trim() || undefined;
+    const from = searchParams.get('from')?.trim() || undefined;
+    const to = searchParams.get('to')?.trim() || undefined;
+    const scope: { role?: string; email?: string; employeeId?: string; projectId?: string; from?: string; to?: string } = {};
+    if (role) scope.role = role;
+    if (email) scope.email = email;
+    if (employeeId) scope.employeeId = employeeId;
+    if (projectId) scope.projectId = projectId;
+    if (from) scope.from = from;
+    if (to) scope.to = to;
+    const hasScope = Object.keys(scope).length > 0;
+    const data = await fetchAllData(mode, hasScope ? scope : undefined);
     
     if (!data) {
       return NextResponse.json({ data: null, error: 'No database configured' }, { status: 200 });

@@ -185,3 +185,86 @@ export function restoreDateFilter(): DateFilter | null {
   }
   return null;
 }
+
+// ============================================================================
+// URL PERSISTENCE (Phase 10.3)
+// ============================================================================
+
+export const FILTER_URL_PARAMS = {
+  project: 'project',
+  portfolio: 'portfolio',
+  unit: 'unit',
+  phase: 'phase',
+  from: 'from',
+  to: 'to',
+  datePreset: 'datePreset',
+} as const;
+
+/** Parse hierarchy and date filters from URL search params. */
+export function parseFiltersFromSearchParams(
+  params: URLSearchParams | { get: (key: string) => string | null }
+): {
+  hierarchyFilter: HierarchyFilter | null;
+  dateFilter: DateFilter | null;
+} {
+  const get = (k: string) => params.get(k)?.trim() || '';
+
+  const project = get(FILTER_URL_PARAMS.project);
+  const portfolio = get(FILTER_URL_PARAMS.portfolio);
+  const unit = get(FILTER_URL_PARAMS.unit);
+  const phase = get(FILTER_URL_PARAMS.phase);
+  const from = get(FILTER_URL_PARAMS.from);
+  const to = get(FILTER_URL_PARAMS.to);
+  const datePreset = get(FILTER_URL_PARAMS.datePreset);
+
+  let hierarchyFilter: HierarchyFilter | null = null;
+  if (project || portfolio || unit || phase) {
+    hierarchyFilter = {};
+    if (portfolio) hierarchyFilter.portfolioId = portfolio;
+    if (project) hierarchyFilter.projectId = project;
+    if (unit) hierarchyFilter.unitId = unit;
+    if (phase) hierarchyFilter.phaseId = phase;
+  }
+
+  let dateFilter: DateFilter | null = null;
+  if (from && to) {
+    dateFilter = { type: 'custom', from, to };
+  } else if (datePreset && ['all', 'week', 'month', 'quarter', 'ytd', 'year'].includes(datePreset)) {
+    dateFilter = { type: datePreset as DateFilter['type'] };
+  }
+
+  return { hierarchyFilter, dateFilter };
+}
+
+/** Build URL search params string from current filters. Preserves existing params not related to filters. */
+export function buildFilterSearchParams(
+  hierarchyFilter: HierarchyFilter | null,
+  dateFilter: DateFilter | null,
+  existingParams?: URLSearchParams
+): string {
+  const next = new URLSearchParams(existingParams ?? '');
+
+  const project = hierarchyFilter?.projectId ?? '';
+  const portfolio = hierarchyFilter?.portfolioId ?? '';
+  const unit = hierarchyFilter?.unitId ?? '';
+  const phase = hierarchyFilter?.phaseId ?? '';
+
+  const isCustom = dateFilter?.type === 'custom' && dateFilter.from && dateFilter.to;
+  const datePreset = dateFilter?.type && dateFilter.type !== 'all' && !isCustom ? dateFilter.type : '';
+
+  const filterKeys = Object.values(FILTER_URL_PARAMS);
+  filterKeys.forEach((k) => next.delete(k));
+
+  if (project) next.set(FILTER_URL_PARAMS.project, project);
+  if (portfolio) next.set(FILTER_URL_PARAMS.portfolio, portfolio);
+  if (unit) next.set(FILTER_URL_PARAMS.unit, unit);
+  if (phase) next.set(FILTER_URL_PARAMS.phase, phase);
+  if (isCustom && dateFilter?.from && dateFilter?.to) {
+    next.set(FILTER_URL_PARAMS.from, dateFilter.from);
+    next.set(FILTER_URL_PARAMS.to, dateFilter.to);
+  } else if (datePreset) {
+    next.set(FILTER_URL_PARAMS.datePreset, datePreset);
+  }
+
+  return next.toString();
+}

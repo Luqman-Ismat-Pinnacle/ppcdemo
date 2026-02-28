@@ -1,5 +1,25 @@
-# Optional: copy .env.example to .env and set values. Build works without .env; runtime needs env for Auth0/Database.
+# Optional: copy .env.local.example to .env.local for local dev.
 services:
+  # Local PostgreSQL (run: docker-compose up -d postgres)
+  postgres:
+    image: postgres:16-alpine
+    container_name: ppc-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ppcdb
+    volumes:
+      - ppc_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ppcdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ppc-network
+
   # Production service
   nextjs-app:
     build:
@@ -102,6 +122,7 @@ services:
 volumes:
   next_node_modules:
   next_cache:
+  ppc_postgres_data:
 
 
 networks:

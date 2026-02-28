@@ -17,7 +17,7 @@
  */
 
 import React, { createContext, useContext, useState, useMemo, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import type { SampleData, HierarchyFilter, DateFilter, Snapshot } from '@/types/data';
 import { transformData } from '@/lib/data-transforms';
 import { getViewsForPath } from '@/lib/route-data-config';
@@ -30,7 +30,15 @@ import { normalizeRuntimeData } from '@/lib/data-normalization';
 import { useRoleView } from '@/lib/role-view-context';
 import { useUser } from '@/lib/user-context';
 import { filterEntitiesByProjectScope, selectRoleProjectIds } from '@/lib/role-data-selectors';
-import { getValidProjectIdsFromHierarchyFilter, getDateRangeFromFilter, persistDateFilter, restoreDateFilter } from '@/lib/filter-utils';
+import {
+  getValidProjectIdsFromHierarchyFilter,
+  getDateRangeFromFilter,
+  persistDateFilter,
+  restoreDateFilter,
+  parseFiltersFromSearchParams,
+  buildFilterSearchParams,
+  FILTER_URL_PARAMS,
+} from '@/lib/filter-utils';
 
 const DATA_BOOTSTRAP_CACHE_KEY = 'ppc:data-bootstrap:v1';
 const DATA_BOOTSTRAP_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -282,18 +290,53 @@ export function DataProvider({ children }: DataProviderProps) {
   const { activeRole } = useRoleView();
   const { user } = useUser();
   const pathname = usePathname() ?? '/';
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // State starts EMPTY - populated from Supabase on mount
   const [data, setData] = useState<SampleData>(createEmptyData);
   const [isLoading, setIsLoading] = useState(true);
 
   // State for active filters
-  const [hierarchyFilter, setHierarchyFilter] = useState<HierarchyFilter | null>(null);
+  const [hierarchyFilter, setHierarchyFilterState] = useState<HierarchyFilter | null>(null);
   const [dateFilter, setDateFilterState] = useState<DateFilter | null>(() => restoreDateFilter());
-  const setDateFilter = useCallback((filter: DateFilter | null) => {
-    setDateFilterState(filter);
-    if (filter) persistDateFilter(filter);
-  }, []);
+
+  // Sync URL -> state when search params change (e.g. back/forward, shared link)
+  useEffect(() => {
+    const { hierarchyFilter: urlHierarchy, dateFilter: urlDate } = parseFiltersFromSearchParams(searchParams);
+    if (urlHierarchy !== null) setHierarchyFilterState(urlHierarchy);
+    if (urlDate !== null) {
+      setDateFilterState(urlDate);
+      if (urlDate) persistDateFilter(urlDate);
+    }
+  }, [searchParams]);
+
+  // Update URL when filters change (shallow replace)
+  const updateUrlFromFilters = useCallback(
+    (h: HierarchyFilter | null, d: DateFilter | null) => {
+      const query = buildFilterSearchParams(h, d, searchParams);
+      const href = query ? `${pathname}?${query}` : pathname;
+      router.replace(href, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const setHierarchyFilter = useCallback(
+    (filter: HierarchyFilter | null) => {
+      setHierarchyFilterState(filter);
+      updateUrlFromFilters(filter, dateFilter);
+    },
+    [dateFilter, updateUrlFromFilters]
+  );
+
+  const setDateFilter = useCallback(
+    (filter: DateFilter | null) => {
+      setDateFilterState(filter);
+      if (filter) persistDateFilter(filter);
+      updateUrlFromFilters(hierarchyFilter, filter);
+    },
+    [hierarchyFilter, updateUrlFromFilters]
+  );
 
   // Variance trending state
   const [variancePeriod, setVariancePeriod] = useState<VariancePeriod>(() => {
@@ -478,15 +521,33 @@ export function DataProvider({ children }: DataProviderProps) {
       }
 
       const scopeParams = (() => {
+        const parts: string[] = [];
         const r = activeRole?.key;
         const e = user?.email;
         const emp = user?.employeeId;
-        if (!r || r === 'product_owner' || r === 'pcl' || r === 'senior_manager') return '';
-        if (r === 'rda' && emp) return `&role=rda&employeeId=${encodeURIComponent(emp)}`;
-        if (r === 'coo') return '&role=coo';
-        if ((r === 'project_lead' || r === 'pca') && e) return `&role=${encodeURIComponent(r)}&email=${encodeURIComponent(e)}`;
-        return '';
+        if (r && r !== 'product_owner' && r !== 'pcl' && r !== 'senior_manager') {
+          if (r === 'rda' && emp) {
+            parts.push('role=rda', `employeeId=${encodeURIComponent(emp)}`);
+          } else if (r === 'coo') {
+            parts.push('role=coo');
+          } else if ((r === 'project_lead' || r === 'pca') && e) {
+            parts.push(`role=${encodeURIComponent(r)}`, `email=${encodeURIComponent(e)}`);
+          }
+        }
+        const proj = searchParams.get(FILTER_URL_PARAMS.project)?.trim();
+        const from = searchParams.get(FILTER_URL_PARAMS.from)?.trim();
+        const to = searchParams.get(FILTER_URL_PARAMS.to)?.trim();
+        if (proj) parts.push(`project=${encodeURIComponent(proj)}`);
+        if (from) parts.push(`from=${encodeURIComponent(from)}`);
+        if (to) parts.push(`to=${encodeURIComponent(to)}`);
+        return parts.length ? '?' + parts.join('&') : '';
       })();
+
+      const buildDataUrl = (shell: boolean) => {
+        if (!scopeParams) return shell ? '/api/data?shell=true' : '/api/data';
+        const q = scopeParams.slice(1);
+        return shell ? `/api/data?shell=true&${q}` : `/api/data?${q}`;
+      };
 
       const fetchWithTimeout = async (url: string) => {
         const controller = new AbortController();
@@ -500,9 +561,10 @@ export function DataProvider({ children }: DataProviderProps) {
 
       try {
         logger.debug('Fetching shell data from database...');
-        let shellResponse = await fetchWithTimeout(`/api/data?shell=true${scopeParams}`);
+        const shellUrl = buildDataUrl(true);
+        let shellResponse = await fetchWithTimeout(shellUrl);
         if (!shellResponse.ok) {
-          shellResponse = await fetchWithTimeout(`/api/data?shell=true${scopeParams}`);
+          shellResponse = await fetchWithTimeout(shellUrl);
         }
         const shellResult = await shellResponse.json();
 
@@ -519,9 +581,10 @@ export function DataProvider({ children }: DataProviderProps) {
         }
 
         logger.debug('Fetching full data from database...');
-        let fullResponse = await fetchWithTimeout(`/api/data${scopeParams ? '?' + scopeParams.slice(1) : ''}`);
+        const fullUrl = buildDataUrl(false);
+        let fullResponse = await fetchWithTimeout(fullUrl);
         if (!fullResponse.ok) {
-          fullResponse = await fetchWithTimeout(`/api/data${scopeParams ? '?' + scopeParams.slice(1) : ''}`);
+          fullResponse = await fetchWithTimeout(fullUrl);
         }
         const fullResult = await fullResponse.json();
 
@@ -543,7 +606,7 @@ export function DataProvider({ children }: DataProviderProps) {
     };
 
     loadData();
-  }, [applyLoadedData, hydrateFromBootstrapCache, pathname, activeRole?.key, user?.email, user?.employeeId]);
+  }, [applyLoadedData, hydrateFromBootstrapCache, pathname, activeRole?.key, user?.email, user?.employeeId, searchParams]);
 
   /**
    * Update data - called by Data Management, Sprint Board, etc.
@@ -594,19 +657,29 @@ export function DataProvider({ children }: DataProviderProps) {
   const refreshData = useCallback(async (): Promise<Partial<SampleData> | undefined> => {
     setIsLoading(true);
     try {
-      const scopeParams = (() => {
-        const r = activeRole?.key;
-        const e = user?.email;
-        const emp = user?.employeeId;
-        if (!r || r === 'product_owner' || r === 'pcl' || r === 'senior_manager') return '';
-        if (r === 'rda' && emp) return `&role=rda&employeeId=${encodeURIComponent(emp)}`;
-        if (r === 'coo') return '&role=coo';
-        if ((r === 'project_lead' || r === 'pca') && e) return `&role=${encodeURIComponent(r)}&email=${encodeURIComponent(e)}`;
-        return '';
-      })();
+      const parts: string[] = [`t=${Date.now()}`];
+      const r = activeRole?.key;
+      const e = user?.email;
+      const emp = user?.employeeId;
+      if (r && r !== 'product_owner' && r !== 'pcl' && r !== 'senior_manager') {
+        if (r === 'rda' && emp) {
+          parts.push('role=rda', `employeeId=${encodeURIComponent(emp)}`);
+        } else if (r === 'coo') {
+          parts.push('role=coo');
+        } else if ((r === 'project_lead' || r === 'pca') && e) {
+          parts.push(`role=${encodeURIComponent(r)}`, `email=${encodeURIComponent(e)}`);
+        }
+      }
+      const proj = searchParams.get(FILTER_URL_PARAMS.project)?.trim();
+      const from = searchParams.get(FILTER_URL_PARAMS.from)?.trim();
+      const to = searchParams.get(FILTER_URL_PARAMS.to)?.trim();
+      if (proj) parts.push(`project=${encodeURIComponent(proj)}`);
+      if (from) parts.push(`from=${encodeURIComponent(from)}`);
+      if (to) parts.push(`to=${encodeURIComponent(to)}`);
+      const url = `/api/data?${parts.join('&')}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), DATA_FETCH_TIMEOUT_MS);
-      const response = await fetch(`/api/data?t=${Date.now()}${scopeParams}`, {
+      const response = await fetch(url, {
         cache: 'no-store',
         signal: controller.signal,
       }).finally(() => clearTimeout(timeoutId));
@@ -656,7 +729,7 @@ export function DataProvider({ children }: DataProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [activeRole?.key, user?.email, user?.employeeId]);
+  }, [activeRole?.key, user?.email, user?.employeeId, searchParams]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

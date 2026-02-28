@@ -15,6 +15,7 @@
  */
 
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
@@ -72,7 +73,8 @@ export default function RootLayout({
                   <ThemeProvider>
                     <UserProvider>
                       <RoleViewProvider>
-                        <DataProvider>
+                        <Suspense fallback={<div className="min-h-screen bg-[var(--bg-primary)]" />}>
+                          <DataProvider>
                           <SnapshotProvider>
                             <div className="app-container" style={{ position: 'relative', zIndex: 1 }}>
                               <AmbientBackground />
@@ -87,6 +89,7 @@ export default function RootLayout({
                             </div>
                           </SnapshotProvider>
                         </DataProvider>
+                        </Suspense>
                       </RoleViewProvider>
                     </UserProvider>
                   </ThemeProvider>

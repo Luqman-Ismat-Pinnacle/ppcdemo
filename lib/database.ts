@@ -75,6 +75,11 @@ export interface FetchScope {
   role?: string;
   email?: string;
   employeeId?: string;
+  /** Phase 10.4: Server-side project filter */
+  projectId?: string;
+  /** Phase 10.4: Server-side date range (ISO YYYY-MM-DD) */
+  from?: string;
+  to?: string;
 }
 
 /** Shell tables: minimal for nav, filters, and initial render */
@@ -168,21 +173,38 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
 
     const isRda = scope?.role === 'rda' && scope?.employeeId;
     const isCoo = scope?.role === 'coo';
+    const projectFilter = scope?.projectId && mode === 'full';
+    const dateFrom = scope?.from;
+    const dateTo = scope?.to;
+    const useServerDateRange = Boolean(dateFrom && dateTo);
 
     const fetchHourEntries = async (): Promise<DbRow[]> => {
       try {
         const params: unknown[] = [];
-        let whereClause = '';
-        if (useDateFilter && cutoffDate) {
-          whereClause = ' WHERE date >= $1';
+        const conditions: string[] = [];
+        let paramIdx = 1;
+        if (useServerDateRange && dateFrom && dateTo) {
+          conditions.push(`date >= $${paramIdx} AND date <= $${paramIdx + 1}`);
+          params.push(dateFrom, dateTo);
+          paramIdx += 2;
+        } else if (useDateFilter && cutoffDate) {
+          conditions.push(`date >= $${paramIdx}`);
           params.push(cutoffDate);
+          paramIdx += 1;
+        }
+        if (projectFilter && scope?.projectId) {
+          conditions.push(`project_id = $${paramIdx}`);
+          params.push(scope.projectId);
+          paramIdx += 1;
         }
         if (isRda) {
-          whereClause += whereClause ? ' AND employee_id = $2' : ' WHERE employee_id = $1';
+          conditions.push(`employee_id = $${paramIdx}`);
           params.push(scope!.employeeId);
+          paramIdx += 1;
         } else if (isCoo) {
-          whereClause += whereClause ? ' AND employee_id IN (SELECT id FROM employees WHERE LOWER(COALESCE(department,\'\')) = \'1111 services\')' : ' WHERE employee_id IN (SELECT id FROM employees WHERE LOWER(COALESCE(department,\'\')) = \'1111 services\')';
+          conditions.push('employee_id IN (SELECT id FROM employees WHERE LOWER(COALESCE(department,\'\')) = \'1111 services\')');
         }
+        const whereClause = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
         const limitClause = maxRows ? ` LIMIT ${maxRows}` : '';
         const result = await client.query(
           `SELECT * FROM hour_entries${whereClause} ORDER BY date${limitClause}`,
@@ -215,6 +237,8 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
         employees: convertArrayToCamelCase(employees),
       };
     }
+
+    const projId = projectFilter ? scope!.projectId : null;
 
     const [
       portfolios,
@@ -254,34 +278,41 @@ async function fetchFromPostgreSQL(mode: FetchMode = 'full', scope?: FetchScope 
       safeQuery('SELECT * FROM portfolios ORDER BY name'),
       safeQuery('SELECT * FROM customers ORDER BY name'),
       safeQuery('SELECT * FROM sites ORDER BY name'),
-      safeQuery('SELECT * FROM units ORDER BY name'),
-      safeQuery('SELECT * FROM projects ORDER BY name'),
-      safeQuery('SELECT * FROM subprojects ORDER BY name'),
-      safeQuery('SELECT * FROM phases ORDER BY name'),
-      isRda ? safeQuery('SELECT * FROM tasks WHERE assigned_resource_id = $1 ORDER BY name', [scope!.employeeId]) : safeQuery('SELECT * FROM tasks ORDER BY name'),
-      isRda ? safeQuery('SELECT * FROM qc_tasks WHERE assigned_to = $1 ORDER BY name', [scope!.employeeId]) : safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM units WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM units ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM projects WHERE id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM projects ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM subprojects WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM subprojects ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM phases WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM phases ORDER BY name'),
+      isRda
+        ? safeQuery('SELECT * FROM tasks WHERE assigned_resource_id = $1 ORDER BY name', [scope!.employeeId])
+        : projId
+          ? safeQuery('SELECT * FROM tasks WHERE project_id = $1 ORDER BY name', [projId])
+          : safeQuery('SELECT * FROM tasks ORDER BY name'),
+      isRda
+        ? safeQuery('SELECT * FROM qc_tasks WHERE assigned_to = $1 ORDER BY name', [scope!.employeeId])
+        : projId
+          ? safeQuery('SELECT * FROM qc_tasks WHERE project_id = $1 ORDER BY name', [projId])
+          : safeQuery('SELECT * FROM qc_tasks ORDER BY name'),
       isCoo ? safeQuery("SELECT * FROM employees WHERE LOWER(COALESCE(department,'')) = '1111 services' ORDER BY name") : safeQuery('SELECT * FROM employees ORDER BY name'),
       fetchHourEntries(),
-      // Keep ordering compatible with pruned schemas where due_date no longer exists.
-      safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, created_at)"),
-      safeQuery('SELECT * FROM deliverables ORDER BY name'),
-      safeQuery('SELECT * FROM sprints ORDER BY start_date'),
+      projId ? safeQuery("SELECT * FROM milestones WHERE project_id = $1 ORDER BY COALESCE(planned_date, created_at)", [projId]) : safeQuery("SELECT * FROM milestones ORDER BY COALESCE(planned_date, created_at)"),
+      projId ? safeQuery('SELECT * FROM deliverables WHERE project_id = $1 ORDER BY name', [projId]) : safeQuery('SELECT * FROM deliverables ORDER BY name'),
+      projId ? safeQuery('SELECT * FROM sprints WHERE project_id = $1 ORDER BY start_date', [projId]) : safeQuery('SELECT * FROM sprints ORDER BY start_date'),
       safeQuery('SELECT * FROM sprint_tasks'),
       safeQuery('SELECT * FROM epics ORDER BY name'),
       safeQuery('SELECT * FROM features ORDER BY name'),
       safeQuery('SELECT * FROM user_stories ORDER BY name'),
       safeQuery('SELECT * FROM forecasts ORDER BY forecast_date DESC'),
       safeQuery('SELECT * FROM snapshots ORDER BY snapshot_date DESC'),
-      safeQuery('SELECT * FROM change_requests ORDER BY submitted_at DESC'),
-      safeQuery('SELECT * FROM change_impacts'),
-      safeQuery('SELECT * FROM project_health ORDER BY updated_at DESC'),
-      safeQuery('SELECT * FROM project_log ORDER BY entry_date DESC'),
-      safeQuery('SELECT * FROM project_documents ORDER BY uploaded_at DESC'),
+      projId ? safeQuery('SELECT * FROM change_requests WHERE project_id = $1 ORDER BY submitted_at DESC', [projId]) : safeQuery('SELECT * FROM change_requests ORDER BY submitted_at DESC'),
+      projId ? safeQuery('SELECT * FROM change_impacts WHERE project_id = $1', [projId]) : safeQuery('SELECT * FROM change_impacts'),
+      projId ? safeQuery('SELECT * FROM project_health WHERE project_id = $1 ORDER BY updated_at DESC', [projId]) : safeQuery('SELECT * FROM project_health ORDER BY updated_at DESC'),
+      projId ? safeQuery('SELECT * FROM project_log WHERE project_id = $1 ORDER BY entry_date DESC', [projId]) : safeQuery('SELECT * FROM project_log ORDER BY entry_date DESC'),
+      projId ? safeQuery('SELECT * FROM project_documents WHERE project_id = $1 ORDER BY uploaded_at DESC', [projId]) : safeQuery('SELECT * FROM project_documents ORDER BY uploaded_at DESC'),
       safeQuery('SELECT * FROM project_document_records ORDER BY updated_at DESC'),
       safeQuery('SELECT * FROM project_document_versions ORDER BY record_id, version_number DESC'),
       safeQuery('SELECT * FROM customer_contracts ORDER BY line_from_date DESC'),
-      safeQuery('SELECT * FROM workday_phases ORDER BY project_id, unit, name'),
-      safeQuery('SELECT * FROM mo_period_notes ORDER BY period_start DESC, sort_order ASC'),
+      projId ? safeQuery('SELECT * FROM workday_phases WHERE project_id = $1 ORDER BY project_id, unit, name', [projId]) : safeQuery('SELECT * FROM workday_phases ORDER BY project_id, unit, name'),
+      projId ? safeQuery('SELECT * FROM mo_period_notes WHERE project_id = $1 ORDER BY period_start DESC, sort_order ASC', [projId]) : safeQuery('SELECT * FROM mo_period_notes ORDER BY period_start DESC, sort_order ASC'),
       safeQuery('SELECT * FROM task_dependencies'),
       safeQuery('SELECT * FROM task_quantity_entries ORDER BY date'),
       safeQuery('SELECT * FROM visual_snapshots ORDER BY snapshot_date DESC'),
