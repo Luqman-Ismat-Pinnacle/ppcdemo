@@ -19,6 +19,7 @@ type Task = {
   percent_complete: number; baseline_start: string; baseline_end: string;
   actual_start: string; actual_end: string;
   is_critical: boolean; is_milestone: boolean; predecessor_task_id: string; employee_id: string;
+  baseline_count?: number; baseline_metric?: string; baseline_uom?: string;
 };
 type WeeklyProgress = { week: string; completed: number; started: number; total_hours: number };
 type EmployeeSummary = {
@@ -190,7 +191,7 @@ export default function TaskProgressPage() {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.68rem', background: 'rgba(30,41,59,0.45)' }}>
                           <thead>
                             <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
-                              {['Task', 'Type', 'Progress', 'Hours (Act/Base)', 'Remaining', 'Schedule', 'Predecessor'].map((h) => (
+                              {['Task', 'Type', 'Progress', 'Hours (Act/Base)', 'Remaining', 'Schedule', 'Predecessor', 'BL Count', 'BL Metric', 'BL UOM'].map((h) => (
                                 <th key={h} style={{ padding: '0.35rem 0.5rem', textAlign: h === 'Task' ? 'left' : 'right', color: '#64748b', fontWeight: 600 }}>{h}</th>
                               ))}
                             </tr>
@@ -214,6 +215,9 @@ export default function TaskProgressPage() {
                                   <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: '#94a3b8' }}>{t.remaining_hours.toLocaleString()}</td>
                                   <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: isOverdue ? '#f97316' : '#94a3b8', fontSize: '0.62rem' }}>{t.baseline_start || '—'} → {t.baseline_end || '—'}</td>
                                   <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: '#64748b', fontSize: '0.6rem' }}>{t.predecessor_task_id || '—'}</td>
+                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: '#94a3b8' }}>{t.baseline_count || 0}</td>
+                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: '#94a3b8' }}>{t.baseline_metric || '—'}</td>
+                                  <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: '#94a3b8' }}>{t.baseline_uom || '—'}</td>
                                 </tr>
                               );
                             })}

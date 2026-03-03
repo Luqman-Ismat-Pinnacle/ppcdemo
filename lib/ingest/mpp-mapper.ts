@@ -78,6 +78,12 @@ interface MppTask {
   wbsCode?: string;
   wbs_code?: string;
   folder?: string;
+  baselineCount?: number | string | null;
+  baseline_count?: number | string | null;
+  baselineMetric?: string | null;
+  baseline_metric?: string | null;
+  baselineUom?: string | null;
+  baseline_uom?: string | null;
   predecessors?: Array<{
     taskId?: string;
     predecessorTaskId?: string;
@@ -156,6 +162,9 @@ export function mapMppOutput(
       predecessor_task_id: predTaskId || null,
       relationship: predRel || null,
       lag_days: predLag,
+      baseline_count: i(t.baselineCount ?? t.baseline_count ?? 0),
+      baseline_metric: s(t.baselineMetric ?? t.baseline_metric) || null,
+      baseline_uom: s(t.baselineUom ?? t.baseline_uom) || null,
     };
 
     if (level === 2) {

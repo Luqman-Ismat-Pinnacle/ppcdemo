@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
                 t.resource, t.priority_value, t.phase_id,
                 COALESCE(ph.name, 'Ungrouped') as phase_name,
                 t.epic_id, t.feature_id,
+                COALESCE(t.baseline_count, 0) as baseline_count, COALESCE(t.baseline_metric, '') as baseline_metric, COALESCE(t.baseline_uom, '') as baseline_uom,
                 COALESCE(ep.name, '') as epic_name,
                 COALESCE(ft.name, '') as feature_name
          FROM sprint_tasks st JOIN tasks t ON st.task_id = t.id
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
               t.baseline_start, t.baseline_end, t.resource, t.priority_value, t.phase_id,
               COALESCE(ph.name, 'Ungrouped') as phase_name,
               t.epic_id, t.feature_id,
+              COALESCE(t.baseline_count, 0) as baseline_count, COALESCE(t.baseline_metric, '') as baseline_metric, COALESCE(t.baseline_uom, '') as baseline_uom,
               COALESCE(ep.name, '') as epic_name,
               COALESCE(ft.name, '') as feature_name
        FROM tasks t

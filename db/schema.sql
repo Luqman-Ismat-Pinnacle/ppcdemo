@@ -244,6 +244,9 @@ CREATE TABLE units (
   relationship    TEXT,
   wbs_code        TEXT,
   folder          TEXT,
+  baseline_count  INTEGER DEFAULT 0,
+  baseline_metric TEXT,
+  baseline_uom    TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -296,6 +299,9 @@ CREATE TABLE phases (
   relationship    TEXT,
   wbs_code        TEXT,
   folder          TEXT,
+  baseline_count  INTEGER DEFAULT 0,
+  baseline_metric TEXT,
+  baseline_uom    TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -352,6 +358,9 @@ CREATE TABLE tasks (
   folder          TEXT,
   epic_id         TEXT,
   feature_id      TEXT,
+  baseline_count  INTEGER DEFAULT 0,
+  baseline_metric TEXT,
+  baseline_uom    TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -410,6 +419,9 @@ CREATE TABLE sub_tasks (
   relationship    TEXT,
   wbs_code        TEXT,
   folder          TEXT,
+  baseline_count  INTEGER DEFAULT 0,
+  baseline_metric TEXT,
+  baseline_uom    TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );

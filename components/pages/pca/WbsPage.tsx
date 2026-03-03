@@ -51,6 +51,9 @@ type WbsRow = {
   is_milestone?: boolean;
   comments?: string;
   source_table?: string;
+  baseline_count?: number;
+  baseline_metric?: string;
+  baseline_uom?: string;
   actual_hours_tooltip?: {
     summary: string;
     rows: string[];
@@ -71,7 +74,7 @@ type RowGeom = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEADER_H = 48;
 const ROW_H = 34;
-const MAX_DEPENDENCY_EDGES = 1400;
+const BASE_DEPENDENCY_EDGES = 2400;
 const PROGRESS_BANDS = [
   { label: '0-24%', color: '#ef4444' },
   { label: '25-49%', color: '#f59e0b' },
@@ -160,6 +163,24 @@ export default function WbsPage() {
   const panStartXRef = useRef(0);
   const panStartLeftRef = useRef(0);
   const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
+  const deviceMemoryGb = useMemo(() => {
+    if (!isClient || typeof navigator === 'undefined') return 4;
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    return Number.isFinite(nav.deviceMemory) ? Number(nav.deviceMemory) : 4;
+  }, [isClient]);
+  const autoDisableDependencyThreshold = useMemo(() => {
+    if (deviceMemoryGb >= 16) return 18000;
+    if (deviceMemoryGb >= 8) return 12000;
+    if (deviceMemoryGb >= 4) return 8000;
+    return 5500;
+  }, [deviceMemoryGb]);
+  const maxDependencyEdges = useMemo(() => {
+    const datasetSize = items.length;
+    const memBoost = deviceMemoryGb >= 16 ? 2600 : deviceMemoryGb >= 8 ? 1800 : deviceMemoryGb >= 4 ? 800 : 0;
+    const rowBoost = datasetSize <= 1500 ? 1000 : datasetSize <= 3500 ? 600 : 0;
+    const rowPenalty = datasetSize >= 12000 ? 900 : datasetSize >= 8000 ? 500 : 0;
+    return Math.max(1600, BASE_DEPENDENCY_EDGES + memBoost + rowBoost - rowPenalty);
+  }, [deviceMemoryGb, items.length]);
 
   React.useEffect(() => {
     const params = new URLSearchParams();
@@ -402,8 +423,8 @@ export default function WbsPage() {
 
   const expandAllVisible = useCallback(() => {
     setExpandedIds(new Set(filteredRows.filter((r) => r.has_children).map((r) => r.id)));
-    if (filteredRows.length > 3000) setShowDependencies(false);
-  }, [filteredRows]);
+    if (filteredRows.length > autoDisableDependencyThreshold) setShowDependencies(false);
+  }, [filteredRows, autoDisableDependencyThreshold]);
   const collapseAllVisible = useCallback(() => {
     setExpandedIds(new Set());
     resetVerticalScroll();
@@ -635,7 +656,7 @@ export default function WbsPage() {
   const rowGeomByIndex = useMemo(() => new Map(timelineRows.map((g) => [g.rowIndex, g])), [timelineRows]);
   // Keep the canvas bounded to viewport height; very tall canvases (100k+ px)
   // can fail to render in Konva/Canvas and show a blank pane.
-  const stageHeight = timelineHeight;
+  const stageHeight = Math.max(timelineHeight, HEADER_H + ROW_H * 4);
   const visibleWindow = useMemo(() => {
     const startIdx = Math.max(0, Math.floor(vScroll / ROW_H) - 5);
     const visibleRows = Math.ceil(Math.max(0, timelineHeight - HEADER_H) / ROW_H) + 10;
@@ -682,12 +703,12 @@ export default function WbsPage() {
         const stroke = source?.is_critical || r.is_critical ? '#ef4444' : '#6366f1';
         const key = `${pred}-${r.id}-${idx}-${sourceIdx}`;
         segments.push({ key, points, arrow: [tx - 12, ty, tx, ty], stroke });
-        if (segments.length >= MAX_DEPENDENCY_EDGES) break outer;
+        if (segments.length >= maxDependencyEdges) break outer;
       }
     }
     return segments;
-  }, [showDependencies, visibleTimelineRows, rows, rowGeomByIndex, vScroll, timelineHeight, toX, taskIndexById, visibleWindow.startIdx, visibleWindow.endIdx]);
-  const dependencyCapHit = showDependencies && dependencySegments.length >= MAX_DEPENDENCY_EDGES;
+  }, [showDependencies, visibleTimelineRows, rows, rowGeomByIndex, vScroll, timelineHeight, toX, taskIndexById, visibleWindow.startIdx, visibleWindow.endIdx, maxDependencyEdges]);
+  const dependencyCapHit = showDependencies && dependencySegments.length >= maxDependencyEdges;
   const gridColumns = useMemo<ColDef<WbsRow>[]>(() => ([
     {
       field: 'name',
@@ -753,6 +774,9 @@ export default function WbsPage() {
       return rel ? `${base} (${rel}${lag ? `, ${lag}d` : ''})` : base;
     } },
     { field: 'total_float', headerName: 'TF', minWidth: 65, width: 65, valueFormatter: (p) => fmtInt(asNum(p.value)) },
+    { field: 'baseline_count', headerName: 'Baseline Count', minWidth: 110, width: 110, valueFormatter: (p) => fmtInt(asNum(p.value)) },
+    { field: 'baseline_metric', headerName: 'Baseline Metric', minWidth: 130, width: 130 },
+    { field: 'baseline_uom', headerName: 'Baseline UOM', minWidth: 110, width: 110 },
     { headerName: 'CP', minWidth: 60, width: 60, valueGetter: (p) => (p.data?.is_critical ? 'CP' : '-') },
   ]), [expandedIds, headerWithDelta, varianceTextStyle, withDelta, wbsPathById]);
 

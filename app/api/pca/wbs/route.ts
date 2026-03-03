@@ -215,6 +215,9 @@ export async function GET(req: NextRequest) {
         comments: str(row.comments || ''),
         source_table: tableForType(type),
         actual_hours_tooltip: buildActualHoursTooltip(row, type),
+        baseline_count: num(row.baseline_count),
+        baseline_metric: str(row.baseline_metric),
+        baseline_uom: str(row.baseline_uom),
       };
     }
 

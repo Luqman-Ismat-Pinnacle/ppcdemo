@@ -37,6 +37,12 @@ const ROLLUP_COLS: ColumnDef[] = [
   { key: 'comments', label: 'Comments', type: 'text', editable: true },
 ];
 
+const BASELINE_CUSTOM_COLS: ColumnDef[] = [
+  { key: 'baseline_count', label: 'Baseline Count', type: 'number', editable: true },
+  { key: 'baseline_metric', label: 'Baseline Metric', type: 'text', editable: true },
+  { key: 'baseline_uom', label: 'Baseline UOM', type: 'text', editable: true },
+];
+
 const SCHED_COLS: ColumnDef[] = [
   { key: 'is_critical', label: 'Critical', type: 'boolean', editable: true },
   { key: 'is_milestone', label: 'Milestone', type: 'boolean', editable: true },
@@ -108,7 +114,7 @@ export const TABLE_DEFS: TableDef[] = [
       { key: 'name', label: 'Name', type: 'text', editable: true },
       { key: 'project_id', label: 'Project ID', type: 'text', editable: true },
       { key: 'employee_id', label: 'Employee ID', type: 'text', editable: true },
-      ...ROLLUP_COLS, ...SCHED_COLS, ...TIMESTAMP_COLS,
+      ...ROLLUP_COLS, ...SCHED_COLS, ...BASELINE_CUSTOM_COLS, ...TIMESTAMP_COLS,
     ],
   },
   {
@@ -120,7 +126,7 @@ export const TABLE_DEFS: TableDef[] = [
       { key: 'project_id', label: 'Project ID', type: 'text', editable: true },
       { key: 'employee_id', label: 'Employee ID', type: 'text', editable: true },
       { key: 'resource', label: 'Resource', type: 'text', editable: true },
-      ...ROLLUP_COLS, ...SCHED_COLS, ...TIMESTAMP_COLS,
+      ...ROLLUP_COLS, ...SCHED_COLS, ...BASELINE_CUSTOM_COLS, ...TIMESTAMP_COLS,
     ],
   },
   {
@@ -133,7 +139,7 @@ export const TABLE_DEFS: TableDef[] = [
       { key: 'project_id', label: 'Project ID', type: 'text', editable: true },
       { key: 'employee_id', label: 'Employee ID', type: 'text', editable: true },
       { key: 'resource', label: 'Resource', type: 'text', editable: true },
-      ...ROLLUP_COLS, ...SCHED_COLS, ...TIMESTAMP_COLS,
+      ...ROLLUP_COLS, ...SCHED_COLS, ...BASELINE_CUSTOM_COLS, ...TIMESTAMP_COLS,
     ],
   },
   {
@@ -147,7 +153,7 @@ export const TABLE_DEFS: TableDef[] = [
       { key: 'project_id', label: 'Project ID', type: 'text', editable: true },
       { key: 'employee_id', label: 'Employee ID', type: 'text', editable: true },
       { key: 'resource', label: 'Resource', type: 'text', editable: true },
-      ...ROLLUP_COLS, ...SCHED_COLS, ...TIMESTAMP_COLS,
+      ...ROLLUP_COLS, ...SCHED_COLS, ...BASELINE_CUSTOM_COLS, ...TIMESTAMP_COLS,
     ],
   },
   {

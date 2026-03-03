@@ -48,6 +48,7 @@ export async function GET() {
         percent_complete: string; baseline_start: string; baseline_end: string;
         actual_start: string; actual_end: string;
         is_critical: string; is_milestone: string; predecessor_task_id: string; employee_id: string;
+        baseline_count: string; baseline_metric: string; baseline_uom: string;
       }>(
         `SELECT
            t.id, t.name, t.phase_id,
@@ -62,7 +63,10 @@ export async function GET() {
            COALESCE(t.is_critical, false)::text AS is_critical,
            COALESCE(t.is_milestone, false)::text AS is_milestone,
            COALESCE(t.predecessor_task_id, '') AS predecessor_task_id,
-           COALESCE(t.employee_id, '') AS employee_id
+           COALESCE(t.employee_id, '') AS employee_id,
+           COALESCE(t.baseline_count, 0)::text AS baseline_count,
+           COALESCE(t.baseline_metric, '') AS baseline_metric,
+           COALESCE(t.baseline_uom, '') AS baseline_uom
          FROM tasks t
          JOIN projects p ON p.id = t.project_id
          LEFT JOIN phases ph ON ph.id = t.phase_id
@@ -131,6 +135,9 @@ export async function GET() {
         actual_start: r.actual_start, actual_end: r.actual_end,
         is_critical: r.is_critical === 'true', is_milestone: r.is_milestone === 'true',
         predecessor_task_id: r.predecessor_task_id, employee_id: r.employee_id,
+        baseline_count: Number(r.baseline_count),
+        baseline_metric: r.baseline_metric,
+        baseline_uom: r.baseline_uom,
       })),
       weeklyProgress: weeklyRows.map((r) => ({
         week: r.week, completed: Number(r.completed), started: Number(r.started),

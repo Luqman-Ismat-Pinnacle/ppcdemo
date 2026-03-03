@@ -34,6 +34,9 @@ type SprintTask = {
   feature_id: string | null;
   epic_name: string;
   feature_name: string;
+  baseline_count?: number;
+  baseline_metric?: string;
+  baseline_uom?: string;
 };
 
 type BacklogTask = {
@@ -920,6 +923,20 @@ export default function SprintPage() {
                   {allFeatures.filter((f) => !editEpicId || f.epic_id === editEpicId).map((ft) => <option key={ft.id} value={ft.id}>{ft.name}</option>)}
                 </select>
               </div>
+            <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, borderTop: '1px solid rgba(148,163,184,.1)', paddingTop: 8, marginTop: 4 }}>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Baseline Count</label>
+                <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.baseline_count ?? 0}</span>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Baseline Metric</label>
+                <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.baseline_metric || '—'}</span>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Baseline UOM</label>
+                <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.baseline_uom || '—'}</span>
+              </div>
+            </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
               <button className="btn" onClick={() => setEditingTask(null)}>Cancel</button>

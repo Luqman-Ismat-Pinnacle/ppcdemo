@@ -59,6 +59,9 @@ type Row = {
   is_critical: string;
   percent_complete: string;
   baseline_end: string;
+  baseline_count: string;
+  baseline_metric: string;
+  baseline_uom: string;
   qc_status: string;
   severity: string;
   checklist_score: string;
@@ -93,6 +96,9 @@ export async function GET() {
          COALESCE(t.is_critical, false)::text AS is_critical,
          COALESCE(t.percent_complete, 0)::text AS percent_complete,
          t.baseline_end::text,
+         COALESCE(t.baseline_count, 0)::text AS baseline_count,
+         COALESCE(t.baseline_metric, '') AS baseline_metric,
+         COALESCE(t.baseline_uom, '') AS baseline_uom,
          COALESCE(q.qc_status, 'not_started') AS qc_status,
          COALESCE(q.severity, 'low') AS severity,
          COALESCE(q.item_count, 0)::text AS item_count,
@@ -178,6 +184,9 @@ export async function GET() {
         isCritical: r.is_critical === 'true',
         percentComplete: Number(r.percent_complete || 0),
         baselineEnd: r.baseline_end,
+        baselineCount: Number(r.baseline_count || 0),
+        baselineMetric: r.baseline_metric,
+        baselineUom: r.baseline_uom,
         qcStatus: r.qc_status,
         severity: r.severity,
         itemCount: Number(r.item_count || 0),
