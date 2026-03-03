@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/senior-manager/forecast-review', label: 'Forecast Review' },
   { href: '/senior-manager/wbs', label: 'WBS Gantt' },
   { href: '/senior-manager/sprint', label: 'Sprint' },
+  { href: '/senior-manager/feedback', label: 'Issues & Features' },
 ];
 
 export default function SeniorManagerLayout({ children }: { children: React.ReactNode }) {

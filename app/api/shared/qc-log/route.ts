@@ -54,6 +54,8 @@ type Row = {
   phase_name: string;
   unit_id: string;
   unit_name: string;
+  epic_name: string;
+  feature_name: string;
   is_critical: string;
   percent_complete: string;
   baseline_end: string;
@@ -86,6 +88,8 @@ export async function GET() {
          COALESCE(ph.name, '') AS phase_name,
          t.unit_id,
          COALESCE(u.name, '') AS unit_name,
+         COALESCE(ep.name, '') AS epic_name,
+         COALESCE(ft.name, '') AS feature_name,
          COALESCE(t.is_critical, false)::text AS is_critical,
          COALESCE(t.percent_complete, 0)::text AS percent_complete,
          t.baseline_end::text,
@@ -107,9 +111,11 @@ export async function GET() {
        JOIN projects p ON p.id = t.project_id
        LEFT JOIN phases ph ON ph.id = t.phase_id
        LEFT JOIN units u ON u.id = t.unit_id
+       LEFT JOIN epics ep ON ep.id = t.epic_id
+       LEFT JOIN features ft ON ft.id = t.feature_id
        LEFT JOIN qc_logs q ON q.task_id = t.id
        WHERE p.is_active = true AND p.has_schedule = true
-       ORDER BY p.name, ph.name NULLS LAST, t.name`,
+       ORDER BY p.name, ph.name NULLS LAST, ep.name NULLS LAST, t.name`,
     );
 
     const total = rows.length;
@@ -167,6 +173,8 @@ export async function GET() {
         phaseName: r.phase_name,
         unitId: r.unit_id,
         unitName: r.unit_name,
+        epicName: r.epic_name,
+        featureName: r.feature_name,
         isCritical: r.is_critical === 'true',
         percentComplete: Number(r.percent_complete || 0),
         baselineEnd: r.baseline_end,

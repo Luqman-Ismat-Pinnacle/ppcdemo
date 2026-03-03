@@ -348,12 +348,16 @@ CREATE TABLE tasks (
   relationship    TEXT,
   wbs_code        TEXT,
   folder          TEXT,
+  epic_id         TEXT,
+  feature_id      TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_task_phase ON tasks(phase_id);
 CREATE INDEX idx_task_unit ON tasks(unit_id);
 CREATE INDEX idx_task_project ON tasks(project_id);
+CREATE INDEX idx_task_epic ON tasks(epic_id);
+CREATE INDEX idx_task_feature ON tasks(feature_id);
 
 -- ============================================================================
 -- SUB_TASKS
@@ -577,6 +581,67 @@ CREATE INDEX idx_qcl_severity ON qc_logs(severity);
 CREATE INDEX idx_qcl_inspected ON qc_logs(inspected_at DESC);
 
 -- ============================================================================
+-- INTERVENTION_ITEMS (PCL approval gate before COO)
+-- ============================================================================
+CREATE TABLE intervention_items (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT REFERENCES projects(id),
+  project_name    TEXT,
+  source          TEXT DEFAULT 'pcl_exception',
+  severity        TEXT DEFAULT 'warning',
+  priority        TEXT DEFAULT 'P3',
+  reason          TEXT,
+  recommended_action TEXT,
+  pcl_notes       TEXT,
+  coo_notes       TEXT,
+  status          TEXT DEFAULT 'pcl_review',
+  variance_pct    NUMERIC(8,2) DEFAULT 0,
+  actual_cost     NUMERIC(14,2) DEFAULT 0,
+  scheduled_cost  NUMERIC(14,2) DEFAULT 0,
+  actual_hours    NUMERIC(12,2) DEFAULT 0,
+  total_hours     NUMERIC(12,2) DEFAULT 0,
+  percent_complete NUMERIC(5,2) DEFAULT 0,
+  escalated_by    TEXT,
+  approved_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_interv_project ON intervention_items(project_id);
+CREATE INDEX idx_interv_status ON intervention_items(status);
+
+-- ============================================================================
+-- EPICS (break down a phase into groupings)
+-- ============================================================================
+CREATE TABLE epics (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  phase_id    TEXT REFERENCES phases(id),
+  project_id  TEXT REFERENCES projects(id),
+  description TEXT,
+  status      TEXT DEFAULT 'active',
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_epic_phase ON epics(phase_id);
+CREATE INDEX idx_epic_project ON epics(project_id);
+
+-- ============================================================================
+-- FEATURES (break down an epic into smaller pieces)
+-- ============================================================================
+CREATE TABLE features (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  epic_id     TEXT REFERENCES epics(id) ON DELETE CASCADE,
+  project_id  TEXT REFERENCES projects(id),
+  description TEXT,
+  status      TEXT DEFAULT 'active',
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_feature_epic ON features(epic_id);
+CREATE INDEX idx_feature_project ON features(project_id);
+
+-- ============================================================================
 -- FEEDBACK_ITEMS (issues + feature requests from any role)
 -- ============================================================================
 CREATE TABLE feedback_items (
@@ -653,6 +718,7 @@ BEGIN
     'units','phases','tasks','sub_tasks',
     'hour_entries','customer_contracts','project_documents',
     'sprints','sprint_tasks','qc_logs',
+    'intervention_items','epics','features',
     'feedback_items','integration_connections'
   ]) LOOP
     EXECUTE format(

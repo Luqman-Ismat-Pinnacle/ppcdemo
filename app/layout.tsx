@@ -4,6 +4,7 @@ import Auth0Provider from '@/components/providers/Auth0Provider';
 import AuthGuard from '@/components/auth/AuthGuard';
 import { UserProvider } from '@/lib/user-context';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
+import FeedbackButton from '@/components/feedback/FeedbackButton';
 
 export const metadata: Metadata = {
   title: 'PPC Minimal',
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <span className="ambient-grid" />
                 </div>
                 {children}
+                <FeedbackButton />
               </ErrorBoundary>
             </UserProvider>
           </AuthGuard>

@@ -14,7 +14,9 @@ export async function GET() {
               COUNT(DISTINCT h.date) AS days_worked
        FROM employees e
        LEFT JOIN hour_entries h ON h.employee_id = e.id
+       LEFT JOIN projects p ON p.id = h.project_id
        WHERE e.is_active = true
+         AND (h.id IS NULL OR (p.is_active = true AND p.has_schedule = true))
        GROUP BY e.id, e.name, e.email, e.job_title, e.department
        ORDER BY total_hours DESC`
       ),
@@ -37,7 +39,9 @@ export async function GET() {
                 COALESCE(SUM(h.hours), 0) AS total_hours
          FROM employees e
          LEFT JOIN hour_entries h ON h.employee_id = e.id
+         LEFT JOIN projects p ON p.id = h.project_id
          WHERE e.is_active = true
+           AND (h.id IS NULL OR (p.is_active = true AND p.has_schedule = true))
          GROUP BY e.department
          ORDER BY total_hours DESC`
       ),

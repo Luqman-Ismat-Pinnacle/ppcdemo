@@ -14,6 +14,13 @@ interface ExceptionItem {
   percent_complete: number; actual_cost: number; scheduled_cost: number;
   actual_hours: number; total_hours: number;
 }
+interface InterventionItem {
+  id: string; project_id: string; project_name: string; severity: string;
+  priority: string; reason: string; recommended_action: string; pcl_notes: string;
+  status: string; variance_pct: number; actual_cost: number; scheduled_cost: number;
+  actual_hours: number; total_hours: number; percent_complete: number;
+  escalated_by: string; approved_at: string | null; created_at: string;
+}
 interface MappingRow {
   project_id: string; project_name: string; pca_name: string;
   total_entries: number; mapped_entries: number; unmapped_entries: number; coverage_pct: number;
@@ -88,12 +95,27 @@ function KpiCard({ label, value, detail, color }: { label: string; value: string
   );
 }
 
+const PRIORITIES = ['P1', 'P2', 'P3'] as const;
+const SEVERITIES = ['critical', 'warning', 'info'] as const;
+const STATUS_COLORS: Record<string, string> = { pcl_review: '#f59e0b', approved: '#10b981', dismissed: '#6b7280', resolved: '#3b82f6' };
+
 export default function PclCommandCenter() {
   const { user } = useUser();
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedWatch, setExpandedWatch] = useState<Set<string>>(new Set());
+  const [interventions, setInterventions] = useState<InterventionItem[]>([]);
+  const [actionBusy, setActionBusy] = useState('');
+  const [editingIntv, setEditingIntv] = useState<Record<string, Partial<InterventionItem>>>({});
+
+  const loadInterventions = async () => {
+    try {
+      const r = await fetch('/api/pcl/interventions', { cache: 'no-store' });
+      const d = await r.json();
+      if (d.success) setInterventions(d.items || []);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     fetch('/api/pcl/summary', { cache: 'no-store' })
@@ -101,7 +123,64 @@ export default function PclCommandCenter() {
       .then(d => { if (!d.success) throw new Error(d.error); setData(d); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+    loadInterventions();
   }, []);
+
+  const escalate = async (ex: ExceptionItem) => {
+    setActionBusy(ex.project_id);
+    try {
+      await fetch('/api/pcl/interventions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'escalate',
+          projectId: ex.project_id,
+          projectName: ex.project_name,
+          severity: ex.severity,
+          priority: ex.severity === 'critical' ? 'P1' : ex.severity === 'warning' ? 'P2' : 'P3',
+          reason: ex.reason,
+          recommendedAction: ex.severity === 'critical' ? 'Immediate review required' : 'Monitor and assess',
+          actualCost: ex.actual_cost,
+          scheduledCost: ex.scheduled_cost,
+          actualHours: ex.actual_hours,
+          totalHours: ex.total_hours,
+          percentComplete: ex.percent_complete,
+          escalatedBy: user?.name || 'PCL',
+        }),
+      });
+      await loadInterventions();
+    } finally { setActionBusy(''); }
+  };
+
+  const interventionAction = async (action: string, id: string, extra?: Record<string, unknown>) => {
+    setActionBusy(id);
+    try {
+      await fetch('/api/pcl/interventions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, id, ...extra }),
+      });
+      await loadInterventions();
+    } finally { setActionBusy(''); }
+  };
+
+  const updateIntvField = (id: string, field: string, value: string) => {
+    setEditingIntv((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  };
+
+  const saveIntvEdits = (id: string) => {
+    const edits = editingIntv[id];
+    if (!edits) return;
+    interventionAction('update', id, {
+      severity: edits.severity,
+      priority: edits.priority,
+      recommendedAction: edits.recommended_action,
+      pclNotes: edits.pcl_notes,
+    });
+  };
+
+  const isEscalated = (projectId: string) =>
+    interventions.some((i) => i.project_id === projectId && (i.status === 'pcl_review' || i.status === 'approved'));
 
   const spiCpiMatrixOption: EChartsOption = useMemo(() => {
     const points = (data?.spiCpiMatrix || []).filter((p) => Number(p.spi) > 0 || Number(p.cpi) > 0);
@@ -240,6 +319,7 @@ export default function PclCommandCenter() {
                     <th style={{ textAlign: 'right' }}>Hours (A/T)</th>
                     <th style={{ textAlign: 'left' }}>Reason</th>
                     <th style={{ textAlign: 'left' }}>Review</th>
+                    <th style={{ textAlign: 'center', width: 80 }}>Escalate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -279,10 +359,24 @@ export default function PclCommandCenter() {
                               {isOpen ? 'Hide details' : 'Why review?'}
                             </button>
                           </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {isEscalated(ex.project_id) ? (
+                              <span style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 600 }}>Escalated</span>
+                            ) : (
+                              <button
+                                className="btn btn-accent"
+                                style={{ fontSize: '0.62rem', padding: '0.18rem 0.4rem', minHeight: 20 }}
+                                disabled={actionBusy === ex.project_id}
+                                onClick={() => escalate(ex)}
+                              >
+                                {actionBusy === ex.project_id ? '...' : 'Escalate'}
+                              </button>
+                            )}
+                          </td>
                         </tr>
                         {isOpen && (
                           <tr>
-                            <td colSpan={7} style={{ background: 'rgba(255,255,255,0.025)' }}>
+                            <td colSpan={8} style={{ background: 'rgba(255,255,255,0.025)' }}>
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, padding: '0.35rem 0' }}>
                                 <div><span style={{ color: 'var(--text-muted)' }}>Trigger:</span> <strong>{ex.reason}</strong></div>
                                 <div><span style={{ color: 'var(--text-muted)' }}>Budget Burn:</span> <strong>${Math.round(ex.actual_cost).toLocaleString()} / ${Math.round(ex.scheduled_cost).toLocaleString()}</strong></div>
@@ -298,6 +392,147 @@ export default function PclCommandCenter() {
               </table>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Intervention Queue */}
+      <div className="glass" style={{ padding: '1rem', overflow: 'hidden', marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 10 }}>
+          Intervention Queue
+          <span style={{ fontWeight: 400, fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 8 }}>
+            {interventions.filter((i) => i.status === 'pcl_review').length} pending review
+          </span>
+        </div>
+        <div style={{ overflowX: 'auto', maxHeight: 420, overflowY: 'auto' }}>
+          {interventions.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem', fontSize: '0.78rem' }}>
+              No interventions escalated yet. Use the Escalate button on exception rows above.
+            </div>
+          ) : (
+            <table className="dm-table" style={{ width: '100%', minWidth: 960, fontSize: '0.72rem' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>Project</th>
+                  <th style={{ textAlign: 'left' }}>Priority</th>
+                  <th style={{ textAlign: 'left' }}>Severity</th>
+                  <th style={{ textAlign: 'left' }}>Reason</th>
+                  <th style={{ textAlign: 'left' }}>Action</th>
+                  <th style={{ textAlign: 'left' }}>Notes</th>
+                  <th style={{ textAlign: 'center' }}>Status</th>
+                  <th style={{ textAlign: 'center', width: 140 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {interventions.map((item) => {
+                  const edits = editingIntv[item.id] || {};
+                  const sev = edits.severity || item.severity;
+                  const pri = edits.priority || item.priority;
+                  const recAction = edits.recommended_action ?? item.recommended_action ?? '';
+                  const notes = edits.pcl_notes ?? item.pcl_notes ?? '';
+                  return (
+                    <tr key={item.id}>
+                      <td style={{ fontWeight: 600 }}>{item.project_name}</td>
+                      <td>
+                        {item.status === 'pcl_review' ? (
+                          <select
+                            value={pri}
+                            onChange={(e) => updateIntvField(item.id, 'priority', e.target.value)}
+                            onBlur={() => saveIntvEdits(item.id)}
+                            style={{ width: 56, background: 'rgba(51,65,85,0.35)', border: '1px solid rgba(148,163,184,.12)', borderRadius: 6, color: pri === 'P1' ? '#ef4444' : pri === 'P2' ? '#f59e0b' : '#60a5fa', padding: '0.18rem 0.25rem', fontSize: '0.66rem', fontWeight: 700 }}
+                          >
+                            {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        ) : (
+                          <span style={{ fontWeight: 700, color: item.priority === 'P1' ? '#ef4444' : item.priority === 'P2' ? '#f59e0b' : '#60a5fa' }}>{item.priority}</span>
+                        )}
+                      </td>
+                      <td>
+                        {item.status === 'pcl_review' ? (
+                          <select
+                            value={sev}
+                            onChange={(e) => updateIntvField(item.id, 'severity', e.target.value)}
+                            onBlur={() => saveIntvEdits(item.id)}
+                            style={{ width: 80, background: 'rgba(51,65,85,0.35)', border: '1px solid rgba(148,163,184,.12)', borderRadius: 6, color: SEV_COLORS[sev] || '#9ca3af', padding: '0.18rem 0.25rem', fontSize: '0.66rem', fontWeight: 700 }}
+                          >
+                            {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <SeverityDot severity={item.severity} />
+                            <span style={{ fontWeight: 700, color: SEV_COLORS[item.severity], textTransform: 'uppercase', fontSize: '0.66rem' }}>{item.severity}</span>
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.reason}</td>
+                      <td>
+                        {item.status === 'pcl_review' ? (
+                          <input
+                            value={recAction}
+                            onChange={(e) => updateIntvField(item.id, 'recommended_action', e.target.value)}
+                            onBlur={() => saveIntvEdits(item.id)}
+                            placeholder="Recommended action"
+                            style={{ width: 160, background: 'rgba(51,65,85,0.35)', border: '1px solid rgba(148,163,184,.12)', borderRadius: 6, color: '#e2e8f0', padding: '0.18rem 0.3rem', fontSize: '0.66rem' }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '0.68rem' }}>{item.recommended_action || '—'}</span>
+                        )}
+                      </td>
+                      <td>
+                        {item.status === 'pcl_review' ? (
+                          <input
+                            value={notes}
+                            onChange={(e) => updateIntvField(item.id, 'pcl_notes', e.target.value)}
+                            onBlur={() => saveIntvEdits(item.id)}
+                            placeholder="PCL notes"
+                            style={{ width: 140, background: 'rgba(51,65,85,0.35)', border: '1px solid rgba(148,163,184,.12)', borderRadius: 6, color: '#e2e8f0', padding: '0.18rem 0.3rem', fontSize: '0.66rem' }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: '0.68rem' }}>{item.pcl_notes || '—'}</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: STATUS_COLORS[item.status] || '#9ca3af', textTransform: 'uppercase' }}>
+                          {item.status.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {item.status === 'pcl_review' && (
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                            <button
+                              className="btn btn-accent"
+                              style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem', minHeight: 20 }}
+                              disabled={actionBusy === item.id}
+                              onClick={() => interventionAction('approve', item.id)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="btn"
+                              style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem', minHeight: 20 }}
+                              disabled={actionBusy === item.id}
+                              onClick={() => interventionAction('dismiss', item.id)}
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        )}
+                        {item.status === 'approved' && (
+                          <button
+                            className="btn"
+                            style={{ fontSize: '0.6rem', padding: '0.15rem 0.35rem', minHeight: 20 }}
+                            disabled={actionBusy === item.id}
+                            onClick={() => interventionAction('resolve', item.id)}
+                          >
+                            Resolve
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

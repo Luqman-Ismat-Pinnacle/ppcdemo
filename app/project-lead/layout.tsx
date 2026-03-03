@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/project-lead/cost-control', label: 'Cost Control' },
   { href: '/project-lead/forecast', label: 'Forecast' },
   { href: '/project-lead/sprint', label: 'Sprint' },
+  { href: '/project-lead/feedback', label: 'Issues & Features' },
 ];
 
 export default function ProjectLeadLayout({ children }: { children: React.ReactNode }) {

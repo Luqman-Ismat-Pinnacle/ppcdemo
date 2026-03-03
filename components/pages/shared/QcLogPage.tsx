@@ -14,6 +14,8 @@ type QcRow = {
   phaseName: string;
   unitId: string;
   unitName: string;
+  epicName: string;
+  featureName: string;
   isCritical: boolean;
   percentComplete: number;
   baselineEnd: string;
@@ -112,6 +114,8 @@ export default function QcLogPage() {
         r.taskName.toLowerCase().includes(q) ||
         r.projectName.toLowerCase().includes(q) ||
         (r.phaseName || '').toLowerCase().includes(q) ||
+        (r.epicName || '').toLowerCase().includes(q) ||
+        (r.featureName || '').toLowerCase().includes(q) ||
         (r.inspector || '').toLowerCase().includes(q)
       );
     });
@@ -262,8 +266,8 @@ export default function QcLogPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.68rem' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(148,163,184,.14)' }}>
-                  {['Task', 'Project', 'Phase', 'Status', 'Severity', 'Count', 'Correct', 'Minor', 'Major', 'Open Defects', 'Score', 'Inspector', 'Inspected', 'Resolved'].map((h) => (
-                    <th key={h} style={{ textAlign: ['Task', 'Project', 'Phase'].includes(h) ? 'left' : 'right', color: '#94a3b8', fontWeight: 600, padding: '0.35rem 0.45rem' }}>{h}</th>
+                  {['Task', 'Project', 'Phase', 'Epic', 'Feature', 'Status', 'Severity', 'Count', 'Correct', 'Minor', 'Major', 'Open Defects', 'Score', 'Inspector', 'Inspected', 'Resolved'].map((h) => (
+                    <th key={h} style={{ textAlign: ['Task', 'Project', 'Phase', 'Epic', 'Feature'].includes(h) ? 'left' : 'right', color: '#94a3b8', fontWeight: 600, padding: '0.35rem 0.45rem' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -275,6 +279,8 @@ export default function QcLogPage() {
                     <td style={{ padding: '0.35rem 0.45rem', color: r.isCritical ? '#ef4444' : '#e2e8f0' }}>{r.isCritical ? '● ' : ''}{r.taskName}</td>
                     <td style={{ padding: '0.35rem 0.45rem', color: '#94a3b8' }}>{r.projectName}</td>
                     <td style={{ padding: '0.35rem 0.45rem', color: '#94a3b8' }}>{r.phaseName || '—'}</td>
+                    <td style={{ padding: '0.35rem 0.45rem', color: '#94a3b8' }}>{r.epicName || '—'}</td>
+                    <td style={{ padding: '0.35rem 0.45rem', color: '#94a3b8' }}>{r.featureName || '—'}</td>
                     <td style={{ padding: '0.35rem 0.45rem', textAlign: 'right' }}>
                       <select value={String(e.qcStatus || 'not_started')} onChange={(ev) => setRowEdit(r.taskId, { qcStatus: ev.target.value })} style={{ width: 112, background: 'rgba(51,65,85,0.35)', border: '1px solid rgba(148,163,184,.12)', borderRadius: 6, color: '#e2e8f0', padding: '0.22rem 0.32rem', fontSize: '0.64rem' }}>
                         {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}

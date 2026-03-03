@@ -4,7 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import NotificationBell from '@/components/ui/NotificationBell';
-import FeedbackButton from '@/components/feedback/FeedbackButton';
 import { useUser } from '@/lib/user-context';
 
 type NavItem = { href: string; label: string };
@@ -79,7 +78,6 @@ export default function NavBar({ roleKey, roleLabel, roleLongLabel, navItems, no
             ))}
           </select>
         )}
-        <FeedbackButton />
         <NotificationBell role={notificationRole || roleLabel} />
         <div className="nav-divider" />
         <div className="nav-profile">

@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/coo/forecast', label: 'Forecast' },
   { href: '/coo/pipeline', label: 'Pipeline' },
   { href: '/coo/metric-provenance', label: 'Metric Provenance' },
+  { href: '/coo/feedback', label: 'Issues & Features' },
 ];
 
 export default function CooLayout({ children }: { children: React.ReactNode }) {

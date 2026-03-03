@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/pcl/plans-mapping', label: 'Plans & Mapping' },
   { href: '/pcl/resourcing', label: 'Resourcing' },
   { href: '/pcl/schedule-health', label: 'Schedule Health' },
+  { href: '/pcl/feedback', label: 'Issues & Features' },
 ];
 
 export default function PclLayout({ children }: { children: React.ReactNode }) {

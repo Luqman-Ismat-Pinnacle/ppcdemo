@@ -220,7 +220,7 @@ export async function GET() {
       `SELECT p.id, p.name, p.percent_complete, COALESCE(SUM(h.hours), 0) AS recent_hours
        FROM projects p
        LEFT JOIN hour_entries h ON h.project_id = p.id AND h.date >= CURRENT_DATE - INTERVAL '30 days'
-       WHERE p.is_active = true
+       WHERE p.is_active = true AND p.has_schedule = true
        GROUP BY p.id, p.name, p.percent_complete
        ORDER BY
          CASE WHEN COALESCE(p.percent_complete, 0) < 90 THEN 0 ELSE 1 END,
@@ -246,7 +246,7 @@ export async function GET() {
     const slowProgress = await query(
       `SELECT p.id, p.name, p.percent_complete, p.actual_hours, p.total_hours
        FROM projects p
-       WHERE p.is_active = true
+       WHERE p.is_active = true AND p.has_schedule = true
          AND COALESCE(p.total_hours, 0) > 0
        ORDER BY
          CASE

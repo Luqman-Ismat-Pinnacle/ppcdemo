@@ -34,10 +34,15 @@ export async function GET(req: NextRequest) {
         `SELECT st.*, t.name as task_name, t.percent_complete, t.actual_hours, t.total_hours,
                 t.baseline_start, t.baseline_end, t.actual_start, t.actual_end, t.is_critical,
                 t.resource, t.priority_value, t.phase_id,
-                COALESCE(ph.name, 'Ungrouped') as phase_name
+                COALESCE(ph.name, 'Ungrouped') as phase_name,
+                t.epic_id, t.feature_id,
+                COALESCE(ep.name, '') as epic_name,
+                COALESCE(ft.name, '') as feature_name
          FROM sprint_tasks st JOIN tasks t ON st.task_id = t.id
          LEFT JOIN phases ph ON t.phase_id = ph.id
-         WHERE st.sprint_id IN (${ph}) ORDER BY ph.name NULLS LAST, st.sort_order`,
+         LEFT JOIN epics ep ON t.epic_id = ep.id
+         LEFT JOIN features ft ON t.feature_id = ft.id
+         WHERE st.sprint_id IN (${ph}) ORDER BY ep.name NULLS LAST, ft.name NULLS LAST, ph.name NULLS LAST, st.sort_order`,
         sprintIds,
       );
     }
@@ -48,10 +53,15 @@ export async function GET(req: NextRequest) {
     const unassigned = await query(
       `SELECT t.id, t.name, t.project_id, t.percent_complete, t.actual_hours, t.total_hours,
               t.baseline_start, t.baseline_end, t.resource, t.priority_value, t.phase_id,
-              COALESCE(ph.name, 'Ungrouped') as phase_name
+              COALESCE(ph.name, 'Ungrouped') as phase_name,
+              t.epic_id, t.feature_id,
+              COALESCE(ep.name, '') as epic_name,
+              COALESCE(ft.name, '') as feature_name
        FROM tasks t
        JOIN projects p ON p.id = t.project_id
        LEFT JOIN phases ph ON t.phase_id = ph.id
+       LEFT JOIN epics ep ON t.epic_id = ep.id
+       LEFT JOIN features ft ON t.feature_id = ft.id
        ${unassignedFilter}
        ORDER BY t.priority_value DESC, t.name LIMIT 200`,
       projectId ? [projectId] : [],
@@ -60,7 +70,22 @@ export async function GET(req: NextRequest) {
     const projects = await query('SELECT id, name FROM projects WHERE is_active = true AND has_schedule = true ORDER BY name');
     const employees = await query('SELECT id, name FROM employees ORDER BY name NULLS LAST, id LIMIT 2000');
 
-    return NextResponse.json({ success: true, sprints, sprintTasks, unassigned, projects, employees });
+    let epics: Record<string, unknown>[] = [];
+    let features: Record<string, unknown>[] = [];
+    try {
+      epics = await query(
+        `SELECT e.*, COALESCE(ph.name, '') AS phase_name
+         FROM epics e LEFT JOIN phases ph ON ph.id = e.phase_id
+         WHERE e.status = 'active' ORDER BY e.name`,
+      );
+      features = await query(
+        `SELECT f.*, COALESCE(e.name, '') AS epic_name
+         FROM features f LEFT JOIN epics e ON e.id = f.epic_id
+         WHERE f.status = 'active' ORDER BY f.name`,
+      );
+    } catch { /* tables may not exist yet */ }
+
+    return NextResponse.json({ success: true, sprints, sprintTasks, unassigned, projects, employees, epics, features });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
@@ -82,12 +107,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'assignTask') {
-      const { sprintId, taskId } = body;
+      const { sprintId, taskId, epicId, featureId } = body;
       const id = `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       await execute(
         `INSERT INTO sprint_tasks (id, sprint_id, task_id, sort_order) VALUES ($1,$2,$3,0) ON CONFLICT DO NOTHING`,
         [id, sprintId, taskId],
       );
+      if (epicId || featureId) {
+        await execute(
+          `UPDATE tasks SET epic_id = COALESCE($1, epic_id), feature_id = COALESCE($2, feature_id) WHERE id = $3`,
+          [epicId || null, featureId || null, taskId],
+        );
+      }
       return NextResponse.json({ success: true });
     }
 

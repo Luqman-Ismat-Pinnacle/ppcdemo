@@ -45,6 +45,8 @@ const VALID_TABLES = new Set([
   'hour_entries', 'customer_contracts', 'project_documents',
   'sprints', 'sprint_tasks', 'notifications', 'workday_phases',
   'variance_notes', 'qc_logs',
+  'intervention_items', 'epics', 'features',
+  'feedback_items', 'integration_connections',
 ]);
 
 export function isValidTable(name: string): boolean {

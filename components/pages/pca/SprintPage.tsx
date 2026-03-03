@@ -30,6 +30,10 @@ type SprintTask = {
   is_critical: boolean;
   phase_id: string | null;
   phase_name: string;
+  epic_id: string | null;
+  feature_id: string | null;
+  epic_name: string;
+  feature_name: string;
 };
 
 type BacklogTask = {
@@ -43,9 +47,16 @@ type BacklogTask = {
   priority_value: number;
   phase_id: string | null;
   phase_name: string;
+  epic_id: string | null;
+  feature_id: string | null;
+  epic_name: string;
+  feature_name: string;
 };
 
-type View = 'board' | 'backlog' | 'analytics';
+type EpicDef = { id: string; name: string; phase_id: string | null; project_id: string; phase_name: string; status: string };
+type FeatureDef = { id: string; name: string; epic_id: string; project_id: string; epic_name: string; status: string };
+
+type View = 'board' | 'backlog' | 'analytics' | 'epics';
 type BoardLane = 'todo' | 'in_progress' | 'done';
 type Employee = { id: string; name: string };
 
@@ -75,10 +86,10 @@ function progressColor(p: number): string {
   return 'var(--text-muted)';
 }
 
-function groupByPhase(tasks: SprintTask[]): Map<string, SprintTask[]> {
+function groupByHierarchy(tasks: SprintTask[]): Map<string, SprintTask[]> {
   const map = new Map<string, SprintTask[]>();
   for (const t of tasks) {
-    const key = t.phase_name || 'Ungrouped';
+    const key = t.epic_name || t.phase_name || 'Ungrouped';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
   }
@@ -148,7 +159,7 @@ function TaskCard({
         <span>{task.resource || '—'}</span>
       </div>
       <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)', marginTop: 2, opacity: 0.7 }}>
-        {task.phase_name}
+        {task.feature_name || task.epic_name || task.phase_name}
       </div>
     </div>
   );
@@ -171,7 +182,7 @@ function BoardColumn({
   onDropTask: (_taskId: string, _lane: BoardLane) => void;
   color: string;
 }) {
-  const grouped = groupByPhase(tasks);
+  const grouped = groupByHierarchy(tasks);
 
   return (
     <div
@@ -222,6 +233,8 @@ export default function SprintPage() {
   const [backlog, setBacklog] = useState<BacklogTask[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [allEpics, setAllEpics] = useState<EpicDef[]>([]);
+  const [allFeatures, setAllFeatures] = useState<FeatureDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [view, setView] = useState<View>('board');
@@ -237,6 +250,13 @@ export default function SprintPage() {
   const [editResource, setEditResource] = useState('');
   const [editPercent, setEditPercent] = useState(0);
   const [editPriority, setEditPriority] = useState(0);
+  const [editEpicId, setEditEpicId] = useState('');
+  const [editFeatureId, setEditFeatureId] = useState('');
+
+  const [newEpicName, setNewEpicName] = useState('');
+  const [newEpicPhaseId, setNewEpicPhaseId] = useState('');
+  const [newFeatureName, setNewFeatureName] = useState('');
+  const [newFeatureEpicId, setNewFeatureEpicId] = useState('');
 
   const loadData = useCallback(async (preserveSprint?: string) => {
     setLoading(true);
@@ -252,6 +272,8 @@ export default function SprintPage() {
         id: String(e.id || ''),
         name: String(e.name || e.id || ''),
       })));
+      setAllEpics((data.epics || []) as EpicDef[]);
+      setAllFeatures((data.features || []) as FeatureDef[]);
       const target = preserveSprint || selectedSprint;
       if (target && (data.sprints || []).some((s: Sprint) => s.id === target)) {
         setSelectedSprint(target);
@@ -329,6 +351,8 @@ export default function SprintPage() {
     setEditResource(task.resource || '');
     setEditPercent(Math.max(0, Math.min(100, Number(task.percent_complete || 0))));
     setEditPriority(Number(task.priority_value || 0));
+    setEditEpicId(task.epic_id || '');
+    setEditFeatureId(task.feature_id || '');
   };
 
   const saveTaskEditor = async () => {
@@ -340,8 +364,50 @@ export default function SprintPage() {
       percentComplete: Math.max(0, Math.min(100, Number(editPercent || 0))),
       priorityValue: Number.isFinite(editPriority) ? Math.round(editPriority) : 0,
     });
+    if (editEpicId !== (editingTask.epic_id || '') || editFeatureId !== (editingTask.feature_id || '')) {
+      await fetch('/api/pca/epics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: editFeatureId ? 'assignTaskToFeature' : 'assignTaskToEpic',
+          taskId: editingTask.task_id,
+          epicId: editEpicId || null,
+          featureId: editFeatureId || null,
+        }),
+      });
+    }
     setEditingTask(null);
     await loadData(selectedSprint);
+  };
+
+  const createEpic = async () => {
+    if (!newEpicName.trim() || !newProjectId) return;
+    setActionLoading(true);
+    try {
+      await fetch('/api/pca/epics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'createEpic', name: newEpicName.trim(), phaseId: newEpicPhaseId || null, projectId: newProjectId }),
+      });
+      setNewEpicName('');
+      setNewEpicPhaseId('');
+      await loadData(selectedSprint);
+    } finally { setActionLoading(false); }
+  };
+
+  const createFeature = async () => {
+    if (!newFeatureName.trim() || !newFeatureEpicId) return;
+    setActionLoading(true);
+    try {
+      await fetch('/api/pca/epics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'createFeature', name: newFeatureName.trim(), epicId: newFeatureEpicId, projectId: sprint?.project_id || null }),
+      });
+      setNewFeatureName('');
+      setNewFeatureEpicId('');
+      await loadData(selectedSprint);
+    } finally { setActionLoading(false); }
   };
 
   const sprint = sprints.find(s => s.id === selectedSprint);
@@ -484,7 +550,7 @@ export default function SprintPage() {
 
         <div style={{ flex: 1 }} />
 
-        {(['board', 'backlog', 'analytics'] as View[]).map(v => (
+        {(['board', 'backlog', 'epics', 'analytics'] as View[]).map(v => (
           <button
             key={v}
             className={`btn${view === v ? ' btn-accent' : ''}`}
@@ -625,7 +691,9 @@ export default function SprintPage() {
                   <thead>
                     <tr>
                       <th>Task</th>
-                      <th>Epic / Phase</th>
+                      <th>Phase</th>
+                      <th>Epic</th>
+                      <th>Feature</th>
                       <th>Project</th>
                       <th>Priority</th>
                       <th>Resource</th>
@@ -639,6 +707,8 @@ export default function SprintPage() {
                       <tr key={t.id}>
                         <td style={{ fontWeight: 500 }}>{t.name}</td>
                         <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{t.phase_name || '—'}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{t.epic_name || '—'}</td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{t.feature_name || '—'}</td>
                         <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
                           {projects.find(p => p.id === t.project_id)?.name || t.project_id}
                         </td>
@@ -664,7 +734,7 @@ export default function SprintPage() {
                     ))}
                     {filteredBacklog.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                        <td colSpan={10} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                           {backlogSearch ? 'No matching tasks.' : 'All tasks are assigned to sprints.'}
                         </td>
                       </tr>
@@ -677,6 +747,80 @@ export default function SprintPage() {
                   {filteredBacklog.length} of {backlog.length} unassigned tasks
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Epics View */}
+          {view === 'epics' && (
+            <div>
+              <div className="glass" style={{ padding: '0.75rem', marginBottom: '0.75rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', marginBottom: 8 }}>Create Epic</div>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <input value={newEpicName} onChange={(e) => setNewEpicName(e.target.value)} placeholder="Epic name" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
+                  <select value={newEpicPhaseId} onChange={(e) => setNewEpicPhaseId(e.target.value)} style={{ ...selectStyle, minWidth: 140 }}>
+                    <option value="">No phase</option>
+                    {[...new Set(backlog.map((b) => JSON.stringify({ id: b.phase_id, name: b.phase_name })))].map((s) => {
+                      const p = JSON.parse(s);
+                      return p.id ? <option key={p.id} value={p.id}>{p.name}</option> : null;
+                    })}
+                  </select>
+                  <button className="btn btn-accent" style={{ fontSize: '0.72rem' }} disabled={!newEpicName.trim() || actionLoading} onClick={createEpic}>
+                    + Epic
+                  </button>
+                </div>
+              </div>
+              <div className="glass" style={{ padding: '0.75rem', marginBottom: '0.75rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.78rem', marginBottom: 8 }}>Create Feature</div>
+                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <input value={newFeatureName} onChange={(e) => setNewFeatureName(e.target.value)} placeholder="Feature name" style={{ ...inputStyle, flex: 1, minWidth: 160 }} />
+                  <select value={newFeatureEpicId} onChange={(e) => setNewFeatureEpicId(e.target.value)} style={{ ...selectStyle, minWidth: 160 }}>
+                    <option value="">Select epic</option>
+                    {allEpics.map((ep) => <option key={ep.id} value={ep.id}>{ep.name} ({ep.phase_name || 'no phase'})</option>)}
+                  </select>
+                  <button className="btn btn-accent" style={{ fontSize: '0.72rem' }} disabled={!newFeatureName.trim() || !newFeatureEpicId || actionLoading} onClick={createFeature}>
+                    + Feature
+                  </button>
+                </div>
+              </div>
+              <div className="glass-solid" style={{ overflow: 'auto', maxHeight: 'calc(100vh - 440px)' }}>
+                {allEpics.length === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>No epics yet. Create one above.</div>
+                ) : (
+                  <table className="dm-table">
+                    <thead>
+                      <tr>
+                        <th>Epic</th>
+                        <th>Phase</th>
+                        <th>Features</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allEpics.map((ep) => {
+                        const feats = allFeatures.filter((f) => f.epic_id === ep.id);
+                        return (
+                          <React.Fragment key={ep.id}>
+                            <tr>
+                              <td style={{ fontWeight: 600 }}>{ep.name}</td>
+                              <td style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{ep.phase_name || '—'}</td>
+                              <td>{feats.length}</td>
+                              <td style={{ color: ep.status === 'active' ? '#10b981' : '#6b7280', fontWeight: 600, fontSize: '0.7rem', textTransform: 'uppercase' }}>{ep.status}</td>
+                            </tr>
+                            {feats.map((ft) => (
+                              <tr key={ft.id} style={{ background: 'rgba(255,255,255,0.015)' }}>
+                                <td style={{ paddingLeft: '1.5rem', fontSize: '0.72rem' }}>{ft.name}</td>
+                                <td style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>{ep.name}</td>
+                                <td />
+                                <td style={{ color: ft.status === 'active' ? '#10b981' : '#6b7280', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase' }}>{ft.status}</td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
 
@@ -761,6 +905,20 @@ export default function SprintPage() {
               <div>
                 <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Priority</label>
                 <input type="number" value={editPriority} onChange={(e) => setEditPriority(Number(e.target.value || 0))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Epic</label>
+                <select value={editEpicId} onChange={(e) => { setEditEpicId(e.target.value); setEditFeatureId(''); }} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">None</option>
+                  {allEpics.map((ep) => <option key={ep.id} value={ep.id}>{ep.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Feature</label>
+                <select value={editFeatureId} onChange={(e) => setEditFeatureId(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">None</option>
+                  {allFeatures.filter((f) => !editEpicId || f.epic_id === editEpicId).map((ft) => <option key={ft.id} value={ft.id}>{ft.name}</option>)}
+                </select>
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>

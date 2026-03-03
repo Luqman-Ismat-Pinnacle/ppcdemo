@@ -273,7 +273,45 @@ export async function GET() {
       };
     });
 
-    const criticalExposure = interventions.filter((r) => r.severity === 'critical').length;
+    let pclApproved: typeof interventions = [];
+    try {
+      const pclRows = await query<{
+        id: string; project_id: string; project_name: string; severity: string;
+        priority: string; reason: string; recommended_action: string; pcl_notes: string;
+        variance_pct: string; actual_hours: string; total_hours: string; percent_complete: string;
+      }>(
+        `SELECT * FROM intervention_items WHERE status = 'approved' ORDER BY created_at DESC`,
+      );
+      pclApproved = pclRows.map((r) => ({
+        id: r.id,
+        project_id: r.project_id,
+        project_name: r.project_name || '',
+        accountable_owner: 'PCL Escalation',
+        workstream: 'PCL Exception',
+        severity: r.severity || 'warning',
+        intervention_priority: r.priority || 'P3',
+        variance_signal: r.reason || '',
+        recommended_action: r.recommended_action || '',
+        variance_pct: Number(r.variance_pct || 0),
+        variance_hours: 0,
+        actual_hours: Number(r.actual_hours || 0),
+        baseline_hours: Number(r.total_hours || 0),
+        avg_progress: Number(r.percent_complete || 0),
+        task_count: 0,
+        critical_open: 0,
+        spi: 0,
+        trend_hours_pct: 0,
+        trend_hours_mo: 0,
+      }));
+    } catch { /* table may not exist yet */ }
+
+    const pclProjectIds = new Set(pclApproved.map((r) => r.project_id));
+    const mergedInterventions = [
+      ...interventions.filter((r) => !pclProjectIds.has(r.project_id)),
+      ...pclApproved,
+    ];
+
+    const criticalExposure = mergedInterventions.filter((r) => r.severity === 'critical').length;
     const portfolioSpi = Number(spiTrendRow[0]?.spi || 0);
     const portfolioTrendHoursPct = Number(spiTrendRow[0]?.trend_hours_pct || 0);
 
@@ -372,7 +410,7 @@ export async function GET() {
       success: true,
       kpis: {
         activeProjects: Number(projectCount[0]?.cnt || 0),
-        interventionItems: interventions.length,
+        interventionItems: mergedInterventions.length,
         criticalExposure,
         scheduleVarianceHours: Number(scheduleVarRow[0]?.variance_hours || 0),
         hoursVariancePct: Number(scheduleVarRow[0]?.variance_pct || 0),
@@ -380,7 +418,7 @@ export async function GET() {
         portfolioTrendHoursPct,
         healthScore,
       },
-      interventionQueue: interventions,
+      interventionQueue: mergedInterventions,
       trend: trendRows.map((r) => ({
         month: r.month,
         spi: Number(r.spi || 0),
