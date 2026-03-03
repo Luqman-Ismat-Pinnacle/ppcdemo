@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import type { BodyScrollEvent, CellValueChangedEvent, ColDef, GridReadyEvent } from 'ag-grid-community';
@@ -40,6 +40,7 @@ type RowGeom = { id: string; rowIndex: number; top: number; height: number; cent
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HEADER_H = 48;
 const ROW_H = 34;
+const MAX_DEPENDENCY_EDGES = 1400;
 const PROGRESS_BANDS = [
   { label: '0-24%', color: '#ef4444' },
   { label: '25-49%', color: '#f59e0b' },
@@ -99,6 +100,7 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
   const [timelineViewportWidth, setTimelineViewportWidth] = useState(600);
   const [rowGeom, setRowGeom] = useState<RowGeom[]>([]);
   const [isPanning, setIsPanning] = useState(false);
+  const [isClient, setIsClient] = useState(false);
   const [barTip, setBarTip] = useState<{
     x: number; y: number; name: string; type: string; start: string; end: string;
     baseline: string; progress: number; predecessor: string; rel: string; lag: number; meta: string;
@@ -223,6 +225,9 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
   React.useEffect(() => { scheduleGridSync(); }, [expandedIds, scheduleGridSync]);
   React.useEffect(() => { captureRowGeometry(); }, [items.length, expandedIds, captureRowGeometry]);
   React.useEffect(() => { return () => { if (syncRafRef.current != null) cancelAnimationFrame(syncRafRef.current); }; }, []);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -301,6 +306,7 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
 
   const expandAllVisible = useCallback(() => {
     setExpandedIds(new Set(filteredRows.filter((r) => r.has_children).map((r) => r.id)));
+    if (filteredRows.length > 3000) setShowDependencies(false);
   }, [filteredRows]);
   const collapseAllVisible = useCallback(() => {
     setExpandedIds(new Set());
@@ -495,6 +501,42 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
     const visibleRows = Math.ceil(Math.max(0, timelineHeight - HEADER_H) / ROW_H) + 10;
     return { startIdx, endIdx: Math.min(rows.length - 1, startIdx + visibleRows) };
   }, [vScroll, rows.length, timelineHeight]);
+  const visibleTimelineRows = useMemo(
+    () => timelineRows.filter((g) => g.rowIndex >= visibleWindow.startIdx && g.rowIndex <= visibleWindow.endIdx),
+    [timelineRows, visibleWindow.startIdx, visibleWindow.endIdx],
+  );
+  const dependencySegments = useMemo(() => {
+    if (!showDependencies) return [];
+    const segments: Array<{ key: string; points: number[]; arrow: [number, number, number, number]; stroke: string }> = [];
+    outer: for (const g of visibleTimelineRows) {
+      const idx = g.rowIndex;
+      const r = rows[idx];
+      if (!r || !Array.isArray(r.predecessor_ids) || !r.predecessor_ids.length || !r.start_date) continue;
+      const tg = rowGeomByIndex.get(idx); if (!tg) continue;
+      const ty = tg.center - vScroll;
+      if (ty < HEADER_H - ROW_H || ty > timelineHeight + ROW_H) continue;
+      const targetStart = parseDate(r.start_date); if (!targetStart) continue;
+      const tx = toX(targetStart); if (!Number.isFinite(tx)) continue;
+      for (const pred of r.predecessor_ids) {
+        const sourceIdx = taskIndexById.get(String(pred)); if (sourceIdx == null) continue;
+        if (sourceIdx < visibleWindow.startIdx || sourceIdx > visibleWindow.endIdx) continue;
+        const source = rows[sourceIdx]; const sg = rowGeomByIndex.get(sourceIdx); if (!sg) continue;
+        const sourceEnd = parseDate(source?.end_date); if (!sourceEnd) continue;
+        const sy = sg.center - vScroll;
+        if (sy < HEADER_H - ROW_H || sy > timelineHeight + ROW_H) continue;
+        const sx = toX(sourceEnd); if (!Number.isFinite(sx)) continue;
+        const isReverse = tx < sx;
+        const routeX = isReverse ? Math.max(12, tx - 24) : Math.max(sx + 14, tx - 10);
+        const points = isReverse ? [sx, sy, sx + 12, sy, sx + 12, ty, routeX, ty, tx - 8, ty] : [sx, sy, routeX, sy, routeX, ty, tx - 8, ty];
+        const stroke = source?.is_critical || r.is_critical ? '#ef4444' : '#6366f1';
+        const key = `${pred}-${r.id}-${idx}-${sourceIdx}`;
+        segments.push({ key, points, arrow: [tx - 12, ty, tx, ty], stroke });
+        if (segments.length >= MAX_DEPENDENCY_EDGES) break outer;
+      }
+    }
+    return segments;
+  }, [showDependencies, visibleTimelineRows, rows, rowGeomByIndex, vScroll, timelineHeight, toX, taskIndexById, visibleWindow.startIdx, visibleWindow.endIdx]);
+  const dependencyCapHit = showDependencies && dependencySegments.length >= MAX_DEPENDENCY_EDGES;
 
   const gridColumns = useMemo<ColDef<WbsRow>[]>(() => ([
     {
@@ -607,6 +649,7 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
             </select>
             <label style={{ display: 'flex', gap: 4, fontSize: '0.68rem', color: 'var(--text-secondary)' }}><input type="checkbox" checked={showBaseline} onChange={e => setShowBaseline(e.target.checked)} />Baseline</label>
             <label style={{ display: 'flex', gap: 4, fontSize: '0.68rem', color: 'var(--text-secondary)' }}><input type="checkbox" checked={showDependencies} onChange={e => setShowDependencies(e.target.checked)} />Dependencies</label>
+            {dependencyCapHit && <span style={{ fontSize: '0.62rem', color: '#f59e0b' }}>Dependency draw capped</span>}
             <label style={{ display: 'flex', gap: 4, fontSize: '0.68rem', color: 'var(--text-secondary)' }}><input type="checkbox" checked={showVariance} onChange={e => setShowVariance(e.target.checked)} />Variance</label>
             {showVariance && (
               <select value={variancePeriod} onChange={(e) => setVariancePeriod(e.target.value as '7d' | '30d' | '90d' | '180d')} style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.28rem 0.45rem', fontSize: '0.68rem' }}>
@@ -651,12 +694,13 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
                 </div>
               )}
               <div ref={timelineRef} onMouseDown={onTimelineMouseDown} onMouseMove={onTimelineMouseMove} onMouseUp={onTimelineMouseUp} onMouseLeave={onTimelineMouseUp} style={{ position: 'relative', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', cursor: isPanning ? 'grabbing' : 'grab', visibility: hasRenderableTimelineRows ? 'visible' : 'hidden' }}>
+                {isClient && (
                 <Stage width={timelineWidth} height={stageHeight}>
                   <Layer clipX={0} clipY={HEADER_H} clipWidth={timelineWidth} clipHeight={Math.max(0, stageHeight - HEADER_H)}>
                     <Rect x={0} y={HEADER_H} width={timelineWidth} height={Math.max(0, stageHeight - HEADER_H)} fill="rgba(8,10,13,0.35)" />
                     {axisTicks.map(tick => { const x = toX(tick); return <Line key={`grid-${tick.toISOString()}`} points={[x, HEADER_H, x, stageHeight]} stroke="rgba(148,163,184,0.2)" strokeWidth={1} />; })}
                     <Line points={[todayX, HEADER_H, todayX, stageHeight]} stroke="#ef4444" strokeWidth={1.2} dash={[6, 4]} />
-                    {timelineRows.map(g => {
+                    {visibleTimelineRows.map(g => {
                       const r = rows[g.rowIndex]; if (!r) return null;
                       const y = g.top - vScroll; const laneH = g.height;
                       if (y > timelineHeight + ROW_H * 4 || y + laneH < HEADER_H - ROW_H * 2) return null;
@@ -674,7 +718,7 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
                       );
                     })}
                     {(() => {
-                      const lastVisibleY = timelineRows.length ? (timelineRows[timelineRows.length - 1].bottom - vScroll) : HEADER_H;
+                      const lastVisibleY = visibleTimelineRows.length ? (visibleTimelineRows[visibleTimelineRows.length - 1].bottom - vScroll) : HEADER_H;
                       const fillerStart = Math.max(HEADER_H, lastVisibleY);
                       const lines: React.ReactNode[] = [];
                       for (let y = fillerStart; y <= timelineHeight + ROW_H; y += ROW_H) {
@@ -684,33 +728,10 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
                     })()}
                   </Layer>
                   <Layer clipX={0} clipY={HEADER_H} clipWidth={timelineWidth} clipHeight={Math.max(0, stageHeight - HEADER_H)}>
-                    {showDependencies && rows.flatMap((r, idx) => {
-                      if (idx < visibleWindow.startIdx || idx > visibleWindow.endIdx) return [];
-                      if (!Array.isArray(r.predecessor_ids) || !r.predecessor_ids.length || !r.start_date) return [];
-                      const tg = rowGeomByIndex.get(idx); if (!tg) return [];
-                      const ty = tg.center - vScroll;
-                      if (ty < HEADER_H - ROW_H || ty > timelineHeight + ROW_H) return [];
-                      const targetStart = parseDate(r.start_date); if (!targetStart) return [];
-                      const tx = toX(targetStart); if (!Number.isFinite(tx)) return [];
-                      return r.predecessor_ids.flatMap(pred => {
-                        const sourceIdx = taskIndexById.get(String(pred)); if (sourceIdx == null) return [];
-                        if (sourceIdx < visibleWindow.startIdx || sourceIdx > visibleWindow.endIdx) return [];
-                        const source = rows[sourceIdx]; const sg = rowGeomByIndex.get(sourceIdx); if (!sg) return [];
-                        const sourceEnd = parseDate(source?.end_date); if (!sourceEnd) return [];
-                        const sy = sg.center - vScroll;
-                        if (sy < HEADER_H - ROW_H || sy > timelineHeight + ROW_H) return [];
-                        const sx = toX(sourceEnd); if (!Number.isFinite(sx)) return [];
-                        const isReverse = tx < sx;
-                        const routeX = isReverse ? Math.max(12, tx - 24) : Math.max(sx + 14, tx - 10);
-                        const points = isReverse ? [sx, sy, sx + 12, sy, sx + 12, ty, routeX, ty, tx - 8, ty] : [sx, sy, routeX, sy, routeX, ty, tx - 8, ty];
-                        const stroke = source.is_critical || r.is_critical ? '#ef4444' : '#6366f1';
-                        const key = `${pred}-${r.id}-${idx}-${sourceIdx}`;
-                        return [
-                          <Line key={`line-${key}`} points={points} stroke={stroke} strokeWidth={1.25} lineCap="round" lineJoin="round" />,
-                          <Arrow key={`arr-${key}`} points={[tx - 12, ty, tx, ty]} stroke={stroke} fill={stroke} strokeWidth={1.25} pointerLength={4} pointerWidth={4} />,
-                        ];
-                      });
-                    })}
+                    {showDependencies && dependencySegments.flatMap((seg) => ([
+                      <Line key={`line-${seg.key}`} points={seg.points} stroke={seg.stroke} strokeWidth={1.25} lineCap="round" lineJoin="round" />,
+                      <Arrow key={`arr-${seg.key}`} points={seg.arrow} stroke={seg.stroke} fill={seg.stroke} strokeWidth={1.25} pointerLength={4} pointerWidth={4} />,
+                    ]))}
                   </Layer>
                   <Layer listening={false}>
                     <Rect x={0} y={0} width={timelineWidth} height={HEADER_H} fill="rgba(12,14,18,0.82)" />
@@ -719,6 +740,7 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
                     <Text x={todayX + 4} y={28} text="Today" fill="#ef4444" fontSize={12} />
                   </Layer>
                 </Stage>
+                )}
               </div>
               {barTip && (
                 <div className="wbs-tooltip" style={{ position: 'absolute', left: Math.max(8, Math.min(barTip.x, (rightPaneRef.current?.clientWidth || 400) - 230)), top: Math.max(8, Math.min(barTip.y, (rightPaneRef.current?.clientHeight || 300) - 92)), pointerEvents: 'none', zIndex: 20, minWidth: 210, fontSize: 11, lineHeight: 1.35 }}>

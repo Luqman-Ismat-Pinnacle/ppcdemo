@@ -10,6 +10,8 @@ BEGIN;
 -- ============================================================================
 DROP TABLE IF EXISTS integration_connections CASCADE;
 DROP TABLE IF EXISTS feedback_items CASCADE;
+DROP TABLE IF EXISTS forecast_phase_lines CASCADE;
+DROP TABLE IF EXISTS forecasts CASCADE;
 DROP TABLE IF EXISTS sprint_tasks CASCADE;
 DROP TABLE IF EXISTS sprints CASCADE;
 DROP TABLE IF EXISTS workday_phases CASCADE;
@@ -500,6 +502,58 @@ CREATE INDEX idx_st_sprint ON sprint_tasks(sprint_id);
 CREATE INDEX idx_st_task ON sprint_tasks(task_id);
 
 -- ============================================================================
+-- FORECASTS
+-- ============================================================================
+CREATE TABLE forecasts (
+  id                TEXT PRIMARY KEY,
+  project_id        TEXT REFERENCES projects(id),
+  submitted_by      TEXT,
+  forecast_hours    NUMERIC(12,2) DEFAULT 0,
+  forecast_cost     NUMERIC(14,2) DEFAULT 0,
+  baseline_hours    NUMERIC(12,2) DEFAULT 0,
+  baseline_cost     NUMERIC(14,2) DEFAULT 0,
+  forecast_end_date DATE,
+  period            TEXT,
+  notes             TEXT,
+  status            TEXT DEFAULT 'pending',
+  reviewed_by       TEXT,
+  review_comment    TEXT,
+  reviewed_at       TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_forecasts_project ON forecasts(project_id);
+CREATE INDEX idx_forecasts_status ON forecasts(status);
+CREATE INDEX idx_forecasts_created ON forecasts(created_at DESC);
+
+-- ============================================================================
+-- FORECAST_PHASE_LINES
+-- ============================================================================
+CREATE TABLE forecast_phase_lines (
+  id                      TEXT PRIMARY KEY,
+  forecast_id             TEXT NOT NULL REFERENCES forecasts(id) ON DELETE CASCADE,
+  project_id              TEXT REFERENCES projects(id),
+  phase_id                TEXT,
+  unit_name               TEXT,
+  phase_name              TEXT NOT NULL,
+  baseline_hours          NUMERIC(12,2) DEFAULT 0,
+  actual_hours            NUMERIC(12,2) DEFAULT 0,
+  current_remaining_hours NUMERIC(12,2) DEFAULT 0,
+  delta_hours             NUMERIC(12,2) DEFAULT 0,
+  revised_remaining_hours NUMERIC(12,2) DEFAULT 0,
+  revised_eac_hours       NUMERIC(12,2) DEFAULT 0,
+  current_eac_cost        NUMERIC(14,2) DEFAULT 0,
+  delta_cost              NUMERIC(14,2) DEFAULT 0,
+  revised_eac_cost        NUMERIC(14,2) DEFAULT 0,
+  rationale               TEXT,
+  sort_order              INTEGER DEFAULT 0,
+  created_at              TIMESTAMPTZ DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_forecast_phase_lines_forecast ON forecast_phase_lines(forecast_id, sort_order);
+CREATE INDEX idx_forecast_phase_lines_project ON forecast_phase_lines(project_id);
+
+-- ============================================================================
 -- WORKDAY_PHASES (from Workday, not from MPP)
 -- ============================================================================
 CREATE TABLE workday_phases (
@@ -717,7 +771,7 @@ BEGIN
     'employees','portfolios','customers','sites','projects',
     'units','phases','tasks','sub_tasks',
     'hour_entries','customer_contracts','project_documents',
-    'sprints','sprint_tasks','qc_logs',
+    'sprints','sprint_tasks','forecasts','forecast_phase_lines','qc_logs',
     'intervention_items','epics','features',
     'feedback_items','integration_connections'
   ]) LOOP

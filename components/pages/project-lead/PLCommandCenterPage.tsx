@@ -218,7 +218,7 @@ export default function PLCommandCenterPage() {
           <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Project Overview</h3>
           <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter projects…" style={{ width: 200, background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.15)', borderRadius: 6, padding: '0.3rem 0.5rem', color: '#e2e8f0', fontSize: '0.68rem' }} />
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '56vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>

@@ -131,7 +131,7 @@ export default function QualityPage() {
 
       <div className="glass" style={{ padding: '0.75rem', marginBottom: '1rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem', color: '#e2e8f0' }}>QC & Rework by Project</h3>
-        <ChartWrapper option={qcByProjectChart} height={Math.max(200, (data.byProject?.length || 5) * 24)} />
+        <ChartWrapper option={qcByProjectChart} height={Math.min(420, Math.max(200, (data.byProject?.length || 5) * 24))} />
       </div>
 
       <div className="glass" style={{ padding: '0.75rem', marginBottom: '1rem' }}>
@@ -166,7 +166,7 @@ export default function QualityPage() {
             {(data.byProject || []).map((p) => <option key={p.project_id} value={p.project_id}>{p.project_name}</option>)}
           </select>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '46vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>

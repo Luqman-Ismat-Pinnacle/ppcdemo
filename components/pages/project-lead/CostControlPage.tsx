@@ -121,7 +121,7 @@ export default function CostControlPage() {
 
       <div className="glass" style={{ padding: '0.7rem', marginBottom: '0.85rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem', color: '#e2e8f0' }}>Margin by Phase</h3>
-        <ChartWrapper option={marginByPhase} height={Math.max(220, (data.phases?.length || 5) * 22)} />
+        <ChartWrapper option={marginByPhase} height={Math.min(420, Math.max(220, (data.phases?.length || 5) * 22))} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.85rem' }}>
@@ -137,7 +137,7 @@ export default function CostControlPage() {
 
       <div className="glass" style={{ padding: '0.7rem', marginBottom: '0.85rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem', color: '#e2e8f0' }}>Cost Pressure Watchlist (Phase)</h3>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '42vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>
@@ -170,7 +170,7 @@ export default function CostControlPage() {
 
       <div className="glass" style={{ padding: '0.7rem', marginBottom: '0.85rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem', color: '#e2e8f0' }}>Phase Cost Summary</h3>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '46vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>

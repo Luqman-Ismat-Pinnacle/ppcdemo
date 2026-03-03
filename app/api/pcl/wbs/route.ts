@@ -267,21 +267,28 @@ export async function GET(req: NextRequest) {
       childrenByParent.get(pid)!.push(r);
     }
     const tfMemo = new Map<string, number>();
-    const rollTf = (id: string): number => {
+    const rollTf = (id: string, visiting = new Set<string>()): number => {
       if (tfMemo.has(id)) return tfMemo.get(id)!;
+      if (visiting.has(id)) return 0;
+      visiting.add(id);
       const row = rowById.get(id);
-      if (!row) return 0;
+      if (!row) {
+        visiting.delete(id);
+        return 0;
+      }
       const own = num(row.total_float);
       const kids = childrenByParent.get(id) || [];
       if (!kids.length) {
+        visiting.delete(id);
         tfMemo.set(id, own);
         return own;
       }
       let minTf = Number.POSITIVE_INFINITY;
       for (const k of kids) {
-        const v = rollTf(str(k.id));
+        const v = rollTf(str(k.id), visiting);
         if (Number.isFinite(v)) minTf = Math.min(minTf, v);
       }
+      visiting.delete(id);
       const rolled = Number.isFinite(minTf) ? minTf : own;
       row.total_float = rolled;
       tfMemo.set(id, rolled);

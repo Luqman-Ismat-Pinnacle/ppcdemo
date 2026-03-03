@@ -127,7 +127,7 @@ export default function ScheduleHealthPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.85rem' }}>
         <div className="glass" style={{ padding: '0.75rem' }}>
           <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem', color: '#e2e8f0' }}>SPI by Phase</h3>
-          <ChartWrapper option={spiChart} height={Math.max(210, (data.phases?.length || 5) * 20)} />
+          <ChartWrapper option={spiChart} height={Math.min(420, Math.max(210, (data.phases?.length || 5) * 20))} />
         </div>
         <div className="glass" style={{ padding: '0.75rem' }}>
           <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem', color: '#e2e8f0' }}>Float Distribution</h3>
@@ -137,12 +137,12 @@ export default function ScheduleHealthPage() {
 
       <div className="glass" style={{ padding: '0.75rem', marginBottom: '1rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.4rem', color: '#e2e8f0' }}>Schedule Variance by Project</h3>
-        <ChartWrapper option={varianceByProject} height={Math.max(200, (data.projects?.length || 5) * 22)} />
+        <ChartWrapper option={varianceByProject} height={Math.min(420, Math.max(200, (data.projects?.length || 5) * 22))} />
       </div>
 
       <div className="glass" style={{ padding: '0.75rem', marginBottom: '1rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: '0.5rem', color: '#e2e8f0' }}>Phase Schedule Summary</h3>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '42vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>
@@ -172,7 +172,7 @@ export default function ScheduleHealthPage() {
 
       <div className="glass" style={{ padding: '0.75rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.5rem' }}>Critical Path Tasks</h3>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '42vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>
@@ -202,8 +202,8 @@ export default function ScheduleHealthPage() {
 
       <div className="glass" style={{ padding: '0.75rem', marginTop: '1rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.45rem' }}>Schedule by Employee</h3>
-        <ChartWrapper option={employeeScheduleChart} height={Math.max(220, ((data?.employeeSummary?.length || 5) * 24))} />
-        <div style={{ overflowX: 'auto', marginTop: '0.6rem' }}>
+        <ChartWrapper option={employeeScheduleChart} height={Math.min(420, Math.max(220, ((data?.employeeSummary?.length || 5) * 24)))} />
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '42vh', marginTop: '0.6rem' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>

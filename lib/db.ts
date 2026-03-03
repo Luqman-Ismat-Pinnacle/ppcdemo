@@ -9,7 +9,9 @@ function getPool(): Pool {
       process.env.POSTGRES_CONNECTION_STRING ||
       process.env.AZURE_POSTGRES_CONNECTION_STRING;
     if (!connectionString) throw new Error('DATABASE_URL (or POSTGRES_CONNECTION_STRING) not set');
-    pool = new Pool({ connectionString, max: 10, idleTimeoutMillis: 30000 });
+    const parsedMax = Number(process.env.DB_POOL_MAX || process.env.PGPOOL_MAX || '4');
+    const poolMax = Number.isFinite(parsedMax) && parsedMax > 0 ? Math.floor(parsedMax) : 4;
+    pool = new Pool({ connectionString, max: poolMax, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 });
   }
   return pool;
 }
@@ -48,6 +50,7 @@ const VALID_TABLES = new Set([
   'units', 'phases', 'tasks', 'sub_tasks',
   'hour_entries', 'customer_contracts', 'project_documents',
   'sprints', 'sprint_tasks', 'notifications', 'workday_phases',
+  'forecasts', 'forecast_phase_lines',
   'variance_notes', 'qc_logs',
   'intervention_items', 'epics', 'features',
   'feedback_items', 'integration_connections',

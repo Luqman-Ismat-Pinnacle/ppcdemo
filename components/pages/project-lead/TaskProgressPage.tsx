@@ -152,7 +152,7 @@ export default function TaskProgressPage() {
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '46vh' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>
@@ -186,6 +186,7 @@ export default function TaskProgressPage() {
                   {expandedPhase === ph.id && phaseTasks.length > 0 && (
                     <tr>
                       <td colSpan={8} style={{ padding: 0 }}>
+                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 280 }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.68rem', background: 'rgba(30,41,59,0.45)' }}>
                           <thead>
                             <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.08)' }}>
@@ -218,6 +219,7 @@ export default function TaskProgressPage() {
                             })}
                           </tbody>
                         </table>
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -230,8 +232,8 @@ export default function TaskProgressPage() {
 
       <div className="glass" style={{ padding: '0.75rem', marginTop: '1rem' }}>
         <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e2e8f0', marginBottom: '0.45rem' }}>Employee Task Execution</h3>
-        <ChartWrapper option={employeeLoadChart} height={Math.max(220, ((data?.employeeSummary?.length || 5) * 24))} />
-        <div style={{ overflowX: 'auto', marginTop: '0.6rem' }}>
+        <ChartWrapper option={employeeLoadChart} height={Math.min(420, Math.max(220, ((data?.employeeSummary?.length || 5) * 24)))} />
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '42vh', marginTop: '0.6rem' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}>
