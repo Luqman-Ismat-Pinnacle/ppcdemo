@@ -487,8 +487,9 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
     [rows, rowGeomById],
   );
   const rowGeomByIndex = useMemo(() => new Map(timelineRows.map(g => [g.rowIndex, g])), [timelineRows]);
-  const stageContentBottom = timelineRows.length ? timelineRows[timelineRows.length - 1].bottom : (HEADER_H + rows.length * ROW_H);
-  const stageHeight = Math.max(timelineHeight, stageContentBottom + 8);
+  // Keep the canvas bounded to viewport height; very tall canvases (100k+ px)
+  // can fail to render in Konva/Canvas and show a blank pane.
+  const stageHeight = Math.max(timelineHeight, HEADER_H + ROW_H * 4);
   const visibleWindow = useMemo(() => {
     const startIdx = Math.max(0, Math.floor(vScroll / ROW_H) - 5);
     const visibleRows = Math.ceil(Math.max(0, timelineHeight - HEADER_H) / ROW_H) + 10;
