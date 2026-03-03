@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { href: '/pca/forecast', label: 'Forecast' },
   { href: '/pca/metric-provenance', label: 'Metric Provenance' },
   { href: '/pca/data-management', label: 'Data' },
-  { href: '/pca/feedback', label: 'Issues & Features' },
 ];
 
 export default function PcaLayout({ children }: { children: React.ReactNode }) {

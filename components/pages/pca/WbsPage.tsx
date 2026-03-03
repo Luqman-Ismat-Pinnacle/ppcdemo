@@ -635,7 +635,7 @@ export default function WbsPage() {
   const rowGeomByIndex = useMemo(() => new Map(timelineRows.map((g) => [g.rowIndex, g])), [timelineRows]);
   // Keep the canvas bounded to viewport height; very tall canvases (100k+ px)
   // can fail to render in Konva/Canvas and show a blank pane.
-  const stageHeight = Math.max(timelineHeight, HEADER_H + ROW_H * 4);
+  const stageHeight = timelineHeight;
   const visibleWindow = useMemo(() => {
     const startIdx = Math.max(0, Math.floor(vScroll / ROW_H) - 5);
     const visibleRows = Math.ceil(Math.max(0, timelineHeight - HEADER_H) / ROW_H) + 10;
@@ -757,15 +757,10 @@ export default function WbsPage() {
   ]), [expandedIds, headerWithDelta, varianceTextStyle, withDelta, wbsPathById]);
 
   const todayX = toX(new Date());
-  const flatControlBtn: React.CSSProperties = {
-    padding: '0.16rem 0.38rem',
-    minHeight: 24,
-    borderRadius: 6,
-    border: '1px solid rgba(255,255,255,0.14)',
-    background: 'rgba(255,255,255,0.02)',
-    color: 'var(--text-secondary)',
-    fontWeight: 600,
-    boxShadow: 'none',
+  const controlBtnStyle: React.CSSProperties = {
+    padding: '0.36rem 0.62rem',
+    minHeight: 30,
+    fontSize: '0.72rem',
   };
   const fitTimeline = () => {
     const host = timelineRef.current;
@@ -827,7 +822,7 @@ export default function WbsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search WBS..."
-              style={{ minWidth: 150, maxWidth: 190, background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.3rem 0.45rem', fontSize: '0.68rem' }}
+              style={{ minWidth: 170, maxWidth: 240, background: 'rgba(255, 255, 255, 0.04)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.4rem 0.55rem', fontSize: '0.74rem' }}
             />
             <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: 2 }}>
               {(['week', 'month', 'quarter', 'year'] as Interval[]).map((iv) => (
@@ -836,34 +831,27 @@ export default function WbsPage() {
                   type="button"
                   className="btn"
                   onClick={() => setInterval(iv)}
-                  style={{
-                    ...flatControlBtn,
-                    background: interval === iv ? 'rgba(99,102,241,0.26)' : 'rgba(255,255,255,0.02)',
-                    color: interval === iv ? '#eef2ff' : 'var(--text-secondary)',
-                    fontWeight: interval === iv ? 700 : 600,
-                    minWidth: 50,
-                    textTransform: 'capitalize',
-                  }}
+                  style={{ ...controlBtnStyle, background: interval === iv ? 'rgba(99,102,241,0.26)' : undefined, color: interval === iv ? '#eef2ff' : undefined, minWidth: 58, textTransform: 'capitalize' }}
                 >
                   {iv}
                 </button>
               ))}
             </div>
-            <button className="btn" type="button" style={flatControlBtn} onClick={() => setPxPerDay((v) => Math.max(0.25, v - 0.5))}>-</button>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', minWidth: 44, textAlign: 'center' }}>{pxPerDay.toFixed(2)}</span>
-            <button className="btn" type="button" style={flatControlBtn} onClick={() => setPxPerDay((v) => Math.min(12, v + 0.5))}>+</button>
-            <button className="btn" type="button" style={flatControlBtn} onClick={fitTimeline}>Fit</button>
-            <button className="btn" type="button" style={flatControlBtn} onClick={() => timelineRef.current?.scrollTo({ left: Math.max(0, todayX - (timelineRef.current?.clientWidth || 0) / 2), behavior: 'smooth' })}>Today</button>
-            <button className="btn" type="button" style={flatControlBtn} onClick={expandAllVisible}>Expand All</button>
-            <button className="btn" type="button" style={flatControlBtn} onClick={collapseAllVisible}>Collapse All</button>
-            <button className="btn" type="button" style={flatControlBtn} onClick={expandLevel3}>Expand L3</button>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as 'all' | 'critical' | 'task' | 'phase')} style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.28rem 0.45rem', fontSize: '0.68rem' }}>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={() => setPxPerDay((v) => Math.max(0.25, v - 0.5))}>-</button>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', minWidth: 50, textAlign: 'center' }}>{pxPerDay.toFixed(2)}</span>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={() => setPxPerDay((v) => Math.min(12, v + 0.5))}>+</button>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={fitTimeline}>Fit</button>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={() => timelineRef.current?.scrollTo({ left: Math.max(0, todayX - (timelineRef.current?.clientWidth || 0) / 2), behavior: 'smooth' })}>Today</button>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={expandAllVisible}>Expand All</button>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={collapseAllVisible}>Collapse All</button>
+            <button className="btn" type="button" style={controlBtnStyle} onClick={expandLevel3}>Expand L3</button>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as 'all' | 'critical' | 'task' | 'phase')} style={{ background: 'rgba(255, 255, 255, 0.04)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.38rem 0.55rem', fontSize: '0.74rem' }}>
               <option value="all">All Types</option>
               <option value="critical">Critical Only</option>
               <option value="task">Tasks Only</option>
               <option value="phase">Phases Only</option>
             </select>
-            <select value={progressFilter} onChange={(e) => setProgressFilter(e.target.value as 'all' | 'not_started' | 'in_progress' | 'done')} style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.28rem 0.45rem', fontSize: '0.68rem' }}>
+            <select value={progressFilter} onChange={(e) => setProgressFilter(e.target.value as 'all' | 'not_started' | 'in_progress' | 'done')} style={{ background: 'rgba(255, 255, 255, 0.04)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.38rem 0.55rem', fontSize: '0.74rem' }}>
               <option value="all">All Progress</option>
               <option value="not_started">Not Started</option>
               <option value="in_progress">In Progress</option>
@@ -874,7 +862,7 @@ export default function WbsPage() {
             {dependencyCapHit && <span style={{ fontSize: '0.62rem', color: '#f59e0b' }}>Dependency draw capped</span>}
             <label style={{ display: 'flex', gap: 4, fontSize: '0.68rem', color: 'var(--text-secondary)' }}><input type="checkbox" checked={showVariance} onChange={(e) => setShowVariance(e.target.checked)} />Variance</label>
             {showVariance && (
-              <select value={variancePeriod} onChange={(e) => setVariancePeriod(e.target.value as '7d' | '30d' | '90d' | '180d')} style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.28rem 0.45rem', fontSize: '0.68rem' }}>
+              <select value={variancePeriod} onChange={(e) => setVariancePeriod(e.target.value as '7d' | '30d' | '90d' | '180d')} style={{ background: 'rgba(255, 255, 255, 0.04)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: 8, padding: '0.38rem 0.55rem', fontSize: '0.74rem' }}>
                 <option value="7d">7d</option>
                 <option value="30d">30d</option>
                 <option value="90d">90d</option>
@@ -894,7 +882,7 @@ export default function WbsPage() {
             {savingCommentId && <span style={{ fontSize: '0.68rem', color: '#a78bfa' }}>Saving comment...</span>}
           </div>
 
-          <div ref={hostRef} style={{ flex: 1, minHeight: 420, display: 'flex', border: '1px solid var(--glass-border)', borderRadius: 10, overflow: 'hidden' }}>
+          <div ref={hostRef} style={{ flex: 1, minHeight: 420, height: '100%', display: 'flex', border: '1px solid var(--glass-border)', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ width: `${split}%`, minWidth: 0 }}>
               <div ref={gridWrapRef} className="ag-theme-quartz wbs-grid-theme" style={{ width: '100%', height: '100%' }}>
                 <AgGridReact<WbsRow>
@@ -942,7 +930,7 @@ export default function WbsPage() {
 
             <div style={{ width: 8, cursor: 'col-resize', borderLeft: '1px solid var(--glass-border)', borderRight: '1px solid var(--glass-border)', background: 'rgba(0,0,0,0.25)' }} onMouseDown={() => setDragSplit(true)} />
 
-            <div ref={rightPaneRef} style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0, minHeight: 0, height: '100%', background: 'linear-gradient(180deg, rgba(10,12,16,0.56) 0%, rgba(8,10,13,0.44) 100%), repeating-linear-gradient(0deg, rgba(148,163,184,0.04) 0 1px, rgba(0,0,0,0) 1px 34px)' }}>
+            <div ref={rightPaneRef} style={{ position: 'relative', display: 'flex', alignItems: 'stretch', flex: 1, minWidth: 0, minHeight: 0, height: '100%', background: 'linear-gradient(180deg, rgba(10,12,16,0.56) 0%, rgba(8,10,13,0.44) 100%), repeating-linear-gradient(0deg, rgba(148,163,184,0.04) 0 1px, rgba(0,0,0,0) 1px 34px)' }}>
               {!hasRenderableTimelineRows && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.76rem', textAlign: 'center', padding: '0 1rem' }}>
                   Timeline cannot render yet: no valid start/end schedule dates are available.
@@ -954,7 +942,7 @@ export default function WbsPage() {
                 onMouseMove={onTimelineMouseMove}
                 onMouseUp={onTimelineMouseUp}
                 onMouseLeave={onTimelineMouseUp}
-                style={{ position: 'relative', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', cursor: isPanning ? 'grabbing' : 'grab', visibility: hasRenderableTimelineRows ? 'visible' : 'hidden' }}
+                style={{ position: 'relative', flex: 1, height: '100%', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', cursor: isPanning ? 'grabbing' : 'grab', visibility: hasRenderableTimelineRows ? 'visible' : 'hidden' }}
               >
                 {isClient && (
                 <Stage width={timelineWidth} height={stageHeight}>

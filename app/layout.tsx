@@ -7,8 +7,13 @@ import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import FeedbackButton from '@/components/feedback/FeedbackButton';
 
 export const metadata: Metadata = {
-  title: 'PPC Minimal',
-  description: 'Minimal Project Controls',
+  title: 'Pinnacle Project Management',
+  description: 'Pinnacle Project Management platform',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
