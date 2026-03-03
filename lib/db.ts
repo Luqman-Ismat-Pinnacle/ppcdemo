@@ -36,7 +36,11 @@ export async function execute(sql: string, params?: unknown[]): Promise<number> 
 }
 
 export async function refreshRollups(): Promise<void> {
-  await getPool().query('SELECT refresh_rollups_dbside()');
+  try {
+    await getPool().query('SELECT refresh_rollups_dbside()');
+  } catch {
+    await getPool().query('SELECT refresh_rollups()');
+  }
 }
 
 const VALID_TABLES = new Set([

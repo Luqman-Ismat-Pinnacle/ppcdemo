@@ -601,6 +601,14 @@ export default function WbsPage() {
     });
     return m;
   }, [rows]);
+  const hasRenderableTimelineRows = useMemo(
+    () => rows.some((r) => {
+      const s = parseDate(r.start_date);
+      const e = parseDate(r.end_date);
+      return Boolean(s && e && !Number.isNaN(s.getTime()) && !Number.isNaN(e.getTime()));
+    }),
+    [rows],
+  );
   const timelineRows = useMemo<RowGeom[]>(
     () => rows.map((r, i) => {
       const fallbackTop = HEADER_H + i * ROW_H;
@@ -881,13 +889,18 @@ export default function WbsPage() {
             <div style={{ width: 8, cursor: 'col-resize', borderLeft: '1px solid var(--glass-border)', borderRight: '1px solid var(--glass-border)', background: 'rgba(0,0,0,0.25)' }} onMouseDown={() => setDragSplit(true)} />
 
             <div ref={rightPaneRef} style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0, minHeight: 0, height: '100%', background: 'linear-gradient(180deg, rgba(10,12,16,0.56) 0%, rgba(8,10,13,0.44) 100%), repeating-linear-gradient(0deg, rgba(148,163,184,0.04) 0 1px, rgba(0,0,0,0) 1px 34px)' }}>
+              {!hasRenderableTimelineRows && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.76rem', textAlign: 'center', padding: '0 1rem' }}>
+                  Timeline cannot render yet: no valid start/end schedule dates are available.
+                </div>
+              )}
               <div
                 ref={timelineRef}
                 onMouseDown={onTimelineMouseDown}
                 onMouseMove={onTimelineMouseMove}
                 onMouseUp={onTimelineMouseUp}
                 onMouseLeave={onTimelineMouseUp}
-                style={{ position: 'relative', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', cursor: isPanning ? 'grabbing' : 'grab' }}
+                style={{ position: 'relative', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', cursor: isPanning ? 'grabbing' : 'grab', visibility: hasRenderableTimelineRows ? 'visible' : 'hidden' }}
               >
                 <Stage width={timelineWidth} height={stageHeight}>
                   <Layer clipX={0} clipY={HEADER_H} clipWidth={timelineWidth} clipHeight={Math.max(0, stageHeight - HEADER_H)}>
