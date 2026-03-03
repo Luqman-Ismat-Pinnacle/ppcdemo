@@ -4,6 +4,7 @@ import NavBar from '@/components/layout/NavBar';
 
 const NAV_ITEMS = [
   { href: '/product-owner', label: 'Overview' },
+  { href: '/product-owner/database', label: 'Database' },
   { href: '/product-owner/feedback', label: 'Issues & Features' },
   { href: '/product-owner/connections', label: 'Connections' },
 ];
