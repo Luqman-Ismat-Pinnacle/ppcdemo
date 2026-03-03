@@ -9,7 +9,8 @@ variables:
   azureSubscription: 'PinnacleTech DevTest-Services'
 trigger:
   branches:
-    include: ppc-minimal-root
+    include:
+      - ppc-minimal-root
 stages:
   - stage: Build
     jobs:
