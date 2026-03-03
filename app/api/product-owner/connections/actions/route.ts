@@ -201,7 +201,7 @@ async function testAuth0(): Promise<ActionResult> {
 }
 
 async function testAzureBlobDocs(): Promise<ActionResult> {
-  const connStr = process.env.AZURE_STORAGE_CONNECTION_STRING || process.env.AZURE_STORAGE_CONN_STRING;
+  const connStr = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!connStr) {
     return {
       connectionKey: 'azure_blob_docs',
@@ -274,11 +274,15 @@ export async function POST(request: NextRequest) {
       });
       const payload = await syncResponse.json().catch(() => ({}));
       const ok = syncResponse.ok && Boolean(payload?.success);
+      const errMsg = String(payload?.error || 'Workday sync failed.');
+      const failStatus = /WORKDAY_ISU_USER|WORKDAY_ISU_PASS/i.test(errMsg)
+        ? 'degraded'
+        : 'down';
       const result: ActionResult = {
         connectionKey: 'workday_sync',
         ok,
-        status: ok ? 'healthy' : 'down',
-        message: ok ? 'Workday sync completed.' : String(payload?.error || 'Workday sync failed.'),
+        status: ok ? 'healthy' : failStatus,
+        message: ok ? 'Workday sync completed.' : errMsg,
       };
       await updateConnectionHealth(result);
       return NextResponse.json({ success: ok, result, payload }, { status: ok ? 200 : 500 });

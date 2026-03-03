@@ -25,6 +25,27 @@ function getAuth() {
   return 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
 }
 
+async function updateWorkdayConnectionHealth(status: 'healthy' | 'degraded' | 'down', message: string) {
+  try {
+    const isHealthy = status === 'healthy';
+    await execute(
+      `INSERT INTO integration_connections
+       (connection_key, display_name, description, connection_type, status, owner_email, is_active, last_sync_at, last_success_at, last_error)
+       VALUES ('workday_sync', 'Workday Sync', 'Workday import and sync pipeline for people/projects/hours/contracts.', 'integration', $1, 'luqman.ismat@pinnaclereliability.com', true, NOW(), CASE WHEN $2 THEN NOW() ELSE NULL END, CASE WHEN $2 THEN NULL ELSE $3 END)
+       ON CONFLICT (connection_key) DO UPDATE SET
+         status = EXCLUDED.status,
+         is_active = true,
+         last_sync_at = NOW(),
+         last_success_at = CASE WHEN $2 THEN NOW() ELSE integration_connections.last_success_at END,
+         last_error = CASE WHEN $2 THEN NULL ELSE $3 END,
+         updated_at = NOW()`,
+      [status, isHealthy, message],
+    );
+  } catch {
+    // Keep sync successful even if connection health table is unavailable.
+  }
+}
+
 async function wdFetch(url: string): Promise<Record<string, unknown>[]> {
   const auth = getAuth();
   const res = await fetch(url, {
@@ -159,11 +180,17 @@ export async function POST(req: NextRequest) {
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     log.push(`Done in ${elapsed}s`);
 
+    await updateWorkdayConnectionHealth('healthy', 'Workday sync completed.');
     return NextResponse.json({ success: true, ...result, log, elapsedSeconds: elapsed });
   } catch (err: unknown) {
-    log.push(`ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    const message = err instanceof Error ? err.message : String(err);
+    log.push(`ERROR: ${message}`);
+    const status = /WORKDAY_ISU_USER|WORKDAY_ISU_PASS/i.test(message)
+      ? 'degraded'
+      : 'down';
+    await updateWorkdayConnectionHealth(status, message);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : String(err), log, ...result },
+      { success: false, error: message, log, ...result },
       { status: 500 },
     );
   }

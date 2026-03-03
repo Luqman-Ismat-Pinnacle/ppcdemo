@@ -18,10 +18,12 @@ const connectionStatusColor: Record<string, string> = {
 
 function KpiCard({ label, value, accent, href, sub }: { label: string; value: string | number; accent: string; href?: string; sub?: string }) {
   const inner = (
-    <div className="glass" style={{ padding: '0.65rem 0.8rem', cursor: href ? 'pointer' : undefined }}>
+    <div className="glass" style={{ padding: '0.65rem 0.8rem', minHeight: 88, cursor: href ? 'pointer' : undefined }}>
       <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
       <div style={{ fontSize: '1.25rem', fontWeight: 800, color: accent, marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>}
+      <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: 1, minHeight: 14 }}>
+        {sub || '\u00a0'}
+      </div>
     </div>
   );
   return href ? <Link href={href} style={{ textDecoration: 'none' }}>{inner}</Link> : inner;

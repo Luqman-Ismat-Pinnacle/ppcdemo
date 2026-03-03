@@ -86,7 +86,16 @@ export default function FeedbackModal({ open, onClose, defaultMode = 'issue', pr
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={handleClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }} />
-      <div style={{ position: 'relative', width: '100%', maxWidth: 520, background: 'var(--bg-card, #1a1a2e)', border: '1px solid var(--border-color)', borderRadius: 14, padding: '1.2rem', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+      <div
+        className="glass-raised"
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 520,
+          padding: '1.2rem',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             <TabBtn active={mode === 'issue'} onClick={() => setMode('issue')}>Report Issue</TabBtn>
