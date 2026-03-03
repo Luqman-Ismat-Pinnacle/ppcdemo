@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import NotificationBell from '@/components/ui/NotificationBell';
+import FeedbackButton from '@/components/feedback/FeedbackButton';
 import { useUser } from '@/lib/user-context';
 
 type NavItem = { href: string; label: string };
@@ -22,6 +23,7 @@ const ROLE_SWITCHES: { href: string; label: string; style: React.CSSProperties }
   { href: '/coo', label: 'COO', style: { background: 'rgba(99,102,241,0.16)', color: '#c7d2fe', border: '1px solid rgba(99,102,241,0.28)' } },
   { href: '/senior-manager', label: 'SM', style: { background: 'rgba(245,158,11,0.16)', color: '#fde68a', border: '1px solid rgba(245,158,11,0.3)' } },
   { href: '/project-lead', label: 'PL', style: { background: 'rgba(14,165,233,0.15)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.25)' } },
+  { href: '/product-owner', label: 'PO', style: { background: 'rgba(236,72,153,0.15)', color: '#f9a8d4', border: '1px solid rgba(236,72,153,0.25)' } },
 ];
 
 function getInitials(name: string): string {
@@ -54,6 +56,7 @@ export default function NavBar({ roleKey, roleLabel, roleLongLabel, navItems, no
             Switch to {s.label}
           </Link>
         ))}
+        <FeedbackButton />
         <NotificationBell role={notificationRole || roleLabel} />
         <div className="nav-divider" />
         <div className="nav-profile">

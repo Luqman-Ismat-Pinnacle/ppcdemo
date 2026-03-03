@@ -25,6 +25,10 @@ export default function RootPage() {
       window.location.href = '/project-lead';
       return;
     }
+    if (role === 'Product Owner' || role === 'PO') {
+      window.location.href = '/product-owner';
+      return;
+    }
     window.location.href = '/pca';
   }, [user, isLoading]);
 
