@@ -16,14 +16,33 @@ export function normalizeEmail(value: string | null | undefined): string {
   return String(value || '').trim().toLowerCase();
 }
 
+function canonicalizeRole(raw: string | null | undefined): string {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  const lower = value.toLowerCase();
+
+  // Direct aliases
+  if (lower === 'coo' || lower.includes('chief operating officer')) return 'COO';
+  if (lower === 'pcl' || lower.includes('project controls lead') || lower.includes('controls lead')) return 'PCL';
+  if (lower === 'pca' || lower.includes('project controls analyst') || lower.includes('controls analyst')) return 'PCA';
+  if (lower === 'sm' || lower.includes('senior manager')) return 'Senior Manager';
+  if (lower === 'pl' || lower.includes('project lead')) return 'Project Lead';
+  if (lower === 'po' || lower.includes('product owner')) return 'Product Owner';
+
+  // If already a known exact display role, keep it.
+  if (value === 'Senior Manager' || value === 'Project Lead' || value === 'Product Owner') return value;
+
+  return '';
+}
+
 export function resolveRoleForIdentity(params: {
   email: string | null | undefined;
   fallbackRole?: string | null;
 }): string {
   const email = normalizeEmail(params.email);
   if (ROLE_OVERRIDES[email]) return ROLE_OVERRIDES[email];
-  const fallbackRole = String(params.fallbackRole || '').trim();
-  return fallbackRole || 'PCA';
+  const mappedFallback = canonicalizeRole(params.fallbackRole);
+  return mappedFallback || 'PCA';
 }
 
 export function canSwitchViews(email: string | null | undefined): boolean {

@@ -17,13 +17,13 @@ type NavBarProps = {
   notificationRole?: string;
 };
 
-const ROLE_SWITCHES: { href: string; label: string; style: React.CSSProperties }[] = [
-  { href: '/pca', label: 'PCA', style: { background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.25)' } },
-  { href: '/pcl', label: 'PCL', style: { background: 'rgba(139,92,246,0.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.25)' } },
-  { href: '/coo', label: 'COO', style: { background: 'rgba(99,102,241,0.16)', color: '#c7d2fe', border: '1px solid rgba(99,102,241,0.28)' } },
-  { href: '/senior-manager', label: 'SM', style: { background: 'rgba(245,158,11,0.16)', color: '#fde68a', border: '1px solid rgba(245,158,11,0.3)' } },
-  { href: '/project-lead', label: 'PL', style: { background: 'rgba(14,165,233,0.15)', color: '#7dd3fc', border: '1px solid rgba(14,165,233,0.25)' } },
-  { href: '/product-owner', label: 'PO', style: { background: 'rgba(236,72,153,0.15)', color: '#f9a8d4', border: '1px solid rgba(236,72,153,0.25)' } },
+const ROLE_SWITCHES: { href: string; label: string }[] = [
+  { href: '/pca', label: 'PCA' },
+  { href: '/pcl', label: 'PCL' },
+  { href: '/coo', label: 'COO' },
+  { href: '/senior-manager', label: 'SM' },
+  { href: '/project-lead', label: 'PL' },
+  { href: '/product-owner', label: 'PO' },
 ];
 
 function getInitials(name: string): string {
@@ -37,6 +37,7 @@ export default function NavBar({ roleKey, roleLabel, roleLongLabel, navItems, no
   const displayName = user?.name || `${roleLabel} User`;
   const initials = getInitials(displayName);
   const canSwitch = user?.canSwitchViews ?? false;
+  const switchTargets = ROLE_SWITCHES.filter((s) => s.href !== `/${roleKey}`);
 
   return (
     <nav className="nav-bar">
@@ -51,11 +52,33 @@ export default function NavBar({ roleKey, roleLabel, roleLongLabel, navItems, no
         })}
       </div>
       <div className="nav-right">
-        {canSwitch && ROLE_SWITCHES.filter((s) => s.href !== `/${roleKey}`).map((s) => (
-          <Link key={s.href} href={s.href} style={{ fontSize: '0.65rem', fontWeight: 600, padding: '0.2rem 0.5rem', borderRadius: 6, ...s.style, textDecoration: 'none', whiteSpace: 'nowrap' }}>
-            Switch to {s.label}
-          </Link>
-        ))}
+        {canSwitch && (
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              const href = e.target.value;
+              if (href) window.location.href = href;
+            }}
+            style={{
+              fontSize: '0.66rem',
+              fontWeight: 600,
+              padding: '0.22rem 0.45rem',
+              borderRadius: 7,
+              border: '1px solid rgba(64,224,208,0.35)',
+              background: 'rgba(64,224,208,0.1)',
+              color: '#7de8df',
+              maxWidth: 130,
+            }}
+            aria-label="Switch role view"
+          >
+            <option value="" disabled>Switch view</option>
+            {switchTargets.map((s) => (
+              <option key={s.href} value={s.href}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        )}
         <FeedbackButton />
         <NotificationBell role={notificationRole || roleLabel} />
         <div className="nav-divider" />

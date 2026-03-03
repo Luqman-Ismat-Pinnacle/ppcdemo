@@ -626,6 +626,23 @@ CREATE TABLE integration_connections (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Default connection registry (safe upsert)
+INSERT INTO integration_connections
+  (connection_key, display_name, description, connection_type, status, owner_email, is_active)
+VALUES
+  ('azure_postgres', 'Azure PostgreSQL', 'Primary application database connection.', 'database', 'unknown', 'luqman.ismat@pinnaclereliability.com', true),
+  ('workday_sync', 'Workday Sync', 'Workday import/sync pipeline.', 'integration', 'unknown', 'luqman.ismat@pinnaclereliability.com', true),
+  ('azure_devops', 'Azure DevOps', 'Repository and CI/CD integration.', 'integration', 'unknown', 'luqman.ismat@pinnaclereliability.com', true),
+  ('auth0', 'Auth0', 'Authentication and identity provider.', 'auth', 'unknown', 'luqman.ismat@pinnaclereliability.com', true),
+  ('azure_blob_docs', 'Azure Blob Storage', 'Project document storage.', 'storage', 'unknown', 'luqman.ismat@pinnaclereliability.com', true)
+ON CONFLICT (connection_key) DO UPDATE SET
+  display_name = EXCLUDED.display_name,
+  description = EXCLUDED.description,
+  connection_type = EXCLUDED.connection_type,
+  owner_email = EXCLUDED.owner_email,
+  is_active = true,
+  updated_at = NOW();
+
 -- ============================================================================
 -- TRIGGERS: auto-update updated_at
 -- ============================================================================

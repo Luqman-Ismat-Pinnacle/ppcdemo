@@ -41,22 +41,26 @@ export default function ProductOwnerConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+
+  const loadConnections = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/product-owner/connections', { cache: 'no-store' });
+      const data = await res.json();
+      if (data?.error) throw new Error(data.error);
+      setConnections(data.connections || []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load connections');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await fetch('/api/product-owner/connections', { cache: 'no-store' });
-        const data = await res.json();
-        if (data?.error) throw new Error(data.error);
-        setConnections(data.connections || []);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Failed to load connections');
-      } finally {
-        setLoading(false);
-      }
-    })();
+    void loadConnections();
   }, []);
 
   const visible = useMemo(() =>
@@ -70,6 +74,30 @@ export default function ProductOwnerConnectionsPage() {
     down: connections.filter(c => c.status === 'down').length,
   }), [connections]);
 
+  const runAction = async (action: string, connectionKey?: string) => {
+    setActionBusy(connectionKey ? `${action}:${connectionKey}` : action);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/product-owner/connections/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, connectionKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.error || data?.result?.message || 'Action failed');
+      }
+      const resultMessage = data?.message || data?.result?.message || 'Action completed successfully.';
+      setMessage(resultMessage);
+      await loadConnections();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
   return (
     <div className="page-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
       <div className="page-header">
@@ -82,6 +110,11 @@ export default function ProductOwnerConnectionsPage() {
       {error && (
         <div style={{ border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(239,68,68,0.08)', color: '#FCA5A5', borderRadius: 8, padding: '0.55rem 0.75rem', fontSize: '0.76rem' }}>
           {error}
+        </div>
+      )}
+      {message && (
+        <div style={{ border: '1px solid rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.1)', color: '#86efac', borderRadius: 8, padding: '0.55rem 0.75rem', fontSize: '0.76rem' }}>
+          {message}
         </div>
       )}
 
@@ -99,6 +132,20 @@ export default function ProductOwnerConnectionsPage() {
             {s === 'all' ? 'All' : s}
           </button>
         ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => runAction('seed_defaults')} disabled={actionBusy !== null} style={actionBtnStyle}>
+            {actionBusy === 'seed_defaults' ? 'Seeding...' : 'Seed Defaults'}
+          </button>
+          <button type="button" onClick={() => runAction('test_all')} disabled={actionBusy !== null} style={actionBtnStyle}>
+            {actionBusy === 'test_all' ? 'Testing...' : 'Test All'}
+          </button>
+          <button type="button" onClick={() => runAction('sync_workday')} disabled={actionBusy !== null} style={actionBtnStyle}>
+            {actionBusy === 'sync_workday' ? 'Syncing...' : 'Run Workday Sync'}
+          </button>
+          <button type="button" onClick={() => runAction('refresh_db_rollups')} disabled={actionBusy !== null} style={actionBtnStyle}>
+            {actionBusy === 'refresh_db_rollups' ? 'Refreshing...' : 'Refresh DB Rollups'}
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -134,6 +181,26 @@ export default function ProductOwnerConnectionsPage() {
                   <div>Last sync: <strong>{timeAgo(conn.lastSyncAt)}</strong></div>
                   <div>Last success: <strong>{timeAgo(conn.lastSuccessAt)}</strong></div>
                 </div>
+                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.2rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => runAction('test_connection', conn.connectionKey)}
+                    disabled={actionBusy !== null}
+                    style={miniActionBtnStyle}
+                  >
+                    {actionBusy === `test_connection:${conn.connectionKey}` ? 'Testing...' : 'Test'}
+                  </button>
+                  {conn.connectionKey === 'workday_sync' && (
+                    <button type="button" onClick={() => runAction('sync_workday')} disabled={actionBusy !== null} style={miniActionBtnStyle}>
+                      Run Sync
+                    </button>
+                  )}
+                  {conn.connectionKey === 'azure_postgres' && (
+                    <button type="button" onClick={() => runAction('refresh_db_rollups')} disabled={actionBusy !== null} style={miniActionBtnStyle}>
+                      Refresh Rollups
+                    </button>
+                  )}
+                </div>
                 {conn.lastError && (
                   <div style={{ fontSize: '0.64rem', color: '#FCA5A5', background: 'rgba(239,68,68,0.08)', borderRadius: 6, padding: '0.35rem 0.5rem', marginTop: '0.1rem' }}>
                     {conn.lastError}
@@ -164,3 +231,25 @@ const pillStyle = (active: boolean): React.CSSProperties => ({
   borderRadius: 8, padding: '0.28rem 0.55rem', fontSize: '0.66rem',
   fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
 });
+
+const actionBtnStyle: React.CSSProperties = {
+  border: '1px solid rgba(64,224,208,0.35)',
+  background: 'rgba(64,224,208,0.12)',
+  color: '#7de8df',
+  borderRadius: 8,
+  padding: '0.28rem 0.55rem',
+  fontSize: '0.66rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
+const miniActionBtnStyle: React.CSSProperties = {
+  border: '1px solid var(--border-color)',
+  background: 'var(--bg-card)',
+  color: 'var(--text-secondary)',
+  borderRadius: 6,
+  padding: '0.22rem 0.45rem',
+  fontSize: '0.62rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+};
