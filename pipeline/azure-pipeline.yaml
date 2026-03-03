@@ -1,8 +1,8 @@
 ---
-name: ppc-minimal
+name: ppc
 variables:
-  appName: 'ppc-minimal'
-  imageName: 'ppc-minimal'
+  appName: 'ppc'
+  imageName: 'ppc'
   resourceGroup: 'rg-syncrud-pdf-inspection'
   acrName: 'vantageacreastus2'
   acrServiceConnection: 'vantageacreastus2-Services'
@@ -63,6 +63,6 @@ stages:
               [ -n "$(MPP_PARSER_URL)" ] && ENV_VARS="$ENV_VARS MPP_PARSER_URL=$(MPP_PARSER_URL)"
               [ -n "$(NEXT_PUBLIC_SUPABASE_URL)" ] && ENV_VARS="$ENV_VARS NEXT_PUBLIC_SUPABASE_URL=$(NEXT_PUBLIC_SUPABASE_URL)"
               [ -n "$(NEXT_PUBLIC_SUPABASE_ANON_KEY)" ] && ENV_VARS="$ENV_VARS NEXT_PUBLIC_SUPABASE_ANON_KEY=$(NEXT_PUBLIC_SUPABASE_ANON_KEY)"
-              az containerapp update -n $(appName) -g $(resourceGroup) \
+              az containerapp update -n $(appName)1 -g $(resourceGroup) \
                 --image $(acrName).azurecr.io/$(imageName):$(Build.BuildId) \
                 --set-env-vars $ENV_VARS
