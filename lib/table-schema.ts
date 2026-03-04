@@ -256,6 +256,25 @@ export const TABLE_DEFS: TableDef[] = [
     ],
   },
   {
+    key: 'forecast_guardrails', label: 'Forecast Guardrails',
+    columns: [
+      { key: 'id', label: 'ID', type: 'text', editable: false },
+      { key: 'project_id', label: 'Project ID', type: 'text', editable: false },
+      { key: 'record_table', label: 'Table', type: 'readonly' },
+      { key: 'record_id', label: 'Record ID', type: 'readonly' },
+      { key: 'record_name', label: 'Record', type: 'readonly' },
+      { key: 'predicted_hours', label: 'Predicted Hrs', type: 'readonly' },
+      { key: 'entered_hours', label: 'Entered Hrs', type: 'readonly' },
+      { key: 'delta', label: 'Delta', type: 'readonly' },
+      { key: 'pl_comment', label: 'PL Comment', type: 'text', editable: false },
+      { key: 'status', label: 'Status', type: 'text', editable: true },
+      { key: 'pca_comment', label: 'PCA Comment', type: 'text', editable: true },
+      { key: 'escalated_to', label: 'Escalated To', type: 'text', editable: false },
+      { key: 'created_by', label: 'Created By', type: 'readonly' },
+      ...TIMESTAMP_COLS,
+    ],
+  },
+  {
     key: 'qc_logs', label: 'QC Logs',
     columns: [
       { key: 'id', label: 'ID', type: 'text', editable: false },

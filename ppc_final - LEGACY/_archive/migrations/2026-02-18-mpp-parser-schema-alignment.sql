@@ -1,0 +1,52 @@
+-- Align DB schema with full MPP parser payload (no stripping)
+
+ALTER TABLE units
+  ADD COLUMN IF NOT EXISTS parent_id VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS hierarchy_type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS outline_level INTEGER,
+  ADD COLUMN IF NOT EXISTS is_summary BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS total_slack INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS predecessors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS successors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS projected_hours NUMERIC(10, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS task_name VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS task_description TEXT,
+  ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS end_date DATE,
+  ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS folder TEXT;
+
+ALTER TABLE phases
+  ADD COLUMN IF NOT EXISTS unit_id VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS parent_id VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS hierarchy_type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS outline_level INTEGER,
+  ADD COLUMN IF NOT EXISTS is_summary BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS total_slack INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS predecessors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS successors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS projected_hours NUMERIC(10, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS comments TEXT,
+  ADD COLUMN IF NOT EXISTS is_critical BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS folder TEXT;
+
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS unit_id VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS parent_id VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS hierarchy_type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS outline_level INTEGER,
+  ADD COLUMN IF NOT EXISTS is_summary BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS total_slack INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS predecessors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS successors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS projected_hours NUMERIC(10, 2) DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS task_name VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS task_description TEXT,
+  ADD COLUMN IF NOT EXISTS folder TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_units_outline_level ON units(outline_level);
+CREATE INDEX IF NOT EXISTS idx_phases_outline_level ON phases(outline_level);
+CREATE INDEX IF NOT EXISTS idx_tasks_outline_level ON tasks(outline_level);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id);
+CREATE INDEX IF NOT EXISTS idx_phases_unit_id ON phases(unit_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_unit_id ON tasks(unit_id);

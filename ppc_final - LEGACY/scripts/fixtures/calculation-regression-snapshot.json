@@ -1,0 +1,43 @@
+{
+  "overview": {
+    "healthScore": 65,
+    "spi": 0.82,
+    "cpi": 0.96,
+    "hoursVariancePct": -15,
+    "projectCount": 2,
+    "totalHours": 170,
+    "baselineHours": 200
+  },
+  "hours": {
+    "efficiencyPct": 90
+  },
+  "forecast": {
+    "cpi": 0.96,
+    "spi": 0.82,
+    "ieacCpi": 1250,
+    "tcpiToBac": 1.2
+  },
+  "mosPage": {
+    "planHours": 200,
+    "actualHours": 170,
+    "reducedHours": 30,
+    "deltaHours": -30,
+    "deltaPct": -15,
+    "efficiencyPct": 85
+  },
+  "projectHealth": {
+    "passed": 2,
+    "evaluated": 3,
+    "pending": 1,
+    "score": 67
+  },
+  "tasks": {
+    "taskEfficiencyPct": 120,
+    "needsQc": true,
+    "needsSupport": true,
+    "triageTag": "Needs QC"
+  },
+  "resourcing": {
+    "avgUtilizationPct": 87
+  }
+}

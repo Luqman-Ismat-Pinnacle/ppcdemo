@@ -114,7 +114,11 @@ export function ProjectScopeProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !selectedProjectId) return;
+    if (typeof window === 'undefined') return;
+    if (!selectedProjectId) {
+      window.localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
     window.localStorage.setItem(STORAGE_KEY, selectedProjectId);
   }, [selectedProjectId]);
 

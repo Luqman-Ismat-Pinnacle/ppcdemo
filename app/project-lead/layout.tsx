@@ -3,6 +3,7 @@
 import NavBar from '@/components/layout/NavBar';
 
 const NAV_ITEMS = [
+  { href: '/project-lead/wbs', label: 'WBS Gantt' },
   { href: '/project-lead/task-progress', label: 'Task Progress' },
   { href: '/project-lead/quality', label: 'Quality' },
   { href: '/project-lead/qc-log', label: 'QC Log' },

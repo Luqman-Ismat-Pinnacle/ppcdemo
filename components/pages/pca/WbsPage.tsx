@@ -118,7 +118,7 @@ function progressColor(pct: number) {
   return '#ef4444';
 }
 
-export default function WbsPage() {
+export default function WbsPage({ apiBase = '/api/pca/wbs', roleHeader = 'PCA' }: { apiBase?: string; roleHeader?: string } = {}) {
   const [items, setItems] = useState<WbsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -191,7 +191,7 @@ export default function WbsPage() {
       params.set('variance', '1');
       params.set('period', variancePeriod);
     }
-    const url = params.toString() ? `/api/pca/wbs?${params.toString()}` : '/api/pca/wbs';
+    const url = params.toString() ? `${apiBase}?${params.toString()}` : apiBase;
     fetch(url, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
@@ -207,7 +207,8 @@ export default function WbsPage() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [showVariance, variancePeriod]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVariance, variancePeriod, apiBase]);
 
   React.useEffect(() => {
     if (!dragSplit) return;
@@ -235,16 +236,42 @@ export default function WbsPage() {
 
   React.useEffect(() => {
     const el = rightPaneRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!el) return;
     const measure = () => {
-      setTimelineHeight(Math.max(260, el.clientHeight));
-      setTimelineViewportWidth(Math.max(320, el.clientWidth));
+      const viewportEl = timelineRef.current;
+      const nextH = viewportEl?.clientHeight || el.clientHeight;
+      const nextW = viewportEl?.clientWidth || el.clientWidth;
+      setTimelineHeight(Math.max(260, nextH));
+      setTimelineViewportWidth(Math.max(320, nextW));
     };
     measure();
+    const raf = requestAnimationFrame(measure);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener('resize', measure);
+      };
+    }
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    if (timelineRef.current) ro.observe(timelineRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
+
+  React.useEffect(() => {
+    const viewportEl = timelineRef.current;
+    if (!viewportEl) return;
+    const nextH = viewportEl.clientHeight;
+    const nextW = viewportEl.clientWidth;
+    if (nextH > 0) setTimelineHeight((prev) => (Math.abs(prev - nextH) > 1 ? Math.max(260, nextH) : prev));
+    if (nextW > 0) setTimelineViewportWidth((prev) => (Math.abs(prev - nextW) > 1 ? Math.max(320, nextW) : prev));
+  }, [split, items.length, loading]);
 
   const syncVScrollFromGrid = useCallback(() => {
     const apiTop = gridApiRef.current?.getVerticalPixelRange()?.top;
@@ -555,7 +582,7 @@ export default function WbsPage() {
       setSavingCommentId(row.id);
       const res = await fetch(`/api/tables/${row.source_table}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-role': 'PCA' },
+        headers: { 'Content-Type': 'application/json', 'x-role': roleHeader },
         body: JSON.stringify({ id: row.id, comments: nextValue }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -566,7 +593,8 @@ export default function WbsPage() {
     } finally {
       setSavingCommentId(null);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roleHeader]);
   const headerWithDelta = useCallback((label: string, _metric: string) => (
     showVariance ? `${label} Δ` : label
   ), [showVariance]);

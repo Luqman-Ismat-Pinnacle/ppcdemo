@@ -67,8 +67,15 @@ export default function NavBar({ roleKey, roleLabel, roleLongLabel, navItems, no
               const nextProjectId = e.target.value;
               setSelectedProjectId(nextProjectId);
               const params = new URLSearchParams(searchParams?.toString() || '');
-              params.set('projectId', nextProjectId);
-              window.location.assign(`${pathname}?${params.toString()}`);
+              if (nextProjectId) {
+                params.set('projectId', nextProjectId);
+                params.delete('project_id');
+              } else {
+                params.delete('projectId');
+                params.delete('project_id');
+              }
+              const query = params.toString();
+              window.location.assign(query ? `${pathname}?${query}` : pathname);
             }}
             style={{
               fontSize: '0.66rem',
@@ -82,6 +89,7 @@ export default function NavBar({ roleKey, roleLabel, roleLongLabel, navItems, no
             }}
             aria-label="Global project filter"
           >
+            <option value="">All Projects</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}

@@ -1,0 +1,9 @@
+{
+  "_comment": "WorkdaySyncHttp - updated via repo push for deployment verification",
+  "bindings": [
+    {"authLevel":"function","type":"httpTrigger","direction":"in","name":"req","methods":["post","get"]},
+    {"type":"http","direction":"out","name":"res"}
+  ],
+  "scriptFile": "../index.js",
+  "entryPoint": "httpTrigger"
+}

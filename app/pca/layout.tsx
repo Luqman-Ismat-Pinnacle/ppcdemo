@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '/pca/project-plans', label: 'Project Plans' },
   { href: '/pca/sprint', label: 'Sprint' },
   { href: '/pca/forecast', label: 'Forecast' },
+  { href: '/pca/guardrails', label: 'Guardrails' },
   { href: '/pca/metric-provenance', label: 'Metric Provenance' },
   { href: '/pca/data-management', label: 'Data' },
 ];

@@ -1,0 +1,92 @@
+---
+# PPC Minimal — Azure Container App deployment
+# Build context: ppc-minimal/ | Env vars from pipeline variables (or .env.local for local push)
+name: ppc-minimal
+
+variables:
+  appName: 'ppc-minimal'
+  imageName: 'ppc-minimal'
+  resourceGroup: 'rg-syncrud-pdf-inspection'
+  acrName: 'vantageacreastus2'
+  acrServiceConnection: 'vantageacreastus2-Services'
+  azureSubscription: 'PinnacleTech DevTest-Services'
+  buildContext: 'ppc-minimal'
+
+trigger:
+  branches:
+    include:
+      - master
+      - main
+
+stages:
+  - stage: Build
+    jobs:
+    - job: Build
+      displayName: 'Build PPC Minimal'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - checkout: self
+
+      - task: Docker@2
+        displayName: 'Docker Login'
+        inputs:
+          containerRegistry: $(acrServiceConnection)
+          command: login
+
+      - task: AzureCLI@2
+        displayName: 'Docker Build and Push to ACR'
+        inputs:
+          azureSubscription: $(azureSubscription)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            echo "Building from $(build.SourcesDirectory)/$(buildContext)"
+            az acr build \
+              -t $(imageName):$(Build.BuildId) \
+              -r $(acrName) \
+              -f $(build.SourcesDirectory)/$(buildContext)/Dockerfile \
+              --build-arg NEXT_PUBLIC_AUTH_DISABLED=false \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$(NEXT_PUBLIC_SUPABASE_URL)" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$(NEXT_PUBLIC_SUPABASE_ANON_KEY)" \
+              --build-arg AUTH0_BASE_URL="$(AUTH0_BASE_URL)" \
+              --build-arg AUTH0_ISSUER_BASE_URL="$(AUTH0_ISSUER_BASE_URL)" \
+              --build-arg DATABASE_URL="$(DATABASE_URL)" \
+              $(build.SourcesDirectory)/$(buildContext)
+
+  - stage: Deploy
+    dependsOn: Build
+    jobs:
+    - job: Deploy
+      displayName: 'Deploy to Azure Container App'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - task: AzureCLI@2
+          displayName: 'Deploy Container App with env vars'
+          inputs:
+            azureSubscription: $(azureSubscription)
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              ENV_VARS="NODE_ENV=production"
+              [ -n "$(DATABASE_URL)" ]                     && ENV_VARS="$ENV_VARS DATABASE_URL=$(DATABASE_URL)"
+              [ -n "$(AUTH0_SECRET)" ]                     && ENV_VARS="$ENV_VARS AUTH0_SECRET=$(AUTH0_SECRET)"
+              [ -n "$(AUTH0_BASE_URL)" ]                   && ENV_VARS="$ENV_VARS AUTH0_BASE_URL=$(AUTH0_BASE_URL)"
+              [ -n "$(AUTH0_ISSUER_BASE_URL)" ]            && ENV_VARS="$ENV_VARS AUTH0_ISSUER_BASE_URL=$(AUTH0_ISSUER_BASE_URL)"
+              [ -n "$(AUTH0_CLIENT_ID)" ]                  && ENV_VARS="$ENV_VARS AUTH0_CLIENT_ID=$(AUTH0_CLIENT_ID)"
+              [ -n "$(AUTH0_CLIENT_SECRET)" ]              && ENV_VARS="$ENV_VARS AUTH0_CLIENT_SECRET=$(AUTH0_CLIENT_SECRET)"
+              [ -n "$(AZURE_STORAGE_CONNECTION_STRING)" ]  && ENV_VARS="$ENV_VARS AZURE_STORAGE_CONNECTION_STRING=$(AZURE_STORAGE_CONNECTION_STRING)"
+              [ -n "$(AZURE_STORAGE_CONTAINER_NAME)" ]     && ENV_VARS="$ENV_VARS AZURE_STORAGE_CONTAINER_NAME=$(AZURE_STORAGE_CONTAINER_NAME)"
+              [ -n "$(WORKDAY_ISU_USER)" ]                 && ENV_VARS="$ENV_VARS WORKDAY_ISU_USER=$(WORKDAY_ISU_USER)"
+              [ -n "$(WORKDAY_ISU_PASS)" ]                 && ENV_VARS="$ENV_VARS WORKDAY_ISU_PASS=$(WORKDAY_ISU_PASS)"
+              [ -n "$(MPP_PARSER_URL)" ]                   && ENV_VARS="$ENV_VARS MPP_PARSER_URL=$(MPP_PARSER_URL) NEXT_PUBLIC_MPP_PARSER_URL=$(MPP_PARSER_URL)"
+              [ -n "$(NEXT_PUBLIC_SUPABASE_URL)" ]         && ENV_VARS="$ENV_VARS NEXT_PUBLIC_SUPABASE_URL=$(NEXT_PUBLIC_SUPABASE_URL)"
+              [ -n "$(NEXT_PUBLIC_SUPABASE_ANON_KEY)" ]   && ENV_VARS="$ENV_VARS NEXT_PUBLIC_SUPABASE_ANON_KEY=$(NEXT_PUBLIC_SUPABASE_ANON_KEY)"
+
+              echo "Updating Container App $(appName) with image $(acrName).azurecr.io/$(imageName):$(Build.BuildId)"
+              az containerapp update \
+                -n $(appName) \
+                -g $(resourceGroup) \
+                --image $(acrName).azurecr.io/$(imageName):$(Build.BuildId) \
+                --set-env-vars $ENV_VARS

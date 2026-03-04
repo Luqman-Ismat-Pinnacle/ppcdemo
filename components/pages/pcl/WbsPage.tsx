@@ -186,13 +186,42 @@ export default function PclWbsPage({ apiBase = '/api/pcl/wbs', roleHeader = 'PCL
 
   React.useEffect(() => {
     const el = rightPaneRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const measure = () => { setTimelineHeight(Math.max(260, el.clientHeight)); setTimelineViewportWidth(Math.max(320, el.clientWidth)); };
+    if (!el) return;
+    const measure = () => {
+      const viewportEl = timelineRef.current;
+      const nextH = viewportEl?.clientHeight || el.clientHeight;
+      const nextW = viewportEl?.clientWidth || el.clientWidth;
+      setTimelineHeight(Math.max(260, nextH));
+      setTimelineViewportWidth(Math.max(320, nextW));
+    };
     measure();
+    const raf = requestAnimationFrame(measure);
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener('resize', measure);
+      };
+    }
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    if (timelineRef.current) ro.observe(timelineRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
+
+  React.useEffect(() => {
+    const viewportEl = timelineRef.current;
+    if (!viewportEl) return;
+    const nextH = viewportEl.clientHeight;
+    const nextW = viewportEl.clientWidth;
+    if (nextH > 0) setTimelineHeight((prev) => (Math.abs(prev - nextH) > 1 ? Math.max(260, nextH) : prev));
+    if (nextW > 0) setTimelineViewportWidth((prev) => (Math.abs(prev - nextW) > 1 ? Math.max(320, nextW) : prev));
+  }, [split, items.length, loading]);
 
   const syncVScrollFromGrid = useCallback(() => {
     const apiTop = gridApiRef.current?.getVerticalPixelRange()?.top;

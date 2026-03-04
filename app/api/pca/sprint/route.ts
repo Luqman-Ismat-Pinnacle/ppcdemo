@@ -178,6 +178,43 @@ export async function POST(req: NextRequest) {
           taskId,
         ],
       );
+
+      // Epic / Feature rollup: distribute progress equally across linked items
+      if (typeof percentComplete === 'number') {
+        try {
+          const taskRow = await query<{ epic_id: string | null; feature_id: string | null }>(
+            `SELECT epic_id, feature_id FROM tasks WHERE id = $1`, [taskId],
+          );
+          const { epic_id, feature_id } = taskRow[0] || {};
+
+          if (epic_id) {
+            const linked = await query<{ cnt: string; done: string }>(
+              `SELECT COUNT(*)::text AS cnt,
+                      SUM(CASE WHEN COALESCE(percent_complete, 0) >= 100 THEN 1 ELSE 0 END)::text AS done
+               FROM tasks WHERE epic_id = $1`,
+              [epic_id],
+            );
+            const cnt = Number(linked[0]?.cnt || 1);
+            const done = Number(linked[0]?.done || 0);
+            const epicProgress = Math.min(100, Math.round((done / cnt) * 100 * 10) / 10);
+            await execute(`UPDATE epics SET progress = $1, updated_at = NOW() WHERE id = $2`, [epicProgress, epic_id]);
+          }
+
+          if (feature_id) {
+            const linked = await query<{ cnt: string; done: string }>(
+              `SELECT COUNT(*)::text AS cnt,
+                      SUM(CASE WHEN COALESCE(percent_complete, 0) >= 100 THEN 1 ELSE 0 END)::text AS done
+               FROM tasks WHERE feature_id = $1`,
+              [feature_id],
+            );
+            const cnt = Number(linked[0]?.cnt || 1);
+            const done = Number(linked[0]?.done || 0);
+            const featureProgress = Math.min(100, Math.round((done / cnt) * 100 * 10) / 10);
+            await execute(`UPDATE features SET progress = $1, updated_at = NOW() WHERE id = $2`, [featureProgress, feature_id]);
+          }
+        } catch { /* epics/features tables may not exist */ }
+      }
+
       return NextResponse.json({ success: true });
     }
 

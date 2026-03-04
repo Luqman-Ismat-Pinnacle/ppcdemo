@@ -72,6 +72,7 @@ export default function PLCommandCenterPage() {
     if (a.item_type === 'overdue_task') return '/project-lead/task-progress';
     if (a.item_type === 'critical_task' || a.item_type === 'schedule_variance') return '/project-lead/schedule-health';
     if (a.item_type === 'cost_pressure') return '/project-lead/cost-control';
+    if (a.item_type === 'stale_count') return '/project-lead/forecast';
     if (a.item_type === 'notification') return '/project-lead';
     return '/project-lead';
   }, []);

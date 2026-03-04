@@ -181,6 +181,42 @@ export async function GET() {
              AND COALESCE(p.percent_complete, 0) < 100
            ORDER BY p.baseline_end ASC
            LIMIT 8
+         ),
+         stale_counts AS (
+           SELECT
+             CONCAT('sc-', t.id) AS id, 'stale_count'::text AS item_type,
+             'Actual count needs update' AS title,
+             COALESCE(NULLIF(TRIM(t.name), ''), 'Task') AS message,
+             COALESCE(p.name, t.project_id) AS project_name,
+             'open'::text AS status,
+             'P2'::text AS priority,
+             COALESCE(t.actual_count_updated_at::text, t.created_at::text, NOW()::text) AS created_at
+           FROM tasks t
+           JOIN projects p ON p.id = t.project_id
+           WHERE p.is_active = true AND p.has_schedule = true
+             AND COALESCE(t.baseline_count, 0) > 0
+             AND COALESCE(t.percent_complete, 0) < 100
+             AND (t.actual_count_updated_at IS NULL OR t.actual_count_updated_at < NOW() - INTERVAL '14 days')
+           ORDER BY t.actual_count_updated_at ASC NULLS FIRST
+           LIMIT 10
+         ),
+         stale_phase_counts AS (
+           SELECT
+             CONCAT('spc-', ph.id) AS id, 'stale_count'::text AS item_type,
+             'Phase actual count needs update' AS title,
+             COALESCE(NULLIF(TRIM(ph.name), ''), 'Phase') AS message,
+             COALESCE(p.name, ph.project_id) AS project_name,
+             'open'::text AS status,
+             'P2'::text AS priority,
+             COALESCE(ph.actual_count_updated_at::text, ph.created_at::text, NOW()::text) AS created_at
+           FROM phases ph
+           JOIN projects p ON p.id = ph.project_id
+           WHERE p.is_active = true AND p.has_schedule = true
+             AND COALESCE(ph.baseline_count, 0) > 0
+             AND COALESCE(ph.percent_complete, 0) < 100
+             AND (ph.actual_count_updated_at IS NULL OR ph.actual_count_updated_at < NOW() - INTERVAL '14 days')
+           ORDER BY ph.actual_count_updated_at ASC NULLS FIRST
+           LIMIT 10
          )
          SELECT * FROM (
            SELECT * FROM pending_forecasts
@@ -188,6 +224,8 @@ export async function GET() {
            UNION ALL SELECT * FROM critical_tasks
            UNION ALL SELECT * FROM cost_pressure
            UNION ALL SELECT * FROM schedule_variance
+           UNION ALL SELECT * FROM stale_counts
+           UNION ALL SELECT * FROM stale_phase_counts
          ) a
          ORDER BY
            CASE a.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,

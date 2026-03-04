@@ -1,0 +1,84 @@
+---
+name: ppc
+
+# Variables - Change these values to customize for different applications
+# IMPORTANT: Secret variables (DATABASE_URL, AUTH0_*, AZURE_STORAGE_CONNECTION_STRING, etc.)
+# must be set in Azure DevOps Pipeline > Variables (mark as secret).
+variables:
+  appName: 'ppc'  # Base application name
+  imageName: 'ppc'  # Docker image name (no hyphens)
+  resourceGroup: 'rg-syncrud-pdf-inspection'  # Azure resource group
+  acrName: 'vantageacreastus2'  # Azure Container Registry name
+  acrServiceConnection: 'vantageacreastus2-Services'  # ACR service connection
+  azureSubscription: 'PinnacleTech DevTest-Services'  # Azure subscription
+
+trigger:
+  branches:
+    include:
+      - master
+      - main
+
+stages:
+  - stage: Build
+    jobs:
+    - job: Build
+      displayName: 'Build'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+      - checkout: self
+
+      - task: Docker@2
+        displayName: 'Docker Login'
+        inputs:
+          containerRegistry: $(acrServiceConnection)
+          command: login
+
+      - task: AzureCLI@2
+        displayName: 'Docker Build and Push to ACR'
+        inputs:
+          azureSubscription: $(azureSubscription)
+          scriptType: pscore
+          scriptLocation: inlineScript
+          inlineScript: 'az acr build -t $(imageName):$(Build.BuildId) -r $(acrName) -f $(build.SourcesDirectory)/Dockerfile $(build.SourcesDirectory)/'
+
+  - stage: Deploy
+    dependsOn: Build
+    jobs:
+    - job: Deploy
+      displayName: 'Deploy to Azure Container App'
+      pool:
+        vmImage: 'ubuntu-latest'
+      steps:
+        - task: AzureCLI@2
+          displayName: 'Deploy Container App with env vars'
+          inputs:
+            azureSubscription: $(azureSubscription)
+            scriptType: bash
+            scriptLocation: inlineScript
+            inlineScript: |
+              echo "Updating Container App $(appName)1 with image $(acrName).azurecr.io/$(imageName):$(Build.BuildId)"
+
+              # Build env vars list — only include vars that are set in pipeline
+              ENV_VARS="NODE_ENV=production"
+
+              # Add each env var if the pipeline variable is set
+              [ -n "$(DATABASE_URL)" ]                     && ENV_VARS="$ENV_VARS DATABASE_URL=$(DATABASE_URL)"
+              [ -n "$(AUTH0_SECRET)" ]                     && ENV_VARS="$ENV_VARS AUTH0_SECRET=$(AUTH0_SECRET)"
+              [ -n "$(AUTH0_BASE_URL)" ]                   && ENV_VARS="$ENV_VARS AUTH0_BASE_URL=$(AUTH0_BASE_URL)"
+              [ -n "$(AUTH0_ISSUER_BASE_URL)" ]            && ENV_VARS="$ENV_VARS AUTH0_ISSUER_BASE_URL=$(AUTH0_ISSUER_BASE_URL)"
+              [ -n "$(AUTH0_CLIENT_ID)" ]                  && ENV_VARS="$ENV_VARS AUTH0_CLIENT_ID=$(AUTH0_CLIENT_ID)"
+              [ -n "$(AUTH0_CLIENT_SECRET)" ]              && ENV_VARS="$ENV_VARS AUTH0_CLIENT_SECRET=$(AUTH0_CLIENT_SECRET)"
+              [ -n "$(AZURE_STORAGE_CONNECTION_STRING)" ]  && ENV_VARS="$ENV_VARS AZURE_STORAGE_CONNECTION_STRING=$(AZURE_STORAGE_CONNECTION_STRING)"
+              [ -n "$(AZURE_FUNCTION_URL)" ]               && ENV_VARS="$ENV_VARS AZURE_FUNCTION_URL=$(AZURE_FUNCTION_URL)"
+              [ -n "$(AZURE_FUNCTION_KEY)" ]               && ENV_VARS="$ENV_VARS AZURE_FUNCTION_KEY=$(AZURE_FUNCTION_KEY)"
+              [ -n "$(MPP_PARSER_URL)" ]                   && ENV_VARS="$ENV_VARS MPP_PARSER_URL=$(MPP_PARSER_URL) NEXT_PUBLIC_MPP_PARSER_URL=$(MPP_PARSER_URL)"
+
+              echo "Setting environment variables on Container App..."
+
+              # Update existing container app with new image and env vars
+              az containerapp update \
+                -n $(appName)1 \
+                -g $(resourceGroup) \
+                --image $(acrName).azurecr.io/$(imageName):$(Build.BuildId) \
+                --set-env-vars $ENV_VARS

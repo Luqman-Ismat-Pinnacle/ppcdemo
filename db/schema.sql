@@ -697,6 +697,7 @@ CREATE TABLE epics (
   project_id  TEXT REFERENCES projects(id),
   description TEXT,
   status      TEXT DEFAULT 'active',
+  progress    NUMERIC(5,2) DEFAULT 0,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -713,11 +714,37 @@ CREATE TABLE features (
   project_id  TEXT REFERENCES projects(id),
   description TEXT,
   status      TEXT DEFAULT 'active',
+  progress    NUMERIC(5,2) DEFAULT 0,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_feature_epic ON features(epic_id);
 CREATE INDEX idx_feature_project ON features(project_id);
+
+-- ============================================================================
+-- FORECAST_GUARDRAILS (low remaining-hours governance)
+-- ============================================================================
+CREATE TABLE forecast_guardrails (
+  id              TEXT PRIMARY KEY,
+  project_id      TEXT REFERENCES projects(id),
+  record_table    TEXT NOT NULL,
+  record_id       TEXT NOT NULL,
+  record_name     TEXT,
+  predicted_hours NUMERIC(12,2) NOT NULL DEFAULT 0,
+  entered_hours   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  delta           NUMERIC(12,2) NOT NULL DEFAULT 0,
+  pl_comment      TEXT NOT NULL DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'pending_pca',
+  pca_comment     TEXT,
+  escalated_to    TEXT,
+  escalated_at    TIMESTAMPTZ,
+  resolved_at     TIMESTAMPTZ,
+  created_by      TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_fg_project ON forecast_guardrails(project_id);
+CREATE INDEX idx_fg_status  ON forecast_guardrails(status);
 
 -- ============================================================================
 -- FEEDBACK_ITEMS (issues + feature requests from any role)

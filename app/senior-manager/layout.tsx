@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/senior-manager/operating-rhythm', label: 'Operating Rhythm' },
   { href: '/senior-manager/commitments', label: 'Commitments' },
   { href: '/senior-manager/forecast-review', label: 'Forecast Review' },
+  { href: '/senior-manager/guardrails', label: 'Guardrails' },
   { href: '/senior-manager/wbs', label: 'WBS Gantt' },
   { href: '/senior-manager/sprint', label: 'Sprint' },
 ];

@@ -1,0 +1,389 @@
+﻿employee_type,employee_id,job_title,management_level,name,manager,email
+Regular,ID009508,Reliability Data Analyst,Individual Contributor,Adan Segovia,Brandon Beeghly,adan.segovia@pinnaclereliability.com
+Regular,ID009525,Reliability Data Analyst,Individual Contributor,Alexander Cruz,Andrew Wiencek | Andy Wiencek,alexander.cruz@pinnaclereliability.com
+Regular,ID008452,Reliability Data Analyst,Individual Contributor,Ana-Merrie Selves | Ana Selves,Shannon Goce,ana.selves@pinnaclereliability.com
+Regular,ID009623,Reliability Data Analyst,Individual Contributor,Andres Rodriguez,Jose Meneses,andres.rodriguez@pinnaclereliability.com
+Regular,ID009753,Reliability Data Analyst,Individual Contributor,Armando Hernandez,Jacob Turco,Armando.Hernandez@pinnaclereliability.com
+Regular,ID009688,Reliability Data Analyst,Individual Contributor,Carlos Vazquez,Xavier Daniel,carlos.vazquez2@pinnaclereliability.com
+Regular,ID009848,Reliability Data Analyst,Individual Contributor,Chanel Stephens,Jacob Turco,chanel.stephens@pinnaclereliability.com
+Regular,ID009509,Reliability Data Analyst,Individual Contributor,Charles Sprouse,John Dean | Wesley Dean,charles.sprouse@pinnaclereliability.com
+Regular,ID008583,Reliability Data Analyst,Individual Contributor,Cheryl Jones,Marcus Cooney,Cheryl.Jones@pinnaclereliability.com
+Regular,ID009545,Reliability Data Analyst,Individual Contributor,Dalus Lapinskie | Ro Lapinskie,Eric Bates,Rochelle.Lapinskie@pinnaclereliability.com
+Regular,ID009751,Reliability Data Analyst,Individual Contributor,David Tran,Eric Bates,david.tran2@pinnaclereliability.com
+Regular,ID008735,Reliability Data Analyst,Individual Contributor,Elizabeth Montoya,Xavier Daniel,Elizabeth.Montoya@pinnaclereliability.com
+Regular,ID009421,Reliability Data Analyst,Individual Contributor,Eric Bates,Gustavo Barrera,eric.bates@pinnaclereliability.com
+Regular,ID009399,Reliability Data Analyst,Individual Contributor,Eric Steen,Shannon Goce,eric.steen@pinnaclereliability.com
+Regular,ID008701,Reliability Data Analyst,Individual Contributor,Houstyn Evans | Marie Evans,Shannon Goce,marie.evans@pinnaclereliability.com
+Regular,ID009467,Reliability Data Analyst,Individual Contributor,Jeremy Otahal,Maxwell Venglar,jeremy.otahal@pinnaclereliability.com
+Regular,ID009200,Reliability Data Analyst,Individual Contributor,Joshua Eckerman,James Mallory,joshua.eckerman@pinnaclereliability.com
+Regular,ID009565,Reliability Data Analyst,Individual Contributor,Justin Redding,Braden Thom,justin.redding@pinnaclereliability.com
+Regular,ID008616,Reliability Data Analyst,Individual Contributor,Mikenzie Ross,Slater Smith,mikenzie.ross@pinnaclereliability.com
+Regular,ID009821,Reliability Data Analyst,Individual Contributor,Nicholas Hernandez,Vinay Patel,nicholas.hernandez@pinnaclereliability.com
+Regular,ID009556,Reliability Data Analyst,Individual Contributor,Osvaldo Perez,Carlos Rios,Osvaldo.Perez@pinnaclereliability.com
+Regular,ID009675,Reliability Data Analyst,Individual Contributor,Ouner Farley | Joseph Farley,Jacob Turco,Joseph.Farley@pinnaclereliability.com
+Regular,ID008734,Reliability Data Analyst,Individual Contributor,Sandra Ivy,Wesley Anderson | Wes Anderson,Sandra.Ivy@pinnaclereliability.com
+Regular,ID009302,Reliability Data Analyst,Individual Contributor,Sebastian Gonzalez,Jose Meneses,sebastian.gonzalez@pinnaclereliability.com
+Regular,ID008559,Reliability Data Analyst,Individual Contributor,Seth Greene,Braden Thom,seth.greene@pinnaclereliability.com
+Regular,ID009689,Reliability Data Analyst,Individual Contributor,Suhani Jaiswal (On Leave),Marcus Cooney,suhani.jaiswal@pinnaclereliability.com
+Regular,ID008712,Reliability Data Analyst,Individual Contributor,Unitas Wood,Slater Smith,Unitas.Wood@pinnaclereliability.com
+Regular,ID009282,Senior Reliability Data Analyst,Individual Contributor,Akash Basu,Vinay Patel,akash.basu@pinnaclereliability.com
+Regular,ID008575,CAD Manager,Manager,Allison Zaragoza,Brandon Villanueva,allison.zaragoza@pinnaclereliability.com
+Regular,ID009601,Senior Reliability Data Analyst,Individual Contributor,Alvin Chen,Maxwell Venglar,alvin.chen@pinnaclereliability.com
+Regular,ID009494,CAD Specialist,Individual Contributor,Amanda Hughes,Brandon Villanueva,amanda.hughes@pinnaclereliability.com
+Regular,ID007148,Project Controls Lead,Lead,Angel Barras,Mauricio Olivares,angel.barras@pinnaclereliability.com
+Regular,ID008902,Lead (Services),Lead,Angela Carrillo,Samantha Law,angela.carrillo@pinnaclereliability.com
+Regular,ID009549,Senior Reliability Data Analyst,Individual Contributor,Ankush Yadav,Jose Meneses,ankush.yadav@pinnaclereliability.com
+Regular,ID009222,Lead (Services),Lead,Braden Thom,Gustavo Barrera,Braden.Thom@pinnaclereliability.com
+Regular,ID008040,Manager (Services),Manager,Brandon Beeghly,Mauricio Olivares,brandon.beeghly@pinnaclereliability.com
+Regular,ID008582,"Senior Manager, CAD",Manager,Brandon Villanueva,Matthew Hanson | Matt Hanson,brandon.villanueva@pinnaclereliability.com
+Regular,ID008529,Senior Reliability Data Analyst,Individual Contributor,Brian Schoelles,Jacob Turco,Brian.Schoelles@pinnaclereliability.com
+Regular,ID008462,Senior Engineer,Individual Contributor,Bruce Copple,Mauricio Olivares,Bruce.Copple@pinnaclereliability.com
+Regular,ID008570,Senior Reliability Data Analyst,Individual Contributor,Carlos Rios,Wesley Anderson | Wes Anderson,carlos.rios@pinnaclereliability.com
+Regular,ID001163,Senior CAD Specialist,Individual Contributor,Christopher Mullin | Chris Mullin,Brandon Villanueva,chris.mullin@pinnaclereliability.com
+Regular,ID008532,Technical Manager (Services),Manager,Clark Thannisch,Meghana Cherukuri,clark.thannisch@pinnaclereliability.com
+Regular,ID009672,Senior Reliability Data Analyst,Individual Contributor,David Booth,Jose Meneses,David.Booth@pinnaclereliability.com
+Regular,ID008486,Senior Reliability Data Analyst,Individual Contributor,Davis Mitchell,Meghana Cherukuri,Davis.Mitchell@pinnaclereliability.com
+Regular,ID008889,Senior Reliability Data Analyst,Individual Contributor,Evan Parsons Riddle,Derek Richard,evan.parsons-riddle@pinnaclereliability.com
+Regular,ID008488,Senior Project Manager,Manager,Gustavo Barrera,Mauricio Olivares,gustavo.barrera@pinnaclereliability.com
+Regular,ID009676,Senior Reliability Data Analyst,Individual Contributor,Hussain Ali,Brandon Beeghly,hussain.ali@pinnaclereliability.com
+Regular,ID009428,CAD Drafter,Individual Contributor,Ivan Antunez,Shannon Capuano,ivan.antunez@pinnaclereliability.com
+Regular,ID008697,CAD Lead,Lead,Jacob Grant,Brandon Villanueva,jacob.grant@pinnaclereliability.com
+Regular,ID009198,Lead (Services),Lead,Jacob Turco,Steven Quillen,jacob.turco@pinnaclereliability.com
+Regular,ID008460,Principal of Reliability,Individual Contributor,James Moore | Brad Moore,Steven Quillen,brad.moore@pinnaclereliability.com
+Regular,ID008406,"Vice President, Strategic Projects",Vice President/Partner,John Campo,Ryan Sitton,John.Campo@pinnaclereliability.com
+Regular,ID008586,Lead (Services),Lead,John Dean | Wesley Dean,Steven Quillen,Wesley.Dean@pinnaclereliability.com
+Regular,ID008558,Lead (Services),Lead,John Schultze,Travis Savage,john.schultze@pinnaclereliability.com
+Regular,ID008615,Lead (Services),Lead,Jonathan Ndubuizu,Kevin Birkby,jonathan.ndubuizu@pinnaclereliability.com
+Regular,ID008642,Lead (Services),Lead,Jose Meneses,Steven Quillen,Jose.Meneses@pinnaclereliability.com
+Regular,ID001145,Senior Project Manager,Manager,Kevin Birkby,Mauricio Olivares,kevin.birkby@pinnaclereliability.com
+Regular,ID008645,Lead (Services),Lead,Kirbi Doss,Brandon Beeghly,Kirbi.Doss@pinnaclereliability.com
+Regular,ID008475,CAD Specialist,Individual Contributor,Larissa Barnes,Allison Zaragoza,Larissa.Barnes@pinnaclereliability.com
+Regular,ID008709,CAD Specialist,Individual Contributor,Maricruz Montelongo,Allison Zaragoza,Maricruz.Montelongo@pinnaclereliability.com
+Regular,ID009215,Reliability Specialist,Individual Contributor,Marvin Hoffmann,Jacob Turco,Marvin.Hoffmann@pinnaclereliability.com
+Regular,ID008456,Senior Project Manager,Manager,Matthew Hanson | Matt Hanson,Mauricio Olivares,matthew.hanson@pinnaclereliability.com
+Regular,ID008417,Lead (Services),Lead,Matthew Mauricio,Shannon Goce,matthew.mauricio@pinnaclereliability.com
+Regular,ID008553,Director of Operations - India,Director,Meghana Cherukuri,Mauricio Olivares,meghana.cherukuri@pinnaclereliability.com
+Regular,ID009411,Senior Reliability Data Analyst,Individual Contributor,Melissa Ray,John Dean | Wesley Dean,melissa.ray@pinnaclereliability.com
+Regular,ID008430,Senior Reliability Data Analyst,Individual Contributor,Michael Murray,Vinay Patel,michael.murray@pinnaclereliability.com
+Regular,ID008663,Lead (Services),Lead,Nicole Brown,Samantha Law,nicole.brown@pinnaclereliability.com
+Regular,ID008577,Lead (Services),Lead,Rae Covington,Wesley Anderson | Wes Anderson,rae.covington@pinnaclereliability.com
+Regular,ID009471,Senior Reliability Data Analyst,Individual Contributor,Rebekah Franklin,Gustavo Barrera,rebekah.franklin@pinnaclereliability.com
+Regular,ID008952,CAD Drafter,Individual Contributor,Robert Garcia,Jacob Grant,robert.garcia@pinnaclereliability.com
+Regular,ID009148,CAD Drafter,Individual Contributor,Rodolfo Valencia,Shannon Capuano,Rodolfo.Valencia@pinnaclereliability.com
+Regular,ID009604,Lead (Services),Lead,Ryan Pytosh,James Murphy | Jim Murphy,ryan.pytosh@pinnaclereliability.com
+Regular,ID008431,Development Specialist,Individual Contributor,Ryan Walker,Sean Hannigan,ryan.walker@pinnaclereliability.com
+Regular,ID008449,Senior Project Manager,Manager,Samantha Law,Mauricio Olivares,samantha.law@pinnaclereliability.com
+Regular,ID008403,Senior Project Manager,Manager,Sean Hannigan,Mauricio Olivares,sean.hannigan@pinnaclereliability.com
+Regular,ID009462,CAD Lead,Lead,Shannon Capuano,Allison Zaragoza,shannon.capuano@pinnaclereliability.com
+Regular,ID009482,Lead (Services),Lead,Slater Smith,Justin Hallmark,slater.smith@pinnaclereliability.com
+Regular,ID008865,Senior Project Manager,Manager,Steven Quillen,Mauricio Olivares,steven.quillen@pinnaclereliability.com
+Regular,ID008459,Senior Specialist,Individual Contributor,Timothy Hinson | Tim Hinson,Jacob Turco,tim.hinson@pinnaclereliability.com
+Regular,ID008772,Lead (Services),Lead,Vinay Patel,Meghana Cherukuri,Vinay.Patel@pinnaclereliability.com
+Regular,ID009564,CAD Drafter,Individual Contributor,Vivian De La Cruz Chaparro,Shannon Capuano,Vivian.DeLaCruz@pinnaclereliability.com
+Regular,ID008835,Manager (Services),Manager,Wesley Anderson | Wes Anderson,Matthew Hanson | Matt Hanson,Wes.Anderson@pinnaclereliability.com
+Regular,ID008924,CAD Drafter,Individual Contributor,Wilfredo Penate | Willy Penate,Shannon Capuano,wilfredo.penate@pinnaclereliability.com
+Inspection - Regular,ID009115,Site Manager (Non-Exempt),Manager,William Gaasch | Bill Gaasch,Samantha Law,Bill.Gaasch@pinnaclereliability.com
+Regular,ID009366,Lead (Services),Lead,Xavier Daniel,Travis Savage,Xavier.Daniel@pinnaclereliability.com
+Regular,ID009423,Lead (Services),Lead,Zane Hall,Samantha Law,zane.hall@pinnaclereliability.com
+Regular,ID002468,Assistant Controller,Manager,Amanda Burnett | Mandie Burnett,Sammi Patel,Mandie.Burnett@pinnaclereliability.com
+Regular,ID009011,Chief of Staff,C-Suite,Amanda Gosch | Mandy Gosch,Ryan Sitton,Mandy.Gosch@pinnaclereliability.com
+Regular,ID008931,"Director, Data Science",Director,Andrew Waters,Mark Felder,andrew.waters@pinnaclereliability.com
+Regular,ID002559,Manager of Procurement,Manager,Angela Yanas,Sammi Patel,Angela.Yanas@pinnaclereliability.com
+Regular,ID002567,"Manager, Facilities",Manager,Franco Tamez,John Christopher,franco.tamez@pinnaclereliability.com
+Regular,ID008824,Partner,Vice President/Partner,Grant Denny,Nathanael Ince,Grant.Denny@pinnaclereliability.com
+Regular,ID008692,Partner,Vice President/Partner,James Ledbetter,Nathanael Ince,James.ledbetter@pinnaclereliability.com
+Regular,ID009314,Partner,Vice President/Partner,Jennifer Lawrence (On Leave),Nathanael Ince,jennifer.lawrence@pinnaclereliability.com
+Regular,ID008408,President,C-Suite,John Christopher,Ryan Sitton,john.christopher@pinnaclereliability.com
+Regular,ID008777,Partner,Vice President/Partner,Jordan Klahs | JT Klahs,Nathanael Ince,Jordan.Klahs@pinnaclereliability.com
+Regular,ID001772,Director of Recruiting,Director,Kerri Walsh Peterson,Krista Baldwin,Kerri.Walsh@pinnaclereliability.com
+Regular,ID009801,IT Manager,Manager,Krystian Lewicki,Mark Felder,krystian.lewicki@pinnaclereliability.com
+Regular,ID001090,Chief Operating Officer,C-Suite,Mauricio Olivares,Ryan Sitton,mauricio.olivares@pinnaclereliability.com
+Regular,ID001006,Partner,Vice President/Partner,Milea Cosby,Nathanael Ince,milea.cosby@pinnaclereliability.com
+Regular,ID001020,Chief Strategy Officer,C-Suite,Nathanael Ince,Ryan Sitton,nathanael.ince@pinnaclereliability.com
+Regular,ID006081,Chief Executive Officer,Chief Executive Officer,Ryan Sitton,Ryan Sitton,ryan.sitton@pinnaclereliability.com
+Regular,ID001133,Controller,Manager,Sammi Patel,Ryan Sitton,sammi.patel@pinnaclereliability.com
+Regular,ID008424,Partner,Vice President/Partner,Siddharth Sanghavi,Nathanael Ince,siddharth.sanghavi@pinnaclereliability.com
+Regular,ID008784,Resource Planning Lead,Lead,Stephanie Shell,Krista Baldwin,Stephanie.Shell@pinnaclereliability.com
+Regular,ID008955,Manager of Coaching & Development,Manager,Victoria Strodtbeck,Krista Baldwin,victoria.strodtbeck@pinnaclereliability.com
+Regular,ID009328,Department Coordinator,Individual Contributor,Anayeli Betancourt,Amanda Gosch | Mandy Gosch,anayeli.betancourt@pinnaclereliability.com
+Regular,ID008610,Software Engineer,Individual Contributor,Anthony Morgante | Rayce Morgante,Andrew Matthews,rayce.morgante@pinnaclereliability.com
+Regular,ID008409,Solutions Engineer,Individual Contributor,Benjamin Ruffolo | Ben Ruffolo,John Christopher,ben.ruffolo@pinnaclereliability.com
+Regular,ID008436,Solutions Engineer,Individual Contributor,Charles Addington | Fred Addington,John Christopher,fred.addington@pinnaclereliability.com
+Regular,ID009273,Facilities Coordinator,Individual Contributor,David Tran,Franco Tamez,david.tran@pinnaclereliability.com
+Regular,ID008562,Solutions Engineer,Individual Contributor,Denise Cherba,John Christopher,denise.cherba@pinnaclereliability.com
+Regular,ID009078,Solutions Engineer,Individual Contributor,Edgar Ramos,John Christopher,edgar.ramos@pinnaclereliability.com
+Regular,ID008510,Solutions Engineer,Individual Contributor,Joshua Aguilar,John Christopher,joshua.aguilar@pinnaclereliability.com
+Regular,ID008407,Solutions Engineer,Individual Contributor,Joshua Miller | Josh Miller,John Christopher,josh.miller@pinnaclereliability.com
+Regular,ID009202,IT Analyst,Individual Contributor,Juan Duran,Krystian Lewicki,juan.duran@pinnaclereliability.com
+Regular,ID009781,Senior Financial Analyst,Individual Contributor,Justin Rainer,Sammi Patel,justin.rainer@pinnaclereliability.com
+Regular,ID009072,Front Desk Coordinator,Individual Contributor,Kaitlyn Barosh,Amanda Gosch | Mandy Gosch,Kaitlyn.Isbell@pinnaclereliability.com
+Regular,ID001790,Resource Planning Analyst,Individual Contributor,Kimberly Stonestreet,Stephanie Shell,Kimberly.Stonestreet@PinnacleReliability.com
+Regular,ID009453,Recruiter,Individual Contributor,Maria Gabriela Martinez | Gabby Martinez,Kerri Walsh Peterson,Gabriela.Martinez@pinnaclereliability.com
+Regular,ID008905,Solutions Engineer,Individual Contributor,Michael Wallace,John Christopher,michael.wallace@pinnaclereliability.com
+Regular,ID008743,Solutions Engineer,Individual Contributor,Patton Baker | Davis Baker,John Christopher,Davis.Baker@pinnaclereliability.com
+Regular,ID009674,Global Mobility Senior Specialist,Individual Contributor,Sara Vasquez,Stephanie Shell,sara.vasquez@pinnaclereliability.com
+Regular,ID009800,Department Coordinator,Individual Contributor,Selina Rodriguez,Amanda Gosch | Mandy Gosch,selina.rodriguez@pinnaclereliability.com
+Regular,ID001019,Principal People Performance,Individual Contributor,Stephen Cory | Steve Cory,Victoria Strodtbeck,Steve.Cory@pinnaclereliability.com
+Regular,ID009158,Department Coordinator,Individual Contributor,Tonya Brenk,Amanda Gosch | Mandy Gosch,Tonya.Brenk@pinnaclereliability.com
+Regular,ID009447,Principal Data Scientist,Individual Contributor,Vyacheslav Nadvoretskiy | Slava Nadvoretskiy,Andrew Waters,Slava.Nadvoretskiy@pinnaclereliability.com
+Regular,ID001246,"Manager, Software Development",Manager,Andrew Matthews,Mark Felder,Andrew.Matthews@pinnacletech.com
+Regular,ID001338,"Software Architect, Lead",Lead,Asif Prasla,Andrew Matthews,Asif.Prasla@pinnacletech.com
+Regular,ID001280,Product Owner,Individual Contributor,Jeffrey Hunkele,Mark Felder,Jeff.Hunkele@pinnacletech.com
+Regular,ID009433,Senior Engineer,Individual Contributor,John Keefe,Mark Felder,John.Keefe@pinnacletech.com
+Regular,ID001100,Chief Technology Officer,C-Suite,Mark Felder,Ryan Sitton,Mark.Felder@pinnacletech.com
+Regular,ID001794,Quality Assurance Manager,Manager,Rajeswari Mandala | Raji Mandala,Mark Felder,raji.mandala@pinnacletech.com
+Regular,ID002558,Chief Engineer,Manager,Richard Solomon,Ryan Sitton,richard.solomon@pinnaclereliability.com
+Regular,ID009434,Senior Data Engineer,Individual Contributor,Alvaro Balboa,Mark Felder,Alvaro.Balboa@pinnacletech.com
+Regular,ID009596,Lead (Services),Lead,Andrew Woitena,Kevin Birkby,andrew.woitena@pinnaclereliability.com
+Regular,ID008014,Lead (Services),Lead,Brent Bechtel,Sean Hannigan,brent.bechtel@pinnaclereliability.com
+Regular,ID009265,Manager (Services),Manager,Justin Hallmark,Sean Hannigan,justin.hallmark@pinnaclereliability.com
+Regular,ID008419,"Manager, People Team",Manager,Krista Baldwin,Mauricio Olivares,krista.baldwin@pinnaclereliability.com
+Inspection - Regular,ID009880,Lead API Inspector,Lead,Kristopher Guerrero | Kris Guerrero,William Gaasch | Bill Gaasch,Kris.Guerrero@pinnaclereliability.com
+Regular,ID008608,Lead (Services),Lead,Maxwell Venglar,Travis Savage,maxwell.venglar@pinnaclereliability.com
+Regular,ID008454,Manager (Services),Manager,Natalie Mitchell,Sean Hannigan,natalie.mitchell@pinnaclereliability.com
+Inspection - Regular,ID008122,Lead (Field Services) - Hourly,Lead,Roderick Keniry | Dale Keniry,Justin Hallmark,dale.keniry@pinnaclereliability.com
+,ID009822,Senior Counsel,Individual Contributor,Jonathan Jabcuga | Jon Jabcuga [C],Nathanael Ince,Jonathan.Jabcuga@pinnaclereliability.com
+Inspection - Regular,ID008188,API Inspector,Individual Contributor,Brady Fontenot,Roderick Keniry | Dale Keniry,Brady.Fontenot@pinnaclereliability.com
+Regular,ID009291,Reliability Data Analyst,Individual Contributor,David Roy | Dave Roy,Lauren Self,david.roy@pinnaclereliability.com
+Regular,ID009463,Reliability Data Analyst,Individual Contributor,Dominic Marotta,Lauren Self,dominic.marotta@pinnaclereliability.com
+Inspection - Regular,ID008184,API Inspector,Individual Contributor,Dwight Glover | Wayne Glover,Roderick Keniry | Dale Keniry,Wayne.Glover@pinnaclereliability.com
+Regular,ID009866,Reliability Data Analyst,Individual Contributor,Eric McCarthy,Shannon Goce,Eric.McCarthy@pinnaclereliability.com
+Regular,ID009524,Senior Reliability Data Analyst,Individual Contributor,Felipe Trujillo-Wheeler,Andrew Woitena,Felipe.Trujillo@pinnaclereliability.com
+Inspection - Regular,ID009891,NACE Inspector,Individual Contributor,Gabino Gomez,Michael Swindoll,Gabino.Gomez@pinnaclereliability.com
+Inspection - Regular,ID009850,Level III NDE Rope Access Technician,Individual Contributor,Graylon Burnham,Roderick Keniry | Dale Keniry,graylon.burnham@pinnaclereliability.com
+Regular,ID009415,Reliability Data Analyst,Individual Contributor,Jack Roberson,Madison Sprecher,jack.roberson@pinnaclereliability.com
+Regular,ID009683,Reliability Data Analyst,Individual Contributor,Jamie Makusky,Shannon Goce,jamie.makusky@pinnaclereliability.com
+Inspection - Regular,ID009193,Level II NDE Technician,Individual Contributor,Jose Pita,Roderick Keniry | Dale Keniry,Jose.Pita@pinnaclereliability.com
+Inspection - Regular,ID009895,API Inspector,Individual Contributor,Joshua Dominy,Roderick Keniry | Dale Keniry,Joshua.Dominy@pinnaclereliability.com
+Inspection - Regular,ID008169,API Inspector,Individual Contributor,Joshua Hinch,Roderick Keniry | Dale Keniry,Joshua.Hinch@pinnaclereliability.com
+Inspection - Regular,ID009764,Level II NDE Technician,Individual Contributor,Joshua Swearingen,Roderick Keniry | Dale Keniry,joshua.swearingen@pinnaclereliability.com
+Regular,ID009466,Reliability Data Analyst,Individual Contributor,Juan Sanchez,Samantha Law,juan.sanchez@pinnaclereliability.com
+Inspection - Regular,ID009031,Level II NDE Technician,Individual Contributor,Lew Birdwell,Roderick Keniry | Dale Keniry,lew.birdwell@pinnaclereliability.com
+Regular,ID009875,Level I NDE Technician,Individual Contributor,Luis Arreguin Reynoso,Roderick Keniry | Dale Keniry,luis.arreguin@pinnaclereliability.com
+Regular,ID008795,Reliability Data Analyst,Individual Contributor,Madison Burns,Samantha Law,Madison.Burns@pinnaclereliability.com
+Inspection - Regular,ID009873,Maintenance & NDE Technician,Individual Contributor,Michael Joyner,William Gaasch | Bill Gaasch,michael.joyner@pinnaclereliability.com
+Inspection - Regular,ID008092,NACE Inspector,Individual Contributor,Michael Swindoll,Brandon Beeghly,Michael.Swindoll@pinnaclereliability.com
+Regular,ID008421,Reliability Data Analyst,Individual Contributor,Nicholas Stevenson | Nick Stevenson,Lauren Self,nick.stevenson@pinnaclereliability.com
+Inspection - Regular,ID008175,Level II NDE Technician,Individual Contributor,Patrick Coates,Roderick Keniry | Dale Keniry,Patrick.Coates@pinnaclereliability.com
+Inspection - Regular,ID009851,Level II NDE Technician,Individual Contributor,Quenten Johnston,Roderick Keniry | Dale Keniry,quenten.johnston@pinnaclereliability.com
+Regular,ID009874,Project and Document Controls Specialist,Individual Contributor,Rhea Saenz,Samantha Law,Rhea.Saenz@pinnaclereliability.com
+Inspection - Regular,ID009820,NACE Inspector,Individual Contributor,Rodolfo Martinez,Michael Swindoll,rodolfo.martinez@pinnaclereliability.com
+Regular,ID008762,Senior Reliability Data Analyst,Individual Contributor,Samantha Mitchell,Brent Bechtel,Samantha.Mitchell@pinnaclereliability.com
+Regular,ID009146,Senior Reliability Data Analyst,Individual Contributor,Shannon Goce,Sean Hannigan,shannon.goce@pinnaclereliability.com
+Regular,ID008676,Senior Reliability Data Analyst,Individual Contributor,Shanwen Chen | Steven Chen,Lauren Self,Steven.Chen@pinnaclereliability.com
+Inspection - Regular,ID009371,API Inspector,Individual Contributor,Timothy Higgins,Roderick Keniry | Dale Keniry,Timothy.Higgins@pinnaclereliability.com
+Inspection - Regular,ID009860,Level II NDE Technician,Individual Contributor,Tyler Tassin,Roderick Keniry | Dale Keniry,tyler.tassin@pinnaclereliability.com
+Regular,ID008020,Data Entry Clerk,Individual Contributor,Wanda Fisher,Michael Swindoll,Wanda.Fisher@pinnaclereliability.com
+Inspection - Regular,ID009573,NACE Inspector,Individual Contributor,William Plotts | Dalton Plotts,Michael Swindoll,Dalton.Plotts@pinnaclereliability.com
+Inspection - Regular,ID009756,Level II NDE Technician,Individual Contributor,Zachary Davis,Roderick Keniry | Dale Keniry,Zachary.Davis@pinnaclereliability.com
+,ID009823,Student Associate,Individual Contributor,Alexandra Regil [C],Amanda Gosch | Mandy Gosch,
+,ID009791,Student Associate,Individual Contributor,Andrea Cortes [C],Amanda Gosch | Mandy Gosch,andrea.cortes@pinnaclereliability.com
+,ID009867,Student Associate,Individual Contributor,Isabella Marrs [C],Amanda Gosch | Mandy Gosch,
+,ID009868,Student Associate,Individual Contributor,Kary Rocha [C],Amanda Gosch | Mandy Gosch,
+Regular,ID009311,Senior Reliability Data Analyst,Individual Contributor,Lucas Bridges | Luke Bridges,Wesley Anderson | Wes Anderson,lucas.bridges@pinnaclereliability.com
+ExPat,ID008479,Manager (Services),Manager,Andrew Wiencek | Andy Wiencek,Gustavo Barrera,andrew.wiencek@pinnaclereliability.com
+,ID009872,Lead (Services),Lead,Ashley Schoeman [C],Wesley Anderson | Wes Anderson,Ashley.Schoeman@pinnaclereliability.com
+Regular,ID009567,Senior Reliability Data Analyst,Individual Contributor,Andrew Hardee,John Dean | Wesley Dean,Andrew.Hardee@pinnaclereliability.com
+Regular,ID009830,Reliability Data Analyst,Individual Contributor,Aparna Nagarajan,James Mallory,aparna.nagarajan@pinnaclereliability.com
+Regular,ID009699,Reliability Data Analyst,Individual Contributor,Austin Gates,Kirbi Doss,austin.gates@pinnaclereliability.com
+Regular,ID009367,Reliability Data Analyst,Individual Contributor,Dakota Skipper,Will Lee | Clay Lee,Dakota.Skipper@pinnaclereliability.com
+Inspection - Regular,ID009120,API Inspector,Individual Contributor,Darrick Hatathlie,Juan Henao | Sebastian Henao,darrick.hatathlie@pinnaclereliability.com
+Regular,ID009597,Senior Reliability Data Analyst,Individual Contributor,David Bergum,James Murphy | Jim Murphy,david.bergum@pinnaclereliability.com
+Regular,ID009422,Senior Reliability Data Analyst,Individual Contributor,De'Andrez Johnson,Juan Henao | Sebastian Henao,deandrez.johnson@pinnaclereliability.com
+Regular,ID008661,Lead (Services),Lead,Derek Richard,Meghana Cherukuri,derek.richard@pinnaclereliability.com
+Regular,ID008825,Principal of Corrosion Technology (Non-Exempt),Individual Contributor,Isaac Funderburg | Murry Funderburg,Charles Addington | Fred Addington,murry.funderburg@pinnaclereliability.com
+Regular,ID008437,Lead (Services),Lead,James Mallory,Brandon Beeghly,james.mallory@pinnaclereliability.com
+Regular,ID005966,Lead (Services),Lead,James Murphy | Jim Murphy,Meghana Cherukuri,Jim.Murphy@pinnaclereliability.com
+Regular,ID008444,Senior Reliability Data Analyst,Individual Contributor,Jan Koziol,James Murphy | Jim Murphy,jan.koziol@pinnaclereliability.com
+Regular,ID008315,Operations & Maintenance Lead,Lead,Jared Callahan,Jason Lawrence,Jared.Callahan@pinnaclereliability.com
+Regular,ID009151,Operations & Maintenance Lead,Lead,Jason Lawrence,Meghana Cherukuri,Jason.Lawrence@pinnaclereliability.com
+Inspection - Regular,ID008045,Field Drafter,Individual Contributor,Jason Steely,Andrew Hardee,Jason.Steely@pinnaclereliability.com
+Regular,ID009253,Operations & Maintenance Technician,Individual Contributor,Jawaan Jones,Jason Lawrence,jawaan.jones@pinnaclereliability.com
+Regular,ID009547,Operations & Maintenance Technician,Individual Contributor,Jerrod Alsip,Jason Lawrence,jerrod.alsip@pinnaclereliability.com
+Regular,ID009729,Reliability Data Analyst,Individual Contributor,Jesus Geovanny Carrillo Sanchez,Rae Covington,geovanny.carrillo@pinnaclereliability.com
+Inspection - Regular,ID008038,API Inspector,Individual Contributor,Jordan Courville,Andrew Hardee,Jordan.Courville@pinnaclereliability.com
+Regular,ID009122,Senior Reliability Data Analyst,Individual Contributor,Jose Bautista,Vinay Patel,jose.bautista@pinnaclereliability.com
+Regular,ID009192,Lead (Services),Lead,Juan Henao | Sebastian Henao,Matthew Hanson | Matt Hanson,sebastian.henao@pinnaclereliability.com
+Regular,ID009335,Lead (Services),Lead,Juan Sebastian Alvarez Rincon | Juan Sebastián Álvarez,Steven Quillen,juan.alvarez@pinnaclereliability.com
+Regular,ID009586,Reliability Data Analyst,Individual Contributor,Julia Vaughn,Madison Sprecher,julia.vaughn@pinnaclereliability.com
+Inspection - Regular,ID008041,API Inspector,Individual Contributor,Lance Johnson,Andrew Hardee,Lance.Johnson@pinnaclereliability.com
+Regular,ID009081,"Director, Reliability Strategy PT",Director,Lynne Kaley | Lynne Kaley,Nathanael Ince,Lynne.Kaley@pinnaclereliability.com
+Regular,ID008662,Lead (Services),Lead,Madison Sprecher,Samantha Law,madison.sprecher@pinnaclereliability.com
+Regular,ID008938,Lead (Services),Lead,Marcus Cooney,Gustavo Barrera,marcus.cooney@pinnaclereliability.com
+Regular,ID009682,Reliability Data Analyst,Individual Contributor,Matthew Hall | Matt Hall,James Murphy | Jim Murphy,Matthew.Hall@pinnaclereliability.com
+Regular,ID009154,Operations & Maintenance Technician,Individual Contributor,Matthew Rhinehart,Jason Lawrence,Matthew.Rhinehart@pinnaclereliability.com
+Regular,ID009618,Engineering Specialist,Individual Contributor,Nader Sharara,Gustavo Barrera,nader.sharara@pinnaclereliability.com
+Regular,ID009441,Software Architect,Individual Contributor,Paul Carter,Andrew Matthews,Paul.Carter@pinnacletech.com
+Regular,ID009611,Lead (Services),Lead,Philip Shahin Mohsenipour | Shahin Mohseni,Andrew Wiencek | Andy Wiencek,Shahin.Mohseni@pinnaclereliability.com
+Regular,ID008858,Senior Reliability Data Analyst,Individual Contributor,Phillip Dupree,Juan Henao | Sebastian Henao,phillip.dupree@pinnaclereliability.com
+Regular,ID009754,DevOps Engineer,Individual Contributor,Roney Varghese,Mark Felder,Roney.Varghese@pinnacletech.com
+Inspection - Temporary,ID009852,Field Drafter,Individual Contributor,Skylar Williams,Meghana Cherukuri,skylar.williams@pinnaclereliability.com
+Regular,ID009680,Reliability Data Analyst,Individual Contributor,Suren Chandrasena,Carlos Rios,Suren.Chandrasena@pinnaclereliability.com
+Regular,ID009687,Reliability Data Analyst,Individual Contributor,Takeshi Simon,Rae Covington,takeshi.simon@pinnaclereliability.com
+Regular,ID009438,Product Owner,Individual Contributor,Timothy Summers | Tim Summers,Mark Felder,Tim.Summers@pinnacletech.com
+Regular,ID008484,Manager (Services),Manager,Travis Savage,Matthew Hanson | Matt Hanson,travis.savage@pinnaclereliability.com
+Regular,ID009609,Lead Engineer (Technology Success),Individual Contributor,Vitor Alves Del Duca,Brandon Beeghly,vitor.delduca@pinnaclereliability.com
+Regular,ID009679,Reliability Data Analyst,Individual Contributor,Waseem Elmais,Eric Bates,Waseem.Elmais@pinnaclereliability.com
+Regular,ID009307,Lead (Services),Lead,Will Lee | Clay Lee,Travis Savage,will.lee@pinnaclereliability.com
+Regular,ID008607,Senior Data Engineer,Individual Contributor,Zebulon Bell,Mark Felder,zebulon.bell@pinnaclereliability.com
+ExPat,ID008402,Country Manager,Manager,Benjamin Brambila | Ben Brambila,Meghana Cherukuri,ben.brambila@pinnaclereliability.com
+Regular,ID009797,Software Developer - India,Individual Contributor,Abhishek Soni,Gaurav Sharma,abhishek.soni@pinnacletech.com
+Regular,ID009486,Software Developer - India,Individual Contributor,Anjaneya Gunta,Harish Gudla,Anjaneya.Gunta@pinnacletech.com
+Regular,ID009685,QA Automation Engineer - India,Individual Contributor,Chandra Sekhar Vempati,Rahul Dharam,chandra.vempati@pinnaclereliability.com
+Regular,ID009592,"Senior Software Engineer, Lead",Lead,Gaurav Sharma,Andrew Matthews,Gaurav.Sharma@pinnacletech.com
+Regular,ID009588,"Senior Software Engineer, Lead",Lead,Harish Gudla,Andrew Matthews,Harish.Gudla@pinnacletech.com
+Regular,ID009802,QA Analyst - India,Individual Contributor,Manikanta Mangisetti | Mangisetti Manikanta,Rahul Dharam,manikanta.mangisetti@pinnacletech.com
+Regular,ID009778,QA Analyst - India,Individual Contributor,Niharika Boda,Rahul Dharam,niharika.boda@pinnacletech.com
+,ID009808,Accountant - India,Individual Contributor,Nikhita Tiwari [C],Amanda Burnett | Mandie Burnett,nikhita.tiwari@pinnaclereliability.com
+Regular,ID009861,HR Specialist - India,Individual Contributor,Niveditha Ganesh,Benjamin Brambila | Ben Brambila,niveditha.ganesh@pinnaclereliability.com
+Regular,ID009641,Accountant - India,Individual Contributor,Prem Krishna Kaikala Muni,Angela Yanas,Prem.KaikalaMuni@pinnaclereliability.com
+Regular,ID009493,Senior Software Engineer - India,Individual Contributor,Rahi Reza,Andrew Matthews,Rahi.Reza@pinnacletech.com
+Regular,ID009472,QA Lead - India,Lead,Rahul Dharam,Rajeswari Mandala | Raji Mandala,Rahul.Dharam@pinnacletech.com
+Regular,ID009833,DevOps Engineer - India,Individual Contributor,Rahul Dondapati,Roney Varghese,Rahul.Dondapati@pinnacletech.com
+Regular,ID009870,Lead - IT & Cloud Infrastructure Services - India,Lead,Sai Chandramouli,Benjamin Brambila | Ben Brambila,Sai.Chandramouli@pinnaclereliability.com
+Regular,ID009849,HR Specialist - India,Individual Contributor,Shikha Ojha,Benjamin Brambila | Ben Brambila,shikha.ojha@pinnaclereliability.com
+Regular,ID009760,Recruiter - India,Individual Contributor,Supriya Yadav Allagadda,Benjamin Brambila | Ben Brambila,supriya.allagadda@pinnaclereliability.com
+Regular,ID009599,Senior Software Engineer - India,Individual Contributor,Vishnu Gaddam,Andrew Matthews,Vishnu.Reddy@pinnacletech.com
+Regular,ID009544,Lead (Services) - India,Lead,Abdul Irfan,Benjamin Brambila | Ben Brambila,irfan.abdul@pinnaclereliability.com
+Regular,ID009838,Lead (Services) - India,Lead,Akash Anand,Benjamin Brambila | Ben Brambila,akash.anand@pinnaclereliability.com
+Regular,ID009825,Lead (Services) - India,Lead,Ali Mustafa,Benjamin Brambila | Ben Brambila,ali.mustafa@pinnaclereliability.com
+Regular,ID009769,Lead (Services) - India,Lead,Avani Goyal,Benjamin Brambila | Ben Brambila,avani.goyal@pinnaclereliability.com
+Regular,ID009772,CAD Drafter - India,Individual Contributor,Balaji Bilavath,Jacob Grant,balaji.bilavath@pinnaclereliability.com
+Regular,ID009600,Senior CAD Drafter - India,Individual Contributor,Dibya Majumder,Allison Zaragoza,dibya.majumder@pinnaclereliability.com
+Intern,ID009885,RDA Intern - India,Individual Contributor,Durga Sampath Ram Pilla,Raj Avinash Veluvali,Sampathram.Pilla@pinnaclereliability.com
+Regular,ID009828,CAD Drafter - India,Individual Contributor,Eswara Durga Prasad Chintadi,Jacob Grant,durgaprasad.chintadi@pinnaclereliability.com
+Regular,ID009745,Lead (Services) - India,Lead,Faisal Siddiqui,Benjamin Brambila | Ben Brambila,faisal.siddiqui@pinnaclereliability.com
+Regular,ID009854,CAD Drafter - India,Individual Contributor,Gudise Gangothri,Jacob Grant,gudise.gangothri@pinnaclereliability.com
+Intern,ID009884,RDA Intern - India,Individual Contributor,Hari Mahesh Penke,Vara Medisetti,Harimahesh.Penke@pinnaclereliability.com
+Regular,ID009856,CAD Drafter - India,Individual Contributor,Kadali Ashok Kumar,Saikiran Palusam,ashok.kumar@pinnaclereliability.com
+Intern,ID009887,RDA Intern - India,Individual Contributor,Karthik Sagar Potnuru,Krishna Karanam,karthiksagar.potnuru@pinnaclereliability.com
+Regular,ID009658,Lead (Services) - India,Lead,Kirubha Karan,Benjamin Brambila | Ben Brambila,Kirubha.Karan@pinnaclereliability.com
+Regular,ID009818,Project Controls Analyst - India,Individual Contributor,Kohithi Karlapudi,Angel Barras,kohithi.karlapudi@pinnaclereliability.com
+Intern,ID009890,RDA Intern - India,Individual Contributor,Komali Malla,Raj Avinash Veluvali,Komali.Malla@pinnaclereliability.com
+Regular,ID009607,Lead (Services) - India,Lead,Krishna Karanam,Benjamin Brambila | Ben Brambila,shanmukha.karanam@pinnaclereliability.com
+Intern,ID009889,RDA Intern - India,Individual Contributor,Likhitha Bankapalli,Raj Avinash Veluvali,Likhitha.Bankapalli@pinnaclereliability.com
+Regular,ID009591,Senior Reliability Data Analyst - India,Individual Contributor,Manoj Mangalagiri,Saran Appana,manoj.mangalagiri@pinnaclereliability.com
+Regular,ID009824,CAD Drafter - India,Individual Contributor,Mukthapuram Shiva Reddy,Saikiran Palusam,shiva.mukthapuram@pinnaclereliability.com
+Regular,ID009827,CAD Drafter - India,Individual Contributor,NAVEEN NALLURI,Saikiran Palusam,naveen.nalluri@pinnaclereliability.com
+Intern,ID009886,RDA Intern - India,Individual Contributor,PadmaSree Kadavala,Krishna Karanam,Kadavala.Padmasree@pinnaclereliability.com
+Regular,ID009855,CAD Drafter - India,Individual Contributor,Pradeep Kallagarla,Jacob Grant,pradeep.kumar@pinnaclereliability.com
+Regular,ID009629,Lead (Services) - India,Lead,Pradip Debnath,Benjamin Brambila | Ben Brambila,pradip.debnath@pinnaclereliability.com
+Regular,ID009487,Lead (Services) - India,Lead,Raj Avinash Veluvali,Benjamin Brambila | Ben Brambila,raj.veluvali@pinnaclereliability.com
+Regular,ID009615,Project Controls Analyst - India,Individual Contributor,Rajesh Varma Tirumalaraju,Angel Barras,Rajesh.Tirumalaraju@pinnaclereliability.com
+Intern,ID009888,RDA Intern - India,Individual Contributor,Rakshith Boyina,Raj Avinash Veluvali,Rakshith.Boyina@pinnaclereliability.com
+Regular,ID009763,Lead (Services) - India,Lead,Raviteja Yellamelli,Benjamin Brambila | Ben Brambila,raviteja.yellamelli@pinnaclereliability.com
+Regular,ID009798,CAD Lead - India,Lead,Saikiran Palusam,Allison Zaragoza,Saikiran.Palusam@pinnaclereliability.com
+Regular,ID009491,Lead (Services) - India,Lead,Saran Appana,Benjamin Brambila | Ben Brambila,Saran.Appana@pinnaclereliability.com
+Regular,ID009859,Lead (Services) - India,Lead,Shubham Ghosh,Benjamin Brambila | Ben Brambila,Shubham.Ghosh@pinnaclereliability.com
+Regular,ID009857,CAD Drafter - India,Individual Contributor,Simon peter Singuluri,Saikiran Palusam,simon.singuluri@pinnaclereliability.com
+Regular,ID009622,Lead (Services) - India,Lead,Sreekumar Bontha,Benjamin Brambila | Ben Brambila,sreekumar.bontha@pinnaclereliability.com
+Regular,ID009579,Senior Reliability Data Analyst - India,Individual Contributor,Subramanyam P V V,Vara Medisetti,subramanyam.pvv@pinnaclereliability.com
+Regular,ID009538,Project Controls Analyst - India,Individual Contributor,Swaroop Kundrapu,Angel Barras,kundrapu.swaroop@pinnaclereliability.com
+Regular,ID009864,Project Controls Analyst - India,Individual Contributor,Swetha Narapogu,Angel Barras,swetha.narapogu@pinnaclereliability.com
+Regular,ID009804,CAD Drafter - India,Individual Contributor,Tarun Guru Karthikeyan,Jacob Grant,tarun.gurukarthikeyan@pinnaclereliability.com
+Intern,ID009893,RDA Intern - India,Individual Contributor,Tinku Sahit Allamsetti,Vara Medisetti,sahit.allamsetti@pinnaclereliability.com
+Regular,ID009589,Lead (Services) - India,Lead,Vara Medisetti,Benjamin Brambila | Ben Brambila,vara.medisetti@pinnaclereliability.com
+Regular,ID009590,Lead (Services) - India,Lead,Veerababu Indugula,Benjamin Brambila | Ben Brambila,veerababu.indugula@pinnaclereliability.com
+Regular,ID009691,Project Controls Analyst - India,Individual Contributor,Venkata Santosh Subramanyam Kompella | Santosh Kompella,Angel Barras,venkata.kompella@pinnaclereliability.com
+Regular,ID009746,Lead (Services) - India,Lead,Vinay Jain,Benjamin Brambila | Ben Brambila,vinay.jain@pinnaclereliability.com
+Regular,ID009882,Project Controls Analyst - India,Individual Contributor,Zahraa Atha,Angel Barras,zahraa.atha@pinnaclereliability.com
+Regular,ID009842,Reliability Data Analyst - India,Individual Contributor,Abuzer Faridy,Faisal Siddiqui,abuzer.faridy@pinnaclereliability.com
+Regular,ID009726,Reliability Data Analyst - India,Individual Contributor,Adithya Vardhan Tatikonda,Akash Anand,adithya.tatikonda@pinnaclereliability.com
+Regular,ID009661,Reliability Data Analyst - India,Individual Contributor,Ahmed Kamaal,Krishna Karanam,ahmed.kamaal@pinnaclereliability.com
+Regular,ID009517,Reliability Data Analyst - India,Individual Contributor,Akhila Botta,Akash Anand,akhila.botta@pinnaclereliability.com
+Regular,ID009705,Reliability Data Analyst - India,Individual Contributor,Akhilandeshwari Bala,Abdul Irfan,akhilandeshwari.bala@pinnaclereliability.com
+Regular,ID009862,Reliability Data Analyst - India,Individual Contributor,Akshay K M,Raj Avinash Veluvali,akshay.km@pinnaclereliability.com
+Regular,ID009841,Reliability Data Analyst - India,Individual Contributor,Akshitha Vallamalla Murali,Ali Mustafa,akshitha.vallamalla@pinnaclereliability.com
+Regular,ID009667,Reliability Data Analyst - India,Individual Contributor,ALLWIN KANDELLA,Akash Anand,antony.kandella@pinnaclereliability.com
+Regular,ID009522,Reliability Data Analyst - India,Individual Contributor,Amrutha Gorla,Vinay Jain,sai.gorla@pinnaclereliability.com
+Regular,ID009706,Reliability Data Analyst - India,Individual Contributor,Anjani Dara,Sreekumar Bontha,anjani.dara@pinnaclereliability.com
+Regular,ID009779,Reliability Data Analyst - India,Individual Contributor,Anusha Duppalapudi,Raj Avinash Veluvali,anusha.duppalpudi@pinnaclereliability.com
+Regular,ID009531,Reliability Data Analyst - India,Individual Contributor,Anusha Poosa,Raviteja Yellamelli,anusha.poosa@pinnaclereliability.com
+Regular,ID009876,Reliability Data Analyst - India,Individual Contributor,Atharva Deshpande,Raj Avinash Veluvali,Atharva.Deshpande@pinnaclereliability.com
+Regular,ID009646,Reliability Data Analyst - India,Individual Contributor,B Reshma,Saran Appana,reshma.b@pinnaclereliability.com
+Regular,ID009654,Reliability Data Analyst - India,Individual Contributor,Bala Venkatesh Attuluri,Pradip Debnath,bala.attuluri@pinnaclereliability.com
+Regular,ID009794,Reliability Data Analyst - India,Individual Contributor,Bharathi Tumuluri,Kirubha Karan,bharathi.tumuluri@pinnaclereliability.com
+Regular,ID009662,Reliability Data Analyst - India,Individual Contributor,Bhargava Sai Pilli,Pradip Debnath,bhargava.pilli@pinnaclereliability.com
+Regular,ID009877,Reliability Data Analyst - India,Individual Contributor,Bhargavi Badipati,Faisal Siddiqui,Bhargavi.Badipati@pinnaclereliability.com
+Regular,ID009632,Reliability Data Analyst - India,Individual Contributor,Chandini Kuppili,Ali Mustafa,chandini.kuppili@pinnaclereliability.com
+Regular,ID009892,Reliability Data Analyst - India,Individual Contributor,Darshan V,Shubham Ghosh,Darshan.V@pinnaclereliability.com
+Regular,ID009716,Reliability Data Analyst - India,Individual Contributor,Deepthi Marepalli,Veerababu Indugula,deepthi.marepalli@pinnaclereliability.com
+Regular,ID009894,Reliability Data Analyst - India,Individual Contributor,Dharani Priya Rampurapu,Ali Mustafa,dharanipriya.rampura@pinnaclereliability.com
+Regular,ID009731,Reliability Data Analyst - India,Individual Contributor,Dinesh Kollu,Veerababu Indugula,dinesh.kollu@pinnaclereliability.com
+Regular,ID009869,Reliability Data Analyst - India,Individual Contributor,G. Vishnu Prasad,Vara Medisetti,Vishnu.Prasad@pinnaclereliability.com
+Regular,ID009532,Reliability Data Analyst - India,Individual Contributor,Ganesh Sai Aluri,Pradip Debnath,ganesh.aluri@pinnaclereliability.com
+Regular,ID009668,Reliability Data Analyst - India,Individual Contributor,Greeshma Korada,Kirubha Karan,Greeshma.Korada@pinnaclereliability.com
+Regular,ID009647,Reliability Data Analyst - India,Individual Contributor,Harsha Vardhan Adapa,Saran Appana,harsha.adapa@pinnaclereliability.com
+Regular,ID009737,Reliability Data Analyst - India,Individual Contributor,Hema Sagar Mamidi,Vara Medisetti,HemaSagar.Mamidi@pinnaclereliability.com
+Regular,ID009881,Reliability Data Analyst - India,Individual Contributor,Hemasudha Onteddu,Vara Medisetti,hemasudha.onteddu@pinnaclereliability.com
+Regular,ID009783,Reliability Data Analyst - India,Individual Contributor,Hiranya Sidda | Satya Durga Hiranya Sidda,Kirubha Karan,hiranya.sidda@pinnaclereliability.com
+Regular,ID009665,Reliability Data Analyst - India,Individual Contributor,Jaya Sri Dadi,Veerababu Indugula,jaya.dadi@pinnaclereliability.com
+Regular,ID009738,Reliability Data Analyst - India,Individual Contributor,Jhansi sravani prasanna Boddeti,Vara Medisetti,jhansi.boddeti@pinnaclereliability.com
+Regular,ID009533,Reliability Data Analyst - India,Individual Contributor,Karun Vanaparthi,Vinay Jain,karun.vanaparthi@pinnaclereliability.com
+Regular,ID009735,Reliability Data Analyst - India,Individual Contributor,Keerthana Kotta,Akash Anand,keerthana.kotta@pinnaclereliability.com
+Regular,ID009846,Reliability Data Analyst - India,Individual Contributor,Keerthi Sharon Daram,Krishna Karanam,keerthi.daram@pinnaclereliability.com
+Regular,ID009478,Reliability Data Analyst - India,Individual Contributor,Keerthika Malleswarapu,Veerababu Indugula,K.Malleswarapu@pinnaclereliability.com
+Regular,ID009660,Reliability Data Analyst - India,Individual Contributor,Khushboo Mangla,Vara Medisetti,Khushboo.Mangla@pinnaclereliability.com
+Regular,ID009701,Reliability Data Analyst - India,Individual Contributor,Kiran Kankativaru,Shubham Ghosh,kiran.kankativaru@pinnaclereliability.com
+Regular,ID009669,Reliability Data Analyst - India,Individual Contributor,Lakshmi Sarayu,Raj Avinash Veluvali,Lakshmi.Sarayu@pinnaclereliability.com
+Regular,ID009516,Reliability Data Analyst - India,Individual Contributor,Lalitha Budda,Vinay Jain,lalitha.budda@pinnaclereliability.com
+Regular,ID009655,Reliability Data Analyst - India,Individual Contributor,Manasa Matcha,Raviteja Yellamelli,Manasa.Matcha@pinnaclereliability.com
+Regular,ID009878,Reliability Data Analyst - India,Individual Contributor,Meghana Kollipara,Raj Avinash Veluvali,Meghana.Kollipara@pinnaclereliability.com
+Regular,ID009812,Reliability Data Analyst - India,Individual Contributor,Mohan Reddy,Kirubha Karan,mohan.reddy@pinnaclereliability.com
+Regular,ID009727,Reliability Data Analyst - India,Individual Contributor,Mounika Pasunuti,Veerababu Indugula,mounika.pasunuti@pinnaclereliability.com
+Regular,ID009651,Reliability Data Analyst - India,Individual Contributor,Narendra Kari,Kirubha Karan,Narendra.Kari@pinnaclereliability.com
+Regular,ID009740,Reliability Data Analyst - India,Individual Contributor,Navya Yamini Annamraju,Akash Anand,navya.annamraju@pinnaclereliability.com
+Regular,ID009832,Reliability Data Analyst - India,Individual Contributor,Neha Mondal,Kirubha Karan,neha.mondal@pinnaclereliability.com
+Regular,ID009725,Reliability Data Analyst - India,Individual Contributor,Nidhinadh Suryadevara,Akash Anand,nidhinadh.suryadevara@pinnaclereliability.com
+Regular,ID009843,Reliability Data Analyst - India,Individual Contributor,Nihal Cheeroli,Raj Avinash Veluvali,nihal.cheeroli@pinnaclereliability.com
+Regular,ID009774,Reliability Data Analyst - India,Individual Contributor,Nikhitha Midathana,Veerababu Indugula,nikhitha.midathana@pinnaclereliability.com
+Regular,ID009724,Reliability Data Analyst - India,Individual Contributor,Pavan Kalyan Penchala,Raj Avinash Veluvali,pavan.penchala@pinnaclereliability.com
+Regular,ID009717,Reliability Data Analyst - India,Individual Contributor,Praneeth Kumar Attheli,Veerababu Indugula,praneeth.attheli@pinnaclereliability.com
+Regular,ID009518,Reliability Data Analyst - India,Individual Contributor,Prasanna Gavireddy,Pradip Debnath,durga.gavireddy@pinnaclereliability.com
+Regular,ID009659,Reliability Data Analyst - India,Individual Contributor,Pravallika Bolisetty,Shubham Ghosh,pravallika.bolisetty@pinnaclereliability.com
+Regular,ID009666,Reliability Data Analyst - India,Individual Contributor,Praveen Kollu,Faisal Siddiqui,praveen.kollu@pinnaclereliability.com
+Regular,ID009714,Reliability Data Analyst - India,Individual Contributor,Pruthvi Raj Palli,Raj Avinash Veluvali,pruthvi.raj@pinnaclereliability.com
+Regular,ID009782,Reliability Data Analyst - India,Individual Contributor,Rachel Muppidi,Abdul Irfan,rachel.muppidi@pinnaclereliability.com
+Regular,ID009871,Reliability Data Analyst - India,Individual Contributor,Ramchand Dhiravath,Abdul Irfan,Ramchand.Dhiravath@pinnaclereliability.com
+Regular,ID009775,Reliability Data Analyst - India,Individual Contributor,Ramya Viyyapu,Raj Avinash Veluvali,Ramya.Viyyapu@pinnaclereliability.com
+Regular,ID009649,Reliability Data Analyst - India,Individual Contributor,Rohith Karnekanti,Raviteja Yellamelli,Rohith.Karnekanti@pinnaclereliability.com
+Regular,ID009576,Reliability Data Analyst - India,Individual Contributor,Rohitha Gadi,Vara Medisetti,rohitha.gadi@pinnaclereliability.com
+Regular,ID009723,Reliability Data Analyst - India,Individual Contributor,Roshini Tekumatla (On Leave),Akash Anand,roshini.tekumatla@pinnaclereliability.com
+Regular,ID009786,Reliability Data Analyst - India,Individual Contributor,Sahithi Mahamkali,Veerababu Indugula,Sahithi.Mahamkali@pinnaclereliability.com
+Regular,ID009793,Reliability Data Analyst - India,Individual Contributor,Sai Kiran Devi,Krishna Karanam,saikiran.devi@pinnaclereliability.com
+Regular,ID009785,Reliability Data Analyst - India,Individual Contributor,Sai Kiranmayi Yedla,Saran Appana,kiranmayi.yedla@pinnaclereliability.com
+Regular,ID009813,Reliability Data Analyst - India,Individual Contributor,Sai Kumar Mahanthi,Raj Avinash Veluvali,Sai.Mahanthi@pinnaclereliability.com
+Regular,ID009788,Reliability Data Analyst - India,Individual Contributor,Sairam Peddagolla,Avani Goyal,Sairam.Peddagolla@pinnaclereliability.com
+Regular,ID009847,Reliability Data Analyst - India,Individual Contributor,Sama Chandrahas Goud,Raj Avinash Veluvali,sama.goud@pinnaclereliability.com
+Regular,ID009657,Reliability Data Analyst - India,Individual Contributor,Sandhya Karaka,Ali Mustafa,sandhya.karaka@pinnaclereliability.com
+Regular,ID009718,Reliability Data Analyst - India,Individual Contributor,Sandhya Siliveru,Raviteja Yellamelli,sandhya.siliveru@pinnaclereliability.com
+Regular,ID009595,Reliability Data Analyst - India,Individual Contributor,Sanjai N,Kirubha Karan,sanjai.nagarajan@pinnaclereliability.com
+Regular,ID009784,Reliability Data Analyst - India,Individual Contributor,Santhosh Hosudurgam | H GIRI SANTHOSH,Vara Medisetti,santhosh.hosudurgam@pinnaclereliability.com
+Regular,ID009839,Reliability Data Analyst - India,Individual Contributor,Saumya Shakti,Akash Anand,saumya.shakti@pinnaclereliability.com
+Regular,ID009664,Reliability Data Analyst - India,Individual Contributor,Sharmila Yanapu,Raviteja Yellamelli,Sharmila.Yanapu@pinnaclereliability.com
+Regular,ID009702,Reliability Data Analyst - India,Individual Contributor,Shivakumar Sunkari,Sreekumar Bontha,shivakumar.sunkari@pinnaclereliability.com
+Regular,ID009644,Reliability Data Analyst - India,Individual Contributor,Shivaprasad Madishetti | Shiva Madishetti,Avani Goyal,Shivaprasad.Madishetti@pinnaclereliability.com
+Regular,ID009521,Reliability Data Analyst - India,Individual Contributor,SIVA KUMAR VARMA RAJU SHAKHINATE,Raj Avinash Veluvali,siva.shakhinate@pinnaclereliability.com
+Regular,ID009817,Reliability Data Analyst - India,Individual Contributor,Siva Rayavarapu,Raj Avinash Veluvali,siva.rayavarapu@pinnaclereliability.com
+Regular,ID009741,Reliability Data Analyst - India,Individual Contributor,Soudeepya Uddavolu | Soudeepya,Vara Medisetti,soudeepya.uddavolu@pinnaclereliability.com
+Regular,ID009575,Reliability Data Analyst - India,Individual Contributor,Sowgandh Gummadi,Vara Medisetti,sowgandh.gummadi@pinnaclereliability.com
+Regular,ID009653,Reliability Data Analyst - India,Individual Contributor,Sravani Kurilla,Raj Avinash Veluvali,Sravani.Kurilla@pinnaclereliability.com
+Regular,ID009816,Reliability Data Analyst - India,Individual Contributor,Sravya Kalivarapu,Raj Avinash Veluvali,sravya.kalivarapu@pinnaclereliability.com
+Regular,ID009722,Reliability Data Analyst - India,Individual Contributor,Sri Sai Krishna Anaparthi,Raviteja Yellamelli,saikrishna.anaparthi@pinnaclereliability.com
+Regular,ID009879,Reliability Data Analyst - India,Individual Contributor,Srihitha Beeram,Shubham Ghosh,Srihitha.Beeram@pinnaclereliability.com
+Regular,ID009742,Reliability Data Analyst - India,Individual Contributor,Srivalli Sunkari,Sreekumar Bontha,srivalli.sunkari@pinnaclereliability.com
+Regular,ID009845,Reliability Data Analyst - India,Individual Contributor,SUJEET KUMAR GOND,Raviteja Yellamelli,sujeet.gond@pinnaclereliability.com
+Regular,ID009743,Reliability Data Analyst - India,Individual Contributor,Sunil Janaki Rao Annamdevula (Sunil),Vara Medisetti,sunil.annamdevula@pinnaclereliability.com
+Regular,ID009836,Reliability Data Analyst - India,Individual Contributor,Sushman Sarangi,Ali Mustafa,sushman.sarangi@pinnaclereliability.com
+Regular,ID009744,Reliability Data Analyst - India,Individual Contributor,Sushmitha Kali,Raviteja Yellamelli,Sushmitha.Kali@pinnaclereliability.com
+Regular,ID009652,Reliability Data Analyst - India,Individual Contributor,Tejeswar Varanasi,Kirubha Karan,Tejeswar.Varanasi@pinnaclereliability.com
+Regular,ID009648,Reliability Data Analyst - India,Individual Contributor,Uma Maheswari Marothu | Uma Maheswari,Akash Anand,uma.marothu@pinnaclereliability.com
+Regular,ID009514,Reliability Data Analyst - India,Individual Contributor,Varsha Nimmakayala,Raj Avinash Veluvali,sai.nimmakayala@pinnaclereliability.com
+Regular,ID009670,Reliability Data Analyst - India,Individual Contributor,Veerendra Kumar Kosanam,Saran Appana,veerendra.kosanam@pinnaclereliability.com
+Regular,ID009721,Reliability Data Analyst - India,Individual Contributor,Venkata Nagaraju Rajam,Abdul Irfan,nagaraju.rajam@pinnaclereliability.com
+Regular,ID009777,Reliability Data Analyst - India,Individual Contributor,Vijay Kaki,Pradip Debnath,vijay.kaki@pinnaclereliability.com
+Regular,ID009643,Reliability Data Analyst - India,Individual Contributor,Vinay Korra,Raviteja Yellamelli,vinay.korra@pinnaclereliability.com
+Regular,ID009645,Reliability Data Analyst - India,Individual Contributor,Vivek Karre,Pradip Debnath,vivek.karre@pinnaclereliability.com
+Regular,ID009650,Reliability Data Analyst - India,Individual Contributor,Vyshnavi Avuthu,Avani Goyal,Vyshnavi.Avuthu@pinnaclereliability.com
+Regular,ID009734,Reliability Data Analyst - India,Individual Contributor,Yeswanth Kanuru,Akash Anand,yeswanth.kanuru@pinnaclereliability.com
+Regular,ID009814,Reliability Data Analyst - India,Individual Contributor,Yoshitha Nammi,Avani Goyal,yoshitha.nammi@pinnaclereliability.com
