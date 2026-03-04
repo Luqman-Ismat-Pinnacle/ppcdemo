@@ -10,7 +10,7 @@ type ProjectOption = {
 type ProjectScopeContextValue = {
   projects: ProjectOption[];
   selectedProjectId: string;
-  setSelectedProjectId: (projectId: string) => void;
+  setSelectedProjectId: (_projectId: string) => void;
   isLoading: boolean;
 };
 
@@ -83,9 +83,9 @@ export function ProjectScopeProvider({ children }: { children: React.ReactNode }
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
-        const rows = Array.isArray(d?.rows) ? d.rows : [];
-        const options = rows
-          .map((r: any) => ({ id: String(r?.id || ''), name: String(r?.name || '') }))
+        const rows: Array<{ id?: unknown; name?: unknown }> = Array.isArray(d?.rows) ? d.rows : [];
+        const options: ProjectOption[] = rows
+          .map((row) => ({ id: String(row?.id || ''), name: String(row?.name || '') }))
           .filter((p: ProjectOption) => p.id && p.name)
           .sort((a: ProjectOption, b: ProjectOption) => a.name.localeCompare(b.name));
         setProjects(options);
