@@ -37,6 +37,9 @@ type SprintTask = {
   baseline_count?: number;
   baseline_metric?: string;
   baseline_uom?: string;
+  actual_count?: number;
+  actual_metric?: string;
+  actual_uom?: string;
 };
 
 type BacklogTask = {
@@ -925,16 +928,28 @@ export default function SprintPage() {
               </div>
             <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, borderTop: '1px solid rgba(148,163,184,.1)', paddingTop: 8, marginTop: 4 }}>
               <div>
-                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Baseline Count</label>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>BL Count</label>
                 <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.baseline_count ?? 0}</span>
               </div>
               <div>
-                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Baseline Metric</label>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>BL Metric</label>
                 <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.baseline_metric || '—'}</span>
               </div>
               <div>
-                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Baseline UOM</label>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>BL UOM</label>
                 <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.baseline_uom || '—'}</span>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Act Count</label>
+                <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.actual_count ?? 0}</span>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Act Metric</label>
+                <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.actual_metric || '—'}</span>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Act UOM</label>
+                <span style={{ fontSize: '0.72rem', color: '#e2e8f0' }}>{editingTask?.actual_uom || '—'}</span>
               </div>
             </div>
             </div>

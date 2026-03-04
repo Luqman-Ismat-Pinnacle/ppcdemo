@@ -1,0 +1,18 @@
+-- Add actual_count, actual_metric, actual_uom to units/phases/tasks/sub_tasks
+-- Idempotent: uses ADD COLUMN IF NOT EXISTS
+
+ALTER TABLE units ADD COLUMN IF NOT EXISTS actual_count INTEGER DEFAULT 0;
+ALTER TABLE units ADD COLUMN IF NOT EXISTS actual_metric TEXT;
+ALTER TABLE units ADD COLUMN IF NOT EXISTS actual_uom TEXT;
+
+ALTER TABLE phases ADD COLUMN IF NOT EXISTS actual_count INTEGER DEFAULT 0;
+ALTER TABLE phases ADD COLUMN IF NOT EXISTS actual_metric TEXT;
+ALTER TABLE phases ADD COLUMN IF NOT EXISTS actual_uom TEXT;
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS actual_count INTEGER DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS actual_metric TEXT;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS actual_uom TEXT;
+
+ALTER TABLE sub_tasks ADD COLUMN IF NOT EXISTS actual_count INTEGER DEFAULT 0;
+ALTER TABLE sub_tasks ADD COLUMN IF NOT EXISTS actual_metric TEXT;
+ALTER TABLE sub_tasks ADD COLUMN IF NOT EXISTS actual_uom TEXT;

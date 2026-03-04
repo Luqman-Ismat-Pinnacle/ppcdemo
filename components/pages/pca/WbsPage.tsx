@@ -54,6 +54,9 @@ type WbsRow = {
   baseline_count?: number;
   baseline_metric?: string;
   baseline_uom?: string;
+  actual_count?: number;
+  actual_metric?: string;
+  actual_uom?: string;
   actual_hours_tooltip?: {
     summary: string;
     rows: string[];
@@ -774,9 +777,12 @@ export default function WbsPage() {
       return rel ? `${base} (${rel}${lag ? `, ${lag}d` : ''})` : base;
     } },
     { field: 'total_float', headerName: 'TF', minWidth: 65, width: 65, valueFormatter: (p) => fmtInt(asNum(p.value)) },
-    { field: 'baseline_count', headerName: 'Baseline Count', minWidth: 110, width: 110, valueFormatter: (p) => fmtInt(asNum(p.value)) },
-    { field: 'baseline_metric', headerName: 'Baseline Metric', minWidth: 130, width: 130 },
-    { field: 'baseline_uom', headerName: 'Baseline UOM', minWidth: 110, width: 110 },
+    { field: 'baseline_count', headerName: 'BL Count', minWidth: 90, width: 90, valueFormatter: (p) => fmtInt(asNum(p.value)) },
+    { field: 'baseline_metric', headerName: 'BL Metric', minWidth: 100, width: 100 },
+    { field: 'baseline_uom', headerName: 'BL UOM', minWidth: 90, width: 90 },
+    { field: 'actual_count', headerName: 'Act Count', minWidth: 90, width: 90, valueFormatter: (p) => fmtInt(asNum(p.value)) },
+    { field: 'actual_metric', headerName: 'Act Metric', minWidth: 100, width: 100 },
+    { field: 'actual_uom', headerName: 'Act UOM', minWidth: 90, width: 90 },
     { headerName: 'CP', minWidth: 60, width: 60, valueGetter: (p) => (p.data?.is_critical ? 'CP' : '-') },
   ]), [expandedIds, headerWithDelta, varianceTextStyle, withDelta, wbsPathById]);
 

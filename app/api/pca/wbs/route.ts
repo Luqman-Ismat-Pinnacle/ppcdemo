@@ -218,6 +218,9 @@ export async function GET(req: NextRequest) {
         baseline_count: num(row.baseline_count),
         baseline_metric: str(row.baseline_metric),
         baseline_uom: str(row.baseline_uom),
+        actual_count: num(row.actual_count),
+        actual_metric: str(row.actual_metric),
+        actual_uom: str(row.actual_uom),
       };
     }
 

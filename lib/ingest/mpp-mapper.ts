@@ -84,6 +84,13 @@ interface MppTask {
   baseline_metric?: string | null;
   baselineUom?: string | null;
   baseline_uom?: string | null;
+  actualCount?: number | string | null;
+  actual_count?: number | string | null;
+  actualMetric?: string | null;
+  actual_metric?: string | null;
+  actualUom?: string | null;
+  actual_uom?: string | null;
+  customFields?: Record<string, unknown> | null;
   predecessors?: Array<{
     taskId?: string;
     predecessorTaskId?: string;
@@ -165,6 +172,9 @@ export function mapMppOutput(
       baseline_count: i(t.baselineCount ?? t.baseline_count ?? 0),
       baseline_metric: s(t.baselineMetric ?? t.baseline_metric) || null,
       baseline_uom: s(t.baselineUom ?? t.baseline_uom) || null,
+      actual_count: i(t.actualCount ?? t.actual_count ?? 0),
+      actual_metric: s(t.actualMetric ?? t.actual_metric) || null,
+      actual_uom: s(t.actualUom ?? t.actual_uom) || null,
     };
 
     if (level === 2) {

@@ -41,6 +41,9 @@ const BASELINE_CUSTOM_COLS: ColumnDef[] = [
   { key: 'baseline_count', label: 'Baseline Count', type: 'number', editable: true },
   { key: 'baseline_metric', label: 'Baseline Metric', type: 'text', editable: true },
   { key: 'baseline_uom', label: 'Baseline UOM', type: 'text', editable: true },
+  { key: 'actual_count', label: 'Actual Count', type: 'number', editable: true },
+  { key: 'actual_metric', label: 'Actual Metric', type: 'text', editable: true },
+  { key: 'actual_uom', label: 'Actual UOM', type: 'text', editable: true },
 ];
 
 const SCHED_COLS: ColumnDef[] = [

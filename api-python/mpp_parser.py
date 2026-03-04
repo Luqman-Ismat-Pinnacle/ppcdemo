@@ -197,30 +197,45 @@ class ProjectParser:
 
         return deduped
 
-    def _resolve_custom_baseline_fields(self, project):
-        """Scan custom field aliases to find fields named Baseline Count/Metric/UOM."""
+    @staticmethod
+    def _normalize_alias(raw):
+        """Strip spaces, punctuation, and case for fuzzy alias matching."""
+        import re
+        return re.sub(r'[^a-z0-9]', '', str(raw or '').strip().lower())
+
+    def _resolve_custom_fields(self, project):
+        """Scan custom field aliases for baseline/actual count/metric/uom variants."""
+        import re
         field_map = {}
-        target_aliases = {
-            'baseline count': 'baselineCount',
-            'baseline metric': 'baselineMetric',
-            'baseline uom': 'baselineUom',
+        all_custom = {}
+        patterns = {
+            'baselineCount':  re.compile(r'^base(?:line)?[\s_-]*count$', re.I),
+            'baselineMetric': re.compile(r'^base(?:line)?[\s_-]*metric$', re.I),
+            'baselineUom':    re.compile(r'^base(?:line)?[\s_-]*u\.?o\.?m\.?$', re.I),
+            'actualCount':    re.compile(r'^act(?:ual)?[\s_-]*count$', re.I),
+            'actualMetric':   re.compile(r'^act(?:ual)?[\s_-]*metric$', re.I),
+            'actualUom':      re.compile(r'^act(?:ual)?[\s_-]*u\.?o\.?m\.?$', re.I),
         }
         try:
             custom_fields = project.getCustomFields()
             if custom_fields:
                 for cf in custom_fields:
                     try:
-                        alias = str(cf.getAlias() or "").strip().lower()
-                        if alias in target_aliases:
-                            field_type = cf.getFieldType()
-                            if field_type is not None:
-                                field_map[target_aliases[alias]] = field_type
+                        alias = str(cf.getAlias() or "").strip()
+                        field_type = cf.getFieldType()
+                        if not alias or field_type is None:
+                            continue
+                        norm = self._normalize_alias(alias)
+                        all_custom[alias] = field_type
+                        for canonical, pat in patterns.items():
+                            if canonical not in field_map and pat.match(alias):
+                                field_map[canonical] = field_type
                     except Exception:
                         continue
         except Exception as e:
             print(f"Custom field scan: {e}")
 
-        return field_map
+        return field_map, all_custom
 
     def _get_custom_field_value(self, task, field_type):
         """Extract a custom field value from a task given the MPXJ FieldType."""
@@ -248,7 +263,7 @@ class ProjectParser:
         except:
             print("Scheduling analyzer not found or failed; continuing with raw data.")
 
-        baseline_field_map = self._resolve_custom_baseline_fields(project)
+        custom_field_map, all_custom_fields = self._resolve_custom_fields(project)
 
         props = project.getProjectProperties()
         project_info = {
@@ -683,18 +698,23 @@ class ProjectParser:
             except Exception:
                 pass
 
-            # --- Custom baseline fields ---
-            baseline_count_val = None
-            baseline_metric_val = None
-            baseline_uom_val = None
-            for key, field_type in baseline_field_map.items():
+            # --- Custom baseline + actual fields ---
+            canonical_vals = {}
+            for key, field_type in custom_field_map.items():
+                canonical_vals[key] = self._get_custom_field_value(task, field_type)
+
+            extra_custom = {}
+            for alias, field_type in all_custom_fields.items():
                 val = self._get_custom_field_value(task, field_type)
-                if key == 'baselineCount':
-                    baseline_count_val = val
-                elif key == 'baselineMetric':
-                    baseline_metric_val = val
-                elif key == 'baselineUom':
-                    baseline_uom_val = val
+                if val is not None:
+                    extra_custom[alias] = val
+
+            baseline_count_val = canonical_vals.get('baselineCount')
+            baseline_metric_val = canonical_vals.get('baselineMetric')
+            baseline_uom_val = canonical_vals.get('baselineUom')
+            actual_count_val = canonical_vals.get('actualCount')
+            actual_metric_val = canonical_vals.get('actualMetric')
+            actual_uom_val = canonical_vals.get('actualUom')
 
             node = {
                 'id': uid,
@@ -761,6 +781,10 @@ class ProjectParser:
                 'baselineCount': baseline_count_val,
                 'baselineMetric': baseline_metric_val,
                 'baselineUom': baseline_uom_val,
+                'actualCount': actual_count_val,
+                'actualMetric': actual_metric_val,
+                'actualUom': actual_uom_val,
+                'customFields': extra_custom if extra_custom else None,
             }
             all_tasks.append(node)
 
@@ -876,7 +900,7 @@ def ui():
     return render_template('index.html')
 
 @app.route('/health')
-def health(): return jsonify(status="ok", version="v19-baseline-custom-fields")
+def health(): return jsonify(status="ok", version="v20-baseline-actual-custom-fields")
 
 @app.route('/parse', methods=['POST'])
 def parse():

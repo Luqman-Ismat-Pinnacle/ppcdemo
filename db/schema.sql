@@ -247,6 +247,9 @@ CREATE TABLE units (
   baseline_count  INTEGER DEFAULT 0,
   baseline_metric TEXT,
   baseline_uom    TEXT,
+  actual_count    INTEGER DEFAULT 0,
+  actual_metric   TEXT,
+  actual_uom      TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -302,6 +305,9 @@ CREATE TABLE phases (
   baseline_count  INTEGER DEFAULT 0,
   baseline_metric TEXT,
   baseline_uom    TEXT,
+  actual_count    INTEGER DEFAULT 0,
+  actual_metric   TEXT,
+  actual_uom      TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -361,6 +367,9 @@ CREATE TABLE tasks (
   baseline_count  INTEGER DEFAULT 0,
   baseline_metric TEXT,
   baseline_uom    TEXT,
+  actual_count    INTEGER DEFAULT 0,
+  actual_metric   TEXT,
+  actual_uom      TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -422,6 +431,9 @@ CREATE TABLE sub_tasks (
   baseline_count  INTEGER DEFAULT 0,
   baseline_metric TEXT,
   baseline_uom    TEXT,
+  actual_count    INTEGER DEFAULT 0,
+  actual_metric   TEXT,
+  actual_uom      TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
