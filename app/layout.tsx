@@ -3,7 +3,6 @@ import './globals.css';
 import Auth0Provider from '@/components/providers/Auth0Provider';
 import AuthGuard from '@/components/auth/AuthGuard';
 import { UserProvider } from '@/lib/user-context';
-import { ProjectScopeProvider } from '@/lib/project-scope-context';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import FeedbackButton from '@/components/feedback/FeedbackButton';
 
@@ -24,7 +23,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Auth0Provider>
           <AuthGuard>
             <UserProvider>
-              <ProjectScopeProvider>
                 <ErrorBoundary>
                   <div className="ambient-bg" aria-hidden>
                     <span className="ambient-image" />
@@ -38,7 +36,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   {children}
                   <FeedbackButton />
                 </ErrorBoundary>
-              </ProjectScopeProvider>
             </UserProvider>
           </AuthGuard>
         </Auth0Provider>
